@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Never commit a local copy or link to the source game.
+source-game/
+pokemon-z-source/
+Pokemon Z*/
+Pokémon Z*/
+
+# Generated game data and extraction reports may contain copyrighted content.
+packages/game-data/generated/
+.pokemon-z/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

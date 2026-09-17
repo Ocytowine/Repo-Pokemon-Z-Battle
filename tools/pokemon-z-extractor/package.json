@@ -1,0 +1,22 @@
+{
+  "name": "@pokemon-z-battle/extractor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only extraction tools for a local Pokemon Z installation.",
+  "bin": {
+    "pokemon-z-extractor": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "inventory": "tsx src/cli.ts inventory",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}
