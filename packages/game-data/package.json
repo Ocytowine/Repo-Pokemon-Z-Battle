@@ -1,0 +1,15 @@
+{
+  "name": "@pokemon-z-battle/game-data",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Normalized Pokemon Z data schemas.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -11,7 +11,11 @@
   },
   "scripts": {
     "build": "pnpm -r build",
+    "extract:pbs": "pnpm --filter @pokemon-z-battle/extractor extract:pbs",
+    "extract:runtime": "pnpm --filter @pokemon-z-battle/extractor extract:runtime",
+    "extract:assets": "pnpm --filter @pokemon-z-battle/extractor extract:assets",
     "inventory": "pnpm --filter @pokemon-z-battle/extractor inventory",
+    "preview:assets": "node tools/asset-preview-server.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },

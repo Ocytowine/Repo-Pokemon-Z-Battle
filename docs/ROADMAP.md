@@ -5,8 +5,8 @@
 | Phase | Etat | Condition de sortie |
 |---|---|---|
 | 0 - Analyse | Terminee | Sources, formats et strategie d'extraction documentes |
-| 1 - Extracteur de donnees | En cours (1.1 terminee) | Extraction reproductible et validee des donnees de base |
-| 2 - Assets | En attente | Manifeste et affichage controle d'un Pokemon |
+| 1 - Extracteur de donnees | Terminee | Extraction reproductible et validee des donnees de base |
+| 2 - Assets | Terminee | Manifeste et affichage controle d'un Pokemon |
 | 3 - Combat minimal hors ligne | En attente | Duel deterministe 1 contre 1 teste |
 | 4 - Battle Sandbox | En attente | Interface de diagnostic du moteur |
 | 5 - Premier multijoueur | En attente | Room a deux joueurs et combat autoritaire |
@@ -45,41 +45,57 @@ Critere de sortie valide le 2026-09-17 : deux executions sur les 19 073 fichiers
 
 ### Increment 1.2 - Lecteur PBS
 
-- gerer BOM UTF-8, commentaires, sections et CSV correctement echappe ;
-- extraire les types, Pokemon, attaques, talents et objets ;
-- conserver IDs, noms internes et valeurs source ;
-- signaler les trous et doublons sans correction silencieuse ;
-- ajouter des fixtures et tests unitaires pour chaque grammaire.
+- [x] gerer BOM UTF-8, commentaires, sections et CSV correctement echappe ;
+- [x] extraire les types, Pokemon, attaques, talents et objets ;
+- [x] conserver IDs, noms internes, lignes et valeurs source ;
+- [x] signaler les trous et doublons sans correction silencieuse ;
+- [x] ajouter des fixtures et tests unitaires pour chaque grammaire ;
+- [x] produire six JSON deterministes et un rapport d'extraction.
 
-Critere de sortie : les compteurs attendus sont 19 types, 1 018 Pokemon, 730 attaques, 255 talents et 906 lignes d'objets ; l'anomalie de l'ID objet 692 est visible dans le rapport.
+Critere de sortie valide le 2026-09-17 : 19 types, 1 018 Pokemon, 730 attaques, 255 talents et 906 lignes d'objets ont ete extraits. Le rapport conserve le doublon objet 692, les IDs manquants et le nom d'attaque `SECRETSWORD` duplique sous les IDs 95 et 728. Deux executions produisent des fichiers identiques.
 
 ### Increment 1.3 - Validation et references
 
-- verifier les references Pokemon/type/talent/attaque/objet/evolution ;
-- produire les rapports d'orphelins et de collisions ;
-- separer `extracted` de `engineSupport` ;
-- comparer les sorties aux donnees compilees lorsque cela apporte un controle utile.
+- [x] verifier les references Pokemon/type/talent/attaque/objet/evolution ;
+- [x] valider les parametres d'evolution selon `PBEvolution::EVOPARAM` ;
+- [x] produire les rapports d'orphelins provisoires et de collisions ;
+- [x] separer les mecaniques extraites de leur prise en charge moteur ;
+- [x] comparer les 730 attaques a `Data/moves.dat` champ par champ ;
+- [x] comparer la structure des 1 018 Pokemon a `Data/dexdata.dat`.
 
-Critere de sortie : aucune reference invalide n'est ignoree et toute divergence est expliquee.
+Critere de sortie valide le 2026-09-17 : 26 301 references controlees, 26 299 resolues sans ambiguite, aucune reference absente et deux references ambigues expliquees. Les deux concernent `SECRETSWORD`, defini sous les IDs 95 et 728 puis utilise par Samurott et Keldeo. Les deux comparaisons avec les donnees compilees correspondent exactement. Le rapport moteur recense 651 cles mecaniques extraites et 0 implementee, ce qui reflete l'absence actuelle de moteur plutot que de confondre extraction et support.
 
 ### Increment 1.4 - Dresseurs et rencontres
 
-- extraire les 196 types de dresseurs ;
-- extraire les 477 variantes et leurs 1 295 membres d'equipe ;
-- extraire les rencontres par carte et methode ;
-- valider les references et conserver les options historiques.
+- [x] extraire les 196 types de dresseurs ;
+- [x] extraire les 477 variantes et leurs 1 295 membres d'equipe ;
+- [x] extraire les rencontres par carte et methode ;
+- [x] valider les references et conserver les options historiques.
 
-Critere de sortie : chaque equipe et table de rencontre peut etre chargee sans le moteur RPG Maker.
+Critere de sortie valide le 2026-09-17 : les 477 equipes et les 149 blocs source de
+rencontre se chargent sans RPG Maker. Ces blocs representent 148 cartes uniques,
+209 tables de methode et 1 778 emplacements. Le doublon strict de la carte 51 aux
+lignes 551 et 570 est conserve et signale. Les 6 923 nouvelles references vers les
+types de dresseurs, Pokemon, objets, attaques et fichiers de carte sont toutes resolues ; les deux
+seules erreurs du rapport restent les references ambigues a `SECRETSWORD` deja
+documentees en 1.3.
 
 ### Increment 1.5 - Ruby Marshal et localisation
 
-- implementer ou encapsuler un lecteur Ruby Marshal 4.8 teste ;
-- prendre en charge graphes de references, symboles, objets et charges `Table` ;
-- decoder `messages.dat` et `french.dat` ;
-- definir la priorite de traduction et produire un rapport de conflits ;
-- exporter les 262 scripts Ruby comme references tracables, sans les executer dans le produit web.
+- [x] implementer un lecteur Ruby Marshal 4.8 teste ;
+- [x] prendre en charge graphes de references, symboles, objets et charges `Table` ;
+- [x] decoder `messages.dat` et `french.dat` ;
+- [x] definir la priorite de traduction et produire un rapport de conflits ;
+- [x] exporter les 262 scripts Ruby comme references tracables, sans les executer dans le produit web.
 
-Critere de sortie : un Pokemon, une attaque, un objet et un dialogue de carte peuvent etre restitues avec leur texte francais et leur provenance.
+Critere de sortie valide le 2026-09-17 : les 24 categories de chaque catalogue ont
+produit 30 726 textes resolus avec leur provenance. La priorite explicite est
+`french.dat`, puis `messages.dat`, puis PBS. Le rapport detaille 23 296 traductions
+qui different du texte source et 7 668 differences entre texte compile et PBS.
+Les 262 scripts sont decomprimes, hashes et marques `reference-only`. Les 507
+`RPG::MapInfo` sont extraits, aucune rencontre ne reference une carte absente et
+une vraie charge `Table` 3D de carte est decodee. Pikachu, Megacorne, Repoussenlit
+et un dialogue de Bourg Canvas ont ete restitues en francais avec leur source.
 
 ### Hors perimetre de la Phase 1
 
@@ -92,15 +108,26 @@ Critere de sortie : un Pokemon, une attaque, un objet et un dialogue de carte pe
 
 ## Phase 2 - Assets
 
-- indexer les fichiers sans duplication ;
-- associer battlers, dos, shiny, sexe, formes, icones, empreintes et cris ;
-- detecter automatiquement les bandes d'animation et leurs frames ;
-- normaliser les chemins et la casse pour le Web ;
-- traiter les tilesets tres hauts via decoupage compatible WebGL ;
-- produire un manifeste versionne ;
-- creer une page de test affichant un Pokemon et ses variantes.
+- [x] indexer les fichiers sans duplication ;
+- [x] associer battlers, dos, shiny, sexe, formes, icones, empreintes et cris ;
+- [x] detecter automatiquement les bandes d'animation et leurs frames ;
+- [x] normaliser les chemins et la casse pour le Web ;
+- [x] traiter les tilesets tres hauts via decoupage compatible WebGL ;
+- [x] produire un manifeste versionne ;
+- [x] creer une page de test affichant un Pokemon et ses variantes.
 
-Decision attendue : choisir Phaser ou PixiJS seulement apres un prototype d'affichage et avant la Phase 7. Phaser reste le candidat naturel pour l'overworld, mais le choix doit reposer sur un test, pas sur une preference abstraite.
+Critere de sortie valide le 2026-09-17 : 18 455 assets representant 833 071 211
+octets sont indexes sans copie. Les 1 018 Pokemon ont chacun au moins un battler,
+une icone, un cri et un sprite overworld ; 649 ont une empreinte source. Les 5 642
+bandes de battlers detectees exposent leurs frames. Les 49 tilesets disposent d'un
+plan de rectangles, dont 48 sont decoupes logiquement sous 4 096 pixels. Les 1 910
+fichiers au contenu duplique referencent un original canonique. Aucune collision de
+chemin Web ni association Pokemon hors plage ne subsiste. L'Asset Lab charge les
+manifestes et le dossier local sans copier les fichiers du jeu.
+
+Decision differee : l'Asset Lab valide le pipeline avec les API DOM/Canvas natives,
+mais ne compare pas encore Phaser et PixiJS. Ce choix reste a faire sur un prototype
+d'overworld avant la Phase 7 ; Phaser demeure le candidat naturel.
 
 ## Phase 3 - Combat minimal hors ligne
 

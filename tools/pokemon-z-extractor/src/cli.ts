@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { createInventory } from "./inventory/create-inventory.js";
+import { extractPbsData } from "./pbs/extract-pbs.js";
+import { extractRuntimeData } from "./runtime/extract-runtime.js";
+import { extractAssets } from "./assets/extract-assets.js";
 
-interface InventoryArguments {
+interface PathArguments {
   readonly sourceDirectory: string;
   readonly outputDirectory: string;
 }
@@ -11,9 +14,12 @@ const HELP = `Pokemon Z extractor
 
 Usage:
   pokemon-z-extractor inventory --source <game-directory> --output <output-directory>
+  pokemon-z-extractor extract-pbs --source <game-directory> --output <output-directory>
+  pokemon-z-extractor extract-runtime --source <game-directory> --output <output-directory>
+  pokemon-z-extractor extract-assets --source <game-directory> --output <output-directory>
 
-The inventory command reads the source directory and writes source-manifest.json
-outside it. It never writes to the source game.
+Both commands are read-only for the source game. The output directory must be
+outside the source game.
 `;
 
 function readOption(args: readonly string[], option: string): string | undefined {
@@ -26,7 +32,7 @@ function readOption(args: readonly string[], option: string): string | undefined
   return value;
 }
 
-function parseInventoryArguments(args: readonly string[]): InventoryArguments {
+function parsePathArguments(args: readonly string[]): PathArguments {
   const sourceDirectory = readOption(args, "--source");
   const outputDirectory = readOption(args, "--output");
 
@@ -55,14 +61,49 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (command !== "inventory") {
+  if (command !== "inventory" && command !== "extract-pbs" && command !== "extract-runtime"
+    && command !== "extract-assets") {
     throw new Error(`Commande inconnue : ${command}`);
   }
 
-  const options = parseInventoryArguments(args);
-  const result = await createInventory(options);
-  process.stdout.write(`Manifest written: ${result.manifestPath}\n`);
-  process.stdout.write(`Source fingerprint: ${result.rootSha256}\n`);
+  const options = parsePathArguments(args);
+  if (command === "inventory") {
+    const result = await createInventory(options);
+    process.stdout.write(`Manifest written: ${result.manifestPath}\n`);
+    process.stdout.write(`Source fingerprint: ${result.rootSha256}\n`);
+    return;
+  }
+
+  if (command === "extract-runtime") {
+    const result = await extractRuntimeData(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`Runtime data written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Scripts: ${result.scriptCount}\n`);
+    process.stdout.write(`Maps: ${result.mapCount}\n`);
+    process.stdout.write(`Localized texts: ${result.localizedTextCount}\n`);
+    return;
+  }
+  if (command === "extract-assets") {
+    const result = await extractAssets(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`Asset data written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Assets: ${result.assetCount}\n`);
+    process.stdout.write(`Pokemon indexed: ${result.pokemonCount}\n`);
+    return;
+  }
+
+  const result = await extractPbsData(options.sourceDirectory, options.outputDirectory);
+  process.stdout.write(`PBS data written to: ${result.outputDirectory}\n`);
+  for (const [kind, summary] of Object.entries(result.report.datasets)) {
+    process.stdout.write(
+      `${kind}: ${summary.records} records, ${summary.uniqueIds} unique IDs\n`,
+    );
+  }
+  process.stdout.write(`Diagnostics: ${result.report.diagnostics.length}\n`);
+  process.stdout.write(
+    `Reference validation: ${result.validationReport.summary.errors} errors, ${result.validationReport.summary.warnings} warnings\n`,
+  );
+  process.stdout.write(
+    `Engine support: ${result.engineSupportReport.summary.supportedMechanics}/${result.engineSupportReport.summary.extractedMechanics} mechanics\n`,
+  );
 }
 
 main().catch((error: unknown) => {

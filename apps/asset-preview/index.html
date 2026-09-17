@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pokemon Z-Battle — Asset Lab</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; color: #ecf4ff; background: radial-gradient(circle at 12% 8%, #243b63 0, #101827 34%, #080d16 76%); }
+    header { padding: 42px clamp(20px, 6vw, 88px) 24px; border-bottom: 1px solid #ffffff18; }
+    h1 { margin: 0; font-size: clamp(32px, 5vw, 68px); letter-spacing: -.055em; }
+    h1 span { color: #72e6b1; }
+    header p { max-width: 760px; color: #a9bad1; line-height: 1.6; }
+    main { padding: 26px clamp(20px, 6vw, 88px) 60px; }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; padding: 18px; background: #101b2bd9; border: 1px solid #ffffff18; border-radius: 18px; box-shadow: 0 18px 70px #0008; }
+    label { display: grid; gap: 8px; color: #9eb1ca; font-size: 13px; }
+    input, select, button { width: 100%; min-height: 42px; border: 1px solid #ffffff24; border-radius: 10px; padding: 9px 12px; color: #ecf4ff; background: #0a121f; }
+    button { cursor: pointer; color: #07150f; background: #72e6b1; border-color: transparent; font-weight: 750; }
+    button:disabled { cursor: not-allowed; opacity: .45; }
+    #status { margin: 16px 2px 22px; color: #93a7c1; }
+    #title { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 16px; }
+    #title h2 { margin: 0; font-size: 30px; }
+    #title code { color: #72e6b1; }
+    #grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; }
+    article { min-height: 250px; padding: 14px; overflow: hidden; border: 1px solid #ffffff17; border-radius: 16px; background: linear-gradient(145deg, #152338dd, #0c1421ee); }
+    .visual { display: grid; place-items: center; height: 158px; margin-bottom: 12px; border-radius: 11px; background: repeating-conic-gradient(#ffffff09 0 25%, transparent 0 50%) 0/18px 18px; }
+    img, canvas { max-width: 100%; max-height: 150px; image-rendering: pixelated; object-fit: contain; }
+    article h3 { margin: 0 0 8px; font-size: 15px; }
+    article p { margin: 4px 0; color: #91a5be; font-size: 12px; overflow-wrap: anywhere; }
+    .tag { display: inline-block; margin: 2px 4px 2px 0; padding: 3px 7px; border-radius: 999px; color: #b9ffe0; background: #72e6b122; font-size: 11px; }
+    .empty { grid-column: 1/-1; padding: 38px; color: #91a5be; text-align: center; border: 1px dashed #ffffff24; border-radius: 16px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Asset <span>Lab</span></h1>
+    <p>Inspection locale des variantes Pokémon. Les fichiers restent sur votre machine : la page ne charge que les chemins référencés par les manifestes.</p>
+  </header>
+  <main>
+    <section class="controls">
+      <label>Manifestes JSON
+        <input id="manifests" type="file" accept="application/json,.json" multiple>
+      </label>
+      <label>Dossier du jeu
+        <button id="folder" type="button">Choisir le dossier source</button>
+      </label>
+      <label>ID Pokémon
+        <input id="pokemonId" type="number" min="1" max="1018" value="25">
+      </label>
+      <label>Famille
+        <select id="kind"><option value="all">Toutes</option><option>battler</option><option>icon</option><option>footprint</option><option>overworld</option><option>cry</option></select>
+      </label>
+    </section>
+    <p id="status">Chargez <code>asset-manifest.json</code> et <code>pokemon-assets.json</code>, puis choisissez le dossier du jeu.</p>
+    <div id="title"></div>
+    <section id="grid"><div class="empty">En attente des données locales.</div></section>
+  </main>
+  <script>
+    const state = { manifest: null, pokemon: null, directory: null, urls: [], timers: [] };
+    const $ = (id) => document.getElementById(id);
+    const status = (text) => { $("status").textContent = text; };
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
+
+    $("manifests").addEventListener("change", async (event) => {
+      for (const file of event.target.files) {
+        const json = JSON.parse(await file.text());
+        if (json.records?.[0]?.path) state.manifest = json;
+        if (json.records?.[0]?.assets) state.pokemon = json;
+      }
+      status(state.manifest && state.pokemon ? "Manifestes chargés. Choisissez maintenant le dossier du jeu." : "Un des deux manifestes est encore absent.");
+      await render();
+    });
+
+    $("folder").addEventListener("click", async () => {
+      if (!("showDirectoryPicker" in window)) {
+        status("Ce navigateur ne propose pas l’accès local par dossier. Utilisez une version récente de Chromium.");
+        return;
+      }
+      state.directory = await window.showDirectoryPicker({ mode: "read" });
+      status(`Dossier source prêt : ${state.directory.name}`);
+      await render();
+    });
+    $("pokemonId").addEventListener("input", render);
+    $("kind").addEventListener("change", render);
+
+    async function fileFromPath(relativePath) {
+      const parts = relativePath.split("/");
+      let directory = state.directory;
+      for (const part of parts.slice(0, -1)) directory = await directory.getDirectoryHandle(part);
+      return (await directory.getFileHandle(parts.at(-1))).getFile();
+    }
+
+    function tags(asset) {
+      return [asset.kind, asset.back && "dos", asset.shiny && "shiny", asset.female && "femelle",
+        asset.form !== null && `forme ${asset.form}`, asset.variant].filter(Boolean);
+    }
+
+    async function imageVisual(file, asset) {
+      const url = URL.createObjectURL(file); state.urls.push(url);
+      if (asset.kind === "battler" && asset.frameCount > 1 && asset.height) {
+        const canvas = document.createElement("canvas");
+        canvas.width = asset.height; canvas.height = asset.height;
+        const image = new Image(); image.src = url; await image.decode();
+        let frame = 0; const context = canvas.getContext("2d");
+        const draw = () => { context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(image, frame * asset.height, 0, asset.height, asset.height, 0, 0, asset.height, asset.height); frame = (frame + 1) % asset.frameCount; };
+        draw(); state.timers.push(setInterval(draw, 110));
+        return canvas;
+      }
+      const image = new Image(); image.src = url; image.alt = asset.path; return image;
+    }
+
+    async function render() {
+      state.urls.forEach(URL.revokeObjectURL); state.urls = [];
+      state.timers.forEach(clearInterval); state.timers = [];
+      if (!state.pokemon) return;
+      const id = Number($("pokemonId").value);
+      const record = state.pokemon.records.find((entry) => entry.id === id);
+      if (!record) return;
+      $("title").innerHTML = `<h2>${escapeHtml(record.name)}</h2><code>#${String(id).padStart(4, "0")} · ${escapeHtml(record.internalName)}</code>`;
+      const kind = $("kind").value;
+      const assets = Object.values(record.assets).flat().filter((asset) => kind === "all" || asset.kind === kind);
+      const grid = $("grid"); grid.innerHTML = "";
+      if (!state.directory) { grid.innerHTML = `<div class="empty">${assets.length} variantes indexées. Choisissez le dossier source pour les afficher.</div>`; return; }
+      for (const asset of assets) {
+        const article = document.createElement("article");
+        const visual = document.createElement("div"); visual.className = "visual";
+        try {
+          const file = await fileFromPath(asset.path);
+          if (asset.kind === "cry") {
+            const audio = document.createElement("audio"); audio.controls = true; audio.src = URL.createObjectURL(file); state.urls.push(audio.src); visual.append(audio);
+          } else visual.append(await imageVisual(file, asset));
+        } catch (error) { visual.textContent = "Fichier inaccessible"; }
+        article.append(visual);
+        article.insertAdjacentHTML("beforeend", `<h3>${escapeHtml(asset.kind)}</h3><div>${tags(asset).map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("")}</div><p>${escapeHtml(asset.path)}</p><p>${asset.width ?? "—"} × ${asset.height ?? "—"}${asset.frameCount ? ` · ${asset.frameCount} frames` : ""}</p>`);
+        grid.append(article);
+      }
+      if (!assets.length) grid.innerHTML = '<div class="empty">Aucun asset pour ce filtre.</div>';
+    }
+  </script>
+</body>
+</html>
