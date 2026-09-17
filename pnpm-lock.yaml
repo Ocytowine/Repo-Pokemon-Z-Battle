@@ -21,6 +21,18 @@ importers:
         specifier: 5.0.1
         version: 5.0.1(@types/node@22.20.3)(vite@8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(tsx@4.23.13))
 
+  apps/battle-sandbox:
+    dependencies:
+      '@pokemon-z-battle/battle-engine':
+        specifier: workspace:*
+        version: link:../../packages/battle-engine
+    devDependencies:
+      vite:
+        specifier: 8.3.0
+        version: 8.3.0(@types/node@22.20.3)(esbuild@0.28.2)(tsx@4.23.13)
+
+  packages/battle-engine: {}
+
   packages/game-data: {}
 
   tools/pokemon-z-extractor:

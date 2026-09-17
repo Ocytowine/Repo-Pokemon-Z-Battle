@@ -256,7 +256,11 @@ Le rapport actuel recense 651 cles mecaniques :
 - 6 types d'objet ;
 - 18 methodes d'evolution utilisees.
 
-Le moteur n'etant pas encore commence, les 651 entrees portent `engineSupport: "not-implemented"`. Ce statut evoluera pendant les phases consacrees au moteur et ne modifie pas les donnees extraites.
+Depuis la phase 3, le rapport porte `engineState: "in-development"`. Les 19 types
+et les codes d'effet d'attaque `000` et `0A5` portent `engineSupport: "supported"` ;
+les autres entrees restent `not-implemented`. Sur les donnees completes, cela
+represente 21 cles prises en charge sur 651. Ce statut decrit le noyau TypeScript
+et ne modifie pas les donnees extraites.
 
 ## Ruby Marshal 4.8
 

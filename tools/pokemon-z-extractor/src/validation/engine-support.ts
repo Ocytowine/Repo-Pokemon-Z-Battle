@@ -18,16 +18,31 @@ export interface EngineSupportInput {
   readonly items: NormalizedDataset<"items", ItemDefinition>;
 }
 
-function entries(keys: Iterable<string>): readonly EngineMechanicSupportEntry[] {
+const SUPPORTED_MOVE_FUNCTION_CODES = new Set(["000", "0A5"]);
+
+function entries(
+  keys: Iterable<string>,
+  supportedKeys: ReadonlySet<string> = new Set(),
+): readonly EngineMechanicSupportEntry[] {
   return [...new Set(keys)]
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
-    .map((key) => ({ key, extracted: true, engineSupport: "not-implemented" }));
+    .map((key) => ({
+      key,
+      extracted: true,
+      engineSupport: supportedKeys.has(key) ? "supported" : "not-implemented",
+    }));
 }
 
 export function createEngineSupportReport(input: EngineSupportInput): EngineSupportReport {
   const categories = {
-    typeInteractions: entries(input.types.records.map((record) => record.internalName)),
-    moveFunctionCodes: entries(input.moves.records.map((record) => record.functionCode)),
+    typeInteractions: entries(
+      input.types.records.map((record) => record.internalName),
+      new Set(input.types.records.map((record) => record.internalName)),
+    ),
+    moveFunctionCodes: entries(
+      input.moves.records.map((record) => record.functionCode),
+      SUPPORTED_MOVE_FUNCTION_CODES,
+    ),
     abilities: entries(input.abilities.records.map((record) => record.internalName)),
     itemTypes: entries(
       input.items.records.map((record) =>
@@ -44,15 +59,23 @@ export function createEngineSupportReport(input: EngineSupportInput): EngineSupp
     (total, category) => total + category.length,
     0,
   );
+  const supportedMechanics = Object.values(categories).reduce(
+    (total, category) =>
+      total + category.filter((entry) => entry.engineSupport === "supported").length,
+    0,
+  );
 
   return {
     schemaVersion: GAME_DATA_SCHEMA_VERSION,
-    engineState: "not-started",
+    engineState: "in-development",
     categories,
     summary: {
       extractedMechanics,
-      supportedMechanics: 0,
-      coveragePercent: 0,
+      supportedMechanics,
+      coveragePercent:
+        extractedMechanics === 0
+          ? 0
+          : Math.round((supportedMechanics / extractedMechanics) * 10_000) / 100,
     },
   };
 }

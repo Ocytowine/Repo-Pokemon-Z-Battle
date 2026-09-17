@@ -15,6 +15,7 @@
     "extract:runtime": "pnpm --filter @pokemon-z-battle/extractor extract:runtime",
     "extract:assets": "pnpm --filter @pokemon-z-battle/extractor extract:assets",
     "inventory": "pnpm --filter @pokemon-z-battle/extractor inventory",
+    "sandbox:battle": "pnpm --filter @pokemon-z-battle/battle-sandbox dev",
     "preview:assets": "node tools/asset-preview-server.mjs",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"

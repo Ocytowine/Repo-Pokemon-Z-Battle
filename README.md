@@ -71,3 +71,23 @@ Ouvrez ensuite `http://127.0.0.1:4173`, chargez `asset-manifest.json` et
 les images et les cris localement ; aucun asset n'est copié dans le dépôt.
 
 Voir `docs/POKEMON_Z_ANALYSIS.md` pour l'analyse de la distribution, `docs/DATA_FORMAT.md` pour les schemas normalises et `docs/ROADMAP.md` pour les phases du projet.
+
+## Combat hors ligne
+
+Le paquet `@pokemon-z-battle/battle-engine` fournit le premier noyau de combat
+deterministe. Il expose `resolveTurn(state, actions, rng)`, un generateur seedable,
+les 19 interactions de type et un catalogue volontairement limite a six attaques.
+Le detail du perimetre supporte est documente dans `packages/battle-engine/README.md`.
+
+## Battle Sandbox
+
+Pour lancer l'interface locale de combat :
+
+```powershell
+pnpm sandbox:battle
+```
+
+Le sandbox permet de choisir deux Pokemon, de resoudre leurs actions tour par tour,
+d'inspecter les evenements et chaque tirage RNG, puis d'exporter ou importer un cas
+de test JSON reproductible. Voir `apps/battle-sandbox/README.md` pour les hypotheses
+des presets de niveau 50.

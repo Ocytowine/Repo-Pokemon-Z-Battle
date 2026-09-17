@@ -131,22 +131,35 @@ d'overworld avant la Phase 7 ; Phaser demeure le candidat naturel.
 
 ## Phase 3 - Combat minimal hors ligne
 
-- definir les etats et actions sans dependance graphique ;
-- ajouter un generateur aleatoire injectable et seedable ;
-- implementer ordre, priorite, precision, types, degats et KO ;
-- limiter le catalogue a quelques attaques dont les codes d'effet sont compris ;
-- emettre des evenements de domaine et des traces de calcul ;
-- construire des tests de comparaison avec Pokemon Z.
+- [x] definir les etats et actions sans dependance graphique ;
+- [x] ajouter un generateur aleatoire injectable et seedable ;
+- [x] implementer ordre, priorite, precision, types, degats et KO ;
+- [x] limiter le catalogue a quelques attaques dont les codes d'effet sont compris ;
+- [x] emettre des evenements de domaine et des traces de calcul ;
+- [x] construire des tests de comparaison avec Pokemon Z.
 
-Critere de sortie : `resolveTurn(state, actions, rng)` est deterministe et fonctionne dans Node et le navigateur.
+Critere de sortie valide le 2026-09-17 : `resolveTurn(state, actions, rng)` est un
+noyau TypeScript sans API Node, DOM ou graphique. Un tour ne modifie pas son etat
+d'entree et renvoie un nouvel etat, des evenements et les traces des tirages/calculs.
+Les tests reproduisent les formules Ruby de priorite, vitesse, precision, critique,
+variance, STAB, efficacite, degats et KO. Le catalogue initial contient six attaques
+limitees aux codes compris `000` et `0A5`; le rapport moteur expose 21 mecaniques
+supportees sur les 651 extraites.
 
 ## Phase 4 - Battle Sandbox
 
-- selection de deux Pokemon ;
-- actions et progression tour par tour ;
-- affichage des etats et evenements ;
-- journal detaille des calculs et tirages RNG ;
-- import/export d'un cas de test reproductible.
+- [x] selection de deux Pokemon ;
+- [x] actions et progression tour par tour ;
+- [x] affichage des etats et evenements ;
+- [x] journal detaille des calculs et tirages RNG ;
+- [x] import/export d'un cas de test reproductible.
+
+Critere de sortie valide le 2026-09-17 : le sandbox Vite propose cinq combattants
+issus des statistiques PBS, les attaques du catalogue minimal et les deux choix
+d'action de chaque tour. L'interface affiche PV, statistiques, PP, evenements de
+domaine et traces de calcul/RNG. Le format JSON versionne conserve la seed et
+l'historique des intentions ; son import valide puis rejoue le combat depuis son
+etat initial au lieu de faire confiance a des resultats sauvegardes.
 
 ## Phase 5 - Premier multijoueur
 

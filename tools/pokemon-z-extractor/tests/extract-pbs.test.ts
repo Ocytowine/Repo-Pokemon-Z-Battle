@@ -122,7 +122,8 @@ describe("extractPbsData", () => {
     expect(first.report.datasets.pokemon.records).toBe(1);
     expect(first.report.diagnostics).toEqual([]);
     expect(first.validationReport.summary.errors).toBe(0);
-    expect(first.engineSupportReport.summary.supportedMechanics).toBe(0);
+    expect(first.engineSupportReport.engineState).toBe("in-development");
+    expect(first.engineSupportReport.summary.supportedMechanics).toBeGreaterThan(0);
     expect(first.report.datasets.trainers.records).toBe(1);
     expect(first.report.datasets.encounters.records).toBe(1);
     expect(second.report).toEqual(first.report);
