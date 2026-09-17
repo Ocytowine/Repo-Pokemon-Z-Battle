@@ -161,6 +161,38 @@ domaine et traces de calcul/RNG. Le format JSON versionne conserve la seed et
 l'historique des intentions ; son import valide puis rejoue le combat depuis son
 etat initial au lieu de faire confiance a des resultats sauvegardes.
 
+### Phase 4.1 - Combat visuel local
+
+- [ ] mutualiser le chargement local des manifestes et du dossier source avec l'Asset Lab ;
+- [ ] regrouper les 149 Battlebacks en scenes composees `battlebg`, `playerbase` et `enemybase` ;
+- [ ] permettre de choisir la scene de combat dans le sandbox avec un fallback pour les triplets incomplets ;
+- [ ] afficher le battler de dos du joueur et le battler de face de l'adversaire ;
+- [ ] lire les bandes de frames detectees par le pipeline d'assets ;
+- [ ] associer les sprites aux Pokemon selectionnes sans copier les fichiers du jeu ;
+- [ ] ajouter les transitions generiques d'entree, d'attaque, d'impact et de KO ;
+- [ ] synchroniser les barres de PV avec les evenements du moteur ;
+- [ ] lire les cris quand ils sont disponibles ;
+- [ ] conserver un fallback visuel si un fichier local est absent ou inaccessible.
+
+Critere de sortie : apres selection des deux manifestes et du dossier local de
+Pokemon Z, un combat du sandbox affiche une vraie scene composee et anime les deux
+vrais battlers. Les sprites, cris et PV suivent les evenements deterministes sans
+introduire de regle de combat dans la couche graphique. Le choix du Battleback est
+manuel dans ce sandbox ; son association automatique au terrain et a la carte sera
+ajoutee avec l'import du monde en phase 9.
+
+### Phase 4.2 - Presentation des attaques
+
+- [ ] definir un format d'effet visuel independant de la logique de combat ;
+- [ ] fournir un effet generique lisible pour chaque attaque supportee ;
+- [ ] analyser puis associer progressivement les animations sources comprises ;
+- [ ] ajouter messages, efficacite, critique et transitions de fin de combat ;
+- [ ] verifier le rythme et le rendu sur ordinateur et mobile.
+
+Critere de sortie : les six attaques du catalogue minimal ont toutes une
+presentation complete. Une animation source non comprise utilise explicitement un
+effet generique et ne bloque jamais la resolution du tour.
+
 ## Phase 5 - Premier multijoueur
 
 - protocole TypeScript partage et validation runtime ;
@@ -181,6 +213,12 @@ Le message client exprime une intention. Il ne transmet jamais des degats, un re
 - suivi explicite des fonctions supportees et non supportees.
 
 ## Phase 7 - Prototype overworld
+
+Ici, `overworld` designe tout ce qui se passe hors des combats : la carte vue du
+dessus, le personnage qui se deplace, les collisions, portes, changements de zone
+et la presence des autres joueurs. Ce prototype valide d'abord ces mecanismes sur
+une petite carte originale ; l'import des vraies cartes de Pokemon Z reste en
+phase 9.
 
 - petite carte originale de test, pas encore une carte Pokemon Z ;
 - collisions sur grille et transitions ;
