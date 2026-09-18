@@ -9,7 +9,7 @@ export interface MultiplayerTicket {
   readonly websocketPath: string;
 }
 
-export interface StoredMultiplayerSession {
+export interface StoredOverworldSession {
   readonly serverUrl: string;
   readonly ticket: MultiplayerTicket;
 }
@@ -27,7 +27,7 @@ export function normalizeServerUrl(value: string): string {
   return url.toString().replace(/\/$/u, "");
 }
 
-export function parseMultiplayerTicket(value: unknown): MultiplayerTicket {
+export function parseTicket(value: unknown): MultiplayerTicket {
   if (!isRecord(value)
     || value.protocolVersion !== PROTOCOL_VERSION
     || typeof value.roomCode !== "string" || !/^[A-Z2-9]{6}$/u.test(value.roomCode)
@@ -35,9 +35,20 @@ export function parseMultiplayerTicket(value: unknown): MultiplayerTicket {
     || (value.side !== "player" && value.side !== "opponent")
     || typeof value.reconnectToken !== "string" || !/^[a-f0-9]{64}$/u.test(value.reconnectToken)
     || typeof value.websocketPath !== "string" || !value.websocketPath.startsWith("/api/rooms/")) {
-    throw new Error("Ticket multijoueur invalide.");
+    throw new Error("Ticket overworld invalide.");
   }
   return value as unknown as MultiplayerTicket;
+}
+
+export function parseStoredSession(payload: string): StoredOverworldSession {
+  let value: unknown;
+  try {
+    value = JSON.parse(payload) as unknown;
+  } catch {
+    throw new Error("Session overworld illisible.");
+  }
+  if (!isRecord(value) || typeof value.serverUrl !== "string") throw new Error("Session overworld invalide.");
+  return { serverUrl: normalizeServerUrl(value.serverUrl), ticket: parseTicket(value.ticket) };
 }
 
 export function buildWebSocketUrl(serverUrl: string, ticket: MultiplayerTicket): string {
@@ -55,30 +66,13 @@ export function parseServerMessage(payload: string): ServerMessage {
   } catch {
     throw new Error("Message serveur illisible.");
   }
-  if (!isRecord(value) || value.version !== PROTOCOL_VERSION || typeof value.type !== "string") throw new Error("Message serveur incompatible.");
-  const valid = (() => {
-    switch (value.type) {
-      case "welcome": return typeof value.playerId === "string" && (value.side === "player" || value.side === "opponent") && typeof value.reconnectToken === "string" && isRecord(value.snapshot);
-      case "snapshot": return isRecord(value.snapshot);
-      case "ack": return typeof value.requestId === "string" && Number.isSafeInteger(value.revision);
-      case "turnResolved": return typeof value.battleId === "string" && Number.isSafeInteger(value.turn) && isRecord(value.state) && Array.isArray(value.events);
-      case "replacementResolved": return typeof value.battleId === "string" && isRecord(value.state) && Array.isArray(value.events);
-      case "worldUpdated": return (value.side === "player" || value.side === "opponent") && Number.isSafeInteger(value.sequence) && Number.isSafeInteger(value.revision) && isRecord(value.state) && Array.isArray(value.events);
-      case "error": return (value.requestId === null || typeof value.requestId === "string") && typeof value.code === "string" && typeof value.message === "string";
-      case "pong": return typeof value.nonce === "string";
-      default: return false;
-    }
-  })();
-  if (!valid) throw new Error("Message serveur incompatible.");
+  if (!isRecord(value) || value.version !== PROTOCOL_VERSION || typeof value.type !== "string") {
+    throw new Error("Message serveur incompatible.");
+  }
   return value as unknown as ServerMessage;
 }
 
-export async function requestTicket(serverUrl: string, path: string): Promise<MultiplayerTicket> {
-  const response = await fetch(`${normalizeServerUrl(serverUrl)}${path}`, { method: "POST" });
-  const value: unknown = await response.json();
-  if (!response.ok) {
-    const code = isRecord(value) && typeof value.error === "string" ? value.error : `HTTP_${response.status}`;
-    throw new Error(`Serveur multijoueur : ${code}.`);
-  }
-  return parseMultiplayerTicket(value);
+export function reconnectDelay(attempt: number): number {
+  const safeAttempt = Math.max(0, Math.floor(attempt));
+  return Math.min(8_000, 500 * (2 ** safeAttempt));
 }

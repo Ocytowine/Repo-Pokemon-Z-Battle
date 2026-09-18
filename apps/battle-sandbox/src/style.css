@@ -120,6 +120,7 @@ button, .file-button { cursor: pointer; font-weight: 800; text-align: center; }
 .type { padding: 3px 7px; border-radius: 6px; color: #dfe9f8; background: #73819a35; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
 .type-grass { background: #4fbf7330; color: #8af0a7; }.type-water { background: #4593dc30; color: #8ec8ff; }.type-fire { background: #e26d4930; color: #ffad8e; }.type-normal { background: #9a9a8830; color: #dedec7; }.type-electric { background: #e6c43c30; color: #ffe780; }.type-poison { background: #ad66ca30; color: #dda1f5; }
 .health { margin-top: 27px; }
+.combat-loadout { margin: 14px 0 -10px; color: #8796ad; font-size: 10px; font-weight: 750; letter-spacing: .03em; }
 .health-label { display: flex; justify-content: space-between; margin-bottom: 7px; font-size: 12px; }
 .health-label strong { color: #78e5ba; }.opponent .health-label strong { color: #ff8da2; }
 .health-track { height: 10px; overflow: hidden; border-radius: 999px; background: #050912; }

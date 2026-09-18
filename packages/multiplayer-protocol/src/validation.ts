@@ -93,6 +93,14 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("requestSnapshot mal formé");
       }
       return value as unknown as ClientMessage;
+    case "moveAvatar":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "direction", "sequence"])
+        || !isIdentifier(value.requestId)
+        || !["up", "down", "left", "right"].includes(String(value.direction))
+        || !isSafePositiveInteger(value.sequence)) {
+        return invalid("moveAvatar mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");
       return value as unknown as ClientMessage;

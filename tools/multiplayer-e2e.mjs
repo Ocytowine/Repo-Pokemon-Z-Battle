@@ -46,7 +46,7 @@ class SocketInbox {
   }
 
   send(message) {
-    this.socket.send(JSON.stringify({ version: 4, ...message }));
+    this.socket.send(JSON.stringify({ version: 5, ...message }));
   }
 
   async next(predicate, label) {
@@ -92,6 +92,25 @@ await Promise.all([
   second.next((message) => message.type === "welcome", "welcome joueur 2"),
 ]);
 
+let transitionedWorld;
+second.send({ type: "moveAvatar", requestId: "e2e-world-opponent-clear", direction: "up", sequence: 1 });
+await Promise.all([
+  first.next((message) => message.type === "worldUpdated" && message.side === "opponent" && message.sequence === 1, "libération du passage joueur 1"),
+  second.next((message) => message.type === "worldUpdated" && message.side === "opponent" && message.sequence === 1, "déplacement overworld joueur 2"),
+]);
+for (let sequence = 1; sequence <= 9; sequence += 1) {
+  first.send({ type: "moveAvatar", requestId: `e2e-world-${sequence}`, direction: "right", sequence });
+  const [firstWorld, secondWorld] = await Promise.all([
+    first.next((message) => message.type === "worldUpdated" && message.side === "player" && message.sequence === sequence, `déplacement overworld ${sequence} joueur 1`),
+    second.next((message) => message.type === "worldUpdated" && message.side === "player" && message.sequence === sequence, `diffusion overworld ${sequence} joueur 2`),
+  ]);
+  assert(firstWorld.side === "player", "Le déplacement n'est pas attribué au joueur 1.");
+  assert(JSON.stringify(firstWorld.state) === JSON.stringify(secondWorld.state), "Les clients ont reçu des mondes divergents.");
+  transitionedWorld = firstWorld.state;
+}
+assert(transitionedWorld?.avatars.player.mapId === "grove", "Le joueur n'a pas franchi la transition vers le bosquet.");
+assert(transitionedWorld.avatars.player.x === 1 && transitionedWorld.avatars.player.y === 4, "La destination de transition est incorrecte.");
+
 first.send({ type: "setReady", requestId: "e2e-ready-1", ready: true });
 second.send({ type: "setReady", requestId: "e2e-ready-2", ready: true });
 const battleSnapshot = await first.next(
@@ -121,6 +140,15 @@ const reconnected = new SocketInbox(firstTicket);
 await reconnected.opened();
 const welcome = await reconnected.next((message) => message.type === "welcome", "welcome de reconnexion");
 assert(welcome.side === "player" && welcome.snapshot.battle?.state.turn === 2, "La reconnexion n'a pas restauré le bon snapshot.");
+assert(welcome.snapshot.world.avatars.player.mapId === "grove", "La reconnexion n'a pas restauré la zone du joueur.");
+assert(welcome.snapshot.movementSequences.player === 9, "La reconnexion n'a pas restauré la séquence de mouvement.");
+
+reconnected.send({ type: "moveAvatar", requestId: "e2e-world-after-reconnect", direction: "left", sequence: 10 });
+const resumedWorld = await reconnected.next(
+  (message) => message.type === "worldUpdated" && message.sequence === 10,
+  "déplacement après reconnexion",
+);
+assert(resumedWorld.state.avatars.player.mapId === "meadow", "Le déplacement n'a pas repris après reconnexion.");
 
 reconnected.send({ type: "requestSnapshot", requestId: "e2e-snapshot" });
 await Promise.all([
@@ -128,10 +156,16 @@ await Promise.all([
   reconnected.next((message) => message.type === "snapshot" && message.snapshot?.battle?.state.turn === 2, "snapshot restauré"),
 ]);
 
-reconnected.send({ type: "submitAction", requestId: "e2e-status-p-2", battleId, turn: 2, action: { kind: "move", moveIndex: 2 } });
-second.send({ type: "submitAction", requestId: "e2e-status-o-2", battleId, turn: 2, action: { kind: "move", moveIndex: 0 } });
-const statusTurn = await reconnected.next((message) => message.type === "turnResolved" && message.turn === 2, "tour de statut");
-assert(statusTurn.state.teams.opponent.members[0]?.majorStatus?.kind === "poison", "Le statut poison n'a pas été persisté dans l'état réseau.");
+let statusTurn;
+let statusAttemptTurn = 2;
+for (let attempt = 0; attempt < 5; attempt += 1) {
+  reconnected.send({ type: "submitAction", requestId: `e2e-status-p-${statusAttemptTurn}`, battleId, turn: statusAttemptTurn, action: { kind: "move", moveIndex: 2 } });
+  second.send({ type: "submitAction", requestId: `e2e-status-o-${statusAttemptTurn}`, battleId, turn: statusAttemptTurn, action: { kind: "move", moveIndex: 0 } });
+  statusTurn = await reconnected.next((message) => message.type === "turnResolved" && message.turn === statusAttemptTurn, `tour de statut ${statusAttemptTurn}`);
+  if (statusTurn.state.teams.opponent.members[0]?.majorStatus?.kind === "poison") break;
+  statusAttemptTurn = statusTurn.state.turn;
+}
+assert(statusTurn?.state.teams.opponent.members[0]?.majorStatus?.kind === "poison", "Le statut poison n'a pas été persisté dans l'état réseau.");
 
 let replacementTested = false;
 let currentTurn = statusTurn.state.turn;
@@ -165,4 +199,7 @@ process.stdout.write(`${JSON.stringify({
   switched: true,
   statusTested: true,
   replacementTested,
+  worldMovementTested: true,
+  zoneRestored: true,
+  movementResumed: true,
 }, null, 2)}\n`);

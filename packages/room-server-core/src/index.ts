@@ -1,5 +1,6 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { PROTOCOL_VERSION, type ClientMessage, type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { resolveMovement, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
   readonly playerId: string;
@@ -21,7 +22,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 4;
+  readonly version: 5;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -36,6 +37,13 @@ export interface PersistedRoomState {
   }[];
   readonly pendingActions: readonly (readonly [BattleSide, TeamBattleAction])[];
   readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
+  readonly worldState: OverworldState;
+  readonly movementSequences: readonly (readonly [BattleSide, number])[];
+}
+
+export interface RoomWorldDefinition {
+  readonly catalog: OverworldCatalog;
+  readonly initialState: OverworldState;
 }
 
 export class AuthoritativeBattleRoom {
@@ -45,25 +53,32 @@ export class AuthoritativeBattleRoom {
   readonly #createBattle: () => TeamBattleState;
   readonly #rng: StatefulRandomSource;
   readonly #roomCode: string;
+  readonly #worldCatalog: OverworldCatalog;
+  readonly #movementSequences = new Map<BattleSide, number>();
   #revision = 0;
   #battleSequence = 0;
   #battleId: string | null = null;
   #battleState: TeamBattleState | null = null;
+  #worldState: OverworldState;
 
-  public constructor(roomCode: string, createBattle: () => TeamBattleState, rng: StatefulRandomSource, persisted?: PersistedRoomState) {
+  public constructor(roomCode: string, createBattle: () => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
     this.#createBattle = createBattle;
     this.#rng = rng;
+    this.#worldCatalog = world.catalog;
+    this.#worldState = world.initialState;
     if (persisted !== undefined) {
       this.#revision = persisted.revision;
       this.#battleSequence = persisted.battleSequence;
       this.#battleId = persisted.battleId;
       this.#battleState = persisted.battleState;
+      this.#worldState = persisted.worldState;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
       }
       for (const [side, action] of persisted.pendingActions) this.#pendingActions.set(side, action);
       for (const [side, teamIndex] of persisted.pendingReplacements) this.#pendingReplacements.set(side, teamIndex);
+      for (const [side, sequence] of persisted.movementSequences) this.#movementSequences.set(side, sequence);
     }
   }
 
@@ -106,12 +121,23 @@ export class AuthoritativeBattleRoom {
       .map(({ playerId, side, ready, connected }) => ({ playerId, side, ready, connected }));
     const phase = this.#battleState === null ? "waiting" : this.#battleState.status === "finished" ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null : { id: this.#battleId, state: this.#battleState };
-    return { revision: this.#revision, roomCode: this.#roomCode, phase, players, battle };
+    return {
+      revision: this.#revision,
+      roomCode: this.#roomCode,
+      phase,
+      players,
+      battle,
+      world: this.#worldState,
+      movementSequences: {
+        player: this.#movementSequences.get("player") ?? 0,
+        opponent: this.#movementSequences.get("opponent") ?? 0,
+      },
+    };
   }
 
   public exportState(): PersistedRoomState {
     return {
-      version: 4,
+      version: 5,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -122,6 +148,8 @@ export class AuthoritativeBattleRoom {
       })),
       pendingActions: [...this.#pendingActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
+      worldState: this.#worldState,
+      movementSequences: [...this.#movementSequences.entries()],
     };
   }
 
@@ -141,6 +169,7 @@ export class AuthoritativeBattleRoom {
       ];
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
+    if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
     return this.submitAction(player, message);
   }
@@ -198,6 +227,27 @@ export class AuthoritativeBattleRoom {
     });
     output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
     return output;
+  }
+
+  private moveAvatar(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "moveAvatar" }>): readonly RoomDispatch[] {
+    const previousSequence = this.#movementSequences.get(player.side) ?? 0;
+    if (message.sequence <= previousSequence) {
+      return [this.error(player.playerId, message.requestId, "STALE_MOVEMENT", "Intention de mouvement périmée.")];
+    }
+    const result = resolveMovement(this.#worldCatalog, this.#worldState, { playerId: player.side, direction: message.direction });
+    this.#worldState = result.state;
+    this.#movementSequences.set(player.side, message.sequence);
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      {
+        audience: "all",
+        message: {
+          type: "worldUpdated", version: PROTOCOL_VERSION, side: player.side,
+          sequence: message.sequence, revision: this.#revision, state: result.state, events: result.events,
+        },
+      },
+    ];
   }
 
   private submitReplacement(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitReplacement" }>): readonly RoomDispatch[] {

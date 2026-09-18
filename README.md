@@ -91,9 +91,11 @@ Pour lancer l'interface locale de combat :
 pnpm sandbox:battle
 ```
 
-Le sandbox permet de choisir deux Pokemon, de resoudre leurs actions tour par tour,
-d'inspecter les evenements et chaque tirage RNG, puis d'exporter ou importer un cas
-de test JSON reproductible. Il peut aussi charger les deux manifestes d'assets et le
+Le sandbox permet de choisir un duel ou un combat local trois contre trois, de
+tester les changements et remplacements, de configurer les talents et objets des
+Pokemon de tete, puis d'inspecter les evenements et chaque tirage RNG. Les duels
+peuvent etre exportes ou importes comme cas de test JSON reproductibles. Il peut
+aussi charger les manifestes d'assets et le
 dossier local du jeu pour composer une scene, animer les vrais battlers et lire leurs
 cris sans copier les fichiers sources. Voir `apps/battle-sandbox/README.md` pour les
 hypotheses des presets de niveau 50 et le chargement visuel local.
@@ -107,8 +109,9 @@ corepack pnpm multiplayer:dev
 ```
 
 Il expose la creation et la jonction de rooms a deux joueurs ainsi qu'un WebSocket
-autoritaire. Le protocole v4 gere les equipes de demonstration, les changements,
-les remplacements apres K.O., les statuts, talents et objets persistants. Aucun compte Cloudflare
+autoritaire. Le protocole v5 gere les equipes de demonstration, les changements,
+les remplacements apres K.O., les statuts, talents et objets persistants ainsi que
+les intentions de mouvement overworld. Aucun compte Cloudflare
 n'est necessaire pour ce mode local. Voir
 `apps/multiplayer-worker/README.md` pour l'API et la commande de deploiement.
 
@@ -118,3 +121,20 @@ dans un second terminal avec :
 ```powershell
 corepack pnpm test:multiplayer:e2e
 ```
+
+## Overworld Sandbox
+
+Le prototype local de la phase 7 se lance avec :
+
+```powershell
+pnpm sandbox:overworld
+```
+
+Il ouvre normalement `http://127.0.0.1:5174`. Sans serveur, les fleches ou ZQSD
+controlent le joueur 1, et IJKL le joueur 2. Avec `pnpm multiplayer:dev` lance dans
+un autre terminal, deux pages peuvent creer puis rejoindre la meme room : chacune
+ne controle alors que son avatar et recoit le monde autoritaire. Le ticket est
+restaure apres rechargement et une coupure du Worker declenche une reconnexion
+automatique. Les deux cartes sont originales ; aucune carte ni
+aucun tileset Pokemon Z n'est encore importe. L'architecture est documentee dans
+`docs/OVERWORLD_ARCHITECTURE.md`.

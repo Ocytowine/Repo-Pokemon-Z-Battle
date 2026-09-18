@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { PROTOCOL_VERSION, ProtocolValidationError, parseClientMessage, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { AuthoritativeBattleRoom, type PersistedRoomState, type RoomDispatch } from "@pokemon-z-battle/room-server-core";
+import { DEMO_WORLD_CATALOG, createDemoWorldState } from "@pokemon-z-battle/overworld-engine";
 import { createDemoBattle } from "./demo-battle.js";
 import { generateRoomCode, roomCodeFromPath } from "./routing.js";
 
@@ -59,7 +60,7 @@ export class BattleRoom extends DurableObject<Env> {
       if (bundle.room.version !== PROTOCOL_VERSION) return;
       this.#roomCode = bundle.roomCode;
       this.#identities = new Map(bundle.identities.map((entry) => [entry.playerId, entry.tokenHash]));
-      this.#room = new AuthoritativeBattleRoom(bundle.roomCode, createDemoBattle, new SeededRandom(bundle.room.rngState), bundle.room);
+      this.#room = new AuthoritativeBattleRoom(bundle.roomCode, createDemoBattle, new SeededRandom(bundle.room.rngState), { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() }, bundle.room);
     });
   }
 
@@ -105,7 +106,7 @@ export class BattleRoom extends DurableObject<Env> {
     }
     this.#roomCode = body.roomCode;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
-    this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed));
+    this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed), { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() });
     const ticket = await this.issueTicket();
     await this.persist();
     return json(ticket, 201);

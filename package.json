@@ -16,6 +16,7 @@
     "extract:assets": "corepack pnpm --filter @pokemon-z-battle/extractor extract:assets",
     "inventory": "corepack pnpm --filter @pokemon-z-battle/extractor inventory",
     "sandbox:battle": "corepack pnpm --filter @pokemon-z-battle/battle-sandbox dev",
+    "sandbox:overworld": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox dev",
     "multiplayer:dev": "corepack pnpm --filter @pokemon-z-battle/multiplayer-worker dev",
     "test:multiplayer:e2e": "node tools/multiplayer-e2e.mjs",
     "preview:assets": "corepack pnpm --filter @pokemon-z-battle/asset-preview dev",

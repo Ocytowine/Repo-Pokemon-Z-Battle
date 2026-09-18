@@ -21,10 +21,11 @@ presentation puisse afficher ces informations sans lire les traces de diagnostic
 - PP, degats, KO et fin de combat ;
 - sommeil, poison, poison grave, brulure, paralysie, gel, `CADUCO` et
   `HEMORRAGIA` avec leurs hooks de tour et de calcul ;
-- talents `GUTS`, `QUICKFEET` et `MAGICGUARD` ;
-- objets tenus `LEFTOVERS`, `BLACKSLUDGE` et `SCOPELENS` ;
+- talents `GUTS`, `QUICKFEET`, `MAGICGUARD`, `HUGEPOWER` et `PUREPOWER` ;
+- objets tenus `LEFTOVERS`, `BLACKSLUDGE`, `SCOPELENS`, `MUSCLEBAND`,
+  `WISEGLASSES` et `ASSAULTVEST` ;
 - fonctions d'attaque `000`, `003`, `005`, `006`, `007`, `00A`, `00C`, `0A5`,
-  `159` et `906` ;
+  `01C`, `01D`, `01F`, `020`, `042` a `047`, `159` et `906` ;
 - catalogue initial : `TACKLE`, `QUICKATTACK`, `SCRATCH`, `WATERGUN`,
   `VINEWHIP`, `SWIFT`, `SLEEPPOWDER`, `POISONPOWDER`, `TOXIC`, `THUNDERWAVE`
   `WILLOWISP`, `ICEBEAM`, `LUZDECADENTE` et `CUT`.
@@ -42,8 +43,16 @@ zero lors d'un changement, tandis que le statut reste conserve.
 Le gel de Pokemon Z retire `1/16` des PV max par tour et divise par deux les degats
 speciaux. `CADUCO` multiplie par `1,5` les degats recus sous la moitie des PV ;
 `HEMORRAGIA` ajoute deux niveaux au taux de critique. Les premiers hooks de talent
-couvrent attaque, vitesse et prevention des degats indirects. Les premiers hooks
-d'objet couvrent critique, soin et degats de fin de tour.
+couvrent attaque, vitesse et prevention des degats indirects. Les hooks suivants
+doublent l'attaque physique avec `HUGEPOWER`/`PUREPOWER`. Les objets couvrent
+critique, soin, degats de fin de tour, bonus physique/special et la hausse de
+Defense Speciale avec interdiction des capacites de statut de `ASSAULTVEST`.
+
+Les fonctions `01C`, `01D`, `01F` et `020` augmentent respectivement l'Attaque,
+la Defense, la Vitesse et l'Attaque Speciale du lanceur. Les fonctions `042` a
+`047` diminuent respectivement l'Attaque, la Defense, la Vitesse, l'Attaque
+Speciale, la Defense Speciale et la Precision de la cible. Les effets secondaires
+utilisent leur probabilite PBS et tous les niveaux sont bornes entre -6 et +6.
 
 Les formules et l'ordre des tirages sont compares aux scripts exportes
 `pokebattle-move.rb` et `pokebattle-battle.rb`. `SeededRandom` fournit des parties

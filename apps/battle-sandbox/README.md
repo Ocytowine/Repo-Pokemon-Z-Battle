@@ -9,6 +9,19 @@ pnpm sandbox:battle
 
 Vite affiche l'adresse locale, normalement `http://127.0.0.1:5173`.
 
+## Mode local par equipes
+
+Le selecteur `Mode local` permet de passer du duel a un combat trois contre trois
+sans lancer le Worker. Le Pokemon choisi devient le membre de tete et deux presets
+distincts completent automatiquement chaque equipe. Les listes d'action proposent
+les attaques et changements volontaires ; apres un K.O., elles imposent une reserve
+valide avant la reprise du combat.
+
+Les talents et objets deja supportes sont configurables pour les deux Pokemon de
+tete et apparaissent sur leur carte. Le changement de configuration est applique
+avec `Demarrer / reinitialiser`. Le parcours d'equipe est reproductible avec la
+seed pendant la session, mais son export JSON reste desactive pour le moment.
+
 ## Mode multijoueur
 
 Lancez le Worker et le sandbox dans deux terminaux :
@@ -38,17 +51,22 @@ combat sont calculees au niveau 50 avec 31 IV, 0 EV et une nature neutre. Seules
 les attaques du catalogue minimal du moteur sont proposées. Ce catalogue permet
 aussi de tester sommeil, poison, poison grave, brûlure, paralysie, gel, `CADUCO`
 et `HEMORRAGIA` ; le statut actif apparaît sur la carte du combattant et dans le
-journal de domaine. Les activations d'objets de fin de tour utilisent le même journal.
+journal de domaine. Pikachu permet aussi de verifier `CHARGEBEAM` et `SANDATTACK` :
+les variations de statistiques, y compris leurs plafonds, utilisent le meme
+journal. Les activations d'objets de fin de tour utilisent egalement ce journal.
 
 Un export JSON contient :
 
 - la version du format ;
 - la seed initiale ;
 - les deux especes ;
+- leurs talents et objets optionnels ;
 - l'index des deux attaques choisies a chaque tour.
 
 L'import valide ces champs puis rejoue toute la sequence avec un nouveau
 `SeededRandom`. Il ne fait donc pas confiance a un resultat de degats sauvegarde.
+Le format courant est la version 2 ; les anciens exports v1 sont convertis avec
+talent et objet vides.
 
 ## Assets locaux
 

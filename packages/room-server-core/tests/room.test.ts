@@ -1,6 +1,9 @@
 import { MINIMAL_MOVE_CATALOG, SeededRandom, createTeamBattleState, type BattleSide, type BattlerState, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { describe, expect, it } from "vitest";
 import { AuthoritativeBattleRoom } from "../src/index.js";
+import { DEMO_WORLD_CATALOG, createDemoWorldState } from "@pokemon-z-battle/overworld-engine";
+
+const world = { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() } as const;
 
 function battler(side: BattleSide): BattlerState {
   const move = side === "player" ? MINIMAL_MOVE_CATALOG.TACKLE : MINIMAL_MOVE_CATALOG.SCRATCH;
@@ -32,12 +35,12 @@ function battleWithReserve(): TeamBattleState {
 }
 
 function ready(requestId: string) {
-  return { type: "setReady", version: 4, requestId, ready: true } as const;
+  return { type: "setReady", version: 5, requestId, ready: true } as const;
 }
 
 describe("authoritative battle room", () => {
   it("assigns two stable seats and rejects a third player", () => {
-    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1));
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);
     expect(room.connect("alice").side).toBe("player");
     expect(room.connect("bob").side).toBe("opponent");
     expect(room.connect("alice")).toMatchObject({ side: "player", reconnected: true });
@@ -45,19 +48,23 @@ describe("authoritative battle room", () => {
   });
 
   it("persists the room, pending intentions and RNG position", () => {
-    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(19));
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(19), world);
     room.reserve("alice");
     expect(room.snapshot().players[0]).toMatchObject({ playerId: "alice", connected: false });
     room.connect("alice");
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
     room.receive("bob", ready("ready-b"));
-    room.receive("alice", { type: "submitAction", version: 4, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("alice", { type: "moveAvatar", version: 5, requestId: "world-a-1", direction: "right", sequence: 1 });
+    room.receive("alice", { type: "submitAction", version: 5, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
 
     const state = room.exportState();
-    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(state.rngState), state);
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(state.rngState), world, state);
     expect(restored.snapshot()).toEqual(room.snapshot());
-    const secondAction = { type: "submitAction", version: 4, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
+    expect(restored.snapshot()).toMatchObject({ world: { avatars: { player: { x: 3 } } }, movementSequences: { player: 1 } });
+    expect(restored.receive("alice", { type: "moveAvatar", version: 5, requestId: "world-a-stale", direction: "right", sequence: 1 })[0]?.message)
+      .toMatchObject({ type: "error", code: "STALE_MOVEMENT" });
+    const secondAction = { type: "submitAction", version: 5, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
     const uninterruptedOutput = room.receive("bob", secondAction);
     const restoredOutput = restored.receive("bob", secondAction);
     expect(restoredOutput).toEqual(uninterruptedOutput);
@@ -65,7 +72,7 @@ describe("authoritative battle room", () => {
   });
 
   it("starts only after both players are ready and resolves only after both intentions", () => {
-    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(24_301));
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(24_301), world);
     room.connect("alice");
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
@@ -73,16 +80,16 @@ describe("authoritative battle room", () => {
     room.receive("bob", ready("ready-b"));
     expect(room.snapshot()).toMatchObject({ phase: "battle", battle: { id: "ABC234-1", state: { turn: 1 } } });
 
-    const first = room.receive("alice", { type: "submitAction", version: 4, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const first = room.receive("alice", { type: "submitAction", version: 5, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(first.map((entry) => entry.message.type)).toEqual(["ack"]);
     expect(room.snapshot().battle?.state.turn).toBe(1);
-    const second = room.receive("bob", { type: "submitAction", version: 4, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const second = room.receive("bob", { type: "submitAction", version: 5, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(second.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
     expect(room.snapshot().battle?.state.turn).toBe(2);
   });
 
   it("deduplicates requests and rejects stale or duplicate turn actions", () => {
-    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7));
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), world);
     room.connect("alice");
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
@@ -90,7 +97,7 @@ describe("authoritative battle room", () => {
     const repeatedReady = room.receive("bob", ready("ready-b"));
     expect(repeatedReady[0]?.message).toEqual(firstReady[0]?.message);
 
-    const action = { type: "submitAction", version: 4, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
+    const action = { type: "submitAction", version: 5, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
     room.receive("alice", action);
     expect(room.receive("alice", action)[0]?.message.type).toBe("ack");
     const duplicate = room.receive("alice", { ...action, requestId: "move-a-2" });
@@ -100,18 +107,32 @@ describe("authoritative battle room", () => {
   });
 
   it("accepts a forced replacement before the following turn", () => {
-    const room = new AuthoritativeBattleRoom("ABC234", battleWithReserve, new SeededRandom(7));
+    const room = new AuthoritativeBattleRoom("ABC234", battleWithReserve, new SeededRandom(7), world);
     room.connect("alice");
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
     room.receive("bob", ready("ready-b"));
-    room.receive("alice", { type: "submitAction", version: 4, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
-    room.receive("bob", { type: "submitAction", version: 4, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("alice", { type: "submitAction", version: 5, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 5, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(room.snapshot().battle?.state.replacementRequired).toEqual(["opponent"]);
 
-    const replacement = room.receive("bob", { type: "submitReplacement", version: 4, requestId: "replace-b", battleId: "ABC234-1", turn: 2, teamIndex: 1 });
+    const replacement = room.receive("bob", { type: "submitReplacement", version: 5, requestId: "replace-b", battleId: "ABC234-1", turn: 2, teamIndex: 1 });
     expect(replacement.map((entry) => entry.message.type)).toEqual(["ack", "replacementResolved", "snapshot"]);
     expect(room.snapshot().battle?.state.teams.opponent.activeIndex).toBe(1);
     expect(room.snapshot().battle?.state.replacementRequired).toEqual([]);
+  });
+
+  it("resolves overworld intentions authoritatively and rejects stale sequences", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(3), world);
+    room.connect("alice");
+    room.connect("bob");
+    const moved = room.receive("alice", { type: "moveAvatar", version: 5, requestId: "world-a-1", direction: "right", sequence: 1 });
+    expect(moved.map((entry) => entry.message.type)).toEqual(["ack", "worldUpdated"]);
+    expect(room.snapshot().world.avatars.player).toMatchObject({ x: 3, y: 4, direction: "right" });
+    expect(moved[1]?.message).toMatchObject({ type: "worldUpdated", side: "player", sequence: 1 });
+
+    const stale = room.receive("alice", { type: "moveAvatar", version: 5, requestId: "world-a-stale", direction: "left", sequence: 1 });
+    expect(stale[0]?.message).toMatchObject({ type: "error", code: "STALE_MOVEMENT" });
+    expect(room.snapshot().world.avatars.player).toMatchObject({ x: 3, y: 4 });
   });
 });

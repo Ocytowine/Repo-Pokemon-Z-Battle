@@ -22,15 +22,17 @@ lancez dans un second terminal :
 corepack pnpm test:multiplayer:e2e
 ```
 
-Cette recette crée deux tickets, connecte les deux joueurs, démarre le combat par
-équipes, exécute un changement volontaire, vérifie que les états concordent puis
-teste la reconnexion avec le ticket initial. Elle applique ensuite un poison grave
+Cette recette crée deux tickets, connecte les deux joueurs, traverse une transition
+overworld et vérifie que les états concordent. Elle démarre ensuite le combat par
+équipes, exécute un changement volontaire puis reconnecte le premier joueur avec
+son ticket initial. La zone et le compteur de mouvements doivent être restaurés
+avant la reprise du déplacement. Elle applique ensuite un poison grave
 et vérifie sa persistance, poursuit le combat jusqu'à un K.O. puis contrôle le
 remplacement obligatoire. Une URL différente peut être passée en
 argument au script.
 
 Les jetons bruts ne sont jamais persistés : seul leur SHA-256 est stocké. L'état de
-room, les équipes, les actions et remplacements en attente ainsi que la position de
+room, le monde, les séquences de mouvement, les équipes, les actions et remplacements en attente ainsi que la position de
 la RNG sont sauvegardés après chaque mutation. Les pièces jointes WebSocket ne conservent que l'identifiant du joueur,
 afin de permettre l'hibernation du Durable Object.
 

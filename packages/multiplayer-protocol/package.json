@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pokemon-z-battle/battle-engine": "workspace:*"
+    "@pokemon-z-battle/battle-engine": "workspace:*",
+    "@pokemon-z-battle/overworld-engine": "workspace:*"
   }
 }

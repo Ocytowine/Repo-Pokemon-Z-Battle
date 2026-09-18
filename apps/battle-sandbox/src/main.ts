@@ -1,10 +1,10 @@
-import { MINIMAL_MOVE_CATALOG, activeBattlers, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { MINIMAL_MOVE_CATALOG, SeededRandom, activeBattlers, replaceFaintedPokemon, resolveTeamTurn, type BattleAbility, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type HeldItem, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { loadLocalManifests } from "@pokemon-z-battle/local-assets";
 import { PROTOCOL_VERSION, normalizeRoomCode, serializeMessage, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage, requestTicket, type MultiplayerTicket, type StoredMultiplayerSession } from "./multiplayer-client.js";
 import { POKEMON_PRESETS, findPreset } from "./presets.js";
 import { BattlePresenter } from "./move-presentations.js";
-import { SCENARIO_VERSION, parseScenario, replayScenario, type BattleScenario, type ScenarioTurn } from "./scenario.js";
+import { SANDBOX_ABILITIES, SANDBOX_ITEMS, SCENARIO_VERSION, createLocalTeamState, parseScenario, replayScenario, type BattleScenario, type ScenarioTurn } from "./scenario.js";
 import { BattleVisuals, directoryPickerAvailable, pickLocalDirectory } from "./visual-assets.js";
 import "./style.css";
 
@@ -20,8 +20,13 @@ root.innerHTML = `
     <section class="setup panel" aria-labelledby="setup-title">
       <div class="section-title"><div><p class="kicker">Configuration</p><h2 id="setup-title">Nouveau cas de test</h2></div><span id="scenario-state" class="status-pill">Prêt</span></div>
       <div class="setup-grid">
+        <label>Mode local<select id="battle-mode"><option value="duel">Duel 1 contre 1</option><option value="team">Équipes 3 contre 3</option></select></label>
         <label>Votre Pokémon<select id="player-pokemon"></select></label>
         <label>Adversaire<select id="opponent-pokemon"></select></label>
+        <label>Talent joueur<select id="player-ability"></select></label>
+        <label>Objet joueur<select id="player-item"></select></label>
+        <label>Talent adversaire<select id="opponent-ability"></select></label>
+        <label>Objet adversaire<select id="opponent-item"></select></label>
         <label>Seed RNG<input id="seed" type="number" step="1" value="24301"></label>
         <button id="restart" class="primary" type="button">Démarrer / réinitialiser</button>
       </div>
@@ -101,8 +106,13 @@ function element<T extends HTMLElement>(id: string): T {
 }
 
 const ui = {
+  battleMode: element<HTMLSelectElement>("battle-mode"),
   playerPokemon: element<HTMLSelectElement>("player-pokemon"),
   opponentPokemon: element<HTMLSelectElement>("opponent-pokemon"),
+  playerAbility: element<HTMLSelectElement>("player-ability"),
+  opponentAbility: element<HTMLSelectElement>("opponent-ability"),
+  playerItem: element<HTMLSelectElement>("player-item"),
+  opponentItem: element<HTMLSelectElement>("opponent-item"),
   seed: element<HTMLInputElement>("seed"),
   restart: element<HTMLButtonElement>("restart"),
   exportButton: element<HTMLButtonElement>("export"),
@@ -136,8 +146,14 @@ const ui = {
   resultRestart: element<HTMLButtonElement>("result-restart"),
 };
 
-let scenario: BattleScenario = { version: SCENARIO_VERSION, seed: 24301, player: "BULBASAUR", opponent: "SQUIRTLE", turns: [] };
+let scenario: BattleScenario = {
+  version: SCENARIO_VERSION, seed: 24301, player: "BULBASAUR", opponent: "SQUIRTLE",
+  playerAbility: null, opponentAbility: null, playerItem: null, opponentItem: null, turns: [],
+};
 let replay = replayScenario(scenario);
+let localTeamState: TeamBattleState | null = null;
+let localTeamResults: DisplayTurnResult[] = [];
+let localTeamRng = new SeededRandom(scenario.seed);
 const visuals = new BattleVisuals();
 const presenter = new BattlePresenter(element("battle-stage"), element("move-effects"), element("battle-message"));
 let resolving = false;
@@ -163,8 +179,12 @@ let networkResults: DisplayTurnResult[] = [];
 let networkMessageQueue = Promise.resolve();
 
 function activeState(): BattleState {
-  const teamState = networkSession?.snapshot?.battle?.state;
+  const teamState = currentTeamState();
   return teamState === undefined ? replay.state : displayBattleState(teamState);
+}
+
+function currentTeamState(): TeamBattleState | undefined {
+  return networkSession?.snapshot?.battle?.state ?? localTeamState ?? undefined;
 }
 
 function displayBattleState(state: TeamBattleState): BattleState {
@@ -172,11 +192,12 @@ function displayBattleState(state: TeamBattleState): BattleState {
 }
 
 function activeResults(): readonly DisplayTurnResult[] {
-  return networkSession === null ? replay.results : networkResults;
+  if (networkSession !== null) return networkResults;
+  return localTeamState === null ? replay.results : localTeamResults;
 }
 
 function activeSpecies(): { readonly player: string; readonly opponent: string } {
-  const teamState = networkSession?.snapshot?.battle?.state;
+  const teamState = currentTeamState();
   const battle = teamState === undefined ? undefined : activeBattlers(teamState);
   return battle === undefined
     ? { player: scenario.player, opponent: scenario.opponent }
@@ -198,6 +219,12 @@ for (const preset of POKEMON_PRESETS) {
 function typeBadge(type: string): string {
   return `<span class="type type-${type.toLowerCase()}">${type}</span>`;
 }
+for (const select of [ui.playerAbility, ui.opponentAbility]) {
+  select.append(option("", "Aucun talent"), ...SANDBOX_ABILITIES.map((ability) => option(ability, ability)));
+}
+for (const select of [ui.playerItem, ui.opponentItem]) {
+  select.append(option("", "Aucun objet"), ...SANDBOX_ITEMS.map((item) => option(item, item)));
+}
 
 function statusName(status: MajorStatusState["kind"]): string {
   return {
@@ -217,11 +244,12 @@ function fighterMarkup(battler: BattlerState, side: BattleSide): string {
   const sideLabel = networkSession === null
     ? (side === "player" ? "JOUEUR" : "ADVERSAIRE")
     : (side === networkSession.ticket.side ? "VOUS" : "ADVERSAIRE");
-  const team = networkSession?.snapshot?.battle?.state.teams[side];
+  const team = currentTeamState()?.teams[side];
   const roster = team === undefined ? "" : `<div class="team-strip">${team.members.map((member, index) => `<span class="team-member${index === team.activeIndex ? " active" : ""}${member.hp === 0 ? " fainted" : ""}" title="${member.name} · ${member.hp}/${member.stats.maxHp} PV">${member.name.slice(0, 1)}<small>${member.hp}</small></span>`).join("")}</div>`;
   const status = battler.majorStatus === null ? "" : `<span class="major-status status-${battler.majorStatus.kind}">${statusName(battler.majorStatus.kind)}</span>`;
   return `<div class="fighter-top"><div class="avatar" aria-hidden="true">${initial}</div><div><p class="side-label">${sideLabel}</p><h2>${battler.name}</h2><div class="types">${battler.types.map(typeBadge).join("")}${status}</div></div><span class="level">N. ${battler.level}</span></div>
     <div class="health"><div class="health-label"><strong>PV</strong><span id="${side}-hp-text">${battler.hp} / ${battler.stats.maxHp}</span></div><div class="health-track"><span id="${side}-hp-bar" style="width:${percent}%"></span></div></div>
+    <p class="combat-loadout">Talent : ${battler.ability ?? "—"} · Objet : ${battler.heldItem ?? "—"}</p>
     <dl class="stats"><div><dt>ATQ</dt><dd>${battler.stats.attack}</dd></div><div><dt>DEF</dt><dd>${battler.stats.defense}</dd></div><div><dt>ATQ.SP</dt><dd>${battler.stats.specialAttack}</dd></div><div><dt>DEF.SP</dt><dd>${battler.stats.specialDefense}</dd></div><div><dt>VIT</dt><dd>${battler.stats.speed}</dd></div></dl>${roster}`;
 }
 
@@ -229,7 +257,7 @@ function populateMoves(side: BattleSide): void {
   const select = side === "player" ? ui.playerMove : ui.opponentMove;
   const battler = activeState().battlers[side];
   const previous = select.value;
-  const teamState = networkSession?.snapshot?.battle?.state;
+  const teamState = currentTeamState();
   if (teamState === undefined) {
     select.replaceChildren(...battler.moves.map((slot, index) => option(String(index), `${slot.move.name} · ${slot.move.type} · ${slot.pp}/${slot.move.pp} PP`)));
   } else {
@@ -320,14 +348,21 @@ function render(state = activeState()): void {
   ui.resolve.disabled = resolving || state.status === "finished" || (networkSession !== null
     && (!networkSession.connected || networkBattle === null || networkBattle === undefined || networkSession.submittedTurn === state.turn));
   ui.restart.disabled = networkSession !== null;
+  ui.battleMode.disabled = networkSession !== null;
   ui.playerPokemon.disabled = networkSession !== null;
   ui.opponentPokemon.disabled = networkSession !== null;
+  ui.playerAbility.disabled = networkSession !== null;
+  ui.opponentAbility.disabled = networkSession !== null;
+  ui.playerItem.disabled = networkSession !== null;
+  ui.opponentItem.disabled = networkSession !== null;
   ui.seed.disabled = networkSession !== null;
-  ui.exportButton.disabled = networkSession !== null;
-  ui.importInput.disabled = networkSession !== null;
+  ui.exportButton.disabled = networkSession !== null || localTeamState !== null;
+  ui.importInput.disabled = networkSession !== null || localTeamState !== null;
   ui.resultRestart.disabled = networkSession !== null;
   ui.scenarioState.textContent = networkSession === null
-    ? (state.status === "finished" ? `Victoire ${state.winner ?? "—"}` : `${scenario.turns.length} tour${scenario.turns.length > 1 ? "s" : ""}`)
+    ? (state.status === "finished" ? `Victoire ${state.winner ?? "—"}` : localTeamState === null
+      ? `${scenario.turns.length} tour${scenario.turns.length > 1 ? "s" : ""}`
+      : `Équipes · tour ${state.turn}`)
     : networkSession.snapshot?.phase === "waiting" ? "En attente des joueurs" : state.status === "finished" ? `Victoire ${state.winner ?? "—"}` : `Tour réseau ${state.turn}`;
   renderNetworkControls();
 }
@@ -356,8 +391,21 @@ async function resetFromControls(): Promise<void> {
     ui.notice.textContent = "La seed doit être un entier sûr.";
     return;
   }
-  scenario = { version: SCENARIO_VERSION, seed, player: ui.playerPokemon.value, opponent: ui.opponentPokemon.value, turns: [] };
+  scenario = {
+    version: SCENARIO_VERSION,
+    seed,
+    player: ui.playerPokemon.value,
+    opponent: ui.opponentPokemon.value,
+    playerAbility: (ui.playerAbility.value || null) as BattleAbility | null,
+    opponentAbility: (ui.opponentAbility.value || null) as BattleAbility | null,
+    playerItem: (ui.playerItem.value || null) as HeldItem | null,
+    opponentItem: (ui.opponentItem.value || null) as HeldItem | null,
+    turns: [],
+  };
   replay = replayScenario(scenario);
+  localTeamState = ui.battleMode.value === "team" ? createLocalTeamState(scenario) : null;
+  localTeamResults = [];
+  localTeamRng = new SeededRandom(seed);
   ui.battleResult.hidden = true;
   ui.notice.textContent = "Combat réinitialisé.";
   render();
@@ -371,11 +419,19 @@ function applyScenario(imported: BattleScenario): void {
   resolving = false;
   scenario = imported;
   replay = replayScenario(scenario);
+  localTeamState = null;
+  localTeamResults = [];
+  localTeamRng = new SeededRandom(scenario.seed);
   ui.battleResult.hidden = replay.state.status !== "finished";
   if (replay.state.winner !== null) showBattleResult(replay.state.winner);
   ui.seed.value = String(scenario.seed);
   ui.playerPokemon.value = scenario.player;
   ui.opponentPokemon.value = scenario.opponent;
+  ui.playerAbility.value = scenario.playerAbility ?? "";
+  ui.opponentAbility.value = scenario.opponentAbility ?? "";
+  ui.playerItem.value = scenario.playerItem ?? "";
+  ui.opponentItem.value = scenario.opponentItem ?? "";
+  ui.battleMode.value = "duel";
   ui.notice.textContent = `Scénario importé : ${scenario.turns.length} tour(s) rejoué(s).`;
   render();
   void refreshVisuals();
@@ -395,7 +451,7 @@ function showBattleResult(winnerSide: BattleSide): void {
   ui.resultTitle.textContent = `${winner} remporte le combat`;
   const completedTurns = activeState().turn - 1;
   ui.resultSummary.textContent = networkSession === null
-    ? `${scenario.turns.length} tour${scenario.turns.length > 1 ? "s" : ""} · seed ${scenario.seed}`
+    ? `${localTeamState === null ? scenario.turns.length : completedTurns} tour${completedTurns > 1 ? "s" : ""} · seed ${scenario.seed}`
     : `${completedTurns} tour${completedTurns > 1 ? "s" : ""} · room ${networkSession.ticket.roomCode}`;
   ui.battleResult.hidden = false;
 }
@@ -665,6 +721,51 @@ ui.resolve.addEventListener("click", async () => {
     }
     return;
   }
+  if (localTeamState !== null) {
+    resolving = true;
+    const previousState = displayBattleState(localTeamState);
+    try {
+      const selected = { player: ui.playerMove.value, opponent: ui.opponentMove.value } as const;
+      if (localTeamState.replacementRequired.length > 0) {
+        const replacements: Partial<Record<BattleSide, number>> = {};
+        for (const side of localTeamState.replacementRequired) {
+          const [kind, rawIndex] = selected[side].split(":");
+          if (kind !== "switch") throw new Error(`Choisissez un remplaçant pour ${side}.`);
+          replacements[side] = Number(rawIndex);
+        }
+        const result = replaceFaintedPokemon(localTeamState, replacements);
+        localTeamState = result.state;
+        localTeamResults.push({ state: displayBattleState(result.state), events: result.events, trace: result.trace });
+        render(previousState);
+        await playEvents(result.events);
+        ui.notice.textContent = "Remplacement local effectué.";
+      } else {
+        const action = (raw: string): TeamBattleAction => {
+          const [kind, rawIndex] = raw.split(":");
+          const index = Number(rawIndex);
+          if (!Number.isInteger(index)) throw new Error("Action locale invalide.");
+          return kind === "switch" ? { kind, teamIndex: index } : { kind: "move", moveIndex: index };
+        };
+        const result = resolveTeamTurn(localTeamState, {
+          player: action(selected.player),
+          opponent: action(selected.opponent),
+        }, localTeamRng);
+        localTeamState = result.state;
+        localTeamResults.push({ state: displayBattleState(result.state), events: result.events, trace: result.trace });
+        render(previousState);
+        await playEvents(result.events);
+        ui.notice.textContent = `Tour d'équipe ${result.state.turn - 1} résolu avec la seed ${scenario.seed}.`;
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      ui.notice.textContent = error instanceof Error ? error.message : "Résolution locale impossible.";
+    } finally {
+      resolving = false;
+      render();
+      await refreshVisuals();
+    }
+    return;
+  }
   resolving = true;
   const previousState = replay.state;
   const turn: ScenarioTurn = { playerMove: Number(ui.playerMove.value), opponentMove: Number(ui.opponentMove.value) };
@@ -748,6 +849,10 @@ ui.assetFolder.addEventListener("click", async () => {
 ui.battleScene.addEventListener("change", () => { void refreshVisuals(); });
 
 ui.exportButton.addEventListener("click", () => {
+  if (localTeamState !== null) {
+    ui.notice.textContent = "L'export d'équipe sera ajouté après validation du parcours local.";
+    return;
+  }
   const content = JSON.stringify(scenario, null, 2);
   const url = URL.createObjectURL(new Blob([content], { type: "application/json" }));
   const anchor = document.createElement("a");
@@ -772,6 +877,10 @@ ui.importInput.addEventListener("change", async () => {
 
 ui.playerPokemon.value = scenario.player;
 ui.opponentPokemon.value = scenario.opponent;
+ui.playerAbility.value = scenario.playerAbility ?? "";
+ui.opponentAbility.value = scenario.opponentAbility ?? "";
+ui.playerItem.value = scenario.playerItem ?? "";
+ui.opponentItem.value = scenario.opponentItem ?? "";
 const storedSession = storedMultiplayerSession();
 if (storedSession !== null) {
   ui.serverUrl.value = storedSession.serverUrl;

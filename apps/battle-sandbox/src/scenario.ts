@@ -1,16 +1,23 @@
 import {
   SeededRandom,
+  createTeamBattleState,
   resolveTurn,
+  type BattleAbility,
   type BattleSide,
   type BattleState,
   type BattleStats,
   type BattlerState,
+  type HeldItem,
+  type TeamBattleState,
   type TurnActions,
   type TurnResult,
 } from "@pokemon-z-battle/battle-engine";
-import { findPreset, type PokemonPreset } from "./presets.js";
+import { POKEMON_PRESETS, findPreset, type PokemonPreset } from "./presets.js";
 
-export const SCENARIO_VERSION = 1 as const;
+export const SCENARIO_VERSION = 2 as const;
+
+export const SANDBOX_ABILITIES = ["GUTS", "HUGEPOWER", "MAGICGUARD", "PUREPOWER", "QUICKFEET"] as const satisfies readonly BattleAbility[];
+export const SANDBOX_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"] as const satisfies readonly HeldItem[];
 
 export interface ScenarioTurn {
   readonly playerMove: number;
@@ -22,6 +29,10 @@ export interface BattleScenario {
   readonly seed: number;
   readonly player: string;
   readonly opponent: string;
+  readonly playerAbility: BattleAbility | null;
+  readonly opponentAbility: BattleAbility | null;
+  readonly playerItem: HeldItem | null;
+  readonly opponentItem: HeldItem | null;
   readonly turns: readonly ScenarioTurn[];
 }
 
@@ -46,10 +57,16 @@ export function statsAtLevel50(preset: PokemonPreset): BattleStats {
   };
 }
 
-function createBattler(side: BattleSide, preset: PokemonPreset): BattlerState {
+export function createPresetBattler(
+  side: BattleSide,
+  preset: PokemonPreset,
+  index = 0,
+  ability: BattleAbility | null = null,
+  heldItem: HeldItem | null = null,
+): BattlerState {
   const stats = statsAtLevel50(preset);
   return {
-    id: side,
+    id: `${side}-${index}`,
     species: preset.species,
     name: preset.name,
     level: 50,
@@ -58,13 +75,22 @@ function createBattler(side: BattleSide, preset: PokemonPreset): BattlerState {
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
     hp: stats.maxHp,
     majorStatus: null,
-    ability: null,
-    heldItem: null,
+    ability,
+    heldItem,
     moves: preset.moves.map((move) => ({ move, pp: move.pp })),
   };
 }
 
-export function createInitialState(playerSpecies: string, opponentSpecies: string): BattleState {
+export function createInitialState(
+  playerSpecies: string,
+  opponentSpecies: string,
+  options: Readonly<{
+    playerAbility?: BattleAbility | null;
+    opponentAbility?: BattleAbility | null;
+    playerItem?: HeldItem | null;
+    opponentItem?: HeldItem | null;
+  }> = {},
+): BattleState {
   const player = findPreset(playerSpecies);
   const opponent = findPreset(opponentSpecies);
   if (player === undefined || opponent === undefined) throw new Error("Pokemon inconnu dans ce sandbox.");
@@ -72,8 +98,28 @@ export function createInitialState(playerSpecies: string, opponentSpecies: strin
     turn: 1,
     status: "active",
     winner: null,
-    battlers: { player: createBattler("player", player), opponent: createBattler("opponent", opponent) },
+    battlers: {
+      player: createPresetBattler("player", player, 0, options.playerAbility ?? null, options.playerItem ?? null),
+      opponent: createPresetBattler("opponent", opponent, 0, options.opponentAbility ?? null, options.opponentItem ?? null),
+    },
   };
+}
+
+function teamPresets(leadSpecies: string): readonly PokemonPreset[] {
+  const lead = findPreset(leadSpecies);
+  if (lead === undefined) throw new Error("Pokemon de tete inconnu.");
+  return [lead, ...POKEMON_PRESETS.filter((preset) => preset.species !== leadSpecies).slice(0, 2)];
+}
+
+export function createLocalTeamState(scenario: BattleScenario): TeamBattleState {
+  return createTeamBattleState({
+    player: teamPresets(scenario.player).map((preset, index) => createPresetBattler(
+      "player", preset, index, index === 0 ? scenario.playerAbility : null, index === 0 ? scenario.playerItem : null,
+    )),
+    opponent: teamPresets(scenario.opponent).map((preset, index) => createPresetBattler(
+      "opponent", preset, index, index === 0 ? scenario.opponentAbility : null, index === 0 ? scenario.opponentItem : null,
+    )),
+  });
 }
 
 function actionsFor(turn: ScenarioTurn): TurnActions {
@@ -84,7 +130,7 @@ function actionsFor(turn: ScenarioTurn): TurnActions {
 }
 
 export function replayScenario(scenario: BattleScenario): ScenarioReplay {
-  const initialState = createInitialState(scenario.player, scenario.opponent);
+  const initialState = createInitialState(scenario.player, scenario.opponent, scenario);
   const rng = new SeededRandom(scenario.seed);
   const results: TurnResult[] = [];
   let state = initialState;
@@ -102,7 +148,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function parseScenario(value: unknown): BattleScenario {
-  if (!isRecord(value) || value.version !== SCENARIO_VERSION) throw new Error("Version de scénario non supportée.");
+  if (!isRecord(value) || (value.version !== 1 && value.version !== SCENARIO_VERSION)) throw new Error("Version de scénario non supportée.");
   if (!Number.isSafeInteger(value.seed)) throw new Error("La seed doit être un entier sûr.");
   if (typeof value.player !== "string" || findPreset(value.player) === undefined) throw new Error("Pokémon joueur inconnu.");
   if (typeof value.opponent !== "string" || findPreset(value.opponent) === undefined) throw new Error("Pokémon adversaire inconnu.");
@@ -122,5 +168,25 @@ export function parseScenario(value: unknown): BattleScenario {
     }
     return { playerMove, opponentMove };
   });
-  return { version: SCENARIO_VERSION, seed: Number(value.seed), player: value.player, opponent: value.opponent, turns };
+  const ability = (candidate: unknown, label: string): BattleAbility | null => {
+    if (candidate === undefined || candidate === null) return null;
+    if (typeof candidate !== "string" || !SANDBOX_ABILITIES.includes(candidate as BattleAbility)) throw new Error(`${label} inconnu.`);
+    return candidate as BattleAbility;
+  };
+  const item = (candidate: unknown, label: string): HeldItem | null => {
+    if (candidate === undefined || candidate === null) return null;
+    if (typeof candidate !== "string" || !SANDBOX_ITEMS.includes(candidate as HeldItem)) throw new Error(`${label} inconnu.`);
+    return candidate as HeldItem;
+  };
+  return {
+    version: SCENARIO_VERSION,
+    seed: Number(value.seed),
+    player: value.player,
+    opponent: value.opponent,
+    playerAbility: ability(value.playerAbility, "Talent joueur"),
+    opponentAbility: ability(value.opponentAbility, "Talent adversaire"),
+    playerItem: item(value.playerItem, "Objet joueur"),
+    opponentItem: item(value.opponentItem, "Objet adversaire"),
+    turns,
+  };
 }

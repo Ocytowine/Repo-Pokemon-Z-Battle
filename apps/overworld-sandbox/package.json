@@ -1,0 +1,17 @@
+{
+  "name": "@pokemon-z-battle/overworld-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 5174",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pokemon-z-battle/multiplayer-protocol": "workspace:*",
+    "@pokemon-z-battle/overworld-engine": "workspace:*"
+  },
+  "devDependencies": { "vite": "8.3.0" }
+}

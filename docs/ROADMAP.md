@@ -10,8 +10,8 @@
 | 3 - Combat minimal hors ligne | Terminee | Duel deterministe 1 contre 1 teste |
 | 4 - Battle Sandbox | Terminee | Interface de diagnostic du moteur |
 | 5 - Premier multijoueur | Terminee localement | Deploiement Cloudflare differe jusqu'au premier lot de la phase 6 |
-| 6 - Equipes completes | En cours | Equipes de six et mecanismes principaux |
-| 7 - Prototype overworld | En attente | Deux personnages sur une carte de test |
+| 6 - Equipes completes | Terminee | Equipes de six, test local et mecanismes principaux |
+| 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
 | 8 - Prototype coop | En attente | Interactions et evenements classes |
 | 9 - Import progressif du monde | En attente | Cartes compatibles importees par lots |
 
@@ -305,7 +305,7 @@ un K.O. et controle le remplacement autoritaire.
 - [x] ajouter un premier lot de statuts documente et teste ;
 - [x] completer le gel et les statuts propres a Pokemon Z ;
 - [x] ajouter une premiere famille de hooks de talents et d'objets ;
-- [ ] augmenter progressivement la couverture des codes de fonction de Pokemon Z ;
+- [x] augmenter progressivement la couverture des codes de fonction de Pokemon Z ;
 - [x] conserver le suivi explicite des fonctions supportees et non supportees.
 
 Premier lot implemente le 2026-09-18 : le moteur conserve un statut majeur par
@@ -327,6 +327,33 @@ et `SCOPELENS`. Le rapport marque ces trois talents comme supportes et le type
 d'objet tenu comme partiel. Le protocole passe en v4 pour transporter talent et
 objet sans ambiguite avec les anciennes rooms.
 
+Troisieme lot implemente le 2026-09-18 : les fonctions `01C`, `01D`, `01F`, `020`
+et `042` a `047` couvrent les hausses personnelles et baisses adverses d'Attaque,
+Defense, Vitesse, Attaque Speciale, Defense Speciale et Precision. Les effets
+secondaires utilisent leur chance PBS et les niveaux sont bornes entre -6 et +6.
+Les talents `HUGEPOWER` et `PUREPOWER`, ainsi que `MUSCLEBAND`, `WISEGLASSES` et
+`ASSAULTVEST`, etendent les hooks de calcul. La Veste de Combat renforce la Defense
+Speciale et bloque les capacites de statut. Le Sandbox expose Rayon Charge et Jet
+de Sable, et le rapport passe a 44 mecaniques supportees sur 651.
+
+### Increment 6.4 - Testabilite et consolidation
+
+- [x] rendre les equipes jouables sans demarrer le serveur multijoueur ;
+- [x] exposer changements volontaires et remplacements obligatoires en local ;
+- [x] rendre les talents et objets supportes configurables dans le Sandbox ;
+- [x] afficher l'equipement actif et conserver les anciens scenarios exportes ;
+- [x] valider le Sandbox, le moteur et le build complet avant cloture.
+
+Critere de sortie valide le 2026-09-18 : le Sandbox propose un duel ou un combat
+local trois contre trois. Les deux listes d'action exposent attaques et reserves,
+puis se limitent aux remplacements valides apres un K.O. Les talents et objets
+supportes sont configurables sur les deux Pokemon de tete et visibles sur leurs
+cartes. Le format de scenario passe en v2 pour persister ces configurations, avec
+migration des exports v1. L'export des equipes n'est pas encore persiste : leur
+parcours local reste un outil de test par seed, tandis que l'export/rejeu v2 couvre
+les duels. Les futurs codes de fonction seront ajoutes par besoins verticaux sans
+bloquer le debut de la phase 7.
+
 ## Phase 7 - Prototype overworld
 
 Ici, `overworld` designe tout ce qui se passe hors des combats : la carte vue du
@@ -341,6 +368,49 @@ phase 9.
 - synchronisation d'intentions de mouvement a frequence bornee ;
 - correction serveur et interpolation client ;
 - changement de carte et reconnexion.
+
+### Increment 7.1 - Noyau local et carte originale
+
+- [x] isoler un moteur de grille sans DOM ni renderer ;
+- [x] definir et valider cartes, obstacles, avatars et transitions ;
+- [x] afficher deux avatars independants sur une carte originale ;
+- [x] accepter clavier et commandes tactiles pour les deux joueurs ;
+- [x] tracer mouvements, blocages, directions et changements de carte ;
+- [x] tester collisions, occupation, immutabilite et transitions.
+
+Critere de sortie valide le 2026-09-18 : `overworld-engine` resout une intention
+par tick et refuse limites, obstacles ou case occupee. `overworld-sandbox` affiche
+deux cartes originales reliees et deux avatars controles localement. Le rendu
+Canvas ne contient aucune regle de mouvement. La decision de differer Phaser est
+documentee dans `docs/OVERWORLD_ARCHITECTURE.md`.
+
+### Increment 7.2 - Synchronisation de mouvement
+
+- [x] ajouter les intentions overworld au protocole ;
+- [x] valider et appliquer les mouvements dans le Durable Object ;
+- [x] borner la frequence d'envoi ;
+- [x] interpoler les positions distantes et corriger les divergences.
+
+Critere de sortie valide le 2026-09-18 : le protocole v5 ne transmet que la
+direction et un numero de sequence croissant. La room resout chaque intention avec
+`overworld-engine`, persiste le monde puis diffuse son etat autoritaire aux deux
+clients. Le sandbox limite les envois a 120 ms et interpole la correction recue sur
+110 ms. La recette E2E compare les etats recus par les deux sockets.
+
+### Increment 7.3 - Zones et reconnexion
+
+- [x] conserver le ticket de room dans le client overworld ;
+- [x] reconnecter automatiquement le WebSocket apres une coupure ;
+- [x] verifier la restauration d'un changement de zone apres reconnexion ;
+- [x] ajouter une recette navigateur a deux clients overworld.
+
+Critere de sortie valide le 2026-09-18 : le ticket est conserve dans le
+`sessionStorage` et recharge avec la page. Une coupure inattendue declenche des
+tentatives automatiques de 500 ms a 8 s. Le snapshot restaure carte, position,
+direction et dernier numero de mouvement accepte. La recette E2E traverse une
+zone, reconnecte le premier client, compare le monde restaure puis reprend le
+deplacement sans intention perimee. La recette manuelle a deux navigateurs est
+documentee dans `apps/overworld-sandbox/README.md`.
 
 ## Phase 8 - Prototype coop
 
