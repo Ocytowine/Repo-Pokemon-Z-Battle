@@ -1,6 +1,6 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { PROTOCOL_VERSION, type ClientMessage, type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
-import { resolveMovement, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
+import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
   readonly playerId: string;
@@ -22,7 +22,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 5;
+  readonly version: 6;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -39,6 +39,16 @@ export interface PersistedRoomState {
   readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
   readonly worldState: OverworldState;
   readonly movementSequences: readonly (readonly [BattleSide, number])[];
+  readonly activeEncounter?: ActiveEncounter | null;
+}
+
+export interface EncounterContext {
+  readonly encounterId: string;
+  readonly kind: EncounterKind;
+}
+
+interface ActiveEncounter extends EncounterContext {
+  readonly ownerSide: BattleSide;
 }
 
 export interface RoomWorldDefinition {
@@ -50,7 +60,7 @@ export class AuthoritativeBattleRoom {
   readonly #players = new Map<string, RoomPlayer>();
   readonly #pendingActions = new Map<BattleSide, TeamBattleAction>();
   readonly #pendingReplacements = new Map<BattleSide, number>();
-  readonly #createBattle: () => TeamBattleState;
+  readonly #createBattle: (encounter?: EncounterContext) => TeamBattleState;
   readonly #rng: StatefulRandomSource;
   readonly #roomCode: string;
   readonly #worldCatalog: OverworldCatalog;
@@ -60,8 +70,9 @@ export class AuthoritativeBattleRoom {
   #battleId: string | null = null;
   #battleState: TeamBattleState | null = null;
   #worldState: OverworldState;
+  #activeEncounter: ActiveEncounter | null = null;
 
-  public constructor(roomCode: string, createBattle: () => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
+  public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
     this.#createBattle = createBattle;
     this.#rng = rng;
@@ -72,6 +83,7 @@ export class AuthoritativeBattleRoom {
       this.#battleSequence = persisted.battleSequence;
       this.#battleId = persisted.battleId;
       this.#battleState = persisted.battleState;
+      this.#activeEncounter = persisted.activeEncounter ?? null;
       this.#worldState = persisted.worldState;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
@@ -137,7 +149,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 5,
+      version: 6,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -150,6 +162,7 @@ export class AuthoritativeBattleRoom {
       pendingReplacements: [...this.#pendingReplacements.entries()],
       worldState: this.#worldState,
       movementSequences: [...this.#movementSequences.entries()],
+      activeEncounter: this.#activeEncounter,
     };
   }
 
@@ -170,6 +183,7 @@ export class AuthoritativeBattleRoom {
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
+    if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
     return this.submitAction(player, message);
   }
@@ -190,6 +204,7 @@ export class AuthoritativeBattleRoom {
   }
 
   private submitAction(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitAction" }>): readonly RoomDispatch[] {
+    if (this.#activeEncounter !== null) return this.submitEncounterAction(player, message);
     if (this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun combat actif.")];
     }
@@ -229,7 +244,53 @@ export class AuthoritativeBattleRoom {
     return output;
   }
 
+  private submitEncounterAction(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitAction" }>): readonly RoomDispatch[] {
+    const encounter = this.#activeEncounter;
+    if (encounter === null || this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucune rencontre active.")];
+    }
+    if (encounter.ownerSide !== "player" || player.side !== encounter.ownerSide) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Seul le meneur de la rencontre choisit l'action.")];
+    }
+    if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
+    if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
+
+    const battleId = this.#battleId;
+    const resolvedTurn = this.#battleState.turn;
+    const result = resolveTeamTurn(this.#battleState, { player: message.action, opponent: { kind: "move", moveIndex: 0 } }, this.#rng);
+    this.#battleState = result.state;
+    this.#revision += 1;
+    const output: RoomDispatch[] = [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      { audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION, battleId, turn: resolvedTurn, state: result.state, events: result.events } },
+    ];
+
+    if (result.state.status === "finished" && result.state.winner !== null) {
+      this.#worldState = {
+        ...this.#worldState,
+        session: {
+          ...this.#worldState.session,
+          battleResults: [...this.#worldState.session.battleResults, {
+            encounterId: encounter.encounterId,
+            kind: encounter.kind,
+            winner: result.state.winner,
+          }],
+        },
+      };
+      this.#activeEncounter = null;
+      this.#battleState = null;
+      this.#battleId = null;
+      for (const roomPlayer of this.#players.values()) roomPlayer.ready = false;
+      this.#revision += 1;
+    }
+    output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
+    return output;
+  }
+
   private moveAvatar(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "moveAvatar" }>): readonly RoomDispatch[] {
+    if (this.#activeEncounter !== null && this.#battleState?.status === "active") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Les déplacements sont verrouillés pendant la rencontre.")];
+    }
     const previousSequence = this.#movementSequences.get(player.side) ?? 0;
     if (message.sequence <= previousSequence) {
       return [this.error(player.playerId, message.requestId, "STALE_MOVEMENT", "Intention de mouvement périmée.")];
@@ -248,6 +309,31 @@ export class AuthoritativeBattleRoom {
         },
       },
     ];
+  }
+
+  private interact(player: RoomPlayer, requestId: string): readonly RoomDispatch[] {
+    if (this.#battleState !== null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Une interaction est impossible pendant un combat.")];
+    }
+    const result = resolveInteraction(this.#worldCatalog, this.#worldState, { playerId: player.side, hostPlayerId: "player" });
+    this.#worldState = result.state;
+    const encounter = result.events.find((event) => event.type === "encounterRequested");
+    if (encounter !== undefined) {
+      this.#battleState = this.#createBattle({ encounterId: encounter.encounterId, kind: encounter.kind });
+      this.#battleSequence += 1;
+      this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
+      this.#activeEncounter = { encounterId: encounter.encounterId, kind: encounter.kind, ownerSide: player.side };
+    }
+    this.#revision += 1;
+    const output: RoomDispatch[] = [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      {
+        audience: "all",
+        message: { type: "interactionUpdated", version: PROTOCOL_VERSION, side: player.side, revision: this.#revision, state: result.state, events: result.events },
+      },
+    ];
+    if (encounter !== undefined) output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
+    return output;
   }
 
   private submitReplacement(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitReplacement" }>): readonly RoomDispatch[] {

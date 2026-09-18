@@ -101,6 +101,11 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("moveAvatar mal formé");
       }
       return value as unknown as ClientMessage;
+    case "interact":
+      if (!hasExactKeys(value, ["type", "version", "requestId"]) || !isIdentifier(value.requestId)) {
+        return invalid("interact mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");
       return value as unknown as ClientMessage;

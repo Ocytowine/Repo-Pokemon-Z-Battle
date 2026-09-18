@@ -1,7 +1,7 @@
 import type { BattleSide, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 
-export const PROTOCOL_VERSION = 5 as const;
+export const PROTOCOL_VERSION = 6 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 4_096;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
@@ -47,6 +47,7 @@ export type ClientMessage =
     })
   | (RequestedMessage & { readonly type: "requestSnapshot" })
   | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number })
+  | (RequestedMessage & { readonly type: "interact" })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 
 export type ProtocolErrorCode =
@@ -60,6 +61,7 @@ export type ProtocolErrorCode =
   | "ACTION_ALREADY_SUBMITTED"
   | "REPLACEMENT_ALREADY_SUBMITTED"
   | "STALE_MOVEMENT"
+  | "INTERACTION_UNAVAILABLE"
   | "INTERNAL_ERROR";
 
 export type ServerMessage =
@@ -89,6 +91,13 @@ export type ServerMessage =
       readonly type: "worldUpdated";
       readonly side: BattleSide;
       readonly sequence: number;
+      readonly revision: number;
+      readonly state: OverworldState;
+      readonly events: readonly OverworldEvent[];
+    })
+  | (VersionedMessage & {
+      readonly type: "interactionUpdated";
+      readonly side: BattleSide;
       readonly revision: number;
       readonly state: OverworldState;
       readonly events: readonly OverworldEvent[];

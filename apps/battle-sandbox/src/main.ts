@@ -632,6 +632,7 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
     render();
     return;
   }
+  if (message.type === "interactionUpdated" || message.type === "worldUpdated") return;
   if (message.type === "error") {
     session.submittedTurn = null;
     ui.networkNotice.textContent = `${message.code} · ${message.message}`;

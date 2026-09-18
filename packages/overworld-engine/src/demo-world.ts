@@ -25,7 +25,17 @@ const grove: WorldMap = {
   transitions: [{ at: { x: 0, y: 4 }, targetMapId: "meadow", target: { x: 10, y: 4 } }],
 };
 
-export const DEMO_WORLD_CATALOG: OverworldCatalog = { maps: { meadow, grove } };
+export const DEMO_WORLD_CATALOG: OverworldCatalog = {
+  maps: { meadow, grove },
+  interactions: [
+    { id: "meadow-berry", label: "Baie luisante", kind: "item", mapId: "meadow", at: { x: 2, y: 5 }, policy: "PERSONAL", effect: { type: "item", itemId: "ORAN_BERRY", quantity: 1 } },
+    { id: "meadow-guide", label: "Guide du pré", kind: "npc", mapId: "meadow", at: { x: 3, y: 4 }, policy: "SHARED", effect: { type: "dialogue", text: "À deux, le chemin vers le bosquet est plus sûr." } },
+    { id: "meadow-host-switch", label: "Levier du meneur", kind: "switch", mapId: "meadow", at: { x: 2, y: 6 }, policy: "HOST_ONLY", effect: { type: "flag", flag: "HOST_GATE_OPEN" } },
+    { id: "meadow-wild", label: "Herbes frémissantes", kind: "switch", mapId: "meadow", at: { x: 0, y: 4 }, policy: "HOST_ONLY", effect: { type: "encounter", encounterId: "wild-meadow-1", kind: "wild" } },
+    { id: "grove-twin-switch", label: "Stèle jumelle", kind: "switch", mapId: "grove", at: { x: 5, y: 4 }, policy: "SYNCED", effect: { type: "flag", flag: "TWIN_STONE_ACTIVE" } },
+    { id: "grove-trainer", label: "Dresseuse du bosquet", kind: "npc", mapId: "grove", at: { x: 6, y: 2 }, policy: "HOST_ONLY", effect: { type: "encounter", encounterId: "trainer-grove-1", kind: "trainer" } },
+  ],
+};
 
 export function createDemoWorldState(): OverworldState {
   return createOverworldState(DEMO_WORLD_CATALOG, [

@@ -43,6 +43,16 @@ export function validateCatalog(catalog: OverworldCatalog): void {
       transitions.add(key);
     }
   }
+  const interactionIds = new Set<string>();
+  for (const interaction of catalog.interactions ?? []) {
+    if (interactionIds.has(interaction.id)) throw new Error(`Duplicate interaction: ${interaction.id}.`);
+    interactionIds.add(interaction.id);
+    const map = mapFor(catalog, interaction.mapId);
+    assertPoint(map, interaction.at, `Interaction ${interaction.id}`);
+    if (interaction.effect.type === "item" && (!Number.isSafeInteger(interaction.effect.quantity) || interaction.effect.quantity < 1)) {
+      throw new RangeError(`Invalid item quantity for interaction ${interaction.id}.`);
+    }
+  }
 }
 
 export function createOverworldState(catalog: OverworldCatalog, avatars: readonly AvatarState[]): OverworldState {
@@ -60,7 +70,8 @@ export function createOverworldState(catalog: OverworldCatalog, avatars: readonl
     occupied.add(key);
     records[avatar.id] = { ...avatar };
   }
-  return { tick: 0, avatars: records };
+  const players = Object.fromEntries(Object.keys(records).map((id) => [id, { inventory: {}, flags: [], completedInteractions: [] }]));
+  return { tick: 0, avatars: records, players, session: { flags: [], completedInteractions: [], syncedParticipants: {}, battleResults: [] } };
 }
 
 function offset(direction: Direction): GridPoint {
@@ -87,7 +98,7 @@ export function resolveMovement(catalog: OverworldCatalog, state: OverworldState
   if (avatar.direction !== intent.direction) events.push({ type: "directionChanged", playerId: avatar.id, direction: intent.direction });
 
   const finish = (nextAvatar: AvatarState, extraEvents: readonly OverworldEvent[]): OverworldResult => ({
-    state: { tick: state.tick + 1, avatars: { ...state.avatars, [avatar.id]: nextAvatar } },
+    state: { ...state, tick: state.tick + 1, avatars: { ...state.avatars, [avatar.id]: nextAvatar } },
     events: [...events, ...extraEvents],
   });
   const facing = { ...avatar, direction: intent.direction };

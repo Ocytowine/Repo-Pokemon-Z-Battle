@@ -46,15 +46,21 @@ class SocketInbox {
   }
 
   send(message) {
-    this.socket.send(JSON.stringify({ version: 5, ...message }));
+    this.socket.send(JSON.stringify({ version: 6, ...message }));
+  }
+
+  #take(predicate) {
+    const index = this.#messages.findIndex(predicate);
+    if (index < 0) return undefined;
+    return this.#messages.splice(index, 1)[0];
   }
 
   async next(predicate, label) {
-    const existing = this.#messages.find(predicate);
+    const existing = this.#take(predicate);
     if (existing !== undefined) return existing;
     return new Promise((resolve, reject) => {
       const check = () => {
-        const match = this.#messages.find(predicate);
+        const match = this.#take(predicate);
         if (match === undefined) return;
         clearTimeout(timer);
         this.#waiters.delete(check);
@@ -91,6 +97,21 @@ await Promise.all([
   first.next((message) => message.type === "welcome", "welcome joueur 1"),
   second.next((message) => message.type === "welcome", "welcome joueur 2"),
 ]);
+
+first.send({ type: "interact", requestId: "e2e-interact-personal" });
+const [personalFirst, personalSecond] = await Promise.all([
+  first.next((message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-berry"), "objet personnel joueur 1"),
+  second.next((message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-berry"), "diffusion objet personnel"),
+]);
+assert(personalFirst.state.players.player.inventory.ORAN_BERRY === 1, "L'objet personnel n'a pas été attribué au joueur 1.");
+assert(personalSecond.state.players.opponent.inventory.ORAN_BERRY === undefined, "L'objet personnel a contaminé l'inventaire du joueur 2.");
+
+second.send({ type: "interact", requestId: "e2e-interact-shared" });
+const sharedInteraction = await first.next(
+  (message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-guide"),
+  "interaction partagée du guide",
+);
+assert(sharedInteraction.state.session.completedInteractions.includes("meadow-guide"), "L'interaction partagée n'a pas été enregistrée.");
 
 let transitionedWorld;
 second.send({ type: "moveAvatar", requestId: "e2e-world-opponent-clear", direction: "up", sequence: 1 });
@@ -142,6 +163,8 @@ const welcome = await reconnected.next((message) => message.type === "welcome", 
 assert(welcome.side === "player" && welcome.snapshot.battle?.state.turn === 2, "La reconnexion n'a pas restauré le bon snapshot.");
 assert(welcome.snapshot.world.avatars.player.mapId === "grove", "La reconnexion n'a pas restauré la zone du joueur.");
 assert(welcome.snapshot.movementSequences.player === 9, "La reconnexion n'a pas restauré la séquence de mouvement.");
+assert(welcome.snapshot.world.players.player.inventory.ORAN_BERRY === 1, "La reconnexion n'a pas restauré l'inventaire personnel.");
+assert(welcome.snapshot.world.session.completedInteractions.includes("meadow-guide"), "La reconnexion n'a pas restauré l'interaction partagée.");
 
 reconnected.send({ type: "moveAvatar", requestId: "e2e-world-after-reconnect", direction: "left", sequence: 10 });
 const resumedWorld = await reconnected.next(
@@ -189,6 +212,115 @@ for (let attempt = 0; attempt < 12 && !replacementTested; attempt += 1) {
 assert(replacementTested, "Aucun KO avec remplacement n'a été obtenu pendant la recette.");
 
 await Promise.all([reconnected.close(), second.close()]);
+
+const encounterHostTicket = await ticket("/api/rooms");
+const encounterObserverTicket = await ticket(`/api/rooms/${encounterHostTicket.roomCode}/join`);
+const encounterHost = new SocketInbox(encounterHostTicket);
+const encounterObserver = new SocketInbox(encounterObserverTicket);
+await Promise.all([encounterHost.opened(), encounterObserver.opened()]);
+await Promise.all([
+  encounterHost.next((message) => message.type === "welcome", "welcome hôte rencontre"),
+  encounterObserver.next((message) => message.type === "welcome", "welcome observateur rencontre"),
+]);
+
+encounterHost.send({ type: "moveAvatar", requestId: "e2e-encounter-position", direction: "left", sequence: 1 });
+await encounterHost.next((message) => message.type === "worldUpdated" && message.side === "player" && message.sequence === 1, "position avant rencontre");
+encounterHost.send({ type: "interact", requestId: "e2e-encounter-start" });
+const encounterStarted = await encounterHost.next(
+  (message) => message.type === "snapshot" && message.snapshot?.battle !== null && message.snapshot?.world.session.completedInteractions.includes("meadow-wild"),
+  "démarrage rencontre sauvage",
+);
+const encounterBattleId = encounterStarted.snapshot.battle?.id;
+assert(typeof encounterBattleId === "string", "La rencontre sauvage n'a pas créé de combat.");
+
+encounterObserver.send({ type: "moveAvatar", requestId: "e2e-encounter-locked", direction: "up", sequence: 1 });
+await encounterObserver.next(
+  (message) => message.type === "error" && message.requestId === "e2e-encounter-locked" && message.code === "INVALID_PHASE",
+  "verrouillage de l'overworld pendant le combat",
+);
+
+let encounterTurn = 1;
+let encounterFinished = false;
+for (let attempt = 0; attempt < 20 && !encounterFinished; attempt += 1) {
+  encounterHost.send({ type: "submitAction", requestId: `e2e-encounter-turn-${encounterTurn}`, battleId: encounterBattleId, turn: encounterTurn, action: { kind: "move", moveIndex: 0 } });
+  const resolved = await encounterHost.next(
+    (message) => message.type === "turnResolved" && message.battleId === encounterBattleId && message.turn === encounterTurn,
+    `tour de rencontre ${encounterTurn}`,
+  );
+  encounterFinished = resolved.state.status === "finished";
+  encounterTurn = resolved.state.turn;
+}
+assert(encounterFinished, "La rencontre sauvage ne s'est pas terminée dans la limite prévue.");
+const returnedWorld = await encounterHost.next(
+  (message) => message.type === "snapshot" && message.snapshot?.battle === null
+    && message.snapshot?.world.session.battleResults.some((result) => result.encounterId === "wild-meadow-1"),
+  "retour dans l'overworld après combat",
+);
+assert(returnedWorld.snapshot.phase === "waiting", "La room n'est pas revenue en exploration.");
+await Promise.all([encounterHost.close(), encounterObserver.close()]);
+
+const coopHostTicket = await ticket("/api/rooms");
+const coopPeerTicket = await ticket(`/api/rooms/${coopHostTicket.roomCode}/join`);
+let coopHost = new SocketInbox(coopHostTicket);
+const coopPeer = new SocketInbox(coopPeerTicket);
+await Promise.all([coopHost.opened(), coopPeer.opened()]);
+await Promise.all([
+  coopHost.next((message) => message.type === "welcome", "welcome hôte coop"),
+  coopPeer.next((message) => message.type === "welcome", "welcome partenaire coop"),
+]);
+
+const moveCoop = async (client, side, direction, sequence, label) => {
+  client.send({ type: "moveAvatar", requestId: `coop-${side}-${sequence}`, direction, sequence });
+  return client.next((message) => message.type === "worldUpdated" && message.side === side && message.sequence === sequence, label);
+};
+
+coopHost.send({ type: "interact", requestId: "coop-personal" });
+await coopHost.next(
+  (message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-berry"),
+  "objet personnel avant reconnexion",
+);
+await moveCoop(coopHost, "player", "left", 1, "placement partagé gauche");
+await moveCoop(coopHost, "player", "right", 2, "placement partagé droite");
+
+coopHost.send({ type: "interact", requestId: "coop-shared-host" });
+coopPeer.send({ type: "interact", requestId: "coop-shared-peer" });
+const sharedRace = await Promise.all([
+  coopHost.next((message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-guide"), "première résolution partagée"),
+  coopHost.next((message) => message.type === "interactionUpdated" && message.events?.some((event) => event.interactionId === "meadow-guide"), "conflit partagé"),
+]);
+const sharedEvents = sharedRace.flatMap((message) => message.events);
+assert(sharedEvents.some((event) => event.type === "interactionCompleted"), "Aucun client n'a remporté l'interaction SHARED.");
+assert(sharedEvents.some((event) => event.type === "interactionUnavailable" && event.reason === "completed"), "Le conflit SHARED n'a pas refusé le second client.");
+
+for (let sequence = 1; sequence <= 7; sequence += 1) await moveCoop(coopPeer, "opponent", "right", sequence, `partenaire vers bosquet ${sequence}`);
+for (let sequence = 8; sequence <= 13; sequence += 1) await moveCoop(coopPeer, "opponent", "right", sequence, `partenaire vers stèle ${sequence}`);
+await moveCoop(coopPeer, "opponent", "left", 14, "partenaire face à la stèle");
+for (let sequence = 3; sequence <= 11; sequence += 1) await moveCoop(coopHost, "player", "right", sequence, `hôte vers bosquet ${sequence}`);
+for (let sequence = 12; sequence <= 14; sequence += 1) await moveCoop(coopHost, "player", "right", sequence, `hôte vers stèle ${sequence}`);
+
+coopHost.send({ type: "interact", requestId: "coop-sync-host" });
+const syncPending = await coopHost.next(
+  (message) => message.type === "interactionUpdated" && message.events?.some((event) => event.type === "interactionPending" && event.interactionId === "grove-twin-switch"),
+  "synchronisation en attente",
+);
+assert(syncPending.state.session.syncedParticipants["grove-twin-switch"]?.includes("player"), "Le participant SYNCED n'a pas été mémorisé.");
+await coopHost.close();
+
+coopHost = new SocketInbox(coopHostTicket);
+await coopHost.opened();
+const coopWelcome = await coopHost.next((message) => message.type === "welcome", "reconnexion pendant synchronisation");
+assert(coopWelcome.snapshot.world.players.player.inventory.ORAN_BERRY === 1, "L'inventaire personnel coop n'a pas été restauré.");
+assert(coopWelcome.snapshot.world.session.completedInteractions.includes("meadow-guide"), "L'interaction SHARED n'a pas été restaurée.");
+assert(coopWelcome.snapshot.world.session.syncedParticipants["grove-twin-switch"]?.includes("player"), "L'attente SYNCED n'a pas été restaurée.");
+
+coopPeer.send({ type: "interact", requestId: "coop-sync-peer" });
+const syncCompleted = await coopHost.next(
+  (message) => message.type === "interactionUpdated" && message.events?.some((event) => event.type === "interactionCompleted" && event.interactionId === "grove-twin-switch"),
+  "synchronisation complétée",
+);
+assert(syncCompleted.state.session.flags.includes("TWIN_STONE_ACTIVE"), "L'effet SYNCED n'a pas été appliqué.");
+await Promise.all([coopHost.close(), coopPeer.close()]);
+
 process.stdout.write(`${JSON.stringify({
   ok: true,
   roomCode: firstTicket.roomCode,
@@ -202,4 +334,12 @@ process.stdout.write(`${JSON.stringify({
   worldMovementTested: true,
   zoneRestored: true,
   movementResumed: true,
+  personalInteractionTested: true,
+  sharedInteractionTested: true,
+  encounterBattleTested: true,
+  overworldLockTested: true,
+  battleReturnTested: true,
+  sharedConflictTested: true,
+  syncedReconnectTested: true,
+  coopStateRestored: true,
 }, null, 2)}\n`);

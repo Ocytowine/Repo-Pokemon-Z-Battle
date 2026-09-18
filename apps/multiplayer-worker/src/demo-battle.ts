@@ -33,7 +33,18 @@ function battler(side: BattleSide, index: number): BattlerState {
   };
 }
 
-export function createDemoBattle(): TeamBattleState {
+export function createDemoBattle(encounter?: { readonly kind: "wild" | "trainer" }): TeamBattleState {
+  if (encounter !== undefined) {
+    const lead = battler("player", 0);
+    const opponent = encounter.kind === "wild"
+      ? {
+          ...battler("opponent", 0), id: "wild-pidgey", species: "PIDGEY", name: "Roucool sauvage", types: ["NORMAL", "FLYING"],
+          stats: { maxHp: 52, attack: 45, defense: 40, specialAttack: 35, specialDefense: 35, speed: 56 }, hp: 52,
+          moves: [{ move: MINIMAL_MOVE_CATALOG.SCRATCH, pp: MINIMAL_MOVE_CATALOG.SCRATCH.pp }],
+        }
+      : { ...battler("opponent", 1), id: "trainer-charmander", name: "Salamèche de Lina", moves: [{ move: MINIMAL_MOVE_CATALOG.SCRATCH, pp: MINIMAL_MOVE_CATALOG.SCRATCH.pp }] };
+    return createTeamBattleState({ player: [lead], opponent: [opponent] });
+  }
   return createTeamBattleState({
     player: [0, 1, 2].map((index) => battler("player", index)),
     opponent: [0, 1, 2].map((index) => battler("opponent", index)),

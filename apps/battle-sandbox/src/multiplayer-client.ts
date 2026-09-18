@@ -64,6 +64,7 @@ export function parseServerMessage(payload: string): ServerMessage {
       case "turnResolved": return typeof value.battleId === "string" && Number.isSafeInteger(value.turn) && isRecord(value.state) && Array.isArray(value.events);
       case "replacementResolved": return typeof value.battleId === "string" && isRecord(value.state) && Array.isArray(value.events);
       case "worldUpdated": return (value.side === "player" || value.side === "opponent") && Number.isSafeInteger(value.sequence) && Number.isSafeInteger(value.revision) && isRecord(value.state) && Array.isArray(value.events);
+      case "interactionUpdated": return (value.side === "player" || value.side === "opponent") && Number.isSafeInteger(value.revision) && isRecord(value.state) && Array.isArray(value.events);
       case "error": return (value.requestId === null || typeof value.requestId === "string") && typeof value.code === "string" && typeof value.message === "string";
       case "pong": return typeof value.nonce === "string";
       default: return false;

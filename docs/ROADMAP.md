@@ -12,7 +12,7 @@
 | 5 - Premier multijoueur | Terminee localement | Deploiement Cloudflare differe jusqu'au premier lot de la phase 6 |
 | 6 - Equipes completes | Terminee | Equipes de six, test local et mecanismes principaux |
 | 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
-| 8 - Prototype coop | En attente | Interactions et evenements classes |
+| 8 - Prototype coop | Terminee | Interactions et evenements classes |
 | 9 - Import progressif du monde | En attente | Cartes compatibles importees par lots |
 
 Le rapport de reference de la Phase 0 est `docs/POKEMON_Z_ANALYSIS.md`.
@@ -414,11 +414,51 @@ documentee dans `apps/overworld-sandbox/README.md`.
 
 ## Phase 8 - Prototype coop
 
-- interactions, PNJ et objets simples ;
-- combat sauvage et dresseur minimal ;
-- modele `PLAYER_STATE`, `SESSION_STATE`, `WORLD_STATE` ;
-- politiques `PERSONAL`, `SHARED`, `HOST_ONLY`, `SYNCED` ;
-- tests des conflits entre deux interactions simultanees.
+### Increment 8.1 - Interactions et politiques coop
+
+- [x] definir `PLAYER_STATE`, `SESSION_STATE` et `WORLD_STATE` ;
+- [x] ajouter PNJ, objets et interrupteurs originaux au catalogue ;
+- [x] implementer `PERSONAL`, `SHARED`, `HOST_ONLY` et `SYNCED` ;
+- [x] resoudre la cible cote serveur a partir de la position et de la direction ;
+- [x] afficher interactions, inventaires et drapeaux dans le sandbox ;
+- [x] tester les conflits simultanes et la persistance reseau.
+
+Critere de sortie valide le 2026-09-18 : le protocole v6 transporte uniquement
+l'intention `interact`, jamais un identifiant d'objet choisi par le client. Le
+moteur resout la case regardee, applique la politique coop et produit un nouvel
+etat immutable. Les quatre politiques sont testees, dont le premier gagnant d'une
+interaction `SHARED` et l'attente des deux participants pour `SYNCED`. La recette
+E2E valide un objet `PERSONAL` et un PNJ `SHARED` sur deux sockets.
+
+### Increment 8.2 - Rencontres et combats depuis le monde
+
+- [x] definir les declencheurs sauvage et dresseur ;
+- [x] construire le combat depuis le contexte overworld ;
+- [x] verrouiller puis restaurer les avatars pendant le combat ;
+- [x] revenir dans le monde avec le resultat persiste.
+
+Critere de sortie valide le 2026-09-18 : une interaction `encounter` construit un
+combat minimal sauvage ou dresseur avec le moteur existant. Le serveur verrouille
+mouvements et interactions, resout automatiquement l'action adverse et diffuse
+chaque tour. A la fin, il supprime le combat actif, restaure l'exploration et ajoute
+le resultat a `SESSION_STATE`. Le sandbox affiche les PV et capacites au meneur ;
+le second joueur observe. La recette E2E valide declenchement, verrouillage, combat
+complet et retour sur la carte.
+
+### Increment 8.3 - Parcours coop complet
+
+- [x] exposer les quatre politiques dans une recette visuelle guidee ;
+- [x] restaurer inventaires, drapeaux et synchronisations apres reconnexion ;
+- [x] tester les conflits reseau `SHARED` et `SYNCED` ;
+- [x] ajouter une recette E2E monde-interaction-combat-retour.
+
+Critere de sortie valide le 2026-09-18 : le sandbox expose chaque interaction,
+sa politique, sa zone et son statut. La room restaure inventaires personnels,
+interactions partagees et participants `SYNCED`. La recette E2E fait concourir
+deux sockets pour le meme PNJ `SHARED`, traverse les zones avec les deux avatars,
+interrompt une stèle `SYNCED` apres le premier participant, reconnecte ce joueur
+puis applique l'effet avec le second. Le meme parcours automatise couvre aussi
+interaction, combat sauvage, verrouillage et retour dans le monde.
 
 ## Phase 9 - Import progressif du monde
 

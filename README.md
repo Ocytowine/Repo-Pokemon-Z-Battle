@@ -109,9 +109,9 @@ corepack pnpm multiplayer:dev
 ```
 
 Il expose la creation et la jonction de rooms a deux joueurs ainsi qu'un WebSocket
-autoritaire. Le protocole v5 gere les equipes de demonstration, les changements,
+autoritaire. Le protocole v6 gere les equipes de demonstration, les changements,
 les remplacements apres K.O., les statuts, talents et objets persistants ainsi que
-les intentions de mouvement overworld. Aucun compte Cloudflare
+les intentions de mouvement et les interactions cooperatives overworld. Aucun compte Cloudflare
 n'est necessaire pour ce mode local. Voir
 `apps/multiplayer-worker/README.md` pour l'API et la commande de deploiement.
 
@@ -131,10 +131,12 @@ pnpm sandbox:overworld
 ```
 
 Il ouvre normalement `http://127.0.0.1:5174`. Sans serveur, les fleches ou ZQSD
-controlent le joueur 1, et IJKL le joueur 2. Avec `pnpm multiplayer:dev` lance dans
+controlent le joueur 1, et IJKL le joueur 2. Espace et O activent les interactions
+placees devant chaque avatar. Avec `pnpm multiplayer:dev` lance dans
 un autre terminal, deux pages peuvent creer puis rejoindre la meme room : chacune
 ne controle alors que son avatar et recoit le monde autoritaire. Le ticket est
 restaure apres rechargement et une coupure du Worker declenche une reconnexion
-automatique. Les deux cartes sont originales ; aucune carte ni
+automatique. Une interaction de rencontre ouvre un panneau de combat autoritaire,
+verrouille la carte puis rend le controle avec le resultat persiste. Les deux cartes sont originales ; aucune carte ni
 aucun tileset Pokemon Z n'est encore importe. L'architecture est documentee dans
-`docs/OVERWORLD_ARCHITECTURE.md`.
+`docs/OVERWORLD_ARCHITECTURE.md` et `docs/COOP_ARCHITECTURE.md`.
