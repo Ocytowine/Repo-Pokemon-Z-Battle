@@ -9,6 +9,7 @@ import { decodeRpgTable } from "../ruby-marshal/table.js";
 import { extractLocalization } from "./extract-localization.js";
 import { extractMapInfos } from "./extract-map-infos.js";
 import { extractScripts } from "./extract-scripts.js";
+import { extractBattleAnimations } from "./extract-battle-animations.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -23,6 +24,7 @@ export interface RuntimeExtractionResult {
   readonly scriptCount: number;
   readonly mapCount: number;
   readonly localizedTextCount: number;
+  readonly battleAnimationCount: number;
   readonly files: readonly string[];
 }
 
@@ -71,12 +73,13 @@ export async function extractRuntimeData(
 ): Promise<RuntimeExtractionResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await validatePokemonZSource(paths.source);
-  const [localization, maps, scripts, encounters, tableProbe] = await Promise.all([
+  const [localization, maps, scripts, encounters, tableProbe, battleAnimations] = await Promise.all([
     extractLocalization(paths.source, paths.output),
     extractMapInfos(paths.source),
     extractScripts(paths.source, paths.output),
     readEncounterJson(paths.output),
     probeMapTable(paths.source),
+    extractBattleAnimations(paths.source, paths.output),
   ]);
   const mapIds = new Set(maps.map((entry) => entry.id));
   const missingEncounterMaps = encounters.records
@@ -92,7 +95,7 @@ export async function extractRuntimeData(
       line: entry._source.line,
     }));
   const sourceFiles = await Promise.all(
-    ["Data/messages.dat", "Data/french.dat", "Data/Scripts.rxdata", "Data/MapInfos.rxdata"]
+    ["Data/messages.dat", "Data/french.dat", "Data/Scripts.rxdata", "Data/MapInfos.rxdata", ...battleAnimations.sourceFiles]
       .map(async (file) => ({ file, sha256: await hashFile(path.join(paths.source, ...file.split("/"))) })),
   );
   const scriptsManifest = {
@@ -119,6 +122,7 @@ export async function extractRuntimeData(
       localizationConflicts: localization.report.conflicts.length,
       missingEncounterMaps: missingEncounterMaps.length,
       encounterMapNameDifferences: encounterMapNameDifferences.length,
+      normalizedBattleAnimations: battleAnimations.catalog.animations.length,
     },
     tableProbe,
     missingEncounterMaps,
@@ -130,12 +134,19 @@ export async function extractRuntimeData(
     writeJsonAtomically(paths.output, "map-infos.json", mapInfos),
     writeJsonAtomically(paths.output, "scripts-manifest.json", scriptsManifest),
     writeJsonAtomically(paths.output, "runtime-report.json", runtimeReport),
+    writeJsonAtomically(paths.output, "battle-animations.json", {
+      schemaVersion: "1.0.0",
+      coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
+      mappings: battleAnimations.catalog.mappings,
+      animations: battleAnimations.catalog.animations,
+    }),
   ]);
   return {
     outputDirectory: paths.output,
     scriptCount: scripts.length,
     mapCount: maps.length,
     localizedTextCount: localization.report.summary.entries,
+    battleAnimationCount: battleAnimations.catalog.animations.length,
     files,
   };
 }

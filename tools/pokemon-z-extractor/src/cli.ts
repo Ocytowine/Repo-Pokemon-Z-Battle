@@ -80,6 +80,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Scripts: ${result.scriptCount}\n`);
     process.stdout.write(`Maps: ${result.mapCount}\n`);
     process.stdout.write(`Localized texts: ${result.localizedTextCount}\n`);
+    process.stdout.write(`Battle animations normalized: ${result.battleAnimationCount}\n`);
     return;
   }
   if (command === "extract-assets") {

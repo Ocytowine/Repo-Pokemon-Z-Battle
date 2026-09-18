@@ -18,6 +18,7 @@ export type {
   MoveCategory,
   MoveSlot,
   RandomSource,
+  StatefulRandomSource,
   StatStages,
   TurnActions,
   TurnResult,

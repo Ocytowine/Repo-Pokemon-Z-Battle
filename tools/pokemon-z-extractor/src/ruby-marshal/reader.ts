@@ -131,7 +131,11 @@ export class RubyMarshalReader {
   }
 
   private readFloat(): number {
-    const text = this.decodeBytes(this.readBytes(this.readLength("Longueur du flottant")), "utf8");
+    const payload = this.decodeBytes(this.readBytes(this.readLength("Longueur du flottant")), "utf8");
+    // Ruby 1.8 can append a NUL and binary mantissa bytes to the textual value.
+    // The textual prefix remains the portable representation used by modern Ruby.
+    const separator = payload.indexOf("\0");
+    const text = separator === -1 ? payload : payload.slice(0, separator);
     const value = text === "nan"
       ? Number.NaN
       : text === "inf"
@@ -251,6 +255,8 @@ export class RubyMarshalReader {
         || (typeof encoding === "object" && encoding !== null && !Array.isArray(encoding)
           && encoding.kind === "string" && /UTF-?8/iu.test(encoding.text));
       value.text = this.decodeBytes(value.bytes, utf8 ? "utf8" : "auto");
+    } else if (typeof value === "object" && value !== null && !Array.isArray(value) && "ivars" in value) {
+      for (const [name, entry] of ivars) value.ivars[name] = entry;
     }
     return value;
   }
@@ -284,7 +290,7 @@ export class RubyMarshalReader {
 
   private readExtended(kind: "extended" | "user-class"): RubyExtendedValue {
     const moduleName = this.readSymbolName();
-    const value: RubyExtendedValue = { kind, moduleName, value: null };
+    const value: RubyExtendedValue = { kind, moduleName, value: null, ivars: {} };
     value.value = this.readValue();
     return value;
   }

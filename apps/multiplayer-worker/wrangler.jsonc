@@ -1,0 +1,23 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pokemon-z-battle-multiplayer",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-18",
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "BATTLE_ROOMS",
+        "class_name": "BattleRoom"
+      }
+    ]
+  },
+  "exports": {
+    "BattleRoom": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
+  },
+  "observability": {
+    "enabled": true
+  }
+}

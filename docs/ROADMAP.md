@@ -7,8 +7,8 @@
 | 0 - Analyse | Terminee | Sources, formats et strategie d'extraction documentes |
 | 1 - Extracteur de donnees | Terminee | Extraction reproductible et validee des donnees de base |
 | 2 - Assets | Terminee | Manifeste et affichage controle d'un Pokemon |
-| 3 - Combat minimal hors ligne | En attente | Duel deterministe 1 contre 1 teste |
-| 4 - Battle Sandbox | En attente | Interface de diagnostic du moteur |
+| 3 - Combat minimal hors ligne | Terminee | Duel deterministe 1 contre 1 teste |
+| 4 - Battle Sandbox | Terminee | Interface de diagnostic du moteur |
 | 5 - Premier multijoueur | En attente | Room a deux joueurs et combat autoritaire |
 | 6 - Equipes completes | En attente | Equipes de six et mecanismes principaux |
 | 7 - Prototype overworld | En attente | Deux personnages sur une carte de test |
@@ -163,16 +163,16 @@ etat initial au lieu de faire confiance a des resultats sauvegardes.
 
 ### Phase 4.1 - Combat visuel local
 
-- [ ] mutualiser le chargement local des manifestes et du dossier source avec l'Asset Lab ;
-- [ ] regrouper les 149 Battlebacks en scenes composees `battlebg`, `playerbase` et `enemybase` ;
-- [ ] permettre de choisir la scene de combat dans le sandbox avec un fallback pour les triplets incomplets ;
-- [ ] afficher le battler de dos du joueur et le battler de face de l'adversaire ;
-- [ ] lire les bandes de frames detectees par le pipeline d'assets ;
-- [ ] associer les sprites aux Pokemon selectionnes sans copier les fichiers du jeu ;
-- [ ] ajouter les transitions generiques d'entree, d'attaque, d'impact et de KO ;
-- [ ] synchroniser les barres de PV avec les evenements du moteur ;
-- [ ] lire les cris quand ils sont disponibles ;
-- [ ] conserver un fallback visuel si un fichier local est absent ou inaccessible.
+- [x] mutualiser le chargement local des manifestes et du dossier source avec l'Asset Lab ;
+- [x] regrouper les Battlebacks en scenes composees `battlebg`, `playerbase` et `enemybase` ;
+- [x] permettre de choisir la scene de combat dans le sandbox avec un fallback pour les triplets incomplets ;
+- [x] afficher le battler de dos du joueur et le battler de face de l'adversaire ;
+- [x] lire les bandes de frames detectees par le pipeline d'assets ;
+- [x] associer les sprites aux Pokemon selectionnes sans copier les fichiers du jeu ;
+- [x] ajouter les transitions generiques d'entree, d'attaque, d'impact et de KO ;
+- [x] synchroniser les barres de PV avec les evenements du moteur ;
+- [x] lire les cris quand ils sont disponibles ;
+- [x] conserver un fallback visuel si un fichier local est absent ou inaccessible.
 
 Critere de sortie : apres selection des deux manifestes et du dossier local de
 Pokemon Z, un combat du sandbox affiche une vraie scene composee et anime les deux
@@ -181,28 +181,74 @@ introduire de regle de combat dans la couche graphique. Le choix du Battleback e
 manuel dans ce sandbox ; son association automatique au terrain et a la carte sera
 ajoutee avec l'import du monde en phase 9.
 
+Implementation terminee le 2026-09-18 : `@pokemon-z-battle/local-assets` fournit
+le chargement valide des deux manifestes, l'acces en lecture seule au dossier choisi,
+la selection des battlers et des cris, ainsi que la composition des scenes. L'Asset
+Lab et le sandbox utilisent tous deux ce module. Les triplets complets et incomplets
+sont testes sans inclure d'asset du jeu dans le depot. La recette visuelle finale sur
+les 149 fichiers reels reste a executer avec l'extraction locale de l'utilisateur.
+
 ### Phase 4.2 - Presentation des attaques
 
-- [ ] definir un format d'effet visuel independant de la logique de combat ;
-- [ ] fournir un effet generique lisible pour chaque attaque supportee ;
-- [ ] analyser puis associer progressivement les animations sources comprises ;
-- [ ] ajouter messages, efficacite, critique et transitions de fin de combat ;
+- [x] definir un format d'effet visuel independant de la logique de combat ;
+- [x] fournir un effet generique lisible pour chaque attaque supportee ;
+- [x] analyser puis associer progressivement les animations sources comprises ;
+- [x] ajouter messages, efficacite, critique et transitions de fin de combat ;
 - [ ] verifier le rythme et le rendu sur ordinateur et mobile.
 
 Critere de sortie : les six attaques du catalogue minimal ont toutes une
 presentation complete. Une animation source non comprise utilise explicitement un
 effet generique et ne bloque jamais la resolution du tour.
 
+Premier increment implemente le 2026-09-18 : un registre declaratif fournit six
+presentations distinctes (`impact`, vitesse, griffes, eau, liane et etoiles), avec
+un fallback par type/categorie. Le sequenceur est annulable, propose un rythme
+normal ou rapide et respecte `prefers-reduced-motion`. Les evenements de degats
+exposent maintenant critique et efficacite comme donnees de domaine.
+
+Deuxieme increment implemente le 2026-09-18 : le lecteur Marshal prend en charge
+les flottants Ruby 1.8 avec mantisse binaire et les variables d'instance des classes
+derivees d'Array. L'extracteur indexe les 730 associations de `move2anim.dat` et
+normalise les neuf animations joueur/adversaire necessaires aux six attaques. Le
+sandbox restitue les cellules des planches source a 20 images/seconde et les sons de
+timing, avec retour automatique aux effets generiques en cas d'incompatibilite.
+Les cellules source `-1` et `-2` pilotent aussi les transformations des battlers ;
+les priorites separent les effets situes derriere et devant eux. La mise en page a
+ete controlee par captures headless en `1440 x 1000` et `500 x 900`, puis protegee
+contre les debordements horizontaux. La derniere etape de cette phase est la recette
+interactive des animations importees sur un appareil mobile reel.
+
 ## Phase 5 - Premier multijoueur
 
-- protocole TypeScript partage et validation runtime ;
-- Worker Cloudflare, Durable Object par room et WebSocket ;
-- creation/rejoindre par code ;
-- authentification legere d'une place dans la room ;
-- ready, action de combat, reconnexion et snapshot ;
-- serveur autoritaire sur toutes les decisions et la RNG.
+- [x] protocole TypeScript partage et validation runtime ;
+- [x] noyau autoritaire de room independant de Cloudflare ;
+- [x] Worker Cloudflare, Durable Object par room et WebSocket ;
+- [x] creation/rejoindre par code ;
+- [x] authentification legere d'une place dans la room ;
+- [x] ready, action de combat, reconnexion et snapshot ;
+- [x] serveur autoritaire sur toutes les decisions et la RNG.
 
 Le message client exprime une intention. Il ne transmet jamais des degats, un resultat de capture ou une statistique calculee.
+
+Premier increment implemente le 2026-09-18 : `@pokemon-z-battle/multiplayer-protocol`
+versionne et valide strictement les intentions client, avec une limite de 4 Kio et
+des identifiants de requete idempotents. `@pokemon-z-battle/room-server-core`
+attribue deux places stables, gere ready/deconnexion/reconnexion, attend les deux
+actions puis resout le tour avec le moteur et la RNG du serveur. Ce noyau ne depend
+d'aucun runtime reseau et reste testable sans compte Cloudflare.
+
+Deuxieme increment implemente le 2026-09-18 : le Worker public cree et rejoint les
+rooms par code de six caracteres, puis transfere les WebSockets au Durable Object
+SQLite correspondant. Les sockets utilisent l'API d'hibernation ; les places sont
+protegees par un jeton aleatoire dont seul le SHA-256 est persiste. L'etat complet,
+les intentions en attente et la position de la RNG survivent aux reveils. Le
+deploiement Cloudflare reel et le branchement du client restent a effectuer.
+
+Troisieme increment implemente le 2026-09-18 : le Battle Sandbox peut creer ou
+rejoindre une room, conserver un ticket par onglet, se reconnecter, annoncer ready
+et soumettre uniquement l'action de sa place. Les snapshots et tours resolus par le
+serveur alimentent les cartes, PV, messages et animations existants. Le mode local
+reste disponible sans Worker. Le deploiement Cloudflare reel reste a effectuer.
 
 ## Phase 6 - Equipes completes
 

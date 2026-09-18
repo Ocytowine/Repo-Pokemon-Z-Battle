@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@pokemon-z-battle/battle-engine": "workspace:*"
+    "@pokemon-z-battle/battle-engine": "workspace:*",
+    "@pokemon-z-battle/local-assets": "workspace:*",
+    "@pokemon-z-battle/multiplayer-protocol": "workspace:*"
   },
   "devDependencies": {
     "vite": "8.3.0"

@@ -70,6 +70,24 @@ describe("RubyMarshalReader", () => {
     });
   });
 
+  it("reads legacy Ruby floats with binary mantissa bytes", () => {
+    expect(readRubyMarshal(marshal(
+      0x66, 0x0d,
+      0x31, 0x2e, 0x32, 0x35, 0x00, 0x9a, 0xbc, 0xde,
+    ))).toBe(1.25);
+  });
+
+  it("preserves instance variables wrapped around user classes", () => {
+    expect(readRubyMarshal(marshal(
+      0x49, 0x43,
+      0x3a, 0x08, 0x46, 0x6f, 0x6f,
+      0x5b, 0x00,
+      0x06,
+      0x3a, 0x09, 0x40, 0x62, 0x61, 0x72,
+      0x69, 0x06,
+    ))).toMatchObject({ kind: "user-class", moduleName: "Foo", value: [], ivars: { "@bar": 1 } });
+  });
+
   it("rejects unsupported Marshal versions", () => {
     expect(() => readRubyMarshal(Uint8Array.from([4, 9, 0x30]))).toThrow(RubyMarshalError);
   });

@@ -1,0 +1,13 @@
+{
+  "name": "@pokemon-z-battle/local-assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Browser-only access to locally selected Pokemon Z assets.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

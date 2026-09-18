@@ -1,6 +1,6 @@
-import type { RandomSource } from "./types.js";
+import type { StatefulRandomSource } from "./types.js";
 
-export class SeededRandom implements RandomSource {
+export class SeededRandom implements StatefulRandomSource {
   private state: number;
 
   public constructor(seed: number) {
@@ -22,5 +22,9 @@ export class SeededRandom implements RandomSource {
     value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
     const unsigned = (value ^ (value >>> 14)) >>> 0;
     return Math.floor((unsigned / 0x1_0000_0000) * maxExclusive);
+  }
+
+  public snapshot(): number {
+    return this.state;
   }
 }

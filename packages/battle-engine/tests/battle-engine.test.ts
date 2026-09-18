@@ -131,4 +131,12 @@ describe("resolveTurn", () => {
     expect(result.events).toContainEqual({ type: "moveMissed", side: "player", move: "TACKLE" });
     expect(result.state.battlers.player.moves[0]?.pp).toBe(0);
   });
+
+  it("exposes presentation-relevant damage facts as domain data", () => {
+    const waterGun = MINIMAL_MOVE_CATALOG.WATERGUN;
+    const player = battler("player", { types: ["WATER"], moves: [{ move: waterGun, pp: waterGun.pp }] });
+    const opponent = battler("opponent", { types: ["FIRE"] });
+    const result = resolveTurn(battle(player, opponent), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([99, 0, 15, 99, 1, 15]));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "damageApplied", source: "player", critical: true, effectiveness: 2 }));
+  });
 });

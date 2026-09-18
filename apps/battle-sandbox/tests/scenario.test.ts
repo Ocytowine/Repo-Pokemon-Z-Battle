@@ -18,6 +18,13 @@ describe("battle sandbox scenarios", () => {
     expect(createInitialState("BULBASAUR", "SQUIRTLE").battlers.player.moves.map((slot) => slot.move.internalName)).toEqual(["TACKLE", "VINEWHIP"]);
   });
 
+  it("uses the French names extracted from the compiled localization", () => {
+    const state = createInitialState("BULBASAUR", "SQUIRTLE");
+    expect(state.battlers.player.name).toBe("Bulbizarre");
+    expect(state.battlers.opponent.name).toBe("Carapuce");
+    expect(state.battlers.player.moves.map((slot) => slot.move.name)).toEqual(["Charge", "Fouet Lianes"]);
+  });
+
   it("replays an exported action history deterministically", () => {
     expect(replayScenario(scenario)).toEqual(replayScenario(structuredClone(scenario)));
   });

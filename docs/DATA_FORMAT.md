@@ -269,6 +269,9 @@ chaines, symboles, tableaux, hashes, structures, objets, expressions regulieres,
 classes, modules, charges utilisateur et wrappers d'instance. Les tables de
 symboles et d'objets sont conservees : deux references Ruby vers le meme objet
 restent identiques et les graphes cycliques sont acceptes.
+Les flottants Ruby 1.8 contenant une mantisse binaire apres un octet nul sont lus
+depuis leur prefixe decimal portable. Les variables d'instance portees par une
+classe derivee d'`Array`, comme `PBAnimations` et `PBAnimation`, sont conservees.
 
 Les charges utilisateur `Table` de RPG Maker XP sont decodees en dimensions,
 tailles et valeurs `int16`. Le controle reel utilise `Data/Map001.rxdata`, dont la
@@ -300,6 +303,28 @@ Les 262 triplets de `Scripts.rxdata` sont decomprimes avec zlib. Chaque entree d
 manifeste conserve son index, son ID Ruby, son nom, son chemin relatif, la taille et
 les SHA-256 compresse/decompresse. La politique `reference-only` interdit de traiter
 leur presence comme une implementation JavaScript ou de les executer dans le client.
+
+## Animations de combat
+
+`battle-animations.json` croise les 730 attaques normalisees avec les deux tables
+de `Data/move2anim.dat` (joueur et adversaire). Pour l'increment 4.2, les neuf
+animations distinctes des six attaques supportees sont developpees depuis
+`Data/PkmnAnimations.rxdata`.
+
+Chaque animation conserve son index, son nom, sa planche sous
+`Graphics/Animations/`, ses frames, ses cellules non nulles et ses timings. Les 27
+positions implicites d'une cellule Ruby deviennent des champs nommes : coordonnees,
+zoom, angle, miroir, mode de fusion, visibilite, motif, opacite, priorite et focus.
+Le repere source fait `512 x 384`, une cellule de planche fait 192 pixels et les
+planches ont cinq colonnes. Le lecteur web joue les frames a 20 images/seconde.
+Les motifs `-1` et `-2` representent respectivement les deux battlers. Les autres
+motifs decoupent la planche ; leur priorite determine le calque Canvas place derriere
+ou devant les Pokemon. Une animation adverse absente reutilise la variante joueur
+en inversant la ligne historique `(128,224) -> (384,96)`.
+
+Cette sortie ne pretend pas encore supporter toutes les animations indexees. Une
+association non developpee reste dans `mappings`, mais son contenu graphique n'est
+pas duplique dans `animations`; le sandbox utilise alors son effet generique.
 
 ## Manifeste des assets
 

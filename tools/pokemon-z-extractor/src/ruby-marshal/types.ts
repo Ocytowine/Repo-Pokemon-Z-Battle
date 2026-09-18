@@ -55,6 +55,7 @@ export interface RubyExtendedValue {
   readonly kind: "extended" | "user-class";
   readonly moduleName: string;
   value: RubyMarshalValue;
+  readonly ivars: Record<string, RubyMarshalValue>;
 }
 
 export interface RubyDataObject {

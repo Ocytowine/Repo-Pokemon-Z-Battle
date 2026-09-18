@@ -9,6 +9,8 @@ resolveTurn(state, actions, rng)
 
 L'etat d'entree n'est jamais modifie. Le resultat contient le nouvel etat, les
 evenements de domaine et une trace structuree de chaque tirage et calcul.
+L'evenement `damageApplied` expose aussi `critical` et `effectiveness`, afin que la
+presentation puisse afficher ces informations sans lire les traces de diagnostic.
 
 ## Perimetre compatible Pokemon Z v2.12 FR
 

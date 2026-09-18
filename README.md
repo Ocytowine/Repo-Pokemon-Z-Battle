@@ -53,7 +53,8 @@ pnpm extract:runtime --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --ou
 ```
 
 Elle produit le catalogue francais et son rapport de conflits, les 507 informations
-de carte, ainsi qu'un manifeste de 262 scripts. Les sources Ruby sont decomprimees
+de carte, un manifeste de 262 scripts et `battle-animations.json` pour les attaques
+prises en charge par le sandbox. Les sources Ruby sont decomprimees
 dans `.pokemon-z/data/scripts/` uniquement comme references : elles ne sont jamais
 executees par le produit web.
 
@@ -89,5 +90,19 @@ pnpm sandbox:battle
 
 Le sandbox permet de choisir deux Pokemon, de resoudre leurs actions tour par tour,
 d'inspecter les evenements et chaque tirage RNG, puis d'exporter ou importer un cas
-de test JSON reproductible. Voir `apps/battle-sandbox/README.md` pour les hypotheses
-des presets de niveau 50.
+de test JSON reproductible. Il peut aussi charger les deux manifestes d'assets et le
+dossier local du jeu pour composer une scene, animer les vrais battlers et lire leurs
+cris sans copier les fichiers sources. Voir `apps/battle-sandbox/README.md` pour les
+hypotheses des presets de niveau 50 et le chargement visuel local.
+
+## Serveur multijoueur local
+
+Le prototype Cloudflare Worker et Durable Object se lance localement avec :
+
+```powershell
+corepack pnpm multiplayer:dev
+```
+
+Il expose la creation et la jonction de rooms a deux joueurs ainsi qu'un WebSocket
+autoritaire. Aucun compte Cloudflare n'est necessaire pour ce mode local. Voir
+`apps/multiplayer-worker/README.md` pour l'API et la commande de deploiement.

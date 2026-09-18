@@ -106,10 +106,17 @@ export function resolveTurn(state: BattleState, actions: TurnActions, rng: Rando
       events.push({ type: "moveMissed", side, move: slot.move.internalName });
       continue;
     }
+    const traceStart = trace.length;
     const damage = calculateDamage(side, battlers[side], defender, slot.move, rng, trace);
+    const damageTrace = trace.slice(traceStart).find((entry) => entry.type === "damage");
+    if (damageTrace === undefined) throw new Error("Damage calculation did not emit its trace.");
     const hp = Math.max(0, defender.hp - damage);
     battlers[targetSide] = { ...defender, hp };
-    events.push({ type: "damageApplied", source: side, target: targetSide, amount: Math.min(damage, defender.hp), hp });
+    events.push({
+      type: "damageApplied", source: side, target: targetSide,
+      amount: Math.min(damage, defender.hp), hp,
+      critical: damageTrace.critical, effectiveness: damageTrace.effectiveness,
+    });
     if (hp === 0) {
       winner = side;
       events.push({ type: "fainted", side: targetSide });

@@ -13,7 +13,7 @@ export const POKEMON_PRESETS = [
   {
     id: 1,
     species: "BULBASAUR",
-    name: "Bulbasaur",
+    name: "Bulbizarre",
     types: ["GRASS", "POISON"],
     baseStats: { hp: 50, attack: 49, defense: 49, specialAttack: 65, specialDefense: 65, speed: 45 },
     moves: [MINIMAL_MOVE_CATALOG.TACKLE, MINIMAL_MOVE_CATALOG.VINEWHIP],
@@ -21,7 +21,7 @@ export const POKEMON_PRESETS = [
   {
     id: 4,
     species: "CHARMANDER",
-    name: "Charmander",
+    name: "Salamèche",
     types: ["FIRE"],
     baseStats: { hp: 44, attack: 52, defense: 43, specialAttack: 60, specialDefense: 50, speed: 65 },
     moves: [MINIMAL_MOVE_CATALOG.SCRATCH, MINIMAL_MOVE_CATALOG.SWIFT],
@@ -29,7 +29,7 @@ export const POKEMON_PRESETS = [
   {
     id: 7,
     species: "SQUIRTLE",
-    name: "Squirtle",
+    name: "Carapuce",
     types: ["WATER"],
     baseStats: { hp: 49, attack: 48, defense: 65, specialAttack: 50, specialDefense: 64, speed: 43 },
     moves: [MINIMAL_MOVE_CATALOG.TACKLE, MINIMAL_MOVE_CATALOG.WATERGUN],
@@ -45,7 +45,7 @@ export const POKEMON_PRESETS = [
   {
     id: 133,
     species: "EEVEE",
-    name: "Eevee",
+    name: "Évoli",
     types: ["NORMAL"],
     baseStats: { hp: 65, attack: 75, defense: 60, specialAttack: 65, specialDefense: 75, speed: 75 },
     moves: [MINIMAL_MOVE_CATALOG.TACKLE, MINIMAL_MOVE_CATALOG.QUICKATTACK, MINIMAL_MOVE_CATALOG.SWIFT],

@@ -70,13 +70,17 @@ export interface RandomSource {
   nextInt(maxExclusive: number): number;
 }
 
+export interface StatefulRandomSource extends RandomSource {
+  snapshot(): number;
+}
+
 export type BattleEvent =
   | { readonly type: "turnStarted"; readonly turn: number }
   | { readonly type: "actionOrdered"; readonly order: readonly BattleSide[] }
   | { readonly type: "moveUsed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "ppChanged"; readonly side: BattleSide; readonly move: string; readonly pp: number }
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
-  | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number }
+  | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
   | { readonly type: "fainted"; readonly side: BattleSide }
   | { readonly type: "actionSkipped"; readonly side: BattleSide; readonly reason: "fainted" | "no-pp" }
   | { readonly type: "battleEnded"; readonly winner: BattleSide }
