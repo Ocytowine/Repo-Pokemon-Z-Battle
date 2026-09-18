@@ -37,6 +37,9 @@ function battler(side: BattleSide, overrides: Partial<BattlerState> = {}): Battl
     stats: { maxHp: 100, attack: 100, defense: 100, specialAttack: 100, specialDefense: 100, speed: side === "player" ? 100 : 90 },
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
     hp: 100,
+    majorStatus: null,
+    ability: null,
+    heldItem: null,
     moves: [{ move, pp: move.pp }],
     ...overrides,
   };
@@ -138,5 +141,207 @@ describe("resolveTurn", () => {
     const opponent = battler("opponent", { types: ["FIRE"] });
     const result = resolveTurn(battle(player, opponent), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([99, 0, 15, 99, 1, 15]));
     expect(result.events).toContainEqual(expect.objectContaining({ type: "damageApplied", source: "player", critical: true, effectiveness: 2 }));
+  });
+});
+
+describe("major statuses from Pokemon Z", () => {
+  it("applies regular poison and its 1/12 end-of-turn damage", () => {
+    const poisonPowder = MINIMAL_MOVE_CATALOG.POISONPOWDER;
+    const player = battler("player", { moves: [{ move: poisonPowder, pp: poisonPowder.pp }] });
+    const result = resolveTurn(
+      battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 99, 1, 15]),
+    );
+
+    expect(result.state.battlers.opponent.majorStatus).toEqual({ kind: "poison", toxicCounter: null });
+    expect(result.events).toContainEqual({ type: "statusApplied", source: "player", target: "opponent", status: "poison" });
+    expect(result.events).toContainEqual({ type: "statusDamage", side: "opponent", status: "poison", amount: 8, hp: 92 });
+  });
+
+  it("uses the fangame burn modifier and residual damage", () => {
+    const burned = battler("player", { majorStatus: { kind: "burn" } });
+    const trace: BattleTrace[] = [];
+    expect(calculateDamage("player", burned, battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), trace)).toBe(15);
+    expect(trace.at(-1)).toMatchObject({ type: "damage", statusModifier: 0.5, result: 15 });
+
+    const result = resolveTurn(
+      battle(burned),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 99, 1, 15]),
+    );
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "statusDamage", side: "player", status: "burn", amount: 6 }));
+  });
+
+  it("quarters paralysis speed and consumes the explicit 25% action roll", () => {
+    const paralyzed = battler("player", { majorStatus: { kind: "paralysis" } });
+    const result = resolveTurn(
+      battle(paralyzed),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 0]),
+    );
+    expect(result.events[1]).toEqual({ type: "actionOrdered", order: ["opponent", "player"] });
+    expect(result.events).toContainEqual({ type: "actionSkipped", side: "player", reason: "paralysis" });
+    expect(result.trace).toContainEqual({ type: "rng", purpose: "paralysis", maxExclusive: 4, value: 0 });
+  });
+
+  it("draws a 2-4 turn sleep duration and wakes before acting when it expires", () => {
+    const sleepPowder = MINIMAL_MOVE_CATALOG.SLEEPPOWDER;
+    const player = battler("player", { moves: [{ move: sleepPowder, pp: sleepPowder.pp }] });
+    const first = resolveTurn(
+      battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 0]),
+    );
+    expect(first.state.battlers.opponent.majorStatus).toEqual({ kind: "sleep", turnsRemaining: 1 });
+    expect(first.events).toContainEqual({ type: "actionSkipped", side: "opponent", reason: "sleep" });
+
+    const second = resolveTurn(
+      first.state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 99, 1, 15]),
+    );
+    expect(second.state.battlers.opponent.majorStatus).toBeNull();
+    expect(second.events).toContainEqual({ type: "statusCured", side: "opponent", status: "sleep" });
+  });
+
+  it("rejects status applications blocked by an existing status or type immunity", () => {
+    const thunderWave = MINIMAL_MOVE_CATALOG.THUNDERWAVE;
+    const player = battler("player", { moves: [{ move: thunderWave, pp: thunderWave.pp }] });
+    const electric = battler("opponent", { types: ["ELECTRIC"] });
+    const result = resolveTurn(
+      battle(player, electric),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 99, 1, 15]),
+    );
+    expect(result.events).toContainEqual({ type: "statusApplicationFailed", source: "player", target: "opponent", status: "paralysis", reason: "type-immune" });
+  });
+
+  it("applies freeze as a damaging secondary effect and halves special damage", () => {
+    const iceBeam = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, effectChance: 100 };
+    const player = battler("player", { moves: [{ move: iceBeam, pp: iceBeam.pp }] });
+    const result = resolveTurn(
+      battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 0, 99, 1, 15]),
+    );
+    expect(result.state.battlers.opponent.majorStatus).toEqual({ kind: "frozen" });
+    expect(result.events).toContainEqual({ type: "statusDamage", side: "opponent", status: "frozen", amount: 6, hp: 53 });
+
+    const frozen = battler("player", { majorStatus: { kind: "frozen" }, moves: [{ move: MINIMAL_MOVE_CATALOG.SWIFT, pp: 20 }] });
+    expect(calculateDamage("player", frozen, battler("opponent"), MINIMAL_MOVE_CATALOG.SWIFT, new ScriptedRandom([1, 15]), [])).toBe(21);
+  });
+
+  it("implements Caduco below half HP and Hemorrhage critical stages", () => {
+    const caduco = battler("opponent", { hp: 50, majorStatus: { kind: "caduco" } });
+    const caducoTrace: BattleTrace[] = [];
+    expect(calculateDamage("player", battler("player"), caduco, MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), caducoTrace)).toBe(44);
+    expect(caducoTrace.at(-1)).toMatchObject({ type: "damage", statusModifier: 1.5 });
+
+    const hemorrhage = battler("opponent", { majorStatus: { kind: "hemorrhage" } });
+    const hemorrhageTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player"), hemorrhage, MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), hemorrhageTrace);
+    expect(hemorrhageTrace).toContainEqual({ type: "rng", purpose: "critical", maxExclusive: 2, value: 1 });
+
+    const scopeTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player", { heldItem: "SCOPELENS" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([7, 15]), scopeTrace);
+    expect(scopeTrace).toContainEqual({ type: "rng", purpose: "critical", maxExclusive: 8, value: 7 });
+
+    const decayingLight = MINIMAL_MOVE_CATALOG.LUZDECADENTE;
+    const applied = resolveTurn(
+      battle(battler("player", { moves: [{ move: decayingLight, pp: decayingLight.pp }] })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 99, 99, 1, 15]),
+    );
+    expect(applied.state.battlers.opponent.majorStatus).toEqual({ kind: "caduco" });
+  });
+
+  it("runs Guts, Quick Feet and Magic Guard through their dedicated hooks", () => {
+    const guts = battler("player", { ability: "GUTS", majorStatus: { kind: "burn" } });
+    const gutsTrace: BattleTrace[] = [];
+    expect(calculateDamage("player", guts, battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), gutsTrace)).toBe(42);
+    expect(gutsTrace.at(-1)).toMatchObject({ type: "damage", attack: 150, statusModifier: 1 });
+
+    const quickFeet = battler("player", { ability: "QUICKFEET", majorStatus: { kind: "paralysis" } });
+    const quickResult = resolveTurn(
+      battle(quickFeet),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([1, 99, 1, 15, 99, 1, 15]),
+    );
+    expect(quickResult.events[1]).toEqual({ type: "actionOrdered", order: ["player", "opponent"] });
+    expect(quickResult.trace).toContainEqual({ type: "order", side: "player", priority: 0, speed: 150 });
+
+    const guarded = battler("player", { ability: "MAGICGUARD", majorStatus: { kind: "burn" } });
+    const guardedResult = resolveTurn(
+      battle(guarded),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 99, 1, 15]),
+    );
+    expect(guardedResult.events.some((event) => event.type === "statusDamage" && event.side === "player")).toBe(false);
+  });
+});
+
+describe("stat stages, power abilities and held battle items", () => {
+  it("applies self boosts and opponent drops from status moves", () => {
+    const howl = MINIMAL_MOVE_CATALOG.HOWL;
+    const growl = MINIMAL_MOVE_CATALOG.GROWL;
+    const player = battler("player", { moves: [{ move: howl, pp: howl.pp }] });
+    const opponent = battler("opponent", { moves: [{ move: growl, pp: growl.pp }] });
+    const result = resolveTurn(
+      battle(player, opponent),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0]),
+    );
+
+    expect(result.state.battlers.player.stages.attack).toBe(0);
+    expect(result.events).toContainEqual({ type: "statStageChanged", source: "player", target: "player", stat: "attack", delta: 1, stage: 1 });
+    expect(result.events).toContainEqual({ type: "statStageChanged", source: "opponent", target: "player", stat: "attack", delta: -1, stage: 0 });
+  });
+
+  it("runs damaging stat effects through their PBS chance and clamps stages", () => {
+    const flameCharge = MINIMAL_MOVE_CATALOG.FLAMECHARGE;
+    const boosted = battler("player", {
+      stages: { ...battler("player").stages, speed: 6 },
+      moves: [{ move: flameCharge, pp: flameCharge.pp }],
+    });
+    const result = resolveTurn(
+      battle(boosted),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15, 0, 99, 1, 15]),
+    );
+
+    expect(result.state.battlers.player.stages.speed).toBe(6);
+    expect(result.events).toContainEqual({ type: "statStageChangeFailed", source: "player", target: "player", stat: "speed", reason: "limit" });
+    expect(result.trace).toContainEqual({ type: "rng", purpose: "additional-effect", maxExclusive: 100, value: 0 });
+  });
+
+  it("supports Huge Power, Pure Power, Muscle Band and Wise Glasses", () => {
+    const neutralPhysical = calculateDamage("player", battler("player"), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const hugePower = calculateDamage("player", battler("player", { ability: "HUGEPOWER" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const purePower = calculateDamage("player", battler("player", { ability: "PUREPOWER" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const muscleBand = calculateDamage("player", battler("player", { heldItem: "MUSCLEBAND" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const neutralSpecial = calculateDamage("player", battler("player"), battler("opponent"), MINIMAL_MOVE_CATALOG.SWIFT, new ScriptedRandom([1, 15]), []);
+    const wiseGlasses = calculateDamage("player", battler("player", { heldItem: "WISEGLASSES" }), battler("opponent"), MINIMAL_MOVE_CATALOG.SWIFT, new ScriptedRandom([1, 15]), []);
+
+    expect(hugePower).toBeGreaterThan(neutralPhysical);
+    expect(purePower).toBe(hugePower);
+    expect(muscleBand).toBeGreaterThan(neutralPhysical);
+    expect(wiseGlasses).toBeGreaterThan(neutralSpecial);
+  });
+
+  it("gives Assault Vest its special defense boost and blocks status moves", () => {
+    const neutral = calculateDamage("player", battler("player"), battler("opponent"), MINIMAL_MOVE_CATALOG.SWIFT, new ScriptedRandom([1, 15]), []);
+    const vested = calculateDamage("player", battler("player"), battler("opponent", { heldItem: "ASSAULTVEST" }), MINIMAL_MOVE_CATALOG.SWIFT, new ScriptedRandom([1, 15]), []);
+    expect(vested).toBeLessThan(neutral);
+
+    const howl = MINIMAL_MOVE_CATALOG.HOWL;
+    const player = battler("player", { heldItem: "ASSAULTVEST", moves: [{ move: howl, pp: howl.pp }] });
+    const result = resolveTurn(
+      battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([99, 1, 15]),
+    );
+    expect(result.events).toContainEqual({ type: "actionSkipped", side: "player", reason: "item-blocked" });
+    expect(result.state.battlers.player.moves[0]?.pp).toBe(howl.pp);
   });
 });

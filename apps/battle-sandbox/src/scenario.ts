@@ -57,6 +57,9 @@ function createBattler(side: BattleSide, preset: PokemonPreset): BattlerState {
     stats,
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
     hp: stats.maxHp,
+    majorStatus: null,
+    ability: null,
+    heldItem: null,
     moves: preset.moves.map((move) => ({ move, pp: move.pp })),
   };
 }

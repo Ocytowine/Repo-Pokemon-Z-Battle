@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage } from "../src/multiplayer-client.js";
 
 const ticket = {
-  protocolVersion: 1,
+  protocolVersion: 4,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",
@@ -23,6 +23,6 @@ describe("multiplayer browser client", () => {
     expect(normalizeServerUrl(" http://127.0.0.1:8787/// ")).toBe("http://127.0.0.1:8787");
     expect(() => normalizeServerUrl("ftp://example.test")).toThrow("HTTP ou HTTPS");
     expect(() => parseMultiplayerTicket({ ...ticket, reconnectToken: "secret" })).toThrow("Ticket multijoueur invalide");
-    expect(() => parseServerMessage('{"type":"snapshot","version":2}')).toThrow("incompatible");
+    expect(() => parseServerMessage('{"type":"snapshot","version":4}')).toThrow("incompatible");
   });
 });

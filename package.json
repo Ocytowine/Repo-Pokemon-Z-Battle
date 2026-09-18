@@ -17,6 +17,7 @@
     "inventory": "corepack pnpm --filter @pokemon-z-battle/extractor inventory",
     "sandbox:battle": "corepack pnpm --filter @pokemon-z-battle/battle-sandbox dev",
     "multiplayer:dev": "corepack pnpm --filter @pokemon-z-battle/multiplayer-worker dev",
+    "test:multiplayer:e2e": "node tools/multiplayer-e2e.mjs",
     "preview:assets": "corepack pnpm --filter @pokemon-z-battle/asset-preview dev",
     "test": "corepack pnpm -r test",
     "typecheck": "corepack pnpm -r typecheck"

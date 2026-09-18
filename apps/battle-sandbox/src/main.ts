@@ -1,4 +1,4 @@
-import { MINIMAL_MOVE_CATALOG, type BattleEvent, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type TurnResult } from "@pokemon-z-battle/battle-engine";
+import { MINIMAL_MOVE_CATALOG, activeBattlers, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { loadLocalManifests } from "@pokemon-z-battle/local-assets";
 import { PROTOCOL_VERSION, normalizeRoomCode, serializeMessage, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage, requestTicket, type MultiplayerTicket, type StoredMultiplayerSession } from "./multiplayer-client.js";
@@ -153,22 +153,34 @@ interface NetworkSession {
 }
 
 let networkSession: NetworkSession | null = null;
-let networkResults: TurnResult[] = [];
+interface DisplayTurnResult {
+  readonly state: BattleState;
+  readonly events: readonly TeamBattleEvent[];
+  readonly trace: readonly BattleTrace[];
+}
+
+let networkResults: DisplayTurnResult[] = [];
 let networkMessageQueue = Promise.resolve();
 
 function activeState(): BattleState {
-  return networkSession?.snapshot?.battle?.state ?? replay.state;
+  const teamState = networkSession?.snapshot?.battle?.state;
+  return teamState === undefined ? replay.state : displayBattleState(teamState);
 }
 
-function activeResults(): readonly TurnResult[] {
+function displayBattleState(state: TeamBattleState): BattleState {
+  return { turn: state.turn, status: state.status, winner: state.winner, battlers: activeBattlers(state) };
+}
+
+function activeResults(): readonly DisplayTurnResult[] {
   return networkSession === null ? replay.results : networkResults;
 }
 
 function activeSpecies(): { readonly player: string; readonly opponent: string } {
-  const battle = networkSession?.snapshot?.battle?.state;
+  const teamState = networkSession?.snapshot?.battle?.state;
+  const battle = teamState === undefined ? undefined : activeBattlers(teamState);
   return battle === undefined
     ? { player: scenario.player, opponent: scenario.opponent }
-    : { player: battle.battlers.player.species, opponent: battle.battlers.opponent.species };
+    : { player: battle.player.species, opponent: battle.opponent.species };
 }
 
 function option(value: string, label: string): HTMLOptionElement {
@@ -187,22 +199,48 @@ function typeBadge(type: string): string {
   return `<span class="type type-${type.toLowerCase()}">${type}</span>`;
 }
 
+function statusName(status: MajorStatusState["kind"]): string {
+  return {
+    sleep: "SOMMEIL",
+    poison: "POISON",
+    burn: "BRÛLURE",
+    paralysis: "PARALYSIE",
+    frozen: "GEL",
+    caduco: "CADUCO",
+    hemorrhage: "HÉMORRAGIE",
+  }[status];
+}
+
 function fighterMarkup(battler: BattlerState, side: BattleSide): string {
   const percent = Math.max(0, (battler.hp / battler.stats.maxHp) * 100);
   const initial = battler.name.slice(0, 1).toUpperCase();
   const sideLabel = networkSession === null
     ? (side === "player" ? "JOUEUR" : "ADVERSAIRE")
     : (side === networkSession.ticket.side ? "VOUS" : "ADVERSAIRE");
-  return `<div class="fighter-top"><div class="avatar" aria-hidden="true">${initial}</div><div><p class="side-label">${sideLabel}</p><h2>${battler.name}</h2><div class="types">${battler.types.map(typeBadge).join("")}</div></div><span class="level">N. ${battler.level}</span></div>
+  const team = networkSession?.snapshot?.battle?.state.teams[side];
+  const roster = team === undefined ? "" : `<div class="team-strip">${team.members.map((member, index) => `<span class="team-member${index === team.activeIndex ? " active" : ""}${member.hp === 0 ? " fainted" : ""}" title="${member.name} · ${member.hp}/${member.stats.maxHp} PV">${member.name.slice(0, 1)}<small>${member.hp}</small></span>`).join("")}</div>`;
+  const status = battler.majorStatus === null ? "" : `<span class="major-status status-${battler.majorStatus.kind}">${statusName(battler.majorStatus.kind)}</span>`;
+  return `<div class="fighter-top"><div class="avatar" aria-hidden="true">${initial}</div><div><p class="side-label">${sideLabel}</p><h2>${battler.name}</h2><div class="types">${battler.types.map(typeBadge).join("")}${status}</div></div><span class="level">N. ${battler.level}</span></div>
     <div class="health"><div class="health-label"><strong>PV</strong><span id="${side}-hp-text">${battler.hp} / ${battler.stats.maxHp}</span></div><div class="health-track"><span id="${side}-hp-bar" style="width:${percent}%"></span></div></div>
-    <dl class="stats"><div><dt>ATQ</dt><dd>${battler.stats.attack}</dd></div><div><dt>DEF</dt><dd>${battler.stats.defense}</dd></div><div><dt>ATQ.SP</dt><dd>${battler.stats.specialAttack}</dd></div><div><dt>DEF.SP</dt><dd>${battler.stats.specialDefense}</dd></div><div><dt>VIT</dt><dd>${battler.stats.speed}</dd></div></dl>`;
+    <dl class="stats"><div><dt>ATQ</dt><dd>${battler.stats.attack}</dd></div><div><dt>DEF</dt><dd>${battler.stats.defense}</dd></div><div><dt>ATQ.SP</dt><dd>${battler.stats.specialAttack}</dd></div><div><dt>DEF.SP</dt><dd>${battler.stats.specialDefense}</dd></div><div><dt>VIT</dt><dd>${battler.stats.speed}</dd></div></dl>${roster}`;
 }
 
 function populateMoves(side: BattleSide): void {
   const select = side === "player" ? ui.playerMove : ui.opponentMove;
   const battler = activeState().battlers[side];
   const previous = select.value;
-  select.replaceChildren(...battler.moves.map((slot, index) => option(String(index), `${slot.move.name} · ${slot.move.type} · ${slot.pp}/${slot.move.pp} PP`)));
+  const teamState = networkSession?.snapshot?.battle?.state;
+  if (teamState === undefined) {
+    select.replaceChildren(...battler.moves.map((slot, index) => option(String(index), `${slot.move.name} · ${slot.move.type} · ${slot.pp}/${slot.move.pp} PP`)));
+  } else {
+    const team = teamState.teams[side];
+    const replacementOnly = teamState.replacementRequired.includes(side);
+    const choices: HTMLOptionElement[] = replacementOnly ? [] : battler.moves.map((slot, index) => option(`move:${index}`, `${slot.move.name} · ${slot.move.type} · ${slot.pp}/${slot.move.pp} PP`));
+    team.members.forEach((member, index) => {
+      if (index !== team.activeIndex && member.hp > 0) choices.push(option(`switch:${index}`, `${replacementOnly ? "Remplacer par" : "Changer pour"} ${member.name} · ${member.hp}/${member.stats.maxHp} PV`));
+    });
+    select.replaceChildren(...choices);
+  }
   if ([...select.options].some((entry) => entry.value === previous)) select.value = previous;
 }
 
@@ -210,7 +248,7 @@ function moveDisplayName(internalName: string): string {
   return Object.values(MINIMAL_MOVE_CATALOG).find((move) => move.internalName === internalName)?.name ?? internalName;
 }
 
-function describeEvent(event: BattleEvent): string {
+function describeEvent(event: TeamBattleEvent): string {
   switch (event.type) {
     case "turnStarted": return `Début du tour ${event.turn}`;
     case "actionOrdered": return `Ordre : ${event.order.join(" → ")}`;
@@ -218,10 +256,21 @@ function describeEvent(event: BattleEvent): string {
     case "ppChanged": return `${moveDisplayName(event.move)} : ${event.pp} PP restants`;
     case "moveMissed": return `${moveDisplayName(event.move)} échoue`;
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
+    case "statusApplied": return `${event.target} subit : ${statusName(event.status)}`;
+    case "statusApplicationFailed": return `${statusName(event.status)} sans effet sur ${event.target} (${event.reason})`;
+    case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;
+    case "statusCured": return `${event.side} est libéré de : ${statusName(event.status)}`;
+    case "statusDamage": return `${event.side} perd ${event.amount} PV à cause de ${statusName(event.status)} · ${event.hp} PV`;
+    case "itemActivated": return `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
+    case "statStageChanged": return `${event.target} · ${event.stat} ${event.delta > 0 ? "+" : ""}${event.delta} · niveau ${event.stage}`;
+    case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;
     case "fainted": return `${event.side} est K.O.`;
     case "actionSkipped": return `Action de ${event.side} ignorée (${event.reason})`;
     case "battleEnded": return `Victoire : ${event.winner}`;
     case "turnEnded": return `Fin du tour ${event.turn}`;
+    case "teamActionOrdered": return `Ordre d'équipe : ${event.order.map((entry) => `${entry.side} (${entry.kind})`).join(" → ")}`;
+    case "pokemonSwitched": return `${event.side} remplace ${event.from} par ${event.to}`;
+    case "replacementRequired": return `${event.side} doit choisir un remplaçant`;
   }
 }
 
@@ -230,11 +279,11 @@ function describeTrace(trace: BattleTrace): string {
     case "order": return `${trace.side} · priorité ${trace.priority} · vitesse ${trace.speed}`;
     case "rng": return `${trace.purpose} · nextInt(${trace.maxExclusive}) = ${trace.value}`;
     case "accuracy": return `${trace.side} · seuil ${Number.isFinite(trace.threshold) ? trace.threshold.toFixed(2) : "immanquable"} · ${trace.hit ? "touché" : "raté"}`;
-    case "damage": return `${moveDisplayName(trace.move)} · base ${trace.baseDamage} · ${trace.critical ? "critique · " : ""}variance ${trace.variance} · STAB ×${trace.stab} · type ×${trace.effectiveness} = ${trace.result}`;
+    case "damage": return `${moveDisplayName(trace.move)} · base ${trace.baseDamage} · ${trace.critical ? "critique · " : ""}variance ${trace.variance} · STAB ×${trace.stab} · type ×${trace.effectiveness}${trace.statusModifier !== 1 ? ` · statut ×${trace.statusModifier}` : ""} = ${trace.result}`;
   }
 }
 
-function logMarkup(results: readonly TurnResult[], key: "events" | "trace"): string {
+function logMarkup(results: readonly DisplayTurnResult[], key: "events" | "trace"): string {
   return [...results].reverse().map((result) => {
     const entries = key === "events" ? result.events.map(describeEvent) : result.trace.map(describeTrace);
     return `<section class="turn-log"><h3>Tour ${result.state.turn - 1}</h3>${entries.map((entry) => `<p>${entry}</p>`).join("")}</section>`;
@@ -262,11 +311,12 @@ function render(state = activeState()): void {
   element("trace-count").textContent = String(traces.length);
   const networkBattle = networkSession?.snapshot?.battle;
   const ownSide = networkSession?.ticket.side;
+  const replacementRequired = ownSide === undefined ? false : networkBattle?.state.replacementRequired.includes(ownSide) === true;
   ui.playerMove.disabled = networkSession !== null && ownSide !== "player";
   ui.opponentMove.disabled = networkSession !== null && ownSide !== "opponent";
   ui.playerActionLabel.textContent = networkSession === null ? "Action joueur" : ownSide === "player" ? "Votre action" : "Action adverse";
   ui.opponentActionLabel.textContent = networkSession === null ? "Action adversaire" : ownSide === "opponent" ? "Votre action" : "Action adverse";
-  ui.resolve.textContent = networkSession === null ? "Résoudre le tour" : networkSession.submittedTurn === state.turn ? "Action envoyée" : "Envoyer mon action";
+  ui.resolve.textContent = networkSession === null ? "Résoudre le tour" : networkSession.submittedTurn === state.turn ? "Action envoyée" : replacementRequired ? "Envoyer le remplaçant" : "Envoyer mon action";
   ui.resolve.disabled = resolving || state.status === "finished" || (networkSession !== null
     && (!networkSession.connected || networkBattle === null || networkBattle === undefined || networkSession.submittedTurn === state.turn));
   ui.restart.disabled = networkSession !== null;
@@ -350,7 +400,7 @@ function showBattleResult(winnerSide: BattleSide): void {
   ui.battleResult.hidden = false;
 }
 
-async function playEvents(events: readonly BattleEvent[]): Promise<void> {
+async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
   for (const event of events) {
     if (event.type === "moveUsed") {
       const battler = activeState().battlers[event.side];
@@ -371,6 +421,32 @@ async function playEvents(events: readonly BattleEvent[]): Promise<void> {
       else if (event.effectiveness > 1) presenter.message("C'est super efficace !");
       else if (event.effectiveness < 1) presenter.message("Ce n'est pas très efficace…");
       if (event.effectiveness !== 1) await presenter.pause(560);
+    } else if (event.type === "statusApplied") {
+      presenter.message(`${activeState().battlers[event.target].name} subit : ${statusName(event.status)} !`);
+      await presenter.pause(520);
+    } else if (event.type === "statusApplicationFailed") {
+      presenter.message(event.reason === "type-immune" ? "Cela n'affecte pas la cible…" : "La cible souffre déjà d'un statut.");
+      await presenter.pause(420);
+    } else if (event.type === "statusContinued") {
+      presenter.message(`${activeState().battlers[event.side].name} subit encore : ${statusName(event.status)}.`);
+      await presenter.pause(420);
+    } else if (event.type === "statusCured") {
+      presenter.message(`${activeState().battlers[event.side].name} n'est plus affecté par ${statusName(event.status)}.`);
+      await presenter.pause(420);
+    } else if (event.type === "statusDamage") {
+      updateHealth(event.side, event.hp);
+      await presenter.playImpact(event.side, false);
+    } else if (event.type === "itemActivated") {
+      updateHealth(event.side, event.hp);
+      presenter.message(`${event.item} ${event.effect === "heal" ? "restaure" : "retire"} ${event.amount} PV.`);
+      if (event.effect === "damage") await presenter.playImpact(event.side, false);
+      else await presenter.pause(420);
+    } else if (event.type === "statStageChanged") {
+      presenter.message(`${activeState().battlers[event.target].name} : ${event.stat} ${event.delta > 0 ? "augmente" : "baisse"} !`);
+      await presenter.pause(420);
+    } else if (event.type === "statStageChangeFailed") {
+      presenter.message(`La statistique ne peut plus varier.`);
+      await presenter.pause(320);
     } else if (event.type === "fainted") {
       presenter.message(`${activeState().battlers[event.side].name} est K.O. !`);
       element<HTMLDivElement>(`${event.side}-sprite`).classList.add("fainted");
@@ -380,7 +456,21 @@ async function playEvents(events: readonly BattleEvent[]): Promise<void> {
       presenter.message(`Victoire : ${winner}`);
       showBattleResult(event.winner);
     } else if (event.type === "actionSkipped") {
-      presenter.message(event.reason === "no-pp" ? "Cette capacité n'a plus de PP !" : "Le Pokémon K.O. ne peut pas agir.");
+      const skipped = {
+        "no-pp": "Cette capacité n'a plus de PP !",
+        fainted: "Le Pokémon K.O. ne peut pas agir.",
+        sleep: "Le Pokémon dort profondément.",
+        paralysis: "Le Pokémon est paralysé et ne peut pas agir !",
+        "item-blocked": "La Veste de Combat empêche les capacités de statut.",
+      } as const;
+      presenter.message(skipped[event.reason]);
+      await presenter.pause(380);
+    } else if (event.type === "pokemonSwitched") {
+      presenter.message(`${event.from} laisse sa place à ${event.to} !`);
+      await refreshVisuals(true);
+      await presenter.pause(420);
+    } else if (event.type === "replacementRequired") {
+      presenter.message(`${event.side} doit choisir un remplaçant.`);
       await presenter.pause(380);
     }
   }
@@ -442,6 +532,9 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
   if (message.type === "snapshot") {
     const battleStarted = session.snapshot?.battle === null && message.snapshot.battle !== null;
     session.snapshot = message.snapshot;
+    if (session.submittedTurn !== null && !message.snapshot.battle?.state.replacementRequired.includes(session.ticket.side)) {
+      session.submittedTurn = null;
+    }
     render();
     if (battleStarted) {
       ui.battleResult.hidden = true;
@@ -462,7 +555,7 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
       battle: { id: message.battleId, state: message.state },
     };
     session.submittedTurn = null;
-    networkResults.push({ state: message.state, events: message.events, trace: [] });
+    networkResults.push({ state: displayBattleState(message.state), events: message.events, trace: [] });
     resolving = true;
     render(previousState);
     try {
@@ -471,6 +564,16 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
       resolving = false;
       render();
     }
+    return;
+  }
+  if (message.type === "replacementResolved") {
+    const snapshot = session.snapshot;
+    if (snapshot === null || snapshot.battle === null || snapshot.battle.id !== message.battleId) return;
+    session.snapshot = { ...snapshot, battle: { id: message.battleId, state: message.state } };
+    session.submittedTurn = null;
+    networkResults.push({ state: displayBattleState(message.state), events: message.events, trace: [] });
+    await playEvents(message.events);
+    render();
     return;
   }
   if (message.type === "error") {
@@ -542,16 +645,18 @@ ui.resolve.addEventListener("click", async () => {
     const battle = networkSession.snapshot?.battle;
     if (battle === null || battle === undefined) return;
     const side = networkSession.ticket.side;
-    const moveIndex = Number(side === "player" ? ui.playerMove.value : ui.opponentMove.value);
+    const rawAction = side === "player" ? ui.playerMove.value : ui.opponentMove.value;
+    const [kind, rawIndex] = rawAction.split(":");
+    const index = Number(rawIndex);
     try {
-      sendNetwork({
-        type: "submitAction",
-        version: PROTOCOL_VERSION,
-        requestId: crypto.randomUUID(),
-        battleId: battle.id,
-        turn: battle.state.turn,
-        action: { kind: "move", moveIndex },
-      });
+      const replacementRequired = battle.state.replacementRequired.includes(side);
+      if (replacementRequired) {
+        if (kind !== "switch") throw new Error("Choisissez un Pokémon de remplacement.");
+        sendNetwork({ type: "submitReplacement", version: PROTOCOL_VERSION, requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn, teamIndex: index });
+      } else {
+        const action: TeamBattleAction = kind === "switch" ? { kind: "switch", teamIndex: index } : { kind: "move", moveIndex: index };
+        sendNetwork({ type: "submitAction", version: PROTOCOL_VERSION, requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn, action });
+      }
       networkSession.submittedTurn = battle.state.turn;
       ui.networkNotice.textContent = "Action enregistrée. En attente de l'autre joueur…";
       render();

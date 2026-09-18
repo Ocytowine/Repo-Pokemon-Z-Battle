@@ -128,6 +128,20 @@ button, .file-button { cursor: pointer; font-weight: 800; text-align: center; }
 .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; margin: 24px 0 0; }
 .stats div { padding: 9px 5px; border-radius: 9px; background: #ffffff08; text-align: center; }
 .stats dt { color: #71809a; font-size: 8px; font-weight: 900; }.stats dd { margin: 3px 0 0; font-size: 14px; font-weight: 850; }
+.team-strip { display: flex; gap: 7px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #ffffff12; }
+.team-member { display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #ffffff24; border-radius: 50%; color: #9dabc0; background: #080e19; font-size: 11px; font-weight: 900; }
+.team-member small { margin-top: -5px; font-size: 7px; font-weight: 700; }
+.team-member.active { color: #07150f; border-color: #78e5ba; background: #78e5ba; }
+.opponent .team-member.active { border-color: #ff8da2; background: #ff8da2; }
+.team-member.fainted { opacity: .3; filter: grayscale(1); text-decoration: line-through; }
+.major-status { padding: 3px 7px; border-radius: 6px; color: #fff; font-size: 9px; font-weight: 900; letter-spacing: .05em; }
+.status-sleep { background: #718096; }
+.status-poison { background: #805ad5; }
+.status-burn { background: #d45735; }
+.status-paralysis { background: #b7791f; }
+.status-frozen { background: #3182a8; }
+.status-caduco { background: #66518c; }
+.status-hemorrhage { background: #a5223c; }
 .versus { display: grid; gap: 7px; place-items: center; }
 .versus span { display: grid; place-items: center; width: 54px; height: 54px; border: 1px solid #ffffff24; border-radius: 50%; color: #78e5ba; background: #0b111e; font-size: 15px; font-weight: 950; }
 .versus small { color: #8898b1; white-space: nowrap; }

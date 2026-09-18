@@ -12,7 +12,7 @@ describe("multiplayer protocol", () => {
   it("round-trips a move intent without accepting a computed result", () => {
     const message: ClientMessage = {
       type: "submitAction",
-      version: 1,
+      version: 4,
       requestId: "request-7",
       battleId: "battle-1",
       turn: 3,
@@ -23,12 +23,18 @@ describe("multiplayer protocol", () => {
   });
 
   it("validates every client message shape strictly", () => {
-    expect(parseClientMessage('{"type":"setReady","version":1,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
-    expect(parseClientMessage('{"type":"requestSnapshot","version":1,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
-    expect(parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toMatchObject({ type: "ping" });
-    expect(() => parseClientMessage('{"type":"ping","version":2,"nonce":"n1"}')).toThrow("version de protocole");
-    expect(() => parseClientMessage('{"type":"setReady","version":1,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
-    expect(() => parseClientMessage('{"type":"submitAction","version":1,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
+    expect(parseClientMessage('{"type":"setReady","version":4,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
+    expect(parseClientMessage('{"type":"requestSnapshot","version":4,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
+    expect(parseClientMessage('{"type":"ping","version":4,"nonce":"n1"}')).toMatchObject({ type: "ping" });
+    expect(() => parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toThrow("version de protocole");
+    expect(() => parseClientMessage('{"type":"setReady","version":4,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
+    expect(() => parseClientMessage('{"type":"submitAction","version":4,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
+  });
+
+  it("accepts team switches and forced replacements", () => {
+    expect(parseClientMessage('{"type":"submitAction","version":4,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
+    expect(parseClientMessage('{"type":"submitReplacement","version":4,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
+    expect(() => parseClientMessage('{"type":"submitReplacement","version":4,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");
   });
 
   it("rejects malformed and oversized payloads", () => {

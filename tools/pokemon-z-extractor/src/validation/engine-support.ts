@@ -18,18 +18,25 @@ export interface EngineSupportInput {
   readonly items: NormalizedDataset<"items", ItemDefinition>;
 }
 
-const SUPPORTED_MOVE_FUNCTION_CODES = new Set(["000", "0A5"]);
+const SUPPORTED_MOVE_FUNCTION_CODES = new Set([
+  "000", "003", "005", "006", "007", "00A", "00C",
+  "01C", "01D", "01F", "020",
+  "042", "043", "044", "045", "046", "047",
+  "0A5", "159", "906",
+]);
+const SUPPORTED_ABILITIES = new Set(["GUTS", "HUGEPOWER", "MAGICGUARD", "PUREPOWER", "QUICKFEET"]);
 
 function entries(
   keys: Iterable<string>,
   supportedKeys: ReadonlySet<string> = new Set(),
+  partialKeys: ReadonlySet<string> = new Set(),
 ): readonly EngineMechanicSupportEntry[] {
   return [...new Set(keys)]
     .sort((left, right) => (left < right ? -1 : left > right ? 1 : 0))
     .map((key) => ({
       key,
       extracted: true,
-      engineSupport: supportedKeys.has(key) ? "supported" : "not-implemented",
+      engineSupport: supportedKeys.has(key) ? "supported" : partialKeys.has(key) ? "partial" : "not-implemented",
     }));
 }
 
@@ -43,11 +50,13 @@ export function createEngineSupportReport(input: EngineSupportInput): EngineSupp
       input.moves.records.map((record) => record.functionCode),
       SUPPORTED_MOVE_FUNCTION_CODES,
     ),
-    abilities: entries(input.abilities.records.map((record) => record.internalName)),
+    abilities: entries(input.abilities.records.map((record) => record.internalName), SUPPORTED_ABILITIES),
     itemTypes: entries(
       input.items.records.map((record) =>
         record.itemType === null ? "none" : String(record.itemType),
       ),
+      new Set(),
+      new Set(["0"]),
     ),
     evolutionMethods: entries(
       input.pokemon.records.flatMap((record) =>

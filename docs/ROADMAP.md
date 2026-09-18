@@ -9,8 +9,8 @@
 | 2 - Assets | Terminee | Manifeste et affichage controle d'un Pokemon |
 | 3 - Combat minimal hors ligne | Terminee | Duel deterministe 1 contre 1 teste |
 | 4 - Battle Sandbox | Terminee | Interface de diagnostic du moteur |
-| 5 - Premier multijoueur | En attente | Room a deux joueurs et combat autoritaire |
-| 6 - Equipes completes | En attente | Equipes de six et mecanismes principaux |
+| 5 - Premier multijoueur | Terminee localement | Deploiement Cloudflare differe jusqu'au premier lot de la phase 6 |
+| 6 - Equipes completes | En cours | Equipes de six et mecanismes principaux |
 | 7 - Prototype overworld | En attente | Deux personnages sur une carte de test |
 | 8 - Prototype coop | En attente | Interactions et evenements classes |
 | 9 - Import progressif du monde | En attente | Cartes compatibles importees par lots |
@@ -220,6 +220,12 @@ interactive des animations importees sur un appareil mobile reel.
 
 ## Phase 5 - Premier multijoueur
 
+Decision du 2026-09-18 : le socle multijoueur est considere termine localement. Le
+deploiement Cloudflare reste volontairement differe jusqu'a l'obtention d'un
+premier combat jouable avec equipes, afin de ne pas figer publiquement le format
+temporaire du duel de demonstration. La recette locale reste un test de regression
+obligatoire pendant la phase 6.
+
 - [x] protocole TypeScript partage et validation runtime ;
 - [x] noyau autoritaire de room independant de Cloudflare ;
 - [x] Worker Cloudflare, Durable Object par room et WebSocket ;
@@ -227,6 +233,8 @@ interactive des animations importees sur un appareil mobile reel.
 - [x] authentification legere d'une place dans la room ;
 - [x] ready, action de combat, reconnexion et snapshot ;
 - [x] serveur autoritaire sur toutes les decisions et la RNG.
+- [x] recette locale HTTP/WebSocket avec deux clients et reconnexion ;
+- [ ] deploiement Cloudflare et smoke test sur l'URL publique.
 
 Le message client exprime une intention. Il ne transmet jamais des degats, un resultat de capture ou une statistique calculee.
 
@@ -250,13 +258,74 @@ et soumettre uniquement l'action de sa place. Les snapshots et tours resolus par
 serveur alimentent les cartes, PV, messages et animations existants. Le mode local
 reste disponible sans Worker. Le deploiement Cloudflare reel reste a effectuer.
 
+Quatrieme increment implemente le 2026-09-18 : une recette de bout en bout lancee
+contre Wrangler controle la sante HTTP, la creation et la jonction d'une room, les
+deux WebSockets, le passage en ready, la resolution autoritaire d'un tour, l'egalite
+des etats recus puis la reconnexion au tour suivant. Les fichiers SQLite temporaires
+de Miniflare sont retires du suivi Git et ignores. Le compte Cloudflare local est
+authentifie ; le deploiement public reste une action explicite a effectuer.
+
 ## Phase 6 - Equipes completes
 
-- equipes jusqu'a six ;
-- switch et remplacement apres KO ;
-- statuts, talents et objets par lots testes ;
-- couverture progressive des codes de fonction de Pokemon Z ;
-- suivi explicite des fonctions supportees et non supportees.
+### Increment 6.1 - Equipes et changements
+
+- [x] definir un etat d'equipe de un a six Pokemon sans casser l'API de duel ;
+- [x] selectionner et exposer le Pokemon actif de chaque camp ;
+- [x] executer les changements volontaires avant les attaques ;
+- [x] imposer un remplacement valide apres le KO d'un Pokemon actif ;
+- [x] terminer le combat uniquement lorsque toute une equipe est K.O. ;
+- [x] tester les changements, KO, remplacements et invariants d'equipe.
+
+Critere de sortie valide le 2026-09-18 : `TeamBattleState` encapsule deux equipes
+de un a six membres et expose leur combattant actif sans modifier `BattleState` ni
+`resolveTurn`. `resolveTeamTurn` execute les changements volontaires avant les
+attaques et remet a zero les niveaux du Pokemon retire. Un KO avec une reserve
+produit `replacementRequired`; `replaceFaintedPokemon` effectue ce remplacement
+sans consommer un tour ni la RNG. La victoire n'est emise qu'une fois la derniere
+reserve consciente eliminee.
+
+### Increment 6.2 - Protocole et Sandbox d'equipe
+
+- [x] ajouter les intentions de changement au protocole multijoueur ;
+- [x] persister les equipes et remplacements en attente dans les rooms ;
+- [x] afficher les reserves, PV et choix de remplacement dans le Sandbox ;
+- [x] etendre la recette locale a un combat avec changement et KO.
+
+Critere de sortie valide le 2026-09-18 : le protocole v2 transporte les attaques,
+les changements volontaires et les remplacements obligatoires sans accepter de
+resultat calcule par le client. Les rooms sauvegardent les deux equipes, les actions
+et les remplacements en attente. Le combat de demonstration utilise trois Pokemon
+par camp ; le Sandbox affiche leurs PV, distingue l'actif et les K.O., puis ne
+propose que les reserves valides lorsqu'un remplacement est requis. La recette
+HTTP/WebSocket execute un changement, restaure la partie apres reconnexion, provoque
+un K.O. et controle le remplacement autoritaire.
+
+### Increment 6.3 - Mecaniques par lots
+
+- [x] ajouter un premier lot de statuts documente et teste ;
+- [x] completer le gel et les statuts propres a Pokemon Z ;
+- [x] ajouter une premiere famille de hooks de talents et d'objets ;
+- [ ] augmenter progressivement la couverture des codes de fonction de Pokemon Z ;
+- [x] conserver le suivi explicite des fonctions supportees et non supportees.
+
+Premier lot implemente le 2026-09-18 : le moteur conserve un statut majeur par
+Pokemon et prend en charge sommeil, poison, poison grave, brulure et paralysie via
+les fonctions `003`, `005`, `006`, `007` et `00A`. Les hooks couvrent ordre par
+vitesse, immobilisation, reveil, degats residuels, reduction des degats physiques,
+immunites de type, K.O. et remplacement d'equipe. Les valeurs sont alignees sur les
+scripts Ruby exportes, y compris le poison normal a `1/12`. Le Sandbox expose les
+cinq attaques de statut et leur etat visuel. Le protocole passe en v3 afin de
+persister ces donnees sans restaurer une ancienne room v2 incompatible.
+
+Deuxieme lot implemente le 2026-09-18 : le gel suit la variante de Pokemon Z avec
+degats residuels et reduction des attaques speciales. `CADUCO` fragilise une cible
+sous la moitie de ses PV et `HEMORRAGIA` augmente de deux niveaux le taux de
+critique. Les effets secondaires des fonctions `00C`, `159` et `906` utilisent leur
+chance PBS et un tirage RNG trace. Les premiers hooks de talent couvrent `GUTS`,
+`QUICKFEET` et `MAGICGUARD`; ceux des objets couvrent `LEFTOVERS`, `BLACKSLUDGE`
+et `SCOPELENS`. Le rapport marque ces trois talents comme supportes et le type
+d'objet tenu comme partiel. Le protocole passe en v4 pour transporter talent et
+objet sans ambiguite avec les anciennes rooms.
 
 ## Phase 7 - Prototype overworld
 

@@ -28,13 +28,20 @@ function isSafePositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0;
 }
 
-function isMoveAction(value: unknown): value is { readonly kind: "move"; readonly moveIndex: number } {
-  return isRecord(value)
+function isBattleAction(value: unknown): boolean {
+  const move = isRecord(value)
     && hasExactKeys(value, ["kind", "moveIndex"])
     && value.kind === "move"
     && Number.isInteger(value.moveIndex)
     && Number(value.moveIndex) >= 0
     && Number(value.moveIndex) <= 3;
+  const switching = isRecord(value)
+    && hasExactKeys(value, ["kind", "teamIndex"])
+    && value.kind === "switch"
+    && Number.isInteger(value.teamIndex)
+    && Number(value.teamIndex) >= 0
+    && Number(value.teamIndex) <= 5;
+  return move || switching;
 }
 
 function invalid(reason: string): never {
@@ -69,8 +76,16 @@ export function parseClientMessage(payload: string): ClientMessage {
     case "submitAction":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn", "action"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
-        || !isSafePositiveInteger(value.turn) || !isMoveAction(value.action)) {
+        || !isSafePositiveInteger(value.turn) || !isBattleAction(value.action)) {
         return invalid("submitAction mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "submitReplacement":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn", "teamIndex"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
+        || !isSafePositiveInteger(value.turn) || !Number.isInteger(value.teamIndex)
+        || Number(value.teamIndex) < 0 || Number(value.teamIndex) > 5) {
+        return invalid("submitReplacement mal formé");
       }
       return value as unknown as ClientMessage;
     case "requestSnapshot":

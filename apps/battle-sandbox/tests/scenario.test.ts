@@ -15,14 +15,14 @@ describe("battle sandbox scenarios", () => {
     const bulbasaur = findPreset("BULBASAUR");
     if (bulbasaur === undefined) throw new Error("Missing fixture");
     expect(statsAtLevel50(bulbasaur)).toEqual({ maxHp: 125, attack: 69, defense: 69, specialAttack: 85, specialDefense: 85, speed: 65 });
-    expect(createInitialState("BULBASAUR", "SQUIRTLE").battlers.player.moves.map((slot) => slot.move.internalName)).toEqual(["TACKLE", "VINEWHIP"]);
+    expect(createInitialState("BULBASAUR", "SQUIRTLE").battlers.player.moves.map((slot) => slot.move.internalName)).toEqual(["TACKLE", "VINEWHIP", "SLEEPPOWDER", "POISONPOWDER"]);
   });
 
   it("uses the French names extracted from the compiled localization", () => {
     const state = createInitialState("BULBASAUR", "SQUIRTLE");
     expect(state.battlers.player.name).toBe("Bulbizarre");
     expect(state.battlers.opponent.name).toBe("Carapuce");
-    expect(state.battlers.player.moves.map((slot) => slot.move.name)).toEqual(["Charge", "Fouet Lianes"]);
+    expect(state.battlers.player.moves.map((slot) => slot.move.name)).toEqual(["Charge", "Fouet Lianes", "Poudre Dodo", "Poudre Toxik"]);
   });
 
   it("replays an exported action history deterministically", () => {

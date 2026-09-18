@@ -55,10 +55,20 @@ export function parseServerMessage(payload: string): ServerMessage {
   } catch {
     throw new Error("Message serveur illisible.");
   }
-  if (!isRecord(value) || value.version !== PROTOCOL_VERSION || typeof value.type !== "string"
-    || !["welcome", "snapshot", "ack", "turnResolved", "error", "pong"].includes(value.type)) {
-    throw new Error("Message serveur incompatible.");
-  }
+  if (!isRecord(value) || value.version !== PROTOCOL_VERSION || typeof value.type !== "string") throw new Error("Message serveur incompatible.");
+  const valid = (() => {
+    switch (value.type) {
+      case "welcome": return typeof value.playerId === "string" && (value.side === "player" || value.side === "opponent") && typeof value.reconnectToken === "string" && isRecord(value.snapshot);
+      case "snapshot": return isRecord(value.snapshot);
+      case "ack": return typeof value.requestId === "string" && Number.isSafeInteger(value.revision);
+      case "turnResolved": return typeof value.battleId === "string" && Number.isSafeInteger(value.turn) && isRecord(value.state) && Array.isArray(value.events);
+      case "replacementResolved": return typeof value.battleId === "string" && isRecord(value.state) && Array.isArray(value.events);
+      case "error": return (value.requestId === null || typeof value.requestId === "string") && typeof value.code === "string" && typeof value.message === "string";
+      case "pong": return typeof value.nonce === "string";
+      default: return false;
+    }
+  })();
+  if (!valid) throw new Error("Message serveur incompatible.");
   return value as unknown as ServerMessage;
 }
 

@@ -257,10 +257,15 @@ Le rapport actuel recense 651 cles mecaniques :
 - 18 methodes d'evolution utilisees.
 
 Depuis la phase 3, le rapport porte `engineState: "in-development"`. Les 19 types
-et les codes d'effet d'attaque `000` et `0A5` portent `engineSupport: "supported"` ;
-les autres entrees restent `not-implemented`. Sur les donnees completes, cela
-represente 21 cles prises en charge sur 651. Ce statut decrit le noyau TypeScript
-et ne modifie pas les donnees extraites.
+et les codes d'effet d'attaque `000`, `003`, `005`, `006`, `007`, `00A`, `00C`,
+`0A5`, `159` et `906`
+portent `engineSupport: "supported"` ;
+les talents `GUTS`, `MAGICGUARD` et `QUICKFEET` sont egalement `supported`. Le type
+d'objet tenu `0` est marque `partial`, car seuls `LEFTOVERS`, `BLACKSLUDGE` et
+`SCOPELENS` sont portes. Les autres entrees restent `not-implemented`. Sur les
+donnees completes, cela represente 32 cles prises en charge sur 651, plus une
+categorie partielle. Ce statut decrit le noyau TypeScript et ne modifie pas les
+donnees extraites.
 
 ## Ruby Marshal 4.8
 

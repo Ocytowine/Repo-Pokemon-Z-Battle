@@ -1,6 +1,6 @@
-import type { BattleAction, BattleEvent, BattleSide, BattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleSide, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 4 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 4_096;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
@@ -17,7 +17,7 @@ export interface RoomSnapshot {
   readonly roomCode: string;
   readonly phase: RoomPhase;
   readonly players: readonly RoomPlayerSnapshot[];
-  readonly battle: { readonly id: string; readonly state: BattleState } | null;
+  readonly battle: { readonly id: string; readonly state: TeamBattleState } | null;
 }
 
 interface VersionedMessage {
@@ -34,7 +34,13 @@ export type ClientMessage =
       readonly type: "submitAction";
       readonly battleId: string;
       readonly turn: number;
-      readonly action: BattleAction;
+      readonly action: TeamBattleAction;
+    })
+  | (RequestedMessage & {
+      readonly type: "submitReplacement";
+      readonly battleId: string;
+      readonly turn: number;
+      readonly teamIndex: number;
     })
   | (RequestedMessage & { readonly type: "requestSnapshot" })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
@@ -48,6 +54,7 @@ export type ProtocolErrorCode =
   | "STALE_BATTLE"
   | "STALE_TURN"
   | "ACTION_ALREADY_SUBMITTED"
+  | "REPLACEMENT_ALREADY_SUBMITTED"
   | "INTERNAL_ERROR";
 
 export type ServerMessage =
@@ -64,8 +71,14 @@ export type ServerMessage =
       readonly type: "turnResolved";
       readonly battleId: string;
       readonly turn: number;
-      readonly state: BattleState;
-      readonly events: readonly BattleEvent[];
+      readonly state: TeamBattleState;
+      readonly events: readonly TeamBattleEvent[];
+    })
+  | (VersionedMessage & {
+      readonly type: "replacementResolved";
+      readonly battleId: string;
+      readonly state: TeamBattleState;
+      readonly events: readonly TeamBattleEvent[];
     })
   | (VersionedMessage & {
       readonly type: "error";

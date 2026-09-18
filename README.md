@@ -79,6 +79,9 @@ Le paquet `@pokemon-z-battle/battle-engine` fournit le premier noyau de combat
 deterministe. Il expose `resolveTurn(state, actions, rng)`, un generateur seedable,
 les 19 interactions de type et un catalogue volontairement limite a six attaques.
 Le detail du perimetre supporte est documente dans `packages/battle-engine/README.md`.
+La couche d'equipe de la phase 6 prend en charge jusqu'a six membres, les
+changements volontaires et les remplacements obligatoires apres KO tout en
+conservant l'API de duel existante.
 
 ## Battle Sandbox
 
@@ -104,5 +107,14 @@ corepack pnpm multiplayer:dev
 ```
 
 Il expose la creation et la jonction de rooms a deux joueurs ainsi qu'un WebSocket
-autoritaire. Aucun compte Cloudflare n'est necessaire pour ce mode local. Voir
+autoritaire. Le protocole v4 gere les equipes de demonstration, les changements,
+les remplacements apres K.O., les statuts, talents et objets persistants. Aucun compte Cloudflare
+n'est necessaire pour ce mode local. Voir
 `apps/multiplayer-worker/README.md` pour l'API et la commande de deploiement.
+
+Pendant que le Worker local est ouvert, la recette complete a deux clients se lance
+dans un second terminal avec :
+
+```powershell
+corepack pnpm test:multiplayer:e2e
+```

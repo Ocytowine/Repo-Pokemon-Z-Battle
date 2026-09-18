@@ -56,6 +56,7 @@ export class BattleRoom extends DurableObject<Env> {
     this.#initialized = ctx.blockConcurrencyWhile(async () => {
       const bundle = await ctx.storage.get<PersistedRoomBundle>("room");
       if (bundle === undefined) return;
+      if (bundle.room.version !== PROTOCOL_VERSION) return;
       this.#roomCode = bundle.roomCode;
       this.#identities = new Map(bundle.identities.map((entry) => [entry.playerId, entry.tokenHash]));
       this.#room = new AuthoritativeBattleRoom(bundle.roomCode, createDemoBattle, new SeededRandom(bundle.room.rngState), bundle.room);

@@ -27,10 +27,18 @@ donc représenter deux joueurs distincts. Les snapshots, PV, résultats et choix
 proviennent exclusivement du Worker ; les assets graphiques restent locaux à
 chaque navigateur.
 
+Le combat multijoueur de démonstration utilise trois Pokémon par camp. La bande
+d'équipe montre l'actif, les réserves et leurs PV. Pendant un tour, une réserve
+consciente peut être choisie à la place d'une attaque ; après le K.O. du Pokémon
+actif, le Sandbox limite le choix aux remplaçants valides avant de poursuivre.
+
 Le sandbox propose cinq presets issus des statistiques de base de Pokemon Z v2.12
 FR : Bulbasaur, Charmander, Squirtle, Pikachu et Eevee. Leurs statistiques de
 combat sont calculees au niveau 50 avec 31 IV, 0 EV et une nature neutre. Seules
-les attaques du catalogue minimal du moteur sont proposées.
+les attaques du catalogue minimal du moteur sont proposées. Ce catalogue permet
+aussi de tester sommeil, poison, poison grave, brûlure, paralysie, gel, `CADUCO`
+et `HEMORRAGIA` ; le statut actif apparaît sur la carte du combattant et dans le
+journal de domaine. Les activations d'objets de fin de tour utilisent le même journal.
 
 Un export JSON contient :
 

@@ -19,15 +19,48 @@ presentation puisse afficher ces informations sans lire les traces de diagnostic
 - statistiques offensives et defensives avec leurs niveaux ;
 - critique standard a 1/16, variance 85–100, STAB et efficacite des 19 types ;
 - PP, degats, KO et fin de combat ;
-- fonctions d'attaque `000` et `0A5` ;
+- sommeil, poison, poison grave, brulure, paralysie, gel, `CADUCO` et
+  `HEMORRAGIA` avec leurs hooks de tour et de calcul ;
+- talents `GUTS`, `QUICKFEET` et `MAGICGUARD` ;
+- objets tenus `LEFTOVERS`, `BLACKSLUDGE` et `SCOPELENS` ;
+- fonctions d'attaque `000`, `003`, `005`, `006`, `007`, `00A`, `00C`, `0A5`,
+  `159` et `906` ;
 - catalogue initial : `TACKLE`, `QUICKATTACK`, `SCRATCH`, `WATERGUN`,
-  `VINEWHIP` et `SWIFT` (libelles PBS conserves dans le code).
+  `VINEWHIP`, `SWIFT`, `SLEEPPOWDER`, `POISONPOWDER`, `TOXIC`, `THUNDERWAVE`
+  `WILLOWISP`, `ICEBEAM`, `LUZDECADENTE` et `CUT`.
 
-Les talents, objets, climats, statuts, terrains, changements de Pokemon et autres
-codes d'effet ne sont pas encore pris en charge. Une attaque non supportee ne peut
+Les autres talents, objets, climats, terrains et codes d'effet ne sont pas encore
+pris en charge. Une attaque non supportee ne peut
 pas etre construite comme `BattleMove` sans traitement TypeScript explicite.
+
+Les valeurs de ce premier lot suivent les scripts exportes de Pokemon Z : poison
+normal a `1/12` des PV max, brulure a `1/16`, attaque physique divisee par deux,
+vitesse paralysee divisee par quatre, 25 % d'immobilisation et sommeil initial de
+deux a quatre tours. Le compteur du poison grave augmente jusqu'a 15 et revient a
+zero lors d'un changement, tandis que le statut reste conserve.
+
+Le gel de Pokemon Z retire `1/16` des PV max par tour et divise par deux les degats
+speciaux. `CADUCO` multiplie par `1,5` les degats recus sous la moitie des PV ;
+`HEMORRAGIA` ajoute deux niveaux au taux de critique. Les premiers hooks de talent
+couvrent attaque, vitesse et prevention des degats indirects. Les premiers hooks
+d'objet couvrent critique, soin et degats de fin de tour.
 
 Les formules et l'ordre des tirages sont compares aux scripts exportes
 `pokebattle-move.rb` et `pokebattle-battle.rb`. `SeededRandom` fournit des parties
 reproductibles ; tout objet implementant `RandomSource` peut etre injecte dans les
 tests ou un futur protocole reseau.
+
+## Equipes
+
+La phase 6 ajoute une couche compatible au-dessus du duel historique :
+
+- `createTeamBattleState` construit deux equipes de un a six Pokemon ;
+- `activeBattlers` expose les deux combattants actifs ;
+- `resolveTeamTurn` accepte une attaque ou un changement pour chaque camp ;
+- `replaceFaintedPokemon` traite les remplacements obligatoires sans avancer le tour.
+
+Les changements volontaires sont executes avant les attaques. Les niveaux de
+statistiques du Pokemon retire sont remis a zero, tandis que ses PV et PP restent
+conserves. Le combat ne se termine que lorsqu'un camp ne possede plus aucun membre
+conscient. L'API `BattleState`/`resolveTurn` reste disponible pour le Sandbox et le
+prototype multijoueur existants jusqu'a leur migration durant l'increment 6.2.

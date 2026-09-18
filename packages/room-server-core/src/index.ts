@@ -1,4 +1,4 @@
-import { resolveTurn, type BattleAction, type BattleSide, type BattleState, type StatefulRandomSource, type TurnActions } from "@pokemon-z-battle/battle-engine";
+import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { PROTOCOL_VERSION, type ClientMessage, type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 
 interface RoomPlayer {
@@ -21,11 +21,11 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 1;
+  readonly version: 4;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
-  readonly battleState: BattleState | null;
+  readonly battleState: TeamBattleState | null;
   readonly rngState: number;
   readonly players: readonly {
     readonly playerId: string;
@@ -34,21 +34,23 @@ export interface PersistedRoomState {
     readonly connected: boolean;
     readonly acknowledged: readonly (readonly [string, ServerMessage])[];
   }[];
-  readonly pendingActions: readonly (readonly [BattleSide, BattleAction])[];
+  readonly pendingActions: readonly (readonly [BattleSide, TeamBattleAction])[];
+  readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
 }
 
 export class AuthoritativeBattleRoom {
   readonly #players = new Map<string, RoomPlayer>();
-  readonly #pendingActions = new Map<BattleSide, BattleAction>();
-  readonly #createBattle: () => BattleState;
+  readonly #pendingActions = new Map<BattleSide, TeamBattleAction>();
+  readonly #pendingReplacements = new Map<BattleSide, number>();
+  readonly #createBattle: () => TeamBattleState;
   readonly #rng: StatefulRandomSource;
   readonly #roomCode: string;
   #revision = 0;
   #battleSequence = 0;
   #battleId: string | null = null;
-  #battleState: BattleState | null = null;
+  #battleState: TeamBattleState | null = null;
 
-  public constructor(roomCode: string, createBattle: () => BattleState, rng: StatefulRandomSource, persisted?: PersistedRoomState) {
+  public constructor(roomCode: string, createBattle: () => TeamBattleState, rng: StatefulRandomSource, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
     this.#createBattle = createBattle;
     this.#rng = rng;
@@ -61,6 +63,7 @@ export class AuthoritativeBattleRoom {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
       }
       for (const [side, action] of persisted.pendingActions) this.#pendingActions.set(side, action);
+      for (const [side, teamIndex] of persisted.pendingReplacements) this.#pendingReplacements.set(side, teamIndex);
     }
   }
 
@@ -108,7 +111,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 1,
+      version: 4,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -118,6 +121,7 @@ export class AuthoritativeBattleRoom {
         playerId, side, ready, connected, acknowledged: [...acknowledged.entries()].slice(-128),
       })),
       pendingActions: [...this.#pendingActions.entries()],
+      pendingReplacements: [...this.#pendingReplacements.entries()],
     };
   }
 
@@ -137,6 +141,7 @@ export class AuthoritativeBattleRoom {
       ];
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
+    if (message.type === "submitReplacement") return this.submitReplacement(player, message);
     return this.submitAction(player, message);
   }
 
@@ -159,6 +164,9 @@ export class AuthoritativeBattleRoom {
     if (this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun combat actif.")];
     }
+    if (this.#battleState.replacementRequired.length > 0) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Un remplacement est requis avant le prochain tour.")];
+    }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
     if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
     if (this.#pendingActions.has(player.side)) {
@@ -172,8 +180,8 @@ export class AuthoritativeBattleRoom {
     if (playerAction === undefined || opponentAction === undefined) return output;
 
     const resolvedTurn = this.#battleState.turn;
-    const actions: TurnActions = { player: playerAction, opponent: opponentAction };
-    const result = resolveTurn(this.#battleState, actions, this.#rng);
+    const actions: TeamTurnActions = { player: playerAction, opponent: opponentAction };
+    const result = resolveTeamTurn(this.#battleState, actions, this.#rng);
     this.#battleState = result.state;
     this.#pendingActions.clear();
     this.#revision += 1;
@@ -188,6 +196,33 @@ export class AuthoritativeBattleRoom {
         events: result.events,
       },
     });
+    output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
+    return output;
+  }
+
+  private submitReplacement(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitReplacement" }>): readonly RoomDispatch[] {
+    if (this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun combat actif.")];
+    }
+    if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
+    if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
+    if (!this.#battleState.replacementRequired.includes(player.side)) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun remplacement requis pour ce camp.")];
+    }
+    if (this.#pendingReplacements.has(player.side)) {
+      return [this.error(player.playerId, message.requestId, "REPLACEMENT_ALREADY_SUBMITTED", "Un remplacement est déjà enregistré.")];
+    }
+    this.#pendingReplacements.set(player.side, message.teamIndex);
+    this.#revision += 1;
+    const output: RoomDispatch[] = [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) }];
+    if (!this.#battleState.replacementRequired.every((side) => this.#pendingReplacements.has(side))) return output;
+
+    const replacements = Object.fromEntries(this.#pendingReplacements) as Partial<Record<BattleSide, number>>;
+    const result = replaceFaintedPokemon(this.#battleState, replacements);
+    this.#battleState = result.state;
+    this.#pendingReplacements.clear();
+    this.#revision += 1;
+    output.push({ audience: "all", message: { type: "replacementResolved", version: PROTOCOL_VERSION, battleId: this.#battleId, state: result.state, events: result.events } });
     output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
     return output;
   }
