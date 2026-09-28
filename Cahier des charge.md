@@ -673,6 +673,98 @@ WORLD_STATE
 
 ---
 
+## 19.1 Variante coop dynamique : monde de l'hôte
+
+Décision validée le 28 septembre 2026 : chaque joueur possède sa propre sauvegarde
+solo. Lorsqu'un joueur rejoint un autre joueur, il participe temporairement au
+monde de l'hôte avec son propre personnage et ses propres Pokémon.
+
+Pendant cette expédition :
+
+* la sauvegarde de l'hôte est l'autorité narrative ;
+* l'histoire, les quêtes, les badges et les interrupteurs du monde suivent la
+  progression de l'hôte ;
+* le joueur invité ne copie pas cette progression dans son propre monde ;
+* le joueur invité conserve les gains personnels explicitement autorisés ;
+* les alliés prévus par l'histoire originale restent des personnages narratifs et
+  ne sont pas automatiquement remplacés par le deuxième joueur ;
+* le joueur invité est présenté comme un partenaire d'expédition ou un autre
+  apprenti, sans réécrire systématiquement tout le scénario.
+
+Le meneur de l'histoire est lié à la sauvegarde hôte, pas simplement à la connexion
+qui héberge techniquement la room.
+
+## 19.2 Synchronisation adaptative des Pokémon
+
+À l'entrée dans une session, le joueur invité pourra choisir entre :
+
+* `ADAPTIVE`, mode recommandé, qui rapproche temporairement la puissance de son
+  équipe de celle de l'hôte et du plafond narratif actuel ;
+* `REAL_LEVELS`, qui conserve les statistiques correspondant aux niveaux réels,
+  même en cas d'écart important.
+
+Le mode adaptatif ne modifie jamais les données persistantes d'un Pokémon. Il lui
+attribue un **niveau effectif de session**, utilisé uniquement pour calculer ses
+statistiques de combat dans le monde hôte.
+
+Restent toujours inchangés :
+
+* niveau réel et expérience réelle ;
+* espèce et évolution ;
+* capacités connues ;
+* talent ;
+* IV et EV ;
+* objet tenu.
+
+L'expérience gagnée s'applique au niveau réel. Une capacité ou une évolution ne
+peut être obtenue que si ses conditions réelles sont remplies. Aucun niveau,
+apprentissage ou évolution temporaire ne doit donc être annulé au retour dans le
+monde d'origine.
+
+L'équilibrage des rencontres importantes pourra utiliser une estimation de
+puissance plus large que le niveau : niveau effectif, statistiques de base,
+capacités, talent, objet tenu et taille de l'équipe.
+
+## 19.3 Progression et récompenses d'une expédition
+
+Les récompenses suivent les règles suivantes :
+
+| Récompense | Hôte | Joueur invité |
+|---|---:|---:|
+| Expérience réelle et argent | Oui | Oui |
+| Consommables et objets ordinaires | Oui | Oui, récompense personnelle |
+| Pokémon sauvage capturé | Personnel | Personnel, si la capture est autorisée |
+| Badge ou progression narrative | Oui | Non |
+| Objet clé | Oui | Non |
+| Pokémon ou objet unique de l'histoire | Oui | Compensation non unique |
+| Récompense coop spécifique | Oui | Oui |
+
+Les compensations possibles comprennent monnaie, consommables, éléments
+cosmétiques ou jetons d'expédition. Elles ne doivent pas permettre de dupliquer un
+objet clé, un Pokémon unique ou une récompense narrative.
+
+Au retour dans son monde, l'invité conserve uniquement les deltas personnels
+validés : expérience réelle, niveaux réellement gagnés, capacités apprises,
+évolutions légitimes, captures autorisées, monnaie et objets exportables.
+
+La sauvegarde invitée devra être protégée par un verrou ou bail de session. Les
+gains matériels devront utiliser un journal idempotent et être enregistrés
+progressivement afin qu'une déconnexion ou reconnexion ne provoque ni perte ni
+duplication.
+
+## 19.4 Zone coop intégrée au monde
+
+Une zone spécialement conçue pour la coopération pourra être ajoutée plus tard,
+mais elle devra être intégrée naturellement à la carte et à l'univers plutôt que
+présentée comme un mode complètement séparé. Elle pourra accueillir énigmes,
+défis, raids ou récompenses coopératives spécifiques.
+
+Cette zone est une extension future. Aucun développement ni contenu ne doit être
+réalisé pour elle dans la phase actuelle. Elle complète la coopération dans
+l'histoire principale et ne la remplace pas.
+
+---
+
 # 20. Événements coop
 
 Tous les événements du fangame ne doivent pas être immédiatement rendus coopératifs.

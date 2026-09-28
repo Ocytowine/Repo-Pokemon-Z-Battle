@@ -17,7 +17,7 @@ export interface BattleMove {
   readonly functionCode: "000" | "003" | "005" | "006" | "007" | "00A" | "00C"
     | "01C" | "01D" | "01F" | "020"
     | "042" | "043" | "044" | "045" | "046" | "047"
-    | "0A5" | "159" | "906";
+    | "06F" | "0A5" | "159" | "906";
   readonly power: number;
   readonly type: string;
   readonly category: MoveCategory;
@@ -27,7 +27,8 @@ export interface BattleMove {
   readonly effectChance: number;
 }
 
-export type BattleAbility = "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "PUREPOWER" | "QUICKFEET";
+export type BattleAbility = "BLAZE" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW" | "PUREPOWER" | "QUICKFEET"
+  | "SIMPLE" | "TORRENT";
 export type HeldItem = "ASSAULTVEST" | "BLACKSLUDGE" | "LEFTOVERS" | "MUSCLEBAND" | "SCOPELENS" | "WISEGLASSES";
 
 export interface MoveSlot {

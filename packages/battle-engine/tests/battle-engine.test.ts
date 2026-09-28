@@ -5,6 +5,7 @@ import {
   calculateDamage,
   resolveTurn,
   typeEffectiveness,
+  type BattleMove,
   type BattleSide,
   type BattleState,
   type BattleTrace,
@@ -343,5 +344,33 @@ describe("stat stages, power abilities and held battle items", () => {
     );
     expect(result.events).toContainEqual({ type: "actionSkipped", side: "player", reason: "item-blocked" });
     expect(result.state.battlers.player.moves[0]?.pp).toBe(howl.pp);
+  });
+
+  it("activates the starter type talents below one third HP", () => {
+    const neutral = calculateDamage("player", battler("player", { types: ["GRASS"], hp: 33 }), battler("opponent"),
+      MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
+    const overgrow = calculateDamage("player", battler("player", { types: ["GRASS"], hp: 33, ability: "OVERGROW" }),
+      battler("opponent"), MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
+    expect(overgrow).toBeGreaterThan(neutral);
+  });
+
+  it("doubles stat changes received by a battler with Simple", () => {
+    const growl = MINIMAL_MOVE_CATALOG.GROWL;
+    const player = battler("player", { moves: [{ move: growl, pp: growl.pp }] });
+    const opponent = battler("opponent", { ability: "SIMPLE" });
+    const result = resolveTurn(battle(player, opponent),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 0, 1, 15]));
+    expect(result.state.battlers.opponent.stages.attack).toBe(-2);
+    expect(result.events).toContainEqual({ type: "statStageChanged", source: "player", target: "opponent", stat: "attack", delta: -2, stage: -2 });
+  });
+
+  it("uses the source fixed-damage range for Psywave", () => {
+    const psywave: BattleMove = { id: 1, internalName: "PSYWAVE", name: "Vague Psy", functionCode: "06F", power: 1,
+      type: "PSYCHIC", category: "Special", accuracy: 100, pp: 15, priority: 0, effectChance: 0 };
+    const trace: BattleTrace[] = [];
+    expect(calculateDamage("player", battler("player", { level: 20 }), battler("opponent"), psywave,
+      new ScriptedRandom([50]), trace)).toBe(20);
+    expect(trace.at(-1)).toMatchObject({ type: "damage", move: "PSYWAVE", critical: false, result: 20 });
   });
 });

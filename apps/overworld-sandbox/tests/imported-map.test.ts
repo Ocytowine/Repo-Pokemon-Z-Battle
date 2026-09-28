@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, blockingDefaultEventPoints, dialogueLines, eventInFront, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventInFront, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -30,9 +30,10 @@ describe("imported RPG Maker map", () => {
     const basePage = { condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
       settings: { through: false, alwaysOnTop: false, trigger: 0 },
-      commands: [{ kind: "show-text", text: "Bonjour" }, { kind: "set-switches", text: null }] } as const;
+      commands: [{ kind: "show-text", text: "Bonjour", indent: 0, data: { text: "Bonjour" } },
+        { kind: "set-switches", text: null, indent: 0, data: { firstId: 10, lastId: 10, value: true } }] } as const;
     const event: ImportedMapEvent = { id: 1, name: "NPC", x: 2, y: 0, pages: [basePage,
-      { ...basePage, condition: { ...basePage.condition, switch1Id: 10 }, commands: [{ kind: "show-text", text: "Cache" }] }] };
+      { ...basePage, condition: { ...basePage.condition, switch1Id: 10 }, commands: [{ kind: "show-text", text: "Cache", indent: 0, data: { text: "Cache" } }] }] };
     const page = selectDefaultEventPage(event);
     expect(page).toBe(basePage);
     expect(page === null ? [] : dialogueLines(page)).toEqual(["Bonjour"]);
@@ -55,8 +56,23 @@ describe("imported RPG Maker map", () => {
       condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
       settings: { through: false, alwaysOnTop: false, trigger: 0 },
-      commands: [{ kind: "show-text", text: "Hola " }, { kind: "text-continuation", text: "mundo." }],
+      commands: [{ kind: "show-text", text: "Hola ", indent: 0, data: { text: "Hola " } },
+        { kind: "text-continuation", text: "mundo.", indent: 0, data: { text: "mundo." } }],
     }] };
     expect(dialogueLines(event.pages[0]!, translations)).toEqual(["Bonjour le monde."]);
+  });
+
+  it("uses the source bottom-left anchor for size(w,h) event zones", () => {
+    const event: ImportedMapEvent = { id: 8, name: "sortie size(3,2)", x: 5, y: 4, pages: [{
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
+      settings: { through: false, alwaysOnTop: false, trigger: 1 }, commands: [],
+    }] };
+    expect(eventFootprint(event)).toEqual([
+      { x: 5, y: 3 }, { x: 6, y: 3 }, { x: 7, y: 3 },
+      { x: 5, y: 4 }, { x: 6, y: 4 }, { x: 7, y: 4 },
+    ]);
+    expect(activeEventAt([event], 7, 3)?.event.id).toBe(8);
+    expect(activeEventAt([event], 4, 4)).toBeNull();
   });
 });

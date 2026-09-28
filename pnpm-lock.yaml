@@ -71,12 +71,18 @@ importers:
 
   apps/overworld-sandbox:
     dependencies:
+      '@pokemon-z-battle/battle-engine':
+        specifier: workspace:*
+        version: link:../../packages/battle-engine
       '@pokemon-z-battle/multiplayer-protocol':
         specifier: workspace:*
         version: link:../../packages/multiplayer-protocol
       '@pokemon-z-battle/overworld-engine':
         specifier: workspace:*
         version: link:../../packages/overworld-engine
+      '@pokemon-z-battle/player-state':
+        specifier: workspace:*
+        version: link:../../packages/player-state
     devDependencies:
       vite:
         specifier: 8.3.0
@@ -98,6 +104,15 @@ importers:
         version: link:../overworld-engine
 
   packages/overworld-engine: {}
+
+  packages/player-state:
+    dependencies:
+      '@pokemon-z-battle/battle-engine':
+        specifier: workspace:*
+        version: link:../battle-engine
+      '@pokemon-z-battle/game-data':
+        specifier: workspace:*
+        version: link:../game-data
 
   packages/room-server-core:
     dependencies:

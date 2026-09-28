@@ -517,7 +517,8 @@ les donnees sont importees, mais leur execution reste a integrer progressivement
 - [x] conserver le prototype coop original dans des onglets separes ;
 - [x] afficher le joueur et les PNJ actifs avec leurs feuilles de personnages source ;
 - [x] lire les dialogues simples sans executer les commandes non supportees ;
-- [ ] executer les transferts et les conditions d'evenement persistantes.
+- [x] executer les transferts directs et les zones `size(w,h)` sans condition ;
+- [x] evaluer les conditions simples d'evenement persistantes.
 
 Premier increment valide le 2026-09-28 : `Map003 - Bourg Canvas` est la premiere
 carte source affichee et parcourable dans l'overworld sandbox. Le renderer compose
@@ -547,6 +548,92 @@ demande puis conserves en cache. Les quatre portes de Bourg Canvas ouvrent Map00
 ou Map005 et leurs sorties permettent le retour. Les transferts internes de ces
 batiments utilisent le meme mecanisme. Les pages conditionnelles et les zones
 `size(...)` restent volontairement hors de ce lot.
+
+Quatrieme increment valide le 2026-09-28 : la convention du script source
+`197-39262853-event-size.rb` est reproduite sans approximation. Une ancre `(x,y)`
+nommee `size(w,h)` couvre horizontalement `x..x+w-1` et verticalement
+`y-h+1..y`. Toute cette empreinte est affichee en jaune et declenche le transfert
+actif. Les transferts associes a une page conditionnelle inactive ne sont plus
+affiches ni executes. Les sorties nord et ouest sans condition de Bourg Canvas
+peuvent ainsi charger leurs cartes voisines depuis chacune de leurs cases.
+
+### Increment 9.5 - Etat persistant des evenements
+
+- [x] selectionner la derniere page dont les conditions simples sont satisfaites ;
+- [x] gerer les interrupteurs, variables et self-switches scopes par carte/evenement ;
+- [x] persister cet etat localement entre cartes et redemarrages du navigateur ;
+- [x] appliquer atomiquement les commandes d'etat des pages sans controle de flux ;
+- [x] interpreter les choix et leurs branches imbriquees ;
+- [x] interpreter les conditions standard sur interrupteur, variable et self-switch ;
+- [x] porter le premier lot declaratif d'inventaire et de cris de Pokemon ;
+- [x] persister les points de soin et de reprise personnels ;
+- [x] definir l'equipe persistante partagee par overworld et moteur de combat ;
+- [x] attribuer le starter depuis les vrais evenements de Map002 ;
+- [ ] porter les autres scripts requis et commandes de gameplay.
+
+Premier noyau valide le 2026-09-28 : le sandbox evalue desormais les deux
+interrupteurs de page, le seuil de variable et le self-switch avant de retenir la
+derniere page active. Les changements d'interrupteurs, de variables (constante ou
+copie de variable) et de self-switches sont appliques a la fin d'un dialogue puis
+stockes dans le navigateur. Les nouvelles pages peuvent changer apparence,
+collision, dialogue et transfert sans recharger l'application. L'execution est
+atomique : une page contenant un choix, une branche, un script Ruby, un objet ou
+une autre commande non prise en charge ne modifie aucun etat. Ce garde-fou evite
+de valider une progression narrative dont les effets n'ont pas tous ete portes.
+
+Deuxieme noyau valide le 2026-09-28 : l'indentation RPG Maker est maintenant
+conservee par le chargeur et utilisee pour parcourir les choix imbriques. La boite
+de dialogue affiche les reponses traduites, accepte un clic ou les touches 1 a 9,
+et ne projette que la branche choisie. Les conditions standard sur interrupteur,
+variable et self-switch selectionnent egalement leur branche vraie ou leur `else`.
+L'interpreteur s'arrete avant la premiere commande non supportee : les dialogues
+situes apres un script Ruby ne sont plus affiches comme s'ils avaient ete executes,
+et aucune mutation partielle n'est enregistree.
+
+Troisieme noyau valide le 2026-09-28 : les appels simples `pbItemBall`,
+`pbReceiveItem`, `pbStoreItem`, `pbDeleteItem` et `pbPlayCry` sont reconnus par des
+expressions strictes puis convertis en actions declaratives ; aucun Ruby n'est
+evalue dans le navigateur. L'inventaire personnel rejoint l'etat persistant et
+les retraits impossibles annulent atomiquement l'evenement. Les noms affiches
+proviennent du catalogue d'objets et de la traduction francaise locale. Sur
+Map003, les evenements 14, 21 et 38 donnent maintenant respectivement une Baie
+Oran, une Potion et un Repoussenlit, puis activent leur self-switch. Les appels
+non listes restent bloques par defaut.
+
+Quatrieme noyau valide le 2026-09-28 : `pbSetPokemonCenter` devient une action
+declarative personnelle qui memorise carte, coordonnees et direction. Le bouton de
+reinitialisation recharge desormais cette carte et replace le joueur au dernier
+point connu. `recover-all` est reconnu comme intention de soin, tandis que les
+temporisations, tonalites, animations et sons standard peuvent traverser
+l'interpreteur sans bloquer la progression d'etat. Aucun soin d'equipe n'est
+simule tant que l'overworld source ne possede pas encore l'equipe persistante du
+joueur. Les deux branches de l'infirmiere de Map003 (evenement 30) terminent ainsi
+leur dialogue et enregistrent le point de reprise sans executer de Ruby.
+
+Cinquieme noyau valide le 2026-09-28 : le package `player-state` definit une
+sauvegarde d'equipe versionnee de zero a six Pokemon, sans inventer de starter
+avant le choix narratif. Chaque membre conserve identite, espece, niveau,
+experience, statistiques, PV, statut majeur, talent, objet tenu et un a quatre
+slots avec PP courants et maximums. Un adaptateur strict produit le `BattleTeam`
+du moteur puis reinjecte PV, statut, PP et membre actif apres le combat. Les
+fonctions de capacite, talents et objets encore inconnus provoquent un diagnostic
+au lieu d'etre supprimes. L'equipe rejoint la persistance de l'overworld et
+`recover-all` restaure maintenant reellement PV, statuts et PP lorsqu'elle n'est
+plus vide. Le raccordement d'une rencontre reste bloque volontairement tant que
+l'histoire n'a pas attribue le premier Pokemon.
+
+Sixieme noyau valide le 2026-09-28 : les trois socles de `Map002` peuvent
+maintenant attribuer Marisson, Feunnec ou Grenousse au niveau 5 depuis leur appel
+source `pbAddPokemon`, sans equipe de test injectee. Le Pokemon est construit a
+partir des catalogues locaux (statistiques neutres deterministes, premier talent
+et quatre dernieres capacites apprises au niveau courant), puis conserve dans la
+sauvegarde personnelle. La suite du meme evenement active le compagnon, les
+interrupteurs et la variable narrative d'origine, evalue la direction du joueur
+pour la mise en scene, puis place la rencontre obligatoire contre Keunotor niveau
+2 dans l'etat persistant. Un raccourci **Tester les starters** charge `Map002` devant le
+socle de Marisson quand aucune equipe n'existe. La rencontre est encore mise en
+attente : son ouverture dans le moteur de combat et son retour vers l'overworld
+constituent le prochain raccordement.
 
 L'import du monde ne sera jamais une bascule unique. Chaque lot de cartes devra avoir un taux de commandes supportees mesurable et des tests de parcours.
 

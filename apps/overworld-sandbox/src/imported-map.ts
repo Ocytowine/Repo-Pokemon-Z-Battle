@@ -1,4 +1,6 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
+import { EMPTY_SOURCE_EVENT_STATE, selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
+import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -56,10 +58,10 @@ interface ImportedTileset {
 interface TilesetFile { readonly records: readonly ImportedTileset[] }
 
 export interface ImportedEventPage {
-  readonly condition: { readonly switch1Id: number | null; readonly switch2Id: number | null; readonly variable: unknown | null; readonly selfSwitch: string | null };
+  readonly condition: { readonly switch1Id: number | null; readonly switch2Id: number | null; readonly variable: { readonly id: number; readonly minimum: number } | null; readonly selfSwitch: string | null };
   readonly graphic: { readonly tileId: number; readonly characterName: string; readonly direction: number; readonly pattern: number; readonly opacity: number };
   readonly settings: { readonly through: boolean; readonly alwaysOnTop: boolean; readonly trigger: number };
-  readonly commands: readonly { readonly kind: string; readonly text: string | null }[];
+  readonly commands: readonly { readonly kind: string; readonly text: string | null; readonly indent: number; readonly data: Readonly<Record<string, unknown>> }[];
 }
 
 export interface ImportedMapEvent extends GridPoint {
@@ -77,6 +79,8 @@ export interface ImportedMapAssets {
   readonly characterImages: ReadonlyMap<string, HTMLImageElement>;
   readonly playerImage: HTMLImageElement;
   readonly mapTranslations: ReadonlyMap<string, string>;
+  readonly itemNames: ReadonlyMap<string, string>;
+  readonly battleCatalog: PlayerCreationCatalog;
 }
 
 export interface ImportedAvatar extends GridPoint { readonly direction: Direction }
@@ -137,34 +141,44 @@ export function selectDefaultEventPage(event: ImportedMapEvent): ImportedEventPa
 }
 
 export function selectDefaultEventPageWithIndex(event: ImportedMapEvent): { readonly page: ImportedEventPage; readonly pageIndex: number } | null {
-  for (let index = event.pages.length - 1; index >= 0; index -= 1) {
-    const page = event.pages[index];
-    if (page !== undefined && page.condition.switch1Id === null && page.condition.switch2Id === null
-      && page.condition.variable === null && page.condition.selfSwitch === null) return { page, pageIndex: index };
-  }
-  return null;
+  return selectActiveEventPage(event, 0, EMPTY_SOURCE_EVENT_STATE);
 }
 
-export function blockingDefaultEventPoints(events: readonly ImportedMapEvent[]): GridPoint[] {
+export function selectEventPage(event: ImportedMapEvent, mapId: number, state: SourceEventState): ImportedEventPage | null {
+  return selectActiveEventPage(event, mapId, state)?.page ?? null;
+}
+
+export function eventFootprint(event: ImportedMapEvent): GridPoint[] {
+  const match = /size\((\d+),(\d+)\)/iu.exec(event.name);
+  const width = match === null ? 1 : Number(match[1]);
+  const height = match === null ? 1 : Number(match[2]);
+  const points: GridPoint[] = [];
+  for (let y = event.y - height + 1; y <= event.y; y += 1) {
+    for (let x = event.x; x < event.x + width; x += 1) points.push({ x, y });
+  }
+  return points;
+}
+
+export function blockingDefaultEventPoints(events: readonly ImportedMapEvent[], mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): GridPoint[] {
   return events.flatMap((event) => {
-    const page = selectDefaultEventPage(event);
+    const page = selectEventPage(event, mapId, state);
     const visible = page !== null && (page.graphic.characterName !== "" || page.graphic.tileId > 0);
-    return visible && !page.settings.through ? [{ x: event.x, y: event.y }] : [];
+    return visible && !page.settings.through ? eventFootprint(event) : [];
   });
 }
 
 export interface ActiveMapEvent { readonly event: ImportedMapEvent; readonly page: ImportedEventPage; readonly pageIndex: number }
 
-export function activeEventAt(events: readonly ImportedMapEvent[], x: number, y: number): ActiveMapEvent | null {
-  const event = events.find((candidate) => candidate.x === x && candidate.y === y);
+export function activeEventAt(events: readonly ImportedMapEvent[], x: number, y: number, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
+  const event = events.find((candidate) => eventFootprint(candidate).some((point) => point.x === x && point.y === y));
   if (event === undefined) return null;
-  const selection = selectDefaultEventPageWithIndex(event);
+  const selection = selectActiveEventPage(event, mapId, state);
   return selection === null ? null : { event, ...selection };
 }
 
-export function eventInFront(events: readonly ImportedMapEvent[], avatar: ImportedAvatar): ActiveMapEvent | null {
+export function eventInFront(events: readonly ImportedMapEvent[], avatar: ImportedAvatar, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
   const delta = DELTAS[avatar.direction];
-  return activeEventAt(events, avatar.x + delta.x, avatar.y + delta.y);
+  return activeEventAt(events, avatar.x + delta.x, avatar.y + delta.y, mapId, state);
 }
 
 export function transferForEvent(map: ImportedMap, activeEvent: ActiveMapEvent): ImportedTransfer | null {
@@ -178,6 +192,10 @@ function readableDialogueText(text: string): string {
 
 function dialogueKey(text: string): string {
   return text.replaceAll(/\s+/gu, " ").trim();
+}
+
+export function localizedDialogueText(text: string, translations: ReadonlyMap<string, string> = new Map()): string {
+  return readableDialogueText(translations.get(dialogueKey(text)) ?? text);
 }
 
 export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap<string, string> = new Map()): string[] {
@@ -203,7 +221,7 @@ export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap
       const translated = translations.get(combined);
       if (translated !== undefined) { value = translated; consumed = length; break; }
     }
-    const readable = readableDialogueText(value);
+    const readable = localizedDialogueText(value);
     if (readable !== "") lines.push(readable);
     index += consumed;
   }
@@ -225,17 +243,21 @@ function parseMapEvents(value: unknown): ImportedMapEvent[] {
         || typeof page.settings.alwaysOnTop !== "boolean" || !Number.isInteger(page.settings.trigger)) throw new Error("Une page d'evenement est invalide.");
       const nullableNumber = (candidate: unknown): number | null => candidate === null ? null
         : Number.isInteger(candidate) ? candidate as number : (() => { throw new Error("Une condition d'evenement est invalide."); })();
-      if (page.condition.variable !== null && !isRecord(page.condition.variable)) throw new Error("Une variable d'evenement est invalide.");
+      if (page.condition.variable !== null && (!isRecord(page.condition.variable) || !Number.isInteger(page.condition.variable.id)
+        || !Number.isInteger(page.condition.variable.minimum))) throw new Error("Une variable d'evenement est invalide.");
       if (page.condition.selfSwitch !== null && typeof page.condition.selfSwitch !== "string") throw new Error("Un self switch est invalide.");
       return {
         condition: { switch1Id: nullableNumber(page.condition.switch1Id), switch2Id: nullableNumber(page.condition.switch2Id),
-          variable: page.condition.variable, selfSwitch: page.condition.selfSwitch },
+          variable: page.condition.variable as { readonly id: number; readonly minimum: number } | null, selfSwitch: page.condition.selfSwitch },
         graphic: { tileId: page.graphic.tileId as number, characterName: page.graphic.characterName,
           direction: page.graphic.direction as number, pattern: page.graphic.pattern as number, opacity: page.graphic.opacity as number },
         settings: { through: page.settings.through, alwaysOnTop: page.settings.alwaysOnTop, trigger: page.settings.trigger as number },
         commands: page.commands.map((command) => {
-          if (!isRecord(command) || typeof command.kind !== "string" || !isRecord(command.data)) throw new Error("Une commande d'evenement est invalide.");
-          return { kind: command.kind, text: typeof command.data.text === "string" ? command.data.text : null };
+          if (!isRecord(command) || typeof command.kind !== "string" || !Number.isInteger(command.indent) || !isRecord(command.data)) {
+            throw new Error("Une commande d'evenement est invalide.");
+          }
+          return { kind: command.kind, text: typeof command.data.text === "string" ? command.data.text : null,
+            indent: command.indent as number, data: { ...command.data } };
         }),
       };
     });
@@ -255,6 +277,79 @@ export function parseMapTranslations(value: unknown, mapId: number): ReadonlyMap
     if (entry.context === String(mapId)) translations.set(dialogueKey(entry.key), entry.value);
   }
   return translations;
+}
+
+function parseItemNames(itemsValue: unknown, localizationValue: unknown): ReadonlyMap<string, string> {
+  if (!isRecord(itemsValue) || !Array.isArray(itemsValue.records) || !isRecord(localizationValue)
+    || !isRecord(localizationValue.categories) || !Array.isArray(localizationValue.categories.itemNames)) {
+    throw new Error("Le catalogue de noms d'objets est invalide.");
+  }
+  const translatedById = new Map<number, string>();
+  for (const entry of localizationValue.categories.itemNames) {
+    if (!isRecord(entry) || typeof entry.key !== "string" || typeof entry.value !== "string") continue;
+    const id = Number(entry.key);
+    if (Number.isInteger(id) && id >= 0 && entry.value !== "") translatedById.set(id, entry.value);
+  }
+  const result = new Map<string, string>();
+  for (const entry of itemsValue.records) {
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string") continue;
+    result.set(entry.internalName, translatedById.get(entry.id as number) ?? entry.name);
+  }
+  return result;
+}
+
+function localizedNames(localizationValue: unknown, category: string): ReadonlyMap<number, string> {
+  if (!isRecord(localizationValue) || !isRecord(localizationValue.categories)) return new Map();
+  const entries = localizationValue.categories[category];
+  if (!Array.isArray(entries)) return new Map();
+  const names = new Map<number, string>();
+  for (const entry of entries) {
+    if (!isRecord(entry) || typeof entry.key !== "string" || typeof entry.value !== "string") continue;
+    const id = Number(entry.key);
+    if (Number.isInteger(id) && entry.value !== "") names.set(id, entry.value);
+  }
+  return names;
+}
+
+function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localizationValue: unknown): PlayerCreationCatalog {
+  if (!isRecord(pokemonValue) || !Array.isArray(pokemonValue.records) || !isRecord(movesValue) || !Array.isArray(movesValue.records)) {
+    throw new Error("Les catalogues Pokémon et capacités sont invalides.");
+  }
+  const pokemonNames = localizedNames(localizationValue, "pokemonNames");
+  const moveNames = localizedNames(localizationValue, "moveNames");
+  const pokemon = pokemonValue.records.map((entry) => {
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string" || !Array.isArray(entry.types)
+      || !entry.types.every((type) => typeof type === "string") || !isRecord(entry.baseStats) || !Array.isArray(entry.abilities)
+      || !entry.abilities.every((ability) => typeof ability === "string") || !Array.isArray(entry.levelUpMoves)) {
+      throw new Error("Une définition de Pokémon est invalide.");
+    }
+    const baseStats = entry.baseStats;
+    const stat = (name: string): number => {
+      const value = baseStats[name];
+      if (!Number.isInteger(value) || (value as number) < 1) throw new Error("Une statistique de base est invalide.");
+      return value as number;
+    };
+    const levelUpMoves = entry.levelUpMoves.map((move) => {
+      if (!isRecord(move) || !Number.isInteger(move.level) || typeof move.move !== "string") throw new Error("Une capacité de niveau est invalide.");
+      return { level: move.level as number, move: move.move };
+    });
+    return { internalName: entry.internalName, name: pokemonNames.get(entry.id as number) ?? entry.name, types: entry.types as string[],
+      baseStats: { hp: stat("hp"), attack: stat("attack"), defense: stat("defense"), speed: stat("speed"),
+        specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
+      abilities: entry.abilities as string[], levelUpMoves };
+  });
+  const moves = movesValue.records.map((entry) => {
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string"
+      || typeof entry.functionCode !== "string" || !Number.isInteger(entry.power) || typeof entry.type !== "string"
+      || !["Physical", "Special", "Status"].includes(String(entry.category)) || !Number.isInteger(entry.accuracy)
+      || !Number.isInteger(entry.pp) || !Number.isInteger(entry.priority) || !Number.isInteger(entry.effectChance)) {
+      throw new Error("Une définition de capacité est invalide.");
+    }
+    return { id: entry.id as number, internalName: entry.internalName, name: moveNames.get(entry.id as number) ?? entry.name, functionCode: entry.functionCode,
+      power: entry.power as number, type: entry.type, category: entry.category as "Physical" | "Special" | "Status",
+      accuracy: entry.accuracy as number, pp: entry.pp as number, priority: entry.priority as number, effectChance: entry.effectChance as number };
+  });
+  return { pokemon, moves };
 }
 
 const jsonCache = new Map<string, Promise<unknown>>();
@@ -292,24 +387,27 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue] = await Promise.all([
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
-    fetchJson("/__pokemon-z/data/localization.json"),
+    fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
+    fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/moves.json"),
   ]);
   const map = parseImportedMap(mapValue);
   const tilesets = parseTilesets(tilesetValue);
   const events = parseMapEvents(eventValue);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
+  const itemNames = parseItemNames(itemsValue, localizationValue);
+  const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
-  const characterNames = [...new Set(events.map(selectDefaultEventPage).map((page) => page?.graphic.characterName ?? "").filter((name) => name !== ""))];
+  const characterNames = [...new Set(events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""))];
   const [tilesetImage, playerImage, autotileImages, characters] = await Promise.all([
     loadImage(sourceImageUrl("Tilesets", tileset.tilesetName)), loadImage(sourceImageUrl("Characters", "trchar000")),
     Promise.all(tileset.autotileNames.map((name) => name === "" ? Promise.resolve(null) : loadImage(sourceImageUrl("Autotiles", name)))),
     Promise.all(characterNames.map((name) => loadImage(sourceImageUrl("Characters", name)))),
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
-    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations };
+    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations, itemNames, battleCatalog };
 }
 
 export function loadImportedMap003(): Promise<ImportedMapAssets> {
@@ -388,7 +486,7 @@ function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElemen
 }
 
 export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, assets: ImportedMapAssets,
-  avatar: ImportedAvatar, playerPattern: number, now: number): void {
+  avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): void {
   const map = assets.map;
   const cameraX = Math.max(0, Math.min(map.width * 32 - canvas.width, avatar.x * 32 + 16 - canvas.width / 2));
   const cameraY = Math.max(0, Math.min(map.height * 32 - canvas.height, avatar.y * 32 + 16 - canvas.height / 2));
@@ -405,15 +503,24 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       drawTile(context, assets, layer[y * map.width + x] ?? 0, x * 32 - cameraX, y * 32 - cameraY, frame);
     }
   }
+  const drawnTransferEvents = new Set<number>();
   for (const transfer of map.transfers) {
-    const x = transfer.eventX * 32 - cameraX;
-    const y = transfer.eventY * 32 - cameraY;
-    if (x > -32 && y > -32 && x < canvas.width && y < canvas.height) {
-      context.strokeStyle = "#ffe278"; context.lineWidth = 2; context.strokeRect(x + 8, y + 8, 16, 16);
+    if (drawnTransferEvents.has(transfer.eventId)) continue;
+    const event = assets.events.find((candidate) => candidate.id === transfer.eventId);
+    const selection = event === undefined ? null : selectActiveEventPage(event, map.id, state);
+    if (event === undefined || selection === null || selection.pageIndex !== transfer.pageIndex) continue;
+    drawnTransferEvents.add(transfer.eventId);
+    for (const point of eventFootprint(event)) {
+      const x = point.x * 32 - cameraX;
+      const y = point.y * 32 - cameraY;
+      if (x > -32 && y > -32 && x < canvas.width && y < canvas.height) {
+        context.fillStyle = "#ffe27822"; context.fillRect(x + 3, y + 3, 26, 26);
+        context.strokeStyle = "#ffe278"; context.lineWidth = 2; context.strokeRect(x + 4, y + 4, 24, 24);
+      }
     }
   }
   const eventEntries = assets.events.flatMap((event) => {
-    const page = selectDefaultEventPage(event);
+    const page = selectEventPage(event, map.id, state);
     return page === null || (page.graphic.characterName === "" && page.graphic.tileId === 0) ? [] : [{ event, page }];
   });
   const normalEntries = eventEntries.filter(({ page }) => !page.settings.alwaysOnTop);

@@ -1,0 +1,17 @@
+{
+  "name": "@pokemon-z-battle/player-state",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Versioned persistent player party state and battle-engine adapter.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@pokemon-z-battle/battle-engine": "workspace:*",
+    "@pokemon-z-battle/game-data": "workspace:*"
+  }
+}

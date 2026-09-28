@@ -78,7 +78,8 @@ function applyStatChange(
   const target = effect.target === "self" ? source : opponent;
   const battler = battlers[target];
   const current = battler.stages[effect.stat];
-  const stage = Math.max(-6, Math.min(6, current + effect.delta));
+  const delta = battler.ability === "SIMPLE" ? effect.delta * 2 : effect.delta;
+  const stage = Math.max(-6, Math.min(6, current + delta));
   if (stage === current) {
     events.push({ type: "statStageChangeFailed", source, target, stat: effect.stat, reason: "limit" });
     return;

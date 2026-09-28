@@ -1,11 +1,17 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, moveImportedAvatar, selectDefaultEventPage, transferForEvent, type ImportedAvatar, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { buildWebSocketUrl, normalizeServerUrl, parseServerMessage, parseStoredSession, parseTicket, reconnectDelay, type MultiplayerTicket, type StoredOverworldSession } from "./multiplayer-client.js";
+import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
+import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
+import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
+import { SeededRandom, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { applyAutomaticReplacements, createSourceEncounterBattle, resolveSourceEncounterTurn, settleSourceEncounter } from "./source-encounter.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v6";
+const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
 const catalog = DEMO_WORLD_CATALOG;
 
@@ -17,8 +23,25 @@ let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
 let importedPlayerPattern = 0;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let importedAnimationFrame: number | null = null;
-let sourceDialogue: { readonly label: string; readonly lines: readonly string[]; index: number } | null = null;
+let sourceEventState = loadSourceEventState();
+interface SourceDialogueSession {
+  readonly label: string;
+  readonly mapId: number;
+  readonly eventId: number;
+  readonly page: ImportedEventPage;
+  readonly translations: ReadonlyMap<string, string>;
+  readonly selections: number[];
+  lines: readonly string[];
+  index: number;
+  shownLines: number;
+  flow: EventFlowResult;
+  choosing: boolean;
+}
+
+let sourceDialogue: SourceDialogueSession | null = null;
 let sourceTransitionInProgress = false;
+let sourceBattle: TeamBattleState | null = null;
+let sourceBattleRng: SeededRandom | null = null;
 type AvatarId = "player" | "opponent";
 
 interface NetworkSession {
@@ -41,14 +64,50 @@ function initialState(): OverworldState {
   return createDemoWorldState();
 }
 
+function loadSourceEventState(): SourceEventState {
+  try {
+    const stored = localStorage.getItem(SOURCE_EVENT_STATE_KEY);
+    return stored === null ? createSourceEventState() : parseSourceEventState(JSON.parse(stored) as unknown);
+  } catch {
+    localStorage.removeItem(SOURCE_EVENT_STATE_KEY);
+    return createSourceEventState();
+  }
+}
+
+function persistSourceEventState(): void {
+  localStorage.setItem(SOURCE_EVENT_STATE_KEY, JSON.stringify(sourceEventState));
+}
+
+function encounterSeed(species: string, level: number): number {
+  let seed = 0x5eed0000 ^ level;
+  for (const character of species) seed = Math.imul(seed ^ character.codePointAt(0)!, 16_777_619);
+  return seed >>> 0;
+}
+
+function startPendingSourceEncounter(): void {
+  const encounter = sourceEventState.pendingEncounter;
+  if (encounter === null || importedAssets === null || sourceBattle !== null) return;
+  try {
+    sourceBattle = createSourceEncounterBattle(sourceEventState.party, encounter, importedAssets.battleCatalog,
+      `wild-${encounter.species.toLowerCase()}`);
+    sourceBattleRng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
+    importedNotice = `Combat lancé contre ${encounter.species} niveau ${encounter.level}.`;
+  } catch (error) {
+    sourceBattle = null;
+    sourceBattleRng = null;
+    importedNotice = error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.";
+  }
+  render();
+}
+
 const root = document.querySelector<HTMLDivElement>("#app");
 if (root === null) throw new Error("Application root is missing.");
 root.innerHTML = `
-  <header><div><p class="eyebrow">Phase 9.4 · première carte source</p><h1>Overworld <span>Sandbox</span></h1></div><p>Le prototype coop reste disponible ; Bourg Canvas peut maintenant être parcourue avec ses graphismes et collisions importés.</p></header>
+  <header><div><p class="eyebrow">Phase 9.5 · état des événements</p><h1>Overworld <span>Sandbox</span></h1></div><p>Le prototype coop reste disponible ; les pages simples du monde source conservent maintenant leurs interrupteurs et variables.</p></header>
   <main>
     <section class="world-panel">
-      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
-      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><small>Espace/Entrée pour continuer · Échap pour fermer</small></div></div>
+      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
+      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div></div>
       <p id="map-legend" class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
     </section>
     <aside>
@@ -173,31 +232,48 @@ function animateImportedMap(now: number): void {
     importedAnimationFrame = null;
     return;
   }
-  drawImportedMap(context, canvas, importedAssets, importedAvatar, importedPlayerPattern, now);
+  drawImportedMap(context, canvas, importedAssets, importedAvatar, importedPlayerPattern, now, sourceEventState);
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
 
 function renderImportedView(): void {
   if (importedAssets === null) return;
+  const assets = importedAssets;
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
   const name = document.querySelector<HTMLElement>("#map-name"); if (name !== null) name.textContent = `${importedAssets.map.name} · Map${String(importedAssets.map.id).padStart(3, "0")}`;
   const tick = document.querySelector<HTMLElement>("#tick"); if (tick !== null) tick.textContent = `${importedAvatar.x},${importedAvatar.y}`;
   const progress = document.querySelector<HTMLElement>("#progress");
-  const visibleEvents = importedAssets.events.filter((event) => {
-    const page = selectDefaultEventPage(event);
+  const visibleEvents = assets.events.filter((event) => {
+    const page = selectEventPage(event, assets.map.id, sourceEventState);
     return page !== null && (page.graphic.characterName !== "" || page.graphic.tileId > 0);
   }).length;
-  if (progress !== null) progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · 3 couches</p><p><strong>Personnages</strong> joueur animé · ${visibleEvents} événements visibles</p><p><strong>Langue</strong> ${importedAssets.mapTranslations.size} traductions françaises</p><p><strong>Collision</strong> terrain et événements visibles</p><p><strong>Sorties</strong> ${importedAssets.map.transfers.length} repérées, non exécutées</p>`;
+  const inventory = Object.entries(sourceEventState.inventory).map(([itemId, quantity]) => `${assets.itemNames.get(itemId) ?? itemId} ×${quantity}`).join(", ") || "vide";
+  const checkpoint = sourceEventState.checkpoint;
+  const checkpointLabel = checkpoint === null ? "Bourg Canvas · 28,15" : `Map${String(checkpoint.mapId).padStart(3, "0")} · ${checkpoint.x},${checkpoint.y}`;
+  const speciesName = (species: string): string => assets.battleCatalog.pokemon.find((entry) => entry.internalName === species)?.name ?? species;
+  const party = sourceEventState.party.members.length === 0 ? "vide (starter non choisi)"
+    : sourceEventState.party.members.map((member) => `${member.nickname ?? speciesName(member.species)} N.${member.level} · ${member.hp}/${member.stats.maxHp} PV`).join(", ");
+  const pendingEncounter = sourceEventState.pendingEncounter;
+  if (progress !== null) {
+    const encounterLabel = pendingEncounter === null ? "aucune" : sourceBattle === null
+      ? `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en attente <button id="start-source-encounter">Lancer</button>`
+      : `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en cours`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p>`;
+    progress.querySelector<HTMLButtonElement>("#start-source-encounter")?.addEventListener("click", startPendingSourceEncounter);
+  }
   const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
   const legend = document.querySelector<HTMLElement>("#map-legend"); if (legend !== null) legend.innerHTML = `<span class="source"></span>Graphismes locaux originaux <span class="door"></span>Origine d'un transfert`;
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
-  const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) reset.disabled = false;
+  const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
+    reset.disabled = false;
+    reset.textContent = sourceEventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
+  }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
   const join = document.querySelector<HTMLButtonElement>("#join-room"); if (join !== null) join.disabled = true;
-  const guide = document.querySelector<HTMLElement>("#coop-guide"); if (guide !== null) guide.innerHTML = `<article><span>9.4</span><strong>Premier parcours source</strong><small>Flèches/ZQSD · Espace pour dialoguer</small></article><article><span>ACTIF</span><strong>Portes directes</strong><small>Les bâtiments reliés sont chargés à la demande.</small></article><article><span>LIMITÉ</span><strong>Commandes filtrées</strong><small>Les textes fonctionnent ; scripts et sorties mult cases restent inactifs.</small></article>`;
-  const guidePhase = document.querySelector<HTMLElement>("#guide-phase"); if (guidePhase !== null) guidePhase.textContent = "Phase 9.4";
-  const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "Parcours source";
+  const guide = document.querySelector<HTMLElement>("#coop-guide"); if (guide !== null) guide.innerHTML = `<article><span>9.5</span><strong>Choix et conditions</strong><small>Les branches imbriquées suivent la réponse et l'état courant.</small></article><article><span>REPRISE</span><strong>Point de soin</strong><small>L'infirmière mémorise la carte et la position de retour.</small></article><article><span>SÉCURISÉ</span><strong>Scripts filtrés</strong><small>Le Ruby non porté et les combats interrompent l'événement sans modifier l'histoire.</small></article>`;
+  const guidePhase = document.querySelector<HTMLElement>("#guide-phase"); if (guidePhase !== null) guidePhase.textContent = "Phase 9.5";
+  const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "État des événements";
   const encounter = document.querySelector<HTMLElement>("#encounter-panel"); if (encounter !== null) encounter.hidden = true;
   renderSourceDialogue();
 }
@@ -208,9 +284,80 @@ function renderSourceDialogue(): void {
   panel.hidden = sourceDialogue === null || viewedMapId !== SOURCE_MAP_ID;
   if (sourceDialogue === null || viewedMapId !== SOURCE_MAP_ID) return;
   const label = panel.querySelector<HTMLElement>("strong"); if (label !== null) label.textContent = sourceDialogue.label;
-  const text = panel.querySelector<HTMLElement>("p"); if (text !== null) text.textContent = sourceDialogue.lines[sourceDialogue.index] ?? "";
-  const hint = panel.querySelector<HTMLElement>("small"); if (hint !== null) hint.textContent = sourceDialogue.index + 1 < sourceDialogue.lines.length
-    ? `Espace/Entrée · ${sourceDialogue.index + 1}/${sourceDialogue.lines.length}` : "Espace/Entrée pour fermer";
+  const text = panel.querySelector<HTMLElement>("p"); if (text !== null) {
+    text.hidden = sourceDialogue.choosing;
+    text.textContent = sourceDialogue.lines[sourceDialogue.index] ?? "";
+  }
+  const choices = panel.querySelector<HTMLElement>(".source-choices");
+  const pending = sourceDialogue.flow.pendingChoice;
+  if (choices !== null) {
+    choices.hidden = !sourceDialogue.choosing || pending === null;
+    choices.innerHTML = !sourceDialogue.choosing || pending === null ? "" : pending.choices.map((choice, index) =>
+      `<button type="button" data-source-choice="${index}"><span>${index + 1}</span>${localizedDialogueText(choice, sourceDialogue?.translations)}</button>`).join("");
+    choices.querySelectorAll<HTMLButtonElement>("[data-source-choice]").forEach((button) => button.addEventListener("click", () => {
+      const index = Number(button.dataset.sourceChoice);
+      if (Number.isInteger(index)) chooseSourceOption(index);
+    }));
+  }
+  const hint = panel.querySelector<HTMLElement>("small"); if (hint !== null) hint.textContent = sourceDialogue.choosing
+    ? "Choisissez une réponse · Échap pour annuler"
+    : sourceDialogue.index + 1 < sourceDialogue.lines.length
+      ? `Espace/Entrée · ${sourceDialogue.index + 1}/${sourceDialogue.lines.length}` : "Espace/Entrée pour continuer";
+}
+
+function finishSourceEvent(completed: SourceDialogueSession): void {
+  sourceDialogue = null;
+  if (!completed.flow.complete) {
+    importedNotice = `Événement interrompu ; état inchangé (${completed.flow.blockedReason ?? "branche incomplète"}).`;
+    return;
+  }
+  const result = applySafeStateCommands(sourceEventState, completed.flow.page, completed.mapId, completed.eventId,
+    { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
+      createPokemon: (species, level) => {
+        if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
+        return createPersistentPokemon(crypto.randomUUID(), species, level, importedAssets.battleCatalog);
+      } });
+  if (!result.safe) {
+    importedNotice = `Dialogue terminé ; état inchangé (${result.reason ?? "commande non prise en charge"}).`;
+    return;
+  }
+  const encounterQueued = sourceEventState.pendingEncounter === null && result.state.pendingEncounter !== null;
+  sourceEventState = result.state;
+  if (result.appliedCommands > 0) {
+    persistSourceEventState();
+    importedNotice = `Dialogue terminé ; ${result.appliedCommands} commande(s) d'état appliquée(s) et mémorisée(s).`;
+  } else importedNotice = "Dialogue terminé.";
+  if (encounterQueued) startPendingSourceEncounter();
+}
+
+function refreshSourceEvent(session: SourceDialogueSession): void {
+  session.flow = resolveEventFlow(session.page, session.selections, sourceEventState, session.mapId, session.eventId,
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+  const allLines = dialogueLines(session.flow.page, session.translations);
+  session.lines = allLines.slice(session.shownLines);
+  session.index = 0;
+  session.choosing = session.lines.length === 0 && session.flow.pendingChoice !== null;
+  if (session.lines.length === 0 && !session.choosing) finishSourceEvent(session);
+}
+
+function chooseSourceOption(index: number): void {
+  const session = sourceDialogue;
+  const pending = session?.flow.pendingChoice;
+  if (session === null || session === undefined || !session.choosing || pending === null || pending === undefined
+    || index < 0 || index >= pending.choices.length) return;
+  session.selections.push(index);
+  refreshSourceEvent(session);
+  renderImportedView();
+}
+
+function beginSourceEvent(page: ImportedEventPage, mapId: number, eventId: number, label: string,
+  translations: ReadonlyMap<string, string>): void {
+  const flow = resolveEventFlow(page, [], sourceEventState, mapId, eventId,
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+  const session: SourceDialogueSession = { label, mapId, eventId, page, translations, selections: [], lines: [], index: 0,
+    shownLines: 0, flow, choosing: false };
+  sourceDialogue = session;
+  refreshSourceEvent(session);
 }
 
 function importedDirection(direction: number, fallback: Direction): Direction {
@@ -220,6 +367,15 @@ function importedDirection(direction: number, fallback: Direction): Direction {
     case 6: return "right";
     case 8: return "up";
     default: return fallback;
+  }
+}
+
+function sourceDirectionNumber(direction: Direction): number {
+  switch (direction) {
+    case "down": return 2;
+    case "left": return 4;
+    case "right": return 6;
+    case "up": return 8;
   }
 }
 
@@ -244,21 +400,49 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
 }
 
 async function resetSourceWorld(): Promise<void> {
-  if (sourceTransitionInProgress) return;
+  if (sourceTransitionInProgress || sourceBattle !== null) return;
   sourceTransitionInProgress = true;
   sourceDialogue = null;
-  importedNotice = "Retour à Bourg Canvas…";
+  const checkpoint = sourceEventState.checkpoint;
+  importedNotice = checkpoint === null ? "Retour à Bourg Canvas…" : `Retour au point de reprise Map${String(checkpoint.mapId).padStart(3, "0")}…`;
   renderImportedView();
   try {
-    importedAssets = await loadImportedMap003();
-    importedAvatar = { x: 28, y: 15, direction: "up" };
+    importedAssets = checkpoint === null ? await loadImportedMap003() : await loadImportedMap(checkpoint.mapId);
+    importedAvatar = checkpoint === null ? { x: 28, y: 15, direction: "up" }
+      : { x: checkpoint.x, y: checkpoint.y, direction: checkpoint.direction };
     importedPlayerPattern = 0;
-    importedNotice = "Position de test restaurée en 28,15, face à un événement dialogué.";
+    importedNotice = checkpoint === null ? "Position de test restaurée en 28,15, face à un événement dialogué."
+      : `Point de reprise restauré dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
   } catch (error) {
     importedNotice = error instanceof Error ? error.message : "Réinitialisation impossible.";
   } finally {
     sourceTransitionInProgress = false;
     renderImportedView();
+  }
+}
+
+async function openStarterTest(): Promise<void> {
+  if (sourceTransitionInProgress || network !== null || sourceBattle !== null) return;
+  sourceTransitionInProgress = true;
+  sourceDialogue = null;
+  importedNotice = "Chargement de la salle de sélection des starters…";
+  try {
+    if (sourceEventState.party.members.length === 0) {
+      sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
+      persistSourceEventState();
+    }
+    importedAssets = await loadImportedMap(2);
+    importedAvatar = { x: 52, y: 22, direction: "up" };
+    importedPlayerPattern = 0;
+    viewedMapId = SOURCE_MAP_ID;
+    importedNotice = sourceEventState.party.members.length === 0
+      ? "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins."
+      : "Salle des starters chargée avec l'équipe déjà persistée.";
+  } catch (error) {
+    importedNotice = error instanceof Error ? `Salle des starters inaccessible : ${error.message}` : "Salle des starters inaccessible.";
+  } finally {
+    sourceTransitionInProgress = false;
+    render();
   }
 }
 
@@ -290,7 +474,10 @@ function render(): void {
     const disabled = network !== null && controller.dataset.controller !== network.ticket.side;
     controller.classList.toggle("disabled", disabled);
   });
-  const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) reset.disabled = network !== null;
+  const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
+    reset.disabled = network !== null;
+    reset.textContent = "Réinitialiser le monde";
+  }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = network !== null;
   const join = document.querySelector<HTMLButtonElement>("#join-room"); if (join !== null) join.disabled = network !== null;
   const guide = document.querySelector<HTMLElement>("#coop-guide");
@@ -309,11 +496,12 @@ function render(): void {
 
 function renderEncounter(): void {
   const panel = document.querySelector<HTMLElement>("#encounter-panel");
-  const battle = network?.snapshot?.battle ?? null;
+  const networkBattle = network?.snapshot?.battle ?? null;
+  const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : networkBattle?.state ?? null;
   if (panel === null) return;
-  panel.hidden = battle === null;
-  if (battle === null) return;
-  const battleState = battle.state;
+  panel.hidden = battleState === null;
+  if (battleState === null) return;
+  const localSourceBattle = battleState === sourceBattle;
   const playerTeam = battleState.teams.player;
   const opponentTeam = battleState.teams.opponent;
   const player = playerTeam.members[playerTeam.activeIndex];
@@ -322,32 +510,65 @@ function renderEncounter(): void {
   const title = document.querySelector<HTMLElement>("#encounter-title"); if (title !== null) title.textContent = `${player.name} contre ${opponent.name}`;
   const turn = document.querySelector<HTMLElement>("#encounter-turn"); if (turn !== null) turn.textContent = `Tour ${battleState.turn}`;
   const summary = document.querySelector<HTMLElement>("#encounter-summary");
-  if (summary !== null) summary.textContent = `${player.hp}/${player.stats.maxHp} PV · ${opponent.hp}/${opponent.stats.maxHp} PV${network?.ticket.side === "opponent" ? " · observation" : ""}`;
+  if (summary !== null) summary.textContent = `${player.hp}/${player.stats.maxHp} PV · ${opponent.hp}/${opponent.stats.maxHp} PV${!localSourceBattle && network?.ticket.side === "opponent" ? " · observation" : ""}`;
   const actions = document.querySelector<HTMLElement>("#encounter-actions");
   if (actions !== null) {
-    actions.innerHTML = player.moves.map((slot, index) => `<button data-encounter-move="${index}" ${network?.ticket.side !== "player" || network.submittedTurn === battleState.turn ? "disabled" : ""}>${slot.move.name}<small>${slot.pp} PP</small></button>`).join("");
+    actions.innerHTML = player.moves.map((slot, index) => {
+      const disabled = slot.pp <= 0 || (!localSourceBattle && (network?.ticket.side !== "player" || network.submittedTurn === battleState.turn));
+      return `<button data-encounter-move="${index}" ${disabled ? "disabled" : ""}>${slot.move.name}<small>${slot.pp} PP</small></button>`;
+    }).join("");
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-move]").forEach((button) => button.addEventListener("click", () => {
       const moveIndex = Number(button.dataset.encounterMove);
-      if (Number.isInteger(moveIndex)) submitEncounterAction(moveIndex);
+      if (Number.isInteger(moveIndex)) {
+        if (localSourceBattle) submitSourceEncounterAction(moveIndex);
+        else submitEncounterAction(moveIndex);
+      }
     }));
   }
+}
+
+function submitSourceEncounterAction(moveIndex: number): void {
+  if (sourceBattle === null || sourceBattleRng === null) return;
+  try {
+    const result = resolveSourceEncounterTurn(sourceBattle, moveIndex, sourceBattleRng);
+    sourceBattle = applyAutomaticReplacements(result.state);
+    if (sourceBattle.status === "finished") {
+      const winner = sourceBattle.winner;
+      const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle);
+      sourceEventState = { ...sourceEventState, party: settlement.party,
+        pendingEncounter: settlement.completed ? null : sourceEventState.pendingEncounter };
+      persistSourceEventState();
+      sourceBattle = null;
+      sourceBattleRng = null;
+      importedNotice = winner === "player"
+        ? "Victoire : l'état de l'équipe (PV, statuts et PP) a été sauvegardé."
+        : "Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.";
+    } else {
+      const active = sourceBattle.teams.opponent.members[sourceBattle.teams.opponent.activeIndex];
+      importedNotice = `Tour résolu${active === undefined ? "." : ` · ${active.name} possède encore ${active.hp} PV.`}`;
+    }
+  } catch (error) {
+    importedNotice = error instanceof Error ? `Action refusée : ${error.message}` : "Action de combat impossible.";
+  }
+  render();
 }
 
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceDialogue !== null || sourceTransitionInProgress) return;
-    const eventAhead = eventInFront(importedAssets.events, importedAvatar);
+    if (sourceDialogue !== null || sourceTransitionInProgress || sourceBattle !== null) return;
+    const eventAhead = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
     if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
       void followSourceTransfer(transferAhead);
       return;
     }
     const before = importedAvatar;
-    importedAvatar = moveImportedAvatar(importedAssets.map, importedAvatar, direction, blockingDefaultEventPoints(importedAssets.events));
+    importedAvatar = moveImportedAvatar(importedAssets.map, importedAvatar, direction,
+      blockingDefaultEventPoints(importedAssets.events, importedAssets.map.id, sourceEventState));
     if (before.x !== importedAvatar.x || before.y !== importedAvatar.y) {
       importedPlayerPattern = (importedPlayerPattern + 1) % 4;
-      const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y);
+      const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
       const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
       if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
         void followSourceTransfer(enteredTransfer);
@@ -379,24 +600,32 @@ function move(playerId: string, direction: Direction): void {
 
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
+    if (sourceBattle !== null) return;
     if (sourceDialogue !== null) {
+      if (sourceDialogue.choosing) return;
       if (sourceDialogue.index + 1 < sourceDialogue.lines.length) sourceDialogue.index += 1;
-      else sourceDialogue = null;
+      else {
+        sourceDialogue.shownLines += sourceDialogue.lines.length;
+        sourceDialogue.lines = [];
+        sourceDialogue.index = 0;
+        sourceDialogue.choosing = sourceDialogue.flow.pendingChoice !== null;
+        if (!sourceDialogue.choosing) finishSourceEvent(sourceDialogue);
+      }
       renderImportedView();
       return;
     }
     if (importedAssets === null || playerId !== "player") return;
-    const target = eventInFront(importedAssets.events, importedAvatar);
+    const target = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
     if (target !== null && targetTransfer !== null && target.page.settings.trigger === 1) {
       void followSourceTransfer(targetTransfer);
       return;
     }
-    const lines = target === null || target.page.settings.trigger !== 0 ? [] : dialogueLines(target.page, importedAssets.mapTranslations);
-    if (target !== null && target.page.settings.trigger === 0 && lines.length > 0) {
-      sourceDialogue = { label: `Événement ${target.event.id} · ${target.event.name}`, lines, index: 0 };
-      importedNotice = `${lines.length} ligne(s) de dialogue source chargée(s), sans exécuter les autres commandes.`;
-    } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement ne contient aucun dialogue simple exécutable.";
+    if (target !== null && target.page.settings.trigger === 0) {
+      beginSourceEvent(target.page, importedAssets.map.id, target.event.id,
+        `Événement ${target.event.id} · ${target.event.name}`, importedAssets.mapTranslations);
+      if (sourceDialogue !== null) importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
+    } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement n'est pas déclenché par interaction.";
     renderImportedView();
     return;
   }
@@ -554,6 +783,7 @@ function connect(serverUrl: string, ticket: MultiplayerTicket): void {
 }
 
 async function createOrJoin(kind: "create" | "join"): Promise<void> {
+  if (sourceBattle !== null) return;
   try {
     const input = document.querySelector<HTMLInputElement>("#server-url");
     const codeInput = document.querySelector<HTMLInputElement>("#room-code");
@@ -578,6 +808,9 @@ const keys: Readonly<Record<string, readonly [string, Direction]>> = {
 };
 window.addEventListener("keydown", (event) => {
   if (event.code === "Escape" && sourceDialogue !== null) { event.preventDefault(); sourceDialogue = null; renderImportedView(); return; }
+  if (/^Digit[1-9]$/u.test(event.code) && sourceDialogue?.choosing === true) {
+    event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
+  }
   if (event.code === "Enter" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); interact("player"); return; }
   if (event.code === "Space") { event.preventDefault(); interact("player"); return; }
   if (event.code === "KeyO") { event.preventDefault(); interact("opponent"); return; }
@@ -594,10 +827,11 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || (mapId === SOURCE_MAP_ID && (importedAssets === null || network !== null))) return;
+  if (mapId === undefined || sourceBattle !== null || (mapId === SOURCE_MAP_ID && (importedAssets === null || network !== null))) return;
   viewedMapId = mapId;
   render();
 }));
+document.querySelector<HTMLButtonElement>("#starter-test")?.addEventListener("click", () => { void openStarterTest(); });
 document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {
   const input = event.currentTarget as HTMLInputElement;
   input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/gu, "");

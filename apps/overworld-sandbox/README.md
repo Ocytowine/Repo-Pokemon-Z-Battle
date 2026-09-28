@@ -20,16 +20,54 @@ Dans Bourg Canvas, seul le joueur 1 est actif. Son sprite et les personnages vis
 proviennent du jeu source ; leurs cases bloquent le passage. La position initiale
 fait face à un PNJ : appuyez sur **Espace** pour parcourir son dialogue importé.
 Les textes espagnols sont recomposés si nécessaire puis traduits avec la table
-française extraite de `Data/french.dat`. Seuls les dialogues simples et transferts
-directs de la page active sont exécutés. Les contours jaunes signalent leurs
-origines. Les onglets
+française extraite de `Data/french.dat`. Les dialogues et transferts directs de la
+page active sont exécutés. Les conditions simples de page (interrupteurs, variables
+et self-switches) sont évaluées ; leurs mutations sûres sont mémorisées dans le
+navigateur à la fermeture du dialogue. Les choix, y compris imbriqués, affichent
+uniquement la branche sélectionnée. Un script ou une commande de gameplay arrête
+encore volontairement l'événement sans enregistrer d'état partiel. Les contours jaunes
+signalent les origines de transfert. Les onglets
 **Prairie** et **Bosquet** conservent toute la recette coop/multijoueur existante.
 
 Les portes directes sont actives. Depuis la position initiale, avancez de six cases
 vers la droite, d'une case vers le haut, puis encore vers le haut contre la porte :
 le Laboratoire Flare (`Map005`) est chargé avec son propre décor, ses événements et
-ses traductions. Redescendez sur la sortie pour revenir à Bourg Canvas. Les grandes
-sorties nommées `size(...)` ne sont pas encore exécutées.
+ses traductions. Redescendez sur la sortie pour revenir à Bourg Canvas.
+
+Les grandes sorties nommées `size(w,h)` sont également actives lorsque leur page
+est sans condition. Comme dans le script source, l'événement est ancré en bas à
+gauche : la zone s'étend de `x` à `x+w-1` et de `y-h+1` à `y`. Toutes ses cases
+sont désormais encadrées en jaune, au lieu de la seule ancre.
+
+Le PNJ placé directement devant la position initiale permet de tester les choix :
+parcourez son introduction, puis sélectionnez **Oui** ou **Non** avec la souris ou
+les touches numériques. La branche « Non » se termine normalement. La branche
+« Oui » ouvre son second choix, puis s'interrompt proprement si elle atteint le
+script spécifique du défi Monotype, qui n'est pas encore porté.
+
+Le premier lot de gameplay d'inventaire est également actif. Les appels source
+qui donnent, stockent ou retirent un objet sont convertis en actions déclaratives
+personnelles, sans exécuter Ruby. L'inventaire apparaît avec les noms français
+dans le panneau moteur. Par exemple, l'événement 14 de Bourg Canvas en `(46,26)`
+donne une **Baie Oran** puis passe sur sa page de dialogue suivante ; les événements
+21 et 38 donnent respectivement une **Potion** et un **Repoussenlit**.
+
+L'infirmière de Bourg Canvas en `(48,13)` enregistre maintenant un point de reprise
+personnel dès l'interaction. Sa carte, la position et la direction sont conservées
+dans le navigateur. Le bouton devient alors **Revenir au point de reprise**. Les
+deux réponses de son dialogue fonctionnent ; l'intention de soin est reconnue,
+et restaure réellement PV, statut et PP dès que l'équipe contient un Pokémon.
+
+L'équipe persistante est reliée à l'overworld et commence volontairement vide.
+Pour tester son attribution, cliquez sur **Tester les starters** : le sandbox charge
+`Map002` devant le socle de Marisson. Appuyez sur **Espace**, choisissez **Sí**
+(affiché **Oui** grâce aux données françaises) et terminez le
+dialogue. Marisson niveau 5 apparaît alors dans le panneau avec ses capacités ;
+les interrupteurs narratifs sont enregistrés et le combat source contre Keunotor
+niveau 2 apparaît comme rencontre en attente. Les socles voisins attribuent de la
+même façon Feunnec et Grenousse. Le combat n'est pas encore ouvert à l'écran : ce
+prochain raccordement devra convertir les deux équipes pour le moteur, exécuter la
+rencontre, puis réinjecter PV, statuts et PP dans la sauvegarde.
 
 Au départ, le joueur 1 regarde une baie `PERSONAL` : appuyez sur Espace pour
 l'ajouter uniquement à son inventaire. Le joueur 2 regarde le guide `SHARED` :

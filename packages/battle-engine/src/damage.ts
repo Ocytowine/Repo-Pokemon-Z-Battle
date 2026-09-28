@@ -21,6 +21,13 @@ export function calculateDamage(
   rng: RandomSource,
   trace: BattleTrace[],
 ): number {
+  if (move.functionCode === "06F") {
+    const variance = 50 + draw(rng, trace, "damage-variance", 101);
+    const result = Math.max(1, Math.floor((attacker.level * variance) / 100));
+    trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
+      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, result });
+    return result;
+  }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
   const defenseKey = move.category === "Physical" ? "defense" : "specialDefense";
   const criticalStage = Math.min(4,
@@ -33,6 +40,9 @@ export function calculateDamage(
   let attack = stagedAttack;
   if (attacker.ability === "GUTS" && attacker.majorStatus !== null && move.category === "Physical") attack = Math.round(attack * 1.5);
   if ((attacker.ability === "HUGEPOWER" || attacker.ability === "PUREPOWER") && move.category === "Physical") attack = Math.round(attack * 2);
+  const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
+    : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
+  if (lowHpAbilityType === move.type && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * move.power * attack) / defense) / 50) + 2;

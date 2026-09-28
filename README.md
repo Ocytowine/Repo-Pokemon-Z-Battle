@@ -196,7 +196,10 @@ ne controle alors que son avatar et recoit le monde autoritaire. Le ticket est
 restaure apres rechargement et une coupure du Worker declenche une reconnexion
 automatique. Une interaction de rencontre ouvre un panneau de combat autoritaire,
 verrouille la carte puis rend le controle avec le resultat persiste. Les deux
-cartes actuellement jouables dans ce sandbox restent originales. Les cartes
-Pokemon Z sont desormais normalisees localement par l'extracteur, mais leur rendu
-avec les vrais tilesets n'est pas encore branche a ce sandbox. L'architecture est documentee dans
+cartes de demonstration coop restent originales. Le mode solo charge desormais
+les cartes Pokemon Z, leurs vrais tilesets, collisions, personnages, transferts
+et un premier ensemble d'evenements persistants. Le raccourci **Tester les starters**
+permet notamment d'executer le choix source de `Map002` et de creer l'equipe
+personnelle ; le combat obligatoire qui suit est encore affiche comme rencontre
+en attente. L'architecture est documentee dans
 `docs/OVERWORLD_ARCHITECTURE.md` et `docs/COOP_ARCHITECTURE.md`.

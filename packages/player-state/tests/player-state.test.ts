@@ -1,0 +1,59 @@
+import { describe, expect, it } from "vitest";
+import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, healPlayerParty, parsePlayerParty, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
+
+const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
+  id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
+  stats: { maxHp: 35, attack: 20, defense: 16, specialAttack: 19, specialDefense: 18, speed: 28 },
+  hp: 4, majorStatus: { kind: "poison", toxicCounter: null }, ability: "QUICKFEET", heldItem: null,
+  moves: [{ internalName: "TACKLE", pp: 2, maxPp: 35 }],
+}] };
+
+const catalog: PlayerBattleCatalog = {
+  pokemon: [{ internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"] }],
+  moves: [{ id: 303, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
+    category: "Physical", accuracy: 100, pp: 35, priority: 0, effectChance: 0 }],
+};
+
+describe("persistent player party", () => {
+  it("represents an empty story party without inventing a starter", () => {
+    expect(createEmptyPlayerParty()).toEqual({ schemaVersion: 1, activeIndex: null, members: [] });
+    expect(parsePlayerParty(createEmptyPlayerParty())).toEqual(createEmptyPlayerParty());
+  });
+
+  it("validates identity, bounds and active member", () => {
+    expect(parsePlayerParty(party)).toEqual(party);
+    expect(() => parsePlayerParty({ ...party, activeIndex: 2 })).toThrow("actif");
+    expect(() => parsePlayerParty({ ...party, members: [party.members[0], party.members[0]] })).toThrow("dupliqués");
+    expect(() => parsePlayerParty({ ...party, members: [{ ...party.members[0], hp: 40 }] })).toThrow("PV");
+  });
+
+  it("heals HP, status and PP immutably", () => {
+    const healed = healPlayerParty(party);
+    expect(healed.members[0]).toMatchObject({ hp: 35, majorStatus: null, moves: [{ pp: 35, maxPp: 35 }] });
+    expect(party.members[0]).toMatchObject({ hp: 4, majorStatus: { kind: "poison" }, moves: [{ pp: 2 }] });
+  });
+
+  it("round-trips mutable battle resources through the engine team", () => {
+    const team = playerPartyToBattleTeam(party, catalog);
+    expect(team.members[0]).toMatchObject({ species: "PIKACHU", name: "Pikachu", hp: 4, ability: "QUICKFEET",
+      moves: [{ pp: 2, move: { internalName: "TACKLE", name: "Charge" } }] });
+    const result = { ...team, members: team.members.map((member) => ({ ...member, hp: 1, majorStatus: { kind: "burn" as const },
+      moves: member.moves.map((slot) => ({ ...slot, pp: 1 })) })) };
+    expect(storeBattleTeam(party, result).members[0]).toMatchObject({ hp: 1, majorStatus: { kind: "burn" }, moves: [{ pp: 1 }] });
+  });
+
+  it("blocks unsupported battle mechanics explicitly", () => {
+    expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!, ability: "STATIC" }] }, catalog)).toThrow("Talent");
+    expect(() => playerPartyToBattleTeam(party, { ...catalog, moves: [{ ...catalog.moves[0]!, functionCode: "999" }] })).toThrow("Fonction");
+  });
+
+  it("creates a levelled story Pokemon from extracted definitions and adds it to an empty party", () => {
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities: ["STATIC"], levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
+    const pokemon = createPersistentPokemon("starter-1", "PIKACHU", 5, creationCatalog);
+    expect(pokemon).toMatchObject({ id: "starter-1", species: "PIKACHU", level: 5, hp: 20, stats: { maxHp: 20 },
+      ability: "STATIC", moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] });
+    expect(addPokemonToParty(createEmptyPlayerParty(), pokemon)).toMatchObject({ activeIndex: 0, members: [{ species: "PIKACHU" }] });
+  });
+});

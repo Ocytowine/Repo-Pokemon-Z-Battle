@@ -65,3 +65,27 @@ progression. La recette E2E couvre désormais la chaîne complète : état perso
 conflit partagé, changement de zone, attente synchronisée, reconnexion, rencontre,
 combat autoritaire et retour dans le monde. La phase 9 pourra remplacer les
 définitions originales par des lots d'événements importés sans changer ce contrat.
+
+## Decision produit : expedition dans le monde hote
+
+Chaque joueur possede une sauvegarde solo independante. Une session d'aventure
+charge le `WORLD_STATE` narratif de l'hote et importe une vue bornee du
+`PLAYER_STATE` de l'invite. Les drapeaux d'histoire, badges, objets cles et uniques
+ne sont jamais recopies vers le monde de l'invite.
+
+Deux profils de puissance sont prevus : `ADAPTIVE` et `REAL_LEVELS`. En mode
+adaptatif, un niveau effectif de session recalcule seulement les statistiques de
+combat. Niveau et experience reels, espece, evolution, capacites, talent, IV, EV et
+objet tenu ne sont pas reecrits. Experience, apprentissages et evolutions ne sont
+persistes que lorsqu'ils sont legitimement obtenus sur les valeurs reelles.
+
+Les gains exportables sont journalises comme des deltas personnels idempotents.
+La sauvegarde invitee doit disposer d'un bail exclusif pendant la session afin
+d'empecher une ouverture concurrente et les duplications lors d'une reconnexion.
+Les recompenses narratives restent `HOST_ONLY`; les recompenses ordinaires peuvent
+etre `PERSONAL` pour chaque participant et les objectifs de session restent
+`SHARED` ou `SYNCED` selon leur nature.
+
+Une zone coop dediee pourra etre integree plus tard directement dans la carte du
+monde. Elle est explicitement hors perimetre actuel et ne remplacera pas la coop
+dans l'histoire principale.
