@@ -32,7 +32,8 @@ export interface PlayerPartyState {
 
 export interface PlayerBattleCatalog {
   readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types">[];
-  readonly moves: readonly Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">[];
+  readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
+    & { readonly flags?: string })[];
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
@@ -205,10 +206,10 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const ABILITIES = new Set<BattleAbility>(["BLAZE", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW", "PUREPOWER",
-  "QUICKFEET", "SIMPLE", "TORRENT"]);
+const ABILITIES = new Set<BattleAbility>(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW", "PUREPOWER",
+  "QUICKFEET", "SHIELDDUST", "SIMPLE", "STATIC", "TORRENT"]);
 const ITEMS = new Set<HeldItem>(["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"]);
-const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "042", "043", "044", "045", "046", "047", "06F", "0A5", "159", "906"]);
+const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
   if (value === null) return null;

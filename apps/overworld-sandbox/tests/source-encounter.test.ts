@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
-import { createSourceEncounterBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
+import { attemptSourceEncounterEscape, createSourceEncounterBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { selectSourceBattleAnimation, selectSourceBattleAudio, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
 
 const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
@@ -64,6 +64,17 @@ describe("source encounter bridge", () => {
     const party = { ...base, members: [{ ...base.members[0]!, moves: [{ ...base.members[0]!.moves[0]!, pp: 0 }] }] };
     const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
     expect(() => resolveSourceEncounterTurn(battle, 0, new SeededRandom(12))).toThrow("pas disponible");
+  });
+
+  it("uses the source speed formula for escape and gives the opponent its turn after a failure", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
+    expect(attemptSourceEncounterEscape(battle, 0, new SeededRandom(1)).escaped).toBe(true);
+    const slowPlayer = { ...battle, teams: { ...battle.teams, player: { ...battle.teams.player,
+      members: battle.teams.player.members.map((member) => ({ ...member, stats: { ...member.stats, speed: 1 } })) } } };
+    const failed = attemptSourceEncounterEscape(slowPlayer, 0, { nextInt: (maximum) => maximum - 1 });
+    expect(failed.escaped).toBe(false);
+    if (!failed.escaped) expect(failed.turn.events).toContainEqual(expect.objectContaining({ type: "damageApplied", target: "player" }));
   });
 
   it("clears a victory but heals a defeated party before a retry", () => {

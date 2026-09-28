@@ -34,6 +34,24 @@ export function resolveSourceEncounterTurn(state: TeamBattleState, playerMoveInd
   }, rng);
 }
 
+export type SourceEscapeResult = { readonly escaped: true } | { readonly escaped: false; readonly turn: TeamTurnResult };
+
+export function attemptSourceEncounterEscape(state: TeamBattleState, attempts: number,
+  rng: RandomSource): SourceEscapeResult {
+  if (!Number.isSafeInteger(attempts) || attempts < 0) throw new Error("Nombre de tentatives de fuite invalide.");
+  const player = state.teams.player.members[state.teams.player.activeIndex];
+  const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
+  if (player === undefined || opponent === undefined) throw new Error("Combattant actif introuvable.");
+  const rate = player.stats.speed > opponent.stats.speed ? 256
+    : (Math.floor((player.stats.speed * 128) / Math.max(1, opponent.stats.speed)) + attempts * 30) & 0xff;
+  if (rate === 256 || rng.nextInt(256) < rate) return { escaped: true };
+  const opponentMoves = opponent.moves.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.pp > 0);
+  const opponentMove = opponentMoves[rng.nextInt(opponentMoves.length)];
+  if (opponentMove === undefined) throw new Error("Choix de capacité adverse impossible.");
+  return { escaped: false, turn: resolveTeamTurn(state,
+    { player: { kind: "wait" }, opponent: { kind: "move", moveIndex: opponentMove.index } }, rng) };
+}
+
 export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleState {
   if (state.status === "finished" || state.replacementRequired.length === 0) return state;
   const replacements: Partial<Record<"player" | "opponent", number>> = {};

@@ -77,6 +77,10 @@ function applyStatChange(
 ): void {
   const target = effect.target === "self" ? source : opponent;
   const battler = battlers[target];
+  if (effect.delta < 0 && effect.stat === "defense" && battler.ability === "BIGPECKS") {
+    events.push({ type: "abilityActivated", side: target, ability: "BIGPECKS", effect: "prevent-stat-drop" });
+    return;
+  }
   const current = battler.stages[effect.stat];
   const delta = battler.ability === "SIMPLE" ? effect.delta * 2 : effect.delta;
   const stage = Math.max(-6, Math.min(6, current + delta));
@@ -104,6 +108,13 @@ function applyMoveEffect(
   }
   if (statusKind(move) !== null) {
     applyStatusMove(source, target, move, battlers, rng, events, trace);
+    return;
+  }
+  if (move.functionCode === "0D8") {
+    const battler = battlers[source];
+    const amount = Math.min(battler.stats.maxHp - battler.hp, Math.floor(battler.stats.maxHp / 2));
+    battlers[source] = { ...battler, hp: battler.hp + amount };
+    events.push({ type: "hpRestored", side: source, source: "move", move: move.internalName, amount, hp: battler.hp + amount });
     return;
   }
   throw new Error(`Unsupported move function: ${move.functionCode}.`);
@@ -357,9 +368,24 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       amount: Math.min(damage, defender.hp), hp,
       critical: damageTrace.critical, effectiveness: damageTrace.effectiveness,
     });
+    if (slot.move.functionCode === "0DD" && battlers[side].hp > 0) {
+      const current = battlers[side];
+      const amount = Math.min(current.stats.maxHp - current.hp, Math.round(Math.min(damage, defender.hp) / 2));
+      battlers[side] = { ...current, hp: current.hp + amount };
+      events.push({ type: "hpRestored", side, source: "move", move: slot.move.internalName, amount, hp: current.hp + amount });
+    }
     if (hp > 0 && slot.move.effectChance > 0
       && draw(rng, trace, "additional-effect", 100) < slot.move.effectChance) {
-      applyMoveEffect(side, targetSide, slot.move, battlers, rng, events, trace);
+      if (battlers[targetSide].ability === "SHIELDDUST") {
+        events.push({ type: "abilityActivated", side: targetSide, ability: "SHIELDDUST", effect: "prevent-additional-effect" });
+      } else applyMoveEffect(side, targetSide, slot.move, battlers, rng, events, trace);
+    }
+    if (hp > 0 && defender.ability === "STATIC" && slot.move.flags?.includes("a") === true
+      && battlers[side].majorStatus === null && !typePreventsStatus(battlers[side], "paralysis")
+      && draw(rng, trace, "ability", 10) < 3) {
+      battlers[side] = { ...battlers[side], majorStatus: { kind: "paralysis" } };
+      events.push({ type: "abilityActivated", side: targetSide, ability: "STATIC", effect: "inflict-paralysis" });
+      events.push({ type: "statusApplied", source: targetSide, target: side, status: "paralysis" });
     }
     if (hp === 0) {
       winner = side;

@@ -9,12 +9,15 @@ export interface SourceEventState {
   readonly checkpoint: SourceCheckpoint | null;
   readonly party: PlayerPartyState;
   readonly pendingEncounter: SourceEncounter | null;
+  readonly wildEncounterSteps: number;
+  readonly wildEncounterRngState: number;
 }
 
 export interface SourceEncounter {
   readonly species: string;
   readonly level: number;
   readonly victorySwitches: Readonly<Record<string, boolean>>;
+  readonly escapable: boolean;
 }
 
 export interface SourceCheckpoint {
@@ -40,10 +43,13 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   pendingEncounter: null,
+  wildEncounterSteps: 0,
+  wildEncounterRngState: 0x9e37_79b9,
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: createEmptyPlayerParty(), pendingEncounter: null };
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: createEmptyPlayerParty(), pendingEncounter: null,
+    wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -145,7 +151,8 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter });
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter,
+        wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState });
       if (ids === null || operand === null) return { state, appliedCommands: 0, safe: false, reason: "opérande de variable non prise en charge" };
       for (const id of ids) {
         const next = changedVariable(variables[String(id)] ?? 0, command.data.operation, operand);
@@ -187,12 +194,13 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       if (typeof species !== "string" || !finiteInteger(level) || level < 1 || level > 100 || party.members.length === 0) {
         return { state, appliedCommands: 0, safe: false, reason: "rencontre impossible sans équipe valide" };
       }
-      pendingEncounter = { species, level, victorySwitches: {} };
+      pendingEncounter = { species, level, victorySwitches: {}, escapable: false };
       encounterQueued = true;
     }
     appliedCommands += 1;
   }
-  return { state: { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter }, appliedCommands, safe: true, reason: null };
+  return { state: { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter,
+    wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState }, appliedCommands, safe: true, reason: null };
 }
 
 export function completePendingEncounter(state: SourceEventState): SourceEventState {
@@ -233,9 +241,16 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     : isRecord(encounterValue) && typeof encounterValue.species === "string" && finiteInteger(encounterValue.level)
       && encounterValue.level >= 1 && encounterValue.level <= 100
       && (encounterValue.victorySwitches === undefined || booleanDictionary(encounterValue.victorySwitches) !== null)
+      && (encounterValue.escapable === undefined || typeof encounterValue.escapable === "boolean")
       ? { species: encounterValue.species, level: encounterValue.level,
-        victorySwitches: encounterValue.victorySwitches === undefined ? {} : booleanDictionary(encounterValue.victorySwitches)! } : undefined;
+        victorySwitches: encounterValue.victorySwitches === undefined ? {} : booleanDictionary(encounterValue.victorySwitches)!,
+        escapable: encounterValue.escapable === true } : undefined;
+  const wildEncounterSteps = value.wildEncounterSteps === undefined ? 0 : value.wildEncounterSteps;
+  const wildEncounterRngState = value.wildEncounterRngState === undefined ? 0x9e37_79b9 : value.wildEncounterRngState;
   if (switches === null || variables === null || selfSwitches === null || inventory === null
-    || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined) throw new Error("État source invalide.");
-  return { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter };
+    || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined
+    || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
+    || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff) throw new Error("État source invalide.");
+  return { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter,
+    wildEncounterSteps, wildEncounterRngState };
 }

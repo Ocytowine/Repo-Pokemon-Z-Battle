@@ -284,6 +284,8 @@ function describeEvent(event: TeamBattleEvent): string {
     case "ppChanged": return `${moveDisplayName(event.move)} : ${event.pp} PP restants`;
     case "moveMissed": return `${moveDisplayName(event.move)} échoue`;
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
+    case "hpRestored": return `${event.side} récupère ${event.amount} PV avec ${moveDisplayName(event.move)} · ${event.hp} PV`;
+    case "abilityActivated": return `${event.side} active ${event.ability} (${event.effect})`;
     case "statusApplied": return `${event.target} subit : ${statusName(event.status)}`;
     case "statusApplicationFailed": return `${statusName(event.status)} sans effet sur ${event.target} (${event.reason})`;
     case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;

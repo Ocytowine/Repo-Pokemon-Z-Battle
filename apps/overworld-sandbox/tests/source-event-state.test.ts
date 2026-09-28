@@ -32,8 +32,10 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 4 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null });
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+      wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+      wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
   });
 
   it("does not partially mutate an event containing unsupported control flow", () => {
@@ -47,7 +49,8 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null });
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+        wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
     expect(() => parseSourceEventState({ switches: { 2: "yes" }, variables: {}, selfSwitches: {} })).toThrow("invalide");
   });
 
@@ -103,7 +106,7 @@ describe("persistent source event state", () => {
         majorStatus: null, ability: "OVERGROW", heldItem: null, moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] }),
     });
     expect(result).toMatchObject({ safe: true, appliedCommands: 3, state: { switches: {},
-      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true } },
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true }, escapable: false },
       party: { activeIndex: 0, members: [{ species: "CHESPIN", level: 5 }] } } });
     expect(completePendingEncounter(result.state)).toMatchObject({ switches: { 65: true }, pendingEncounter: null });
   });

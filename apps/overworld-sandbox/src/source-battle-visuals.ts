@@ -65,14 +65,14 @@ function availableAudio(manifest: AssetManifest, path: string): string | null {
 }
 
 export function selectSourceBattleAudio(assets: AssetManifest, pokemon: PokemonAssetsManifest,
-  playerSpecies: string, opponentSpecies: string): SourceBattleAudio {
+  playerSpecies: string, opponentSpecies: string, battleMusic = "Salvaje.ogg", victoryMusic = "VictoriaSalvaje.ogg"): SourceBattleAudio {
   const cry = (species: string): string | null => {
     const record = pokemon.records.find((candidate) => candidate.internalName === species);
     return record === undefined ? null : selectCry(record)?.path ?? null;
   };
   return {
-    battleMusic: availableAudio(assets, "Audio/BGM/Salvaje.ogg"),
-    victoryMusic: availableAudio(assets, "Audio/ME/VictoriaSalvaje.ogg"),
+    battleMusic: availableAudio(assets, `Audio/BGM/${battleMusic}`),
+    victoryMusic: availableAudio(assets, `Audio/ME/${victoryMusic}`),
     playerCry: cry(playerSpecies),
     opponentCry: cry(opponentSpecies),
   };
@@ -87,24 +87,30 @@ export class SourceBattleVisuals {
   #outroMusic: HTMLAudioElement | null = null;
   #oneShots = new Set<HTMLAudioElement>();
   #audioSession = 0;
+  #victoryMusicPath: string | null = null;
 
-  async startBattle(state: TeamBattleState): Promise<void> {
+  async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null; readonly victoryMusic?: string | null } = {}): Promise<void> {
     this.stopAudio();
     const session = ++this.#audioSession;
     // Le chargement asynchrone des manifestes peut sortir de la fenêtre d'activation
     // utilisateur. Démarrer la BGM source immédiatement évite un blocage d'autoplay.
-    this.#battleMusic = this.playAudio("Audio/BGM/Salvaje.ogg", { loop: true, volume: 0.55 });
+    const battleMusic = audio.battleMusic ?? "Salvaje.ogg";
+    const victoryMusic = audio.victoryMusic ?? "VictoriaSalvaje.ogg";
+    this.#victoryMusicPath = `Audio/ME/${victoryMusic}`;
+    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0.55 });
     try {
       const manifests = await this.manifests();
       if (session !== this.#audioSession) return;
       const player = state.teams.player.members[state.teams.player.activeIndex];
       const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
       if (player === undefined || opponent === undefined) return;
-      const audio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species);
-      if (audio.opponentCry !== null) this.playAudio(audio.opponentCry, { volume: 0.8, oneShot: true });
+      const selectedAudio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species,
+        battleMusic, victoryMusic);
+      this.#victoryMusicPath = selectedAudio.victoryMusic;
+      if (selectedAudio.opponentCry !== null) this.playAudio(selectedAudio.opponentCry, { volume: 0.8, oneShot: true });
       await delay(420);
-      if (session === this.#audioSession && audio.playerCry !== null) {
-        this.playAudio(audio.playerCry, { volume: 0.8, oneShot: true });
+      if (session === this.#audioSession && selectedAudio.playerCry !== null) {
+        this.playAudio(selectedAudio.playerCry, { volume: 0.8, oneShot: true });
       }
     } catch {
       // Les visuels et le moteur de combat restent utilisables si l'audio local est absent.
@@ -112,27 +118,27 @@ export class SourceBattleVisuals {
   }
 
   endBattle(winner: BattleSide | null): void {
-    const victoryPath = winner === "player" && this.#manifests !== null
-      ? selectSourceBattleAudio(this.#manifests.assets, this.#manifests.pokemon, "", "").victoryMusic
-      : null;
+    const victoryPath = winner === "player" ? this.#victoryMusicPath : null;
     this.stopAudio();
     this.#audioSession += 1;
+    this.#victoryMusicPath = null;
     if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
   }
 
-  async render(state: TeamBattleState): Promise<void> {
+  async render(state: TeamBattleState, battleback = "snow"): Promise<void> {
     this.updateHud(state);
     const player = state.teams.player.members[state.teams.player.activeIndex];
     const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
     if (player === undefined || opponent === undefined) return;
-    const key = `${player.species}:${opponent.species}`;
+    const key = `${battleback}:${player.species}:${opponent.species}`;
     if (key === this.#renderedSpecies) return;
     this.#renderedSpecies = key;
     try {
       const manifests = await this.manifests();
       this.clearSprites();
       const scenes = buildBattleScenes(manifests.assets);
-      const scene = scenes.find((candidate) => candidate.id === "snow" && candidate.complete)
+      const requestedScene = battleback.toLocaleLowerCase("fr");
+      const scene = scenes.find((candidate) => candidate.id === requestedScene && candidate.complete)
         ?? scenes.find((candidate) => candidate.complete) ?? scenes[0];
       this.setImage("source-battle-background", scene?.background?.path ?? null);
       this.setImage("source-player-base", scene?.playerBase?.path ?? null);
@@ -171,6 +177,12 @@ export class SourceBattleVisuals {
         this.message(`${names[event.target]} perd ${event.amount} PV${event.critical ? " · Coup critique !" : ""}`);
         await delay(260);
         sprite?.classList.remove("hit");
+      } else if (event.type === "hpRestored") {
+        this.message(`${names[event.side]} récupère ${event.amount} PV.`);
+        await delay(280);
+      } else if (event.type === "abilityActivated") {
+        this.message(`Le talent ${event.ability} de ${names[event.side]} s'active !`);
+        await delay(280);
       } else if (event.type === "moveMissed") {
         this.message(`${names[event.side]} rate son attaque.`);
         await delay(320);

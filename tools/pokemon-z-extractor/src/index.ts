@@ -30,6 +30,7 @@ export { extractScriptHooks, type ScriptHookExtractionResult } from "./runtime/e
 export { SCRIPT_FAMILY_POLICIES, classifyRubyHook, normalizeRubySignature, portTargetRubyLine, type CoopPolicy, type PortedScriptAction, type ScriptFamilyPolicy, type ScriptHookFamily } from "./runtime/script-hooks.js";
 export { convertEventCommand, convertEventPage, convertMoveCommand, convertMoveRoute, rubyValueToJson, type EventAstCommand, type EventCommandFamily, type EventCommandStatus, type EventPageAst } from "./runtime/event-ast.js";
 export { buildCollisionMasks, extractSimpleTransfers, normalizeTilesets, normalizeWorldMap, renderMapPreview, tileAllowsDirection } from "./runtime/world-map.js";
+export { parseMapBattleMetadata, type MapBattleMetadata } from "./runtime/extract-map-metadata.js";
 export { classifyPokemonAsset, normalizedWebPath } from "./assets/classify-assets.js";
 export { readImageDimensions, readImageMetadata, type ImageDimensions, type ImageMetadata } from "./assets/image-metadata.js";
 export { createEngineSupportReport, type EngineSupportInput } from "./validation/engine-support.js";

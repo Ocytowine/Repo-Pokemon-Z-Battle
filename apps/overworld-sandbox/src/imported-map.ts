@@ -49,10 +49,11 @@ export interface ImportedTransfer {
   readonly direction: number;
 }
 
-interface ImportedTileset {
+export interface ImportedTileset {
   readonly id: number;
   readonly tilesetName: string;
   readonly autotileNames: readonly string[];
+  readonly terrainTags: readonly number[];
 }
 
 interface TilesetFile { readonly records: readonly ImportedTileset[] }
@@ -81,6 +82,17 @@ export interface ImportedMapAssets {
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerCreationCatalog;
+  readonly encounter: ImportedEncounterTable | null;
+  readonly battleback: string | null;
+  readonly wildBattleBgm: string | null;
+  readonly wildVictoryMe: string | null;
+}
+
+export interface ImportedEncounterSlot {
+  readonly species: string; readonly minimumLevel: number; readonly maximumLevel: number; readonly weight: number;
+}
+export interface ImportedEncounterTable {
+  readonly mapId: number; readonly landRate: number; readonly land: readonly ImportedEncounterSlot[];
 }
 
 export interface ImportedAvatar extends GridPoint { readonly direction: Direction }
@@ -128,12 +140,41 @@ function parseTilesets(value: unknown): TilesetFile {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de tilesets est invalide.");
   const records = value.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.tilesetName !== "string"
-      || !Array.isArray(entry.autotileNames) || !entry.autotileNames.every((name) => typeof name === "string")) {
+      || !Array.isArray(entry.autotileNames) || !entry.autotileNames.every((name) => typeof name === "string")
+      || !Array.isArray(entry.terrainTags) || !entry.terrainTags.every((tag) => Number.isInteger(tag) && (tag as number) >= 0)) {
       throw new Error("Une configuration de tileset est invalide.");
     }
-    return { id: entry.id as number, tilesetName: entry.tilesetName, autotileNames: entry.autotileNames as string[] };
+    return { id: entry.id as number, tilesetName: entry.tilesetName, autotileNames: entry.autotileNames as string[],
+      terrainTags: entry.terrainTags as number[] };
   });
   return { records };
+}
+
+function parseEncounter(value: unknown, mapId: number): ImportedEncounterTable | null {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de rencontres est invalide.");
+  const entry = value.records.find((candidate) => isRecord(candidate) && candidate.mapId === mapId);
+  if (!isRecord(entry) || !isRecord(entry.encounterRates) || !Number.isInteger(entry.encounterRates.land)
+    || !Array.isArray(entry.methods)) return null;
+  const method = entry.methods.find((candidate) => isRecord(candidate) && candidate.method === "Land");
+  if (!isRecord(method) || !Array.isArray(method.slots)) return null;
+  const land = method.slots.map((slot) => {
+    if (!isRecord(slot) || typeof slot.species !== "string" || !Number.isInteger(slot.minimumLevel)
+      || !Number.isInteger(slot.maximumLevel) || !Number.isInteger(slot.weight)
+      || (slot.minimumLevel as number) < 1 || (slot.maximumLevel as number) < (slot.minimumLevel as number)
+      || (slot.weight as number) < 1) throw new Error("Une rencontre terrestre est invalide.");
+    return { species: slot.species, minimumLevel: slot.minimumLevel as number,
+      maximumLevel: slot.maximumLevel as number, weight: slot.weight as number };
+  });
+  return { mapId, landRate: entry.encounterRates.land as number, land };
+}
+
+function parseBattlePresentation(value: unknown, mapId: number): { readonly battleback: string | null;
+  readonly wildBattleBgm: string | null; readonly wildVictoryMe: string | null } {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Les métadonnées de combat sont invalides.");
+  const entry = value.records.find((candidate) => isRecord(candidate) && candidate.mapId === mapId);
+  return { battleback: isRecord(entry) && typeof entry.battleback === "string" ? entry.battleback : null,
+    wildBattleBgm: isRecord(entry) && typeof entry.wildBattleBgm === "string" ? entry.wildBattleBgm : null,
+    wildVictoryMe: isRecord(entry) && typeof entry.wildVictoryMe === "string" ? entry.wildVictoryMe : null };
 }
 
 export function selectDefaultEventPage(event: ImportedMapEvent): ImportedEventPage | null {
@@ -343,12 +384,13 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localiza
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string"
       || typeof entry.functionCode !== "string" || !Number.isInteger(entry.power) || typeof entry.type !== "string"
       || !["Physical", "Special", "Status"].includes(String(entry.category)) || !Number.isInteger(entry.accuracy)
-      || !Number.isInteger(entry.pp) || !Number.isInteger(entry.priority) || !Number.isInteger(entry.effectChance)) {
+      || !Number.isInteger(entry.pp) || !Number.isInteger(entry.priority) || !Number.isInteger(entry.effectChance) || typeof entry.flags !== "string") {
       throw new Error("Une définition de capacité est invalide.");
     }
     return { id: entry.id as number, internalName: entry.internalName, name: moveNames.get(entry.id as number) ?? entry.name, functionCode: entry.functionCode,
       power: entry.power as number, type: entry.type, category: entry.category as "Physical" | "Special" | "Status",
-      accuracy: entry.accuracy as number, pp: entry.pp as number, priority: entry.priority as number, effectChance: entry.effectChance as number };
+      accuracy: entry.accuracy as number, pp: entry.pp as number, priority: entry.priority as number,
+      effectChance: entry.effectChance as number, flags: entry.flags };
   });
   return { pokemon, moves };
 }
@@ -388,10 +430,12 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue] = await Promise.all([
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue, encountersValue, battleMetadataValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/moves.json"),
+    fetchJson("/__pokemon-z/data/encounters.json"),
+    fetchJson("/__pokemon-z/data/map-battle-metadata.json"),
   ]);
   const map = parseImportedMap(mapValue);
   const tilesets = parseTilesets(tilesetValue);
@@ -399,6 +443,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const itemNames = parseItemNames(itemsValue, localizationValue);
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
+  const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
   const characterNames = [...new Set(events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""))];
@@ -408,7 +453,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     Promise.all(characterNames.map((name) => loadImage(sourceImageUrl("Characters", name)))),
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
-    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations, itemNames, battleCatalog };
+    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations, itemNames, battleCatalog,
+    encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }
 
 export function loadImportedMap003(): Promise<ImportedMapAssets> {

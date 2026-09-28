@@ -187,6 +187,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const switchEvents: TeamBattleEvent[] = [];
   const moveActions: Partial<Record<BattleSide, MoveAction>> = {};
   const switchOrder = SIDES.filter((side) => actions[side].kind === "switch");
+  const waitOrder = SIDES.filter((side) => actions[side].kind === "wait");
 
   for (const side of switchOrder) {
     const action = actions[side];
@@ -216,6 +217,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const orderedActions = [
     ...switchOrder.map((side) => ({ side, kind: "switch" as const })),
+    ...waitOrder.map((side) => ({ side, kind: "wait" as const })),
     ...moveOrder.map((side) => ({ side, kind: "move" as const })),
   ];
   const events: TeamBattleEvent[] = [

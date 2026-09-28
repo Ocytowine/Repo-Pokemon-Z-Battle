@@ -373,4 +373,25 @@ describe("stat stages, power abilities and held battle items", () => {
       new ScriptedRandom([50]), trace)).toBe(20);
     expect(trace.at(-1)).toMatchObject({ type: "damage", move: "PSYWAVE", critical: false, result: 20 });
   });
+
+  it("supports the Route 1 healing moves and passive talents", () => {
+    const morningSun: BattleMove = { id: 386, internalName: "MORNINGSUN", name: "Aurore", functionCode: "0D8", power: 0,
+      type: "NORMAL", category: "Status", accuracy: 0, pp: 5, priority: 0, effectChance: 0 };
+    const absorb: BattleMove = { id: 210, internalName: "ABSORB", name: "Vol-Vie", functionCode: "0DD", power: 30,
+      type: "GRASS", category: "Special", accuracy: 100, pp: 25, priority: 0, effectChance: 0 };
+    const healer = battler("player", { hp: 20, moves: [{ move: morningSun, pp: 5 }] });
+    const healed = resolveTurn(battle(healer), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 1, 15]));
+    expect(healed.events).toContainEqual({ type: "hpRestored", side: "player", source: "move", move: "MORNINGSUN", amount: 50, hp: 70 });
+
+    const draining = battler("player", { hp: 50, types: ["GRASS"], moves: [{ move: absorb, pp: 25 }] });
+    const drained = resolveTurn(battle(draining), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 1, 15, 0, 1, 15]));
+    expect(drained.events).toContainEqual(expect.objectContaining({ type: "hpRestored", side: "player", move: "ABSORB" }));
+
+    const bigPecks = battler("opponent", { ability: "BIGPECKS", moves: [{ move: MINIMAL_MOVE_CATALOG.TAILWHIP, pp: 30 }] });
+    const protectedResult = resolveTurn(battle(battler("player", { moves: [{ move: MINIMAL_MOVE_CATALOG.TAILWHIP, pp: 30 }] }), bigPecks),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([0, 0]));
+    expect(protectedResult.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "BIGPECKS", effect: "prevent-stat-drop" });
+  });
 });

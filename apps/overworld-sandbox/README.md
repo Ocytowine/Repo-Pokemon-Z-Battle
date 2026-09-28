@@ -93,6 +93,18 @@ combat initial, Keunotor niveau 2 rapporte 13 EXP au starter niveau 5. L'interru
 narratif placé après `pbWildBattle` n'est validé qu'après cette victoire ; perdre
 ne fait plus avancer l'histoire et permet toujours de retenter la rencontre.
 
+Après ce combat, les cartes possédant une table terrestre déclenchent désormais
+leurs rencontres uniquement sur les véritables cases d'herbe. Sur `Map007 — Route
+1`, les poids et niveaux viennent directement de `encounters.json`, avec trois pas
+protégés après un combat et une RNG sauvegardée. Keunotor, Passerouge, Ceribou,
+Wattouat et Lépidonille utilisent leurs capacités et talents du premier lot. Le
+battleback est choisi depuis `map-battle-metadata.json` (`Pradera` sur Route 1),
+sans association codée spécialement dans l'interface.
+Ces rencontres affichent aussi **Fuir**. Une tentative ratée laisse l'adversaire
+attaquer ; une réussite conserve les ressources actuelles de l'équipe et replace
+le joueur sur la même case. Le Keunotor imposé par l'histoire ne propose pas ce
+bouton.
+
 Au départ, le joueur 1 regarde une baie `PERSONAL` : appuyez sur Espace pour
 l'ajouter uniquement à son inventaire. Le joueur 2 regarde le guide `SHARED` :
 appuyez sur O pour afficher son dialogue une seule fois pour la session. Les

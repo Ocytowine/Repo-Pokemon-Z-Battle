@@ -10,6 +10,7 @@ import { extractLocalization } from "./extract-localization.js";
 import { extractMapInfos } from "./extract-map-infos.js";
 import { extractScripts } from "./extract-scripts.js";
 import { extractBattleAnimations } from "./extract-battle-animations.js";
+import { extractMapBattleMetadata } from "./extract-map-metadata.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -73,13 +74,14 @@ export async function extractRuntimeData(
 ): Promise<RuntimeExtractionResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await validatePokemonZSource(paths.source);
-  const [localization, maps, scripts, encounters, tableProbe, battleAnimations] = await Promise.all([
+  const [localization, maps, scripts, encounters, tableProbe, battleAnimations, mapBattleMetadata] = await Promise.all([
     extractLocalization(paths.source, paths.output),
     extractMapInfos(paths.source),
     extractScripts(paths.source, paths.output),
     readEncounterJson(paths.output),
     probeMapTable(paths.source),
     extractBattleAnimations(paths.source, paths.output),
+    extractMapBattleMetadata(paths.source),
   ]);
   const mapIds = new Set(maps.map((entry) => entry.id));
   const missingEncounterMaps = encounters.records
@@ -134,6 +136,7 @@ export async function extractRuntimeData(
     writeJsonAtomically(paths.output, "map-infos.json", mapInfos),
     writeJsonAtomically(paths.output, "scripts-manifest.json", scriptsManifest),
     writeJsonAtomically(paths.output, "runtime-report.json", runtimeReport),
+    writeJsonAtomically(paths.output, "map-battle-metadata.json", { schemaVersion: "1.0.0", records: mapBattleMetadata }),
     writeJsonAtomically(paths.output, "battle-animations.json", {
       schemaVersion: "1.0.0",
       coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },

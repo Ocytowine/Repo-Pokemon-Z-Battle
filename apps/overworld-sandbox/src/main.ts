@@ -6,8 +6,9 @@ import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
 import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
 import { SeededRandom, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { applyAutomaticReplacements, createSourceEncounterBattle, resolveSourceEncounterTurn, settleSourceEncounter } from "./source-encounter.js";
+import { applyAutomaticReplacements, attemptSourceEncounterEscape, createSourceEncounterBattle, resolveSourceEncounterTurn, settleSourceEncounter, storeSourceEncounterParty } from "./source-encounter.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
+import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -44,6 +45,7 @@ let sourceTransitionInProgress = false;
 let sourceBattle: TeamBattleState | null = null;
 let sourceBattleRng: SeededRandom | null = null;
 let sourceBattleAnimating = false;
+let sourceEscapeAttempts = 0;
 type AvatarId = "player" | "opponent";
 
 interface NetworkSession {
@@ -93,7 +95,9 @@ function startPendingSourceEncounter(): void {
     sourceBattle = createSourceEncounterBattle(sourceEventState.party, encounter, importedAssets.battleCatalog,
       `wild-${encounter.species.toLowerCase()}`);
     sourceBattleRng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
-    void sourceBattleVisuals.startBattle(sourceBattle);
+    sourceEscapeAttempts = 0;
+    void sourceBattleVisuals.startBattle(sourceBattle,
+      { battleMusic: importedAssets.wildBattleBgm, victoryMusic: importedAssets.wildVictoryMe });
     importedNotice = `Combat lancé contre ${encounter.species} niveau ${encounter.level}.`;
   } catch (error) {
     sourceBattle = null;
@@ -101,6 +105,21 @@ function startPendingSourceEncounter(): void {
     importedNotice = error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.";
   }
   render();
+}
+
+function checkSourceWildEncounter(): boolean {
+  if (importedAssets === null || sourceEventState.party.members.length === 0 || sourceEventState.pendingEncounter !== null) return false;
+  const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
+  const terrain = terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
+  const roll = rollLandEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng);
+  sourceEventState = { ...sourceEventState, wildEncounterSteps: roll.steps, wildEncounterRngState: rng.snapshot(),
+    pendingEncounter: roll.encounter === null ? null : { ...roll.encounter, victorySwitches: {}, escapable: true } };
+  persistSourceEventState();
+  if (roll.encounter === null) return false;
+  const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === roll.encounter?.species);
+  importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
+  startPendingSourceEncounter();
+  return true;
 }
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -520,7 +539,7 @@ function renderEncounter(): void {
   const localSourceBattle = battleState === sourceBattle;
   const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
   if (visualStage !== null) visualStage.hidden = !localSourceBattle;
-  if (localSourceBattle) void sourceBattleVisuals.render(battleState);
+  if (localSourceBattle) void sourceBattleVisuals.render(battleState, importedAssets?.battleback ?? "snow");
   const playerTeam = battleState.teams.player;
   const opponentTeam = battleState.teams.opponent;
   const player = playerTeam.members[playerTeam.activeIndex];
@@ -536,7 +555,8 @@ function renderEncounter(): void {
       const disabled = slot.pp <= 0 || (localSourceBattle && sourceBattleAnimating)
         || (!localSourceBattle && (network?.ticket.side !== "player" || network.submittedTurn === battleState.turn));
       return `<button data-encounter-move="${index}" ${disabled ? "disabled" : ""}>${slot.move.name}<small>${slot.pp} PP</small></button>`;
-    }).join("");
+    }).join("") + (localSourceBattle && sourceEventState.pendingEncounter?.escapable === true
+      ? `<button id="escape-source-encounter" ${sourceBattleAnimating ? "disabled" : ""}>Fuir<small>Quitter le combat sauvage</small></button>` : "");
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-move]").forEach((button) => button.addEventListener("click", () => {
       const moveIndex = Number(button.dataset.encounterMove);
       if (Number.isInteger(moveIndex)) {
@@ -544,7 +564,46 @@ function renderEncounter(): void {
         else submitEncounterAction(moveIndex);
       }
     }));
+    actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => { void escapeSourceEncounter(); });
   }
+}
+
+async function escapeSourceEncounter(): Promise<void> {
+  if (sourceBattle === null || sourceBattleRng === null || sourceBattleAnimating
+    || sourceEventState.pendingEncounter?.escapable !== true) return;
+  sourceBattleAnimating = true;
+  render();
+  try {
+    const before = sourceBattle;
+    const result = attemptSourceEncounterEscape(before, sourceEscapeAttempts, sourceBattleRng);
+    sourceEscapeAttempts += 1;
+    if (result.escaped) {
+      sourceEventState = { ...sourceEventState, party: storeSourceEncounterParty(sourceEventState.party, sourceBattle),
+        pendingEncounter: null, wildEncounterSteps: 0 };
+      persistSourceEventState();
+      sourceBattleVisuals.endBattle(null);
+      sourceBattle = null;
+      sourceBattleRng = null;
+      importedNotice = "Fuite réussie : retour à l'exploration, sur la même case.";
+    } else {
+      await sourceBattleVisuals.playTurn(before, result.turn.events);
+      sourceBattle = applyAutomaticReplacements(result.turn.state);
+      if (sourceBattle.status === "finished") {
+        const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle, importedAssets?.battleCatalog);
+        sourceEventState = { ...sourceEventState, party: settlement.party };
+        persistSourceEventState();
+        sourceBattleVisuals.endBattle(sourceBattle.winner);
+        sourceBattle = null;
+        sourceBattleRng = null;
+        importedNotice = "Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.";
+      } else importedNotice = "Fuite ratée : le Pokémon sauvage a pu attaquer.";
+    }
+  } catch (error) {
+    importedNotice = error instanceof Error ? `Fuite impossible : ${error.message}` : "Fuite impossible.";
+  } finally {
+    sourceBattleAnimating = false;
+  }
+  render();
 }
 
 async function submitSourceEncounterAction(moveIndex: number): Promise<void> {
@@ -604,6 +663,7 @@ function move(playerId: string, direction: Direction): void {
         void followSourceTransfer(enteredTransfer);
         return;
       }
+      if (checkSourceWildEncounter()) return;
     }
     importedNotice = before.x === importedAvatar.x && before.y === importedAvatar.y
       ? `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`

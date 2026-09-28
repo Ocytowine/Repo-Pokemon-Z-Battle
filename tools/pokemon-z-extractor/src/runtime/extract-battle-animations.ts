@@ -5,8 +5,8 @@ import { readRubyMarshal } from "../ruby-marshal/reader.js";
 import { rubyText } from "../ruby-marshal/values.js";
 
 const SUPPORTED_MOVES = new Set([
-  "BITE", "BUBBLE", "EMBER", "GROWL", "MUDSLAP", "POUND", "PSYWAVE", "QUICKATTACK", "SCRATCH", "SWIFT",
-  "TACKLE", "TAILWHIP", "VINEWHIP", "WATERGUN",
+  "ABSORB", "BITE", "BUBBLE", "EMBER", "GROWL", "MORNINGSUN", "MUDSLAP", "POUND", "PSYWAVE", "QUICKATTACK",
+  "SCRATCH", "STRINGSHOT", "SWIFT", "TACKLE", "TAILWHIP", "THUNDERWAVE", "VINEWHIP", "WATERGUN",
 ]);
 
 interface MoveRecord {

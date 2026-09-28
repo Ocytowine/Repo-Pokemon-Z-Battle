@@ -43,7 +43,7 @@ describe("persistent player party", () => {
   });
 
   it("blocks unsupported battle mechanics explicitly", () => {
-    expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!, ability: "STATIC" }] }, catalog)).toThrow("Talent");
+    expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!, ability: "LEVITATE" }] }, catalog)).toThrow("Talent");
     expect(() => playerPartyToBattleTeam(party, { ...catalog, moves: [{ ...catalog.moves[0]!, functionCode: "999" }] })).toThrow("Fonction");
   });
 

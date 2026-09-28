@@ -34,4 +34,5 @@ export type {
   TeamTurnResult,
   TurnActions,
   TurnResult,
+  WaitAction,
 } from "./types.js";

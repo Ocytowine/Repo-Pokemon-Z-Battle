@@ -22,9 +22,10 @@ const SUPPORTED_MOVE_FUNCTION_CODES = new Set([
   "000", "003", "005", "006", "007", "00A", "00C",
   "01C", "01D", "01F", "020",
   "042", "043", "044", "045", "046", "047",
-  "0A5", "159", "906",
+  "06F", "0A5", "0D8", "0DD", "159", "906",
 ]);
-const SUPPORTED_ABILITIES = new Set(["GUTS", "HUGEPOWER", "MAGICGUARD", "PUREPOWER", "QUICKFEET"]);
+const SUPPORTED_ABILITIES = new Set(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW",
+  "PUREPOWER", "QUICKFEET", "SHIELDDUST", "SIMPLE", "STATIC", "TORRENT"]);
 
 function entries(
   keys: Iterable<string>,

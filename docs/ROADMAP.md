@@ -699,21 +699,66 @@ premier Keunotor niveau 2 rapporte ainsi 13 points au starter niveau 5.
 
 ### Increment 9.6 - Rencontres sauvages du monde
 
-- [ ] exposer le terrain effectif de chaque case selon les trois couches et les
+- [x] exposer le terrain effectif de chaque case selon les trois couches et les
   `terrainTags` du tileset ;
-- [ ] charger automatiquement la table de rencontres de la carte courante ;
-- [ ] reproduire le delai de trois pas, le taux de rencontre et le tirage pondere
+- [x] charger automatiquement la table de rencontres de la carte courante ;
+- [x] reproduire le delai de trois pas, le taux de rencontre et le tirage pondere
   de Pokemon Z avec une RNG persistante ;
-- [ ] declencher uniquement les rencontres terrestres sur les tags herbe valides ;
-- [ ] raccorder fuite, experience, montee de niveau et retour exact sur la carte ;
-- [ ] porter les capacites et talents requis par le premier lot complet de Route 1.
+- [x] declencher uniquement les rencontres terrestres sur les tags herbe valides ;
+- [x] raccorder fuite, experience, montee de niveau et retour exact sur la carte ;
+- [x] porter les capacites et talents requis par le premier lot complet de Route 1.
 
 Audit initial du 2026-09-28 : la premiere table terrestre du parcours est celle de
 `Map007 - Route 1`, avec un taux de 12 et les especes Keunotor, Passerouge,
 Ceribou, Wattouat et Lépidonille aux niveaux 3 a 5. Le moteur sait deja construire
 Keunotor, mais ne doit pas supprimer silencieusement les talents `BIGPECKS`,
-`CHLOROPHYLL`, `STATIC`, `SHIELDDUST` ni les fonctions `0D8` et `0DD`. Ce lot
-vertical sera porte avant d'activer les tirages aleatoires dans l'overworld.
+`CHLOROPHYLL`, `STATIC`, `SHIELDDUST` ni les fonctions `0D8` et `0DD`. Cet audit a
+donc defini le lot vertical porte avant l'activation des tirages aleatoires.
+
+Premier noyau 9.6 valide le 2026-09-28 : les `terrainTags` sont charges avec le
+tileset et la couche effective reproduit la priorite haute-vers-basse de RPG Maker,
+en ignorant ponts et tags neutres. Une table `Land` n'est interrogee que sur les
+tags herbe 2, 10, 11 et 14. Apres trois pas eligibles sans combat, le taux de la
+carte, les poids des slots et la plage de niveau utilisent une RNG dont l'etat est
+sauvegarde. Les anciennes sauvegardes recoivent des valeurs de migration stables.
+La Route 1 peut ainsi produire ses cinq especes sans modifier la carte a la main.
+
+Deuxieme noyau 9.6 valide le 2026-09-28 : `BIGPECKS`, `CHLOROPHYLL`, `STATIC` et
+`SHIELDDUST` sont acceptes et appliquent leurs effets pertinents dans le contexte
+actuel. Le contact utilise le drapeau PBS de la capacite ; Aurore (`0D8`) soigne la
+moitie des PV hors meteo et Absorber (`0DD`) rend la moitie des degats. Les 24
+animations requises par les starters, Keunotor et le lot Route 1 sont maintenant
+normalisees. `map-battle-metadata.json` generalise egalement le choix du battleback,
+de la musique sauvage et du theme de victoire : Route 1 utilise donc `Pradera`,
+alors que le combat du starter conserve `Snow`. Le rapport moteur passe a 55
+mecaniques supportees sur 651.
+
+Troisieme noyau 9.6 valide le 2026-09-28 : les rencontres aleatoires proposent la
+fuite, contrairement au Keunotor obligatoire du scenario. La formule reprend les
+vitesses non modifiees, le tirage sur 256 et le bonus de 30 par tentative du script
+source. Un echec consomme le tour et laisse le Pokemon sauvage attaquer ; une
+reussite sauvegarde PV et PP puis restaure exactement la meme carte et la meme
+case. L'action generique `wait` ajoutee au moteur permet ce tour adverse sans
+simuler une fausse attaque du joueur. L'increment 9.6 est fonctionnellement clos ;
+la recette interactive du parcours complet reste a effectuer sur les assets locaux.
+
+### Comment la couverture s'etend au jeu complet
+
+Le portage suit deux niveaux complementaires. Le premier est generique : un seul
+lecteur couvre les 507 cartes, les trois couches, les 50 tilesets, les pages, les
+conditions, les transferts, les tables de rencontre, les metadonnees de combat et
+les commandes RPG Maker normalisees. Une correction de cette couche profite donc
+immediatement a toutes les cartes ; 90,51 % des 188 037 commandes sont deja
+converties structurellement.
+
+Le second niveau est vertical : les appels Ruby et regles de combat propres au
+fangame sont portes par familles lorsqu'un parcours jouable les atteint. Ce n'est
+pas un correctif limite a une seule carte : porter `pbWildBattle`, `STATIC` ou
+`0DD` les rend disponibles partout ou ils apparaissent. Les rapports de couverture
+gardent la liste exacte de ce qui reste bloque. Il faudra bien couvrir toutes les
+mecaniques atteignables pour terminer le solo, mais pas reecrire individuellement
+chaque evenement ni pretendre implementer d'avance les outils d'editeur, fonctions
+de debug ou variantes jamais utilisees par le parcours final.
 
 L'import du monde ne sera jamais une bascule unique. Chaque lot de cartes devra avoir un taux de commandes supportees mesurable et des tests de parcours.
 

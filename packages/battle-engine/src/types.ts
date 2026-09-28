@@ -17,7 +17,7 @@ export interface BattleMove {
   readonly functionCode: "000" | "003" | "005" | "006" | "007" | "00A" | "00C"
     | "01C" | "01D" | "01F" | "020"
     | "042" | "043" | "044" | "045" | "046" | "047"
-    | "06F" | "0A5" | "159" | "906";
+    | "06F" | "0A5" | "0D8" | "0DD" | "159" | "906";
   readonly power: number;
   readonly type: string;
   readonly category: MoveCategory;
@@ -25,10 +25,11 @@ export interface BattleMove {
   readonly pp: number;
   readonly priority: number;
   readonly effectChance: number;
+  readonly flags?: string;
 }
 
-export type BattleAbility = "BLAZE" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW" | "PUREPOWER" | "QUICKFEET"
-  | "SIMPLE" | "TORRENT";
+export type BattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
+  | "PUREPOWER" | "QUICKFEET" | "SHIELDDUST" | "SIMPLE" | "STATIC" | "TORRENT";
 export type HeldItem = "ASSAULTVEST" | "BLACKSLUDGE" | "LEFTOVERS" | "MUSCLEBAND" | "SCOPELENS" | "WISEGLASSES";
 
 export interface MoveSlot {
@@ -101,6 +102,8 @@ export type BattleEvent =
   | { readonly type: "ppChanged"; readonly side: BattleSide; readonly move: string; readonly pp: number }
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
+  | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: BattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
@@ -116,7 +119,7 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number; readonly result: number };
 
@@ -131,7 +134,9 @@ export interface SwitchAction {
   readonly teamIndex: number;
 }
 
-export type TeamBattleAction = MoveAction | SwitchAction;
+export interface WaitAction { readonly kind: "wait" }
+
+export type TeamBattleAction = MoveAction | SwitchAction | WaitAction;
 export type TeamTurnActions = Readonly<Record<BattleSide, TeamBattleAction>>;
 
 export interface BattleTeam {
@@ -151,7 +156,7 @@ export type TeamBattleEvent =
   | BattleEvent
   | {
       readonly type: "teamActionOrdered";
-      readonly order: readonly { readonly side: BattleSide; readonly kind: "move" | "switch" }[];
+      readonly order: readonly { readonly side: BattleSide; readonly kind: "move" | "switch" | "wait" }[];
     }
   | {
       readonly type: "pokemonSwitched";
