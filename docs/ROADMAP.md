@@ -632,8 +632,88 @@ interrupteurs et la variable narrative d'origine, evalue la direction du joueur
 pour la mise en scene, puis place la rencontre obligatoire contre Keunotor niveau
 2 dans l'etat persistant. Un raccourci **Tester les starters** charge `Map002` devant le
 socle de Marisson quand aucune equipe n'existe. La rencontre est encore mise en
-attente : son ouverture dans le moteur de combat et son retour vers l'overworld
-constituent le prochain raccordement.
+attente afin de pouvoir survivre a un rechargement avant son lancement.
+
+Septieme noyau valide le 2026-09-28 : la rencontre en attente ouvre maintenant le
+panneau de combat directement dans l'overworld. Les deux equipes sont construites
+depuis les donnees persistantes et les catalogues locaux, l'adversaire choisit une
+capacite disponible avec la RNG deterministe, et chaque tour passe par le moteur
+commun. Les noms de Pokemon et de capacites affiches proviennent des donnees
+francaises. `OVERGROW`, `BLAZE`, `TORRENT`, `SIMPLE` et la fonction `06F` de
+Psywave reproduisent leurs regles source, ce qui rend les trois starters et
+Keunotor convertibles sans suppression silencieuse. Une victoire reinjecte PV,
+statuts, PP et Pokemon actif dans la sauvegarde puis consomme la rencontre. Une
+defaite soigne l'equipe et conserve la rencontre pour permettre une nouvelle
+tentative. Les deplacements et changements de mode restent verrouilles pendant
+le combat.
+
+Huitieme noyau valide le 2026-09-28 : le combat source ne se limite plus au
+panneau technique. L'overworld charge automatiquement `asset-manifest.json` et
+`pokemon-assets.json`, compose une battlemap complete (fond neige pour cette
+rencontre), puis affiche le sprite dos du starter et le sprite face de Keunotor,
+y compris leurs frames animees. Les cadres de nom, niveau et PV, la boite de
+message, les mouvements d'attaque, impacts et K.O. accompagnent la resolution des
+tours. Le chargement utilise la route locale deja preparee par `prepare:local` :
+aucun dossier ni manifeste ne doit etre reselectionne. Un fallback lisible garde
+le combat jouable si un asset manque. Cet increment utilisait encore les
+mouvements generiques du laboratoire avant le raccordement du noyau suivant.
+
+Neuvieme noyau valide le 2026-09-28 : `battle-animations.json` est charge avec les
+deux autres manifestes sans action manuelle. Le presentateur choisit l'animation
+joueur ou adversaire de chaque capacite, inverse les animations a sens unique,
+dessine les cels avant ou apres les battlers selon leur priorite et applique aux
+sprites les translations, rotations, echelles, opacites et miroirs de la source.
+Les timings declenchent aussi leurs effets sonores avec volume et hauteur
+d'origine. L'extracteur normalise maintenant les 19 animations necessaires aux
+capacites initiales de Marisson, Feunnec, Grenousse et Keunotor : les onze
+capacites de ce parcours disposent toutes de leurs frames et sons locaux. Une
+capacite non encore exportee conserve le fallback generique, sans bloquer le
+combat.
+
+Dixieme noyau valide le 2026-09-28 : la couche audio du combat lit les references
+du jeu source. `Map002` declare `Salvaje.ogg` comme musique de rencontre sauvage
+et `VictoriaSalvaje.ogg` comme theme de victoire ; ces pistes sont maintenant
+jouees aux bons moments. Les cris du starter et de Keunotor sont selectionnes
+depuis `pokemon-assets.json`, sans chemin propre a une espece code dans l'UI.
+Chaque session audio possede un cycle de vie explicite afin qu'une fin de combat
+ou une nouvelle tentative coupe la musique et les sons precedents. Un refus
+d'autoplay ou un asset audio absent ne bloque jamais le moteur de combat.
+
+Onzieme noyau valide le 2026-09-28 : les commandes placees apres un combat dans
+l'evenement source ne sont plus appliquees avant son resultat. Pour le parcours
+des starters, l'interrupteur 65 est conserve dans la rencontre persistante puis
+active uniquement apres une victoire. Une defaite restaure donc l'equipe et laisse
+la rencontre disponible sans faire avancer artificiellement l'histoire. Les
+anciennes sauvegardes de rencontre restent lisibles ; les futurs types de
+continuation restent bloques tant qu'ils ne disposent pas d'une representation
+declarative sure.
+
+Douzieme noyau valide le 2026-09-28 : l'equipe persistante utilise desormais les
+six courbes d'experience de Pokemon Z et initialise un Pokemon au total requis par
+son niveau, au lieu de zero. Une victoire sauvage applique la formule ajustee au
+niveau du script source, conserve l'experience, recalcule les statistiques et
+preserve les degats deja subis lors d'une montee de niveau. Les capacites de niveau
+sont ajoutees si un emplacement est libre ; celles qui exigent d'en oublier une
+sont signalees explicitement et restent a raccorder a une interface de choix. Le
+premier Keunotor niveau 2 rapporte ainsi 13 points au starter niveau 5.
+
+### Increment 9.6 - Rencontres sauvages du monde
+
+- [ ] exposer le terrain effectif de chaque case selon les trois couches et les
+  `terrainTags` du tileset ;
+- [ ] charger automatiquement la table de rencontres de la carte courante ;
+- [ ] reproduire le delai de trois pas, le taux de rencontre et le tirage pondere
+  de Pokemon Z avec une RNG persistante ;
+- [ ] declencher uniquement les rencontres terrestres sur les tags herbe valides ;
+- [ ] raccorder fuite, experience, montee de niveau et retour exact sur la carte ;
+- [ ] porter les capacites et talents requis par le premier lot complet de Route 1.
+
+Audit initial du 2026-09-28 : la premiere table terrestre du parcours est celle de
+`Map007 - Route 1`, avec un taux de 12 et les especes Keunotor, Passerouge,
+Ceribou, Wattouat et Lépidonille aux niveaux 3 a 5. Le moteur sait deja construire
+Keunotor, mais ne doit pas supprimer silencieusement les talents `BIGPECKS`,
+`CHLOROPHYLL`, `STATIC`, `SHIELDDUST` ni les fonctions `0D8` et `0DD`. Ce lot
+vertical sera porte avant d'activer les tirages aleatoires dans l'overworld.
 
 L'import du monde ne sera jamais une bascule unique. Chaque lot de cartes devra avoir un taux de commandes supportees mesurable et des tests de parcours.
 

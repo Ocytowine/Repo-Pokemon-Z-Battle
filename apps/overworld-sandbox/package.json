@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@pokemon-z-battle/battle-engine": "workspace:*",
+    "@pokemon-z-battle/local-assets": "workspace:*",
     "@pokemon-z-battle/multiplayer-protocol": "workspace:*",
     "@pokemon-z-battle/overworld-engine": "workspace:*",
     "@pokemon-z-battle/player-state": "workspace:*"

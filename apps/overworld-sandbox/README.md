@@ -64,10 +64,34 @@ Pour tester son attribution, cliquez sur **Tester les starters** : le sandbox ch
 (affiché **Oui** grâce aux données françaises) et terminez le
 dialogue. Marisson niveau 5 apparaît alors dans le panneau avec ses capacités ;
 les interrupteurs narratifs sont enregistrés et le combat source contre Keunotor
-niveau 2 apparaît comme rencontre en attente. Les socles voisins attribuent de la
-même façon Feunnec et Grenousse. Le combat n'est pas encore ouvert à l'écran : ce
-prochain raccordement devra convertir les deux équipes pour le moteur, exécuter la
-rencontre, puis réinjecter PV, statuts et PP dans la sauvegarde.
+niveau 2 s'ouvre automatiquement. Choisissez une capacité française dans le
+panneau **Rencontre autoritaire** jusqu'à la fin du combat. La scène utilise
+automatiquement la battlemap neige, le sprite dos du starter, le sprite face de
+Keunotor, leurs cadres de PV et les mouvements visuels d'attaque : aucune nouvelle
+sélection de dossier n'est nécessaire. Une victoire ferme le panneau et sauvegarde
+les PV, statuts et PP restants. En cas de défaite, l'équipe est soignée et la
+rencontre reste visible avec un bouton **Lancer** pour retenter.
+Les socles voisins attribuent et combattent de la même façon avec Feunnec ou
+Grenousse. Si une ancienne sauvegarde possède déjà une rencontre en attente, le
+bouton **Lancer** permet également de la reprendre.
+
+Les attaques de ce combat utilisent `battle-animations.json` : cels avant/arrière,
+transformations des battlers et effets sonores suivent les timings du jeu source.
+Le lot couvre les onze capacités initiales des trois starters ainsi que Charge de
+Keunotor. Après une mise à jour de l'extracteur, relancez `corepack pnpm
+prepare:local` afin de régénérer ce manifeste ; une animation générique reste
+disponible si une capacité future n'a pas encore été exportée.
+
+La rencontre reprend aussi les sons du jeu source : `Salvaje.ogg` tourne pendant
+le combat, chaque Pokémon joue son cri d'entrée extrait et une victoire déclenche
+`VictoriaSalvaje.ogg`. La musique de combat et les sons encore actifs sont arrêtés
+proprement lors d'une victoire, d'une défaite ou d'une nouvelle tentative.
+
+La victoire rapporte également l'expérience calculée avec la formule et la courbe
+de croissance du jeu source. Le total apparaît dans le panneau **Équipe**. Pour le
+combat initial, Keunotor niveau 2 rapporte 13 EXP au starter niveau 5. L'interrupteur
+narratif placé après `pbWildBattle` n'est validé qu'après cette victoire ; perdre
+ne fait plus avancer l'histoire et permet toujours de retenter la rencontre.
 
 Au départ, le joueur 1 regarde une baie `PERSONAL` : appuyez sur Espace pour
 l'ajouter uniquement à son inventaire. Le joueur 2 regarde le guide `SHARED` :

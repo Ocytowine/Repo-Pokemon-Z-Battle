@@ -1,6 +1,6 @@
 import { createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
   type RandomSource, type TeamBattleState, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
+import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 
 export interface SourceEncounterRequest {
@@ -53,11 +53,36 @@ export function storeSourceEncounterParty(party: PlayerPartyState, state: TeamBa
 export interface SourceEncounterSettlement {
   readonly party: PlayerPartyState;
   readonly completed: boolean;
+  readonly experience: { readonly amount: number; readonly pokemonId: string; readonly levelsGained: number;
+    readonly learnedMoves: readonly string[]; readonly skippedMoves: readonly string[] } | null;
 }
 
-export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattleState): SourceEncounterSettlement {
+export function scaledWildExperience(defeatedLevel: number, baseExperience: number, recipientLevel: number): number {
+  if (![defeatedLevel, baseExperience, recipientLevel].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error("Paramètres de gain d'expérience invalides.");
+  }
+  let experience = Math.floor((defeatedLevel * baseExperience) / 5);
+  const levelAdjustment = ((2 * defeatedLevel + 10) / (defeatedLevel + recipientLevel + 10)) ** 2.5;
+  experience = Math.floor(experience * levelAdjustment);
+  return experience + 1;
+}
+
+export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattleState,
+  catalog?: PlayerCreationCatalog): SourceEncounterSettlement {
   if (state.status !== "finished" || state.winner === null) throw new Error("Le combat source n'est pas terminé.");
   const stored = storeSourceEncounterParty(party, state);
-  return state.winner === "player" ? { party: stored, completed: true }
-    : { party: healPlayerParty(stored), completed: false };
+  if (state.winner !== "player") return { party: healPlayerParty(stored), completed: false, experience: null };
+  const activeIndex = stored.activeIndex;
+  const defeated = state.teams.opponent.members[state.teams.opponent.activeIndex];
+  const recipient = activeIndex === null ? undefined : stored.members[activeIndex];
+  if (catalog === undefined || defeated === undefined || recipient === undefined || recipient.hp <= 0) {
+    return { party: stored, completed: true, experience: null };
+  }
+  const definition = catalog.pokemon.find((candidate) => candidate.internalName === defeated.species);
+  if (definition === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${defeated.species}.`);
+  const reward = grantPokemonExperience(recipient,
+    scaledWildExperience(defeated.level, definition.baseExperience, recipient.level), catalog);
+  const members = stored.members.map((member, index) => index === activeIndex ? reward.pokemon : member);
+  return { party: { ...stored, members }, completed: true, experience: { amount: reward.gained, pokemonId: recipient.id,
+    levelsGained: reward.levelsGained, learnedMoves: reward.learnedMoves, skippedMoves: reward.skippedMoves } };
 }

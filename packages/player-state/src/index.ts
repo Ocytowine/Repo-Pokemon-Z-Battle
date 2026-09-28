@@ -36,7 +36,15 @@ export interface PlayerBattleCatalog {
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
-  readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves">[];
+  readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience">[];
+}
+
+export interface ExperienceResult {
+  readonly pokemon: PersistentPokemon;
+  readonly gained: number;
+  readonly levelsGained: number;
+  readonly learnedMoves: readonly string[];
+  readonly skippedMoves: readonly string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -110,6 +118,44 @@ function neutralStat(base: number, level: number): number {
   return Math.floor(((2 * base + 31) * level) / 100) + 5;
 }
 
+export function experienceAtLevel(level: number, growthRate: string): number {
+  if (!integer(level, 1, 100)) throw new Error(`Niveau invalide pour l'expérience : ${level}.`);
+  const cube = level ** 3;
+  switch (growthRate) {
+    case "Medium": case "MediumFast": return cube;
+    case "Parabolic": case "MediumSlow": return Math.max(0, Math.floor((6 * cube) / 5 - 15 * level ** 2 + 100 * level - 140));
+    case "Fast": return Math.floor((4 * cube) / 5);
+    case "Slow": return Math.floor((5 * cube) / 4);
+    case "Erratic":
+      if (level <= 50) return Math.floor((cube * (100 - level)) / 50);
+      if (level <= 68) return Math.floor((cube * (150 - level)) / 100);
+      if (level <= 98) return Math.floor(cube * (1.274 - (1 / 50) * Math.floor(level / 3) - [0, 0.008, 0.014][level % 3]!));
+      return Math.floor((cube * (160 - level)) / 100);
+    case "Fluctuating":
+      if (level <= 15) return Math.floor(cube * ((24 + Math.floor((level + 1) / 3)) / 50));
+      if (level <= 35) return Math.floor(cube * ((14 + level) / 50));
+      return Math.floor(cube * ((32 + Math.floor(level / 2)) / 50));
+    default: throw new Error(`Courbe d'expérience non prise en charge : ${growthRate}.`);
+  }
+}
+
+function levelForExperience(experience: number, growthRate: string): number {
+  for (let level = 100; level >= 1; level -= 1) {
+    if (experience >= experienceAtLevel(level, growthRate)) return level;
+  }
+  return 1;
+}
+
+function statsAtLevel(definition: PlayerCreationCatalog["pokemon"][number], level: number): BattleStats {
+  const base = definition.baseStats;
+  return {
+    maxHp: Math.floor(((2 * base.hp + 31) * level) / 100) + level + 10,
+    attack: neutralStat(base.attack, level), defense: neutralStat(base.defense, level),
+    specialAttack: neutralStat(base.specialAttack, level), specialDefense: neutralStat(base.specialDefense, level),
+    speed: neutralStat(base.speed, level),
+  };
+}
+
 export function createPersistentPokemon(instanceId: string, species: string, level: number,
   catalog: PlayerCreationCatalog): PersistentPokemon {
   if (instanceId === "" || !integer(level, 1, 100)) throw new Error("Paramètres de création du Pokémon invalides.");
@@ -123,15 +169,34 @@ export function createPersistentPokemon(instanceId: string, species: string, lev
     if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);
     return { internalName: move.internalName, pp: move.pp, maxPp: move.pp };
   });
-  const base = definition.baseStats;
-  const stats: BattleStats = {
-    maxHp: Math.floor(((2 * base.hp + 31) * level) / 100) + level + 10,
-    attack: neutralStat(base.attack, level), defense: neutralStat(base.defense, level),
-    specialAttack: neutralStat(base.specialAttack, level), specialDefense: neutralStat(base.specialDefense, level),
-    speed: neutralStat(base.speed, level),
-  };
-  return { id: instanceId, species, nickname: null, level, experience: 0, stats, hp: stats.maxHp, majorStatus: null,
+  const stats = statsAtLevel(definition, level);
+  return { id: instanceId, species, nickname: null, level, experience: experienceAtLevel(level, definition.growthRate), stats, hp: stats.maxHp, majorStatus: null,
     ability: definition.abilities[0] ?? null, heldItem: null, moves };
+}
+
+export function grantPokemonExperience(pokemon: PersistentPokemon, amount: number,
+  catalog: PlayerCreationCatalog): ExperienceResult {
+  if (!integer(amount, 0)) throw new Error("Gain d'expérience invalide.");
+  const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+  if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${pokemon.species}.`);
+  const currentExperience = Math.max(pokemon.experience, experienceAtLevel(pokemon.level, definition.growthRate));
+  const nextExperience = Math.min(experienceAtLevel(100, definition.growthRate), currentExperience + amount);
+  const nextLevel = Math.max(pokemon.level, levelForExperience(nextExperience, definition.growthRate));
+  const learnedMoves: string[] = [];
+  const skippedMoves: string[] = [];
+  let moves = pokemon.moves.map((slot) => ({ ...slot }));
+  for (const entry of definition.levelUpMoves.filter((move) => move.level > pokemon.level && move.level <= nextLevel)) {
+    if (moves.some((slot) => slot.internalName === entry.move)) continue;
+    const move = catalog.moves.find((candidate) => candidate.internalName === entry.move);
+    if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);
+    if (moves.length >= 4) { skippedMoves.push(entry.move); continue; }
+    moves = [...moves, { internalName: move.internalName, pp: move.pp, maxPp: move.pp }];
+    learnedMoves.push(entry.move);
+  }
+  const stats = statsAtLevel(definition, nextLevel);
+  const hp = Math.min(stats.maxHp, pokemon.hp + (stats.maxHp - pokemon.stats.maxHp));
+  return { pokemon: { ...pokemon, level: nextLevel, experience: nextExperience, stats, hp, moves },
+    gained: nextExperience - currentExperience, levelsGained: nextLevel - pokemon.level, learnedMoves, skippedMoves };
 }
 
 export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPokemon): PlayerPartyState {

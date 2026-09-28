@@ -320,6 +320,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localiza
   const pokemon = pokemonValue.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string" || !Array.isArray(entry.types)
       || !entry.types.every((type) => typeof type === "string") || !isRecord(entry.baseStats) || !Array.isArray(entry.abilities)
+      || typeof entry.growthRate !== "string" || !Number.isInteger(entry.baseExperience) || (entry.baseExperience as number) < 1
       || !entry.abilities.every((ability) => typeof ability === "string") || !Array.isArray(entry.levelUpMoves)) {
       throw new Error("Une définition de Pokémon est invalide.");
     }
@@ -336,7 +337,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localiza
     return { internalName: entry.internalName, name: pokemonNames.get(entry.id as number) ?? entry.name, types: entry.types as string[],
       baseStats: { hp: stat("hp"), attack: stat("attack"), defense: stat("defense"), speed: stat("speed"),
         specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
-      abilities: entry.abilities as string[], levelUpMoves };
+      abilities: entry.abilities as string[], levelUpMoves, growthRate: entry.growthRate, baseExperience: entry.baseExperience as number };
   });
   const moves = movesValue.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string"

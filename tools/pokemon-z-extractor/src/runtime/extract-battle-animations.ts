@@ -4,7 +4,10 @@ import type { RubyExtendedValue, RubyMarshalValue, RubyObject } from "../ruby-ma
 import { readRubyMarshal } from "../ruby-marshal/reader.js";
 import { rubyText } from "../ruby-marshal/values.js";
 
-const SUPPORTED_MOVES = new Set(["TACKLE", "QUICKATTACK", "SCRATCH", "WATERGUN", "VINEWHIP", "SWIFT"]);
+const SUPPORTED_MOVES = new Set([
+  "BITE", "BUBBLE", "EMBER", "GROWL", "MUDSLAP", "POUND", "PSYWAVE", "QUICKATTACK", "SCRATCH", "SWIFT",
+  "TACKLE", "TAILWHIP", "VINEWHIP", "WATERGUN",
+]);
 
 interface MoveRecord {
   readonly id: number;

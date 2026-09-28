@@ -170,7 +170,9 @@ export function parseScenario(value: unknown): BattleScenario {
   });
   const ability = (candidate: unknown, label: string): BattleAbility | null => {
     if (candidate === undefined || candidate === null) return null;
-    if (typeof candidate !== "string" || !SANDBOX_ABILITIES.includes(candidate as BattleAbility)) throw new Error(`${label} inconnu.`);
+    if (typeof candidate !== "string" || !SANDBOX_ABILITIES.includes(candidate as typeof SANDBOX_ABILITIES[number])) {
+      throw new Error(`${label} inconnu.`);
+    }
     return candidate as BattleAbility;
   };
   const item = (candidate: unknown, label: string): HeldItem | null => {

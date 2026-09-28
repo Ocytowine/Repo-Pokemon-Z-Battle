@@ -11,7 +11,11 @@ export interface SourceEventState {
   readonly pendingEncounter: SourceEncounter | null;
 }
 
-export interface SourceEncounter { readonly species: string; readonly level: number }
+export interface SourceEncounter {
+  readonly species: string;
+  readonly level: number;
+  readonly victorySwitches: Readonly<Record<string, boolean>>;
+}
 
 export interface SourceCheckpoint {
   readonly mapId: number;
@@ -114,9 +118,24 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   let checkpoint = state.checkpoint;
   let party = state.party;
   let pendingEncounter = state.pendingEncounter;
+  let encounterQueued = false;
   let appliedCommands = 0;
   for (const command of page.commands) {
     if (!STATE_COMMANDS.has(command.kind)) continue;
+    if (encounterQueued) {
+      if (command.kind !== "set-switches" || pendingEncounter === null) {
+        return { state, appliedCommands: 0, safe: false, reason: `commande ${command.kind} après combat non prise en charge` };
+      }
+      const ids = range(command.data);
+      if (ids === null || typeof command.data.value !== "boolean") {
+        return { state, appliedCommands: 0, safe: false, reason: "paramètres d'interrupteur de victoire invalides" };
+      }
+      const victorySwitches = { ...pendingEncounter.victorySwitches };
+      ids.forEach((id) => { victorySwitches[String(id)] = command.data.value as boolean; });
+      pendingEncounter = { ...pendingEncounter, victorySwitches };
+      appliedCommands += 1;
+      continue;
+    }
     if (command.kind === "set-switches") {
       const ids = range(command.data);
       if (ids === null || typeof command.data.value !== "boolean") return { state, appliedCommands: 0, safe: false, reason: "paramètres d'interrupteur invalides" };
@@ -162,17 +181,23 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       } catch (error) {
         return { state, appliedCommands: 0, safe: false, reason: error instanceof Error ? error.message : "ajout du Pokémon impossible" };
       }
-    } else {
+    } else if (command.kind === "request-encounter") {
       const species = command.data.species;
       const level = command.data.level;
       if (typeof species !== "string" || !finiteInteger(level) || level < 1 || level > 100 || party.members.length === 0) {
         return { state, appliedCommands: 0, safe: false, reason: "rencontre impossible sans équipe valide" };
       }
-      pendingEncounter = { species, level };
+      pendingEncounter = { species, level, victorySwitches: {} };
+      encounterQueued = true;
     }
     appliedCommands += 1;
   }
   return { state: { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter }, appliedCommands, safe: true, reason: null };
+}
+
+export function completePendingEncounter(state: SourceEventState): SourceEventState {
+  if (state.pendingEncounter === null) return state;
+  return { ...state, switches: { ...state.switches, ...state.pendingEncounter.victorySwitches }, pendingEncounter: null };
 }
 
 function booleanDictionary(value: unknown): Record<string, boolean> | null {
@@ -207,7 +232,9 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const pendingEncounter = encounterValue === undefined || encounterValue === null ? null
     : isRecord(encounterValue) && typeof encounterValue.species === "string" && finiteInteger(encounterValue.level)
       && encounterValue.level >= 1 && encounterValue.level <= 100
-      ? { species: encounterValue.species, level: encounterValue.level } : undefined;
+      && (encounterValue.victorySwitches === undefined || booleanDictionary(encounterValue.victorySwitches) !== null)
+      ? { species: encounterValue.species, level: encounterValue.level,
+        victorySwitches: encounterValue.victorySwitches === undefined ? {} : booleanDictionary(encounterValue.victorySwitches)! } : undefined;
   if (switches === null || variables === null || selfSwitches === null || inventory === null
     || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined) throw new Error("État source invalide.");
   return { switches, variables, selfSwitches, inventory, checkpoint, party, pendingEncounter };

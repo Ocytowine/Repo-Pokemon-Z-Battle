@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
-import { applySafeStateCommands, createSourceEventState, parseSourceEventState, selectActiveEventPage } from "../src/source-event-state.js";
+import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, selectActiveEventPage } from "../src/source-event-state.js";
 
 function page(condition: ImportedEventPage["condition"], commands: ImportedEventPage["commands"] = []): ImportedEventPage {
   return { condition, graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
@@ -102,7 +102,9 @@ describe("persistent source event state", () => {
         stats: { maxHp: 22, attack: 12, defense: 14, specialAttack: 11, specialDefense: 13, speed: 10 }, hp: 22,
         majorStatus: null, ability: "OVERGROW", heldItem: null, moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] }),
     });
-    expect(result).toMatchObject({ safe: true, appliedCommands: 3, state: { switches: { 65: true },
-      pendingEncounter: { species: "BIDOOF", level: 2 }, party: { activeIndex: 0, members: [{ species: "CHESPIN", level: 5 }] } } });
+    expect(result).toMatchObject({ safe: true, appliedCommands: 3, state: { switches: {},
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true } },
+      party: { activeIndex: 0, members: [{ species: "CHESPIN", level: 5 }] } } });
+    expect(completePendingEncounter(result.state)).toMatchObject({ switches: { 65: true }, pendingEncounter: null });
   });
 });

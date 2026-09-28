@@ -58,6 +58,10 @@ prises en charge par le sandbox. Les sources Ruby sont decomprimees
 dans `.pokemon-z/data/scripts/` uniquement comme references : elles ne sont jamais
 executees par le produit web.
 
+Le combat source de l'overworld consomme également les battlebacks, sprites,
+animations, effets sonores, cris et musiques locales décrits par ces manifestes.
+Les fichiers restent servis depuis `.pokemon-z` et ne sont jamais ajoutés au dépôt.
+
 ## Assets et page de contrôle
 
 Après les extractions de données :
@@ -200,6 +204,6 @@ cartes de demonstration coop restent originales. Le mode solo charge desormais
 les cartes Pokemon Z, leurs vrais tilesets, collisions, personnages, transferts
 et un premier ensemble d'evenements persistants. Le raccourci **Tester les starters**
 permet notamment d'executer le choix source de `Map002` et de creer l'equipe
-personnelle ; le combat obligatoire qui suit est encore affiche comme rencontre
-en attente. L'architecture est documentee dans
+personnelle ; le combat obligatoire contre Keunotor s'ouvre ensuite dans le
+panneau local et reinjecte les ressources restantes dans la sauvegarde. L'architecture est documentee dans
 `docs/OVERWORLD_ARCHITECTURE.md` et `docs/COOP_ARCHITECTURE.md`.

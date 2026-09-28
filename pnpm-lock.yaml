@@ -74,6 +74,9 @@ importers:
       '@pokemon-z-battle/battle-engine':
         specifier: workspace:*
         version: link:../../packages/battle-engine
+      '@pokemon-z-battle/local-assets':
+        specifier: workspace:*
+        version: link:../../packages/local-assets
       '@pokemon-z-battle/multiplayer-protocol':
         specifier: workspace:*
         version: link:../../packages/multiplayer-protocol

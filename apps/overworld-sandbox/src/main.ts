@@ -3,10 +3,11 @@ import { PROTOCOL_VERSION, normalizeRoomCode, type RoomSnapshot } from "@pokemon
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { buildWebSocketUrl, normalizeServerUrl, parseServerMessage, parseStoredSession, parseTicket, reconnectDelay, type MultiplayerTicket, type StoredOverworldSession } from "./multiplayer-client.js";
 import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
-import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
+import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
 import { SeededRandom, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { applyAutomaticReplacements, createSourceEncounterBattle, resolveSourceEncounterTurn, settleSourceEncounter } from "./source-encounter.js";
+import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -42,6 +43,7 @@ let sourceDialogue: SourceDialogueSession | null = null;
 let sourceTransitionInProgress = false;
 let sourceBattle: TeamBattleState | null = null;
 let sourceBattleRng: SeededRandom | null = null;
+let sourceBattleAnimating = false;
 type AvatarId = "player" | "opponent";
 
 interface NetworkSession {
@@ -91,6 +93,7 @@ function startPendingSourceEncounter(): void {
     sourceBattle = createSourceEncounterBattle(sourceEventState.party, encounter, importedAssets.battleCatalog,
       `wild-${encounter.species.toLowerCase()}`);
     sourceBattleRng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
+    void sourceBattleVisuals.startBattle(sourceBattle);
     importedNotice = `Combat lancé contre ${encounter.species} niveau ${encounter.level}.`;
   } catch (error) {
     sourceBattle = null;
@@ -121,7 +124,19 @@ root.innerHTML = `
         <article data-controller="opponent"><strong>Joueur 2</strong><small>I J K L · O</small><div class="pad" data-player="opponent"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="opponent">Interagir</button></article>
       </div><button id="reset" class="reset">Réinitialiser le monde</button></section>
       <section class="panel"><p id="guide-phase" class="eyebrow">Phase 8.3</p><h2 id="guide-title">Parcours coop</h2><div id="coop-guide" class="coop-guide"></div></section>
-      <section id="encounter-panel" class="panel encounter-panel" hidden><div class="log-heading"><div><p class="eyebrow">Rencontre autoritaire</p><h2 id="encounter-title">Combat</h2></div><span id="encounter-turn">Tour 1</span></div><p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div></section>
+      <section id="encounter-panel" class="panel encounter-panel" hidden><div class="log-heading"><div><p class="eyebrow">Rencontre autoritaire</p><h2 id="encounter-title">Combat</h2></div><span id="encounter-turn">Tour 1</span></div>
+        <div id="source-battle-stage" class="source-battle-stage incomplete-scene" hidden>
+          <img id="source-battle-background" class="source-battle-background" alt="" hidden><div class="source-stage-wash"></div>
+          <img id="source-enemy-base" class="source-battle-base source-enemy-base" alt="" hidden><img id="source-player-base" class="source-battle-base source-player-base" alt="" hidden>
+          <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
+          <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
+          <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
+          <div id="source-move-effects" class="source-animation-layer source-move-effects" aria-hidden="true"></div>
+          <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><small id="source-opponent-hp"></small></article>
+          <article class="source-battle-hud source-player-hud"><div><strong id="source-player-name">Joueur</strong><span id="source-player-level"></span></div><div class="source-health-track"><span id="source-player-hp-bar"></span></div><small id="source-player-hp"></small></article>
+          <div id="source-battle-message" class="source-battle-message">Un Pokémon sauvage apparaît !</div>
+        </div>
+        <p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div></section>
       <section class="panel"><div class="log-heading"><div><p class="eyebrow">Moteur</p><h2>Événements</h2></div><span id="tick">Tick 0</span></div><div id="progress" class="progress"></div><div id="events" class="events">Déplace un avatar pour commencer.</div></section>
     </aside>
   </main>`;
@@ -132,6 +147,7 @@ const drawingContext = canvasElement.getContext("2d");
 if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
 const canvas: HTMLCanvasElement = canvasElement;
 const context: CanvasRenderingContext2D = drawingContext;
+const sourceBattleVisuals = new SourceBattleVisuals();
 const renderPositions: Record<AvatarId, { mapId: string; x: number; y: number }> = {
   player: { ...state.avatars.player! },
   opponent: { ...state.avatars.opponent! },
@@ -252,7 +268,7 @@ function renderImportedView(): void {
   const checkpointLabel = checkpoint === null ? "Bourg Canvas · 28,15" : `Map${String(checkpoint.mapId).padStart(3, "0")} · ${checkpoint.x},${checkpoint.y}`;
   const speciesName = (species: string): string => assets.battleCatalog.pokemon.find((entry) => entry.internalName === species)?.name ?? species;
   const party = sourceEventState.party.members.length === 0 ? "vide (starter non choisi)"
-    : sourceEventState.party.members.map((member) => `${member.nickname ?? speciesName(member.species)} N.${member.level} · ${member.hp}/${member.stats.maxHp} PV`).join(", ");
+    : sourceEventState.party.members.map((member) => `${member.nickname ?? speciesName(member.species)} N.${member.level} · ${member.hp}/${member.stats.maxHp} PV · ${member.experience} EXP`).join(", ");
   const pendingEncounter = sourceEventState.pendingEncounter;
   if (progress !== null) {
     const encounterLabel = pendingEncounter === null ? "aucune" : sourceBattle === null
@@ -266,16 +282,16 @@ function renderImportedView(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
   const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
-    reset.disabled = false;
+    reset.disabled = sourceBattle !== null;
     reset.textContent = sourceEventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
   }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
   const join = document.querySelector<HTMLButtonElement>("#join-room"); if (join !== null) join.disabled = true;
-  const guide = document.querySelector<HTMLElement>("#coop-guide"); if (guide !== null) guide.innerHTML = `<article><span>9.5</span><strong>Choix et conditions</strong><small>Les branches imbriquées suivent la réponse et l'état courant.</small></article><article><span>REPRISE</span><strong>Point de soin</strong><small>L'infirmière mémorise la carte et la position de retour.</small></article><article><span>SÉCURISÉ</span><strong>Scripts filtrés</strong><small>Le Ruby non porté et les combats interrompent l'événement sans modifier l'histoire.</small></article>`;
+  const guide = document.querySelector<HTMLElement>("#coop-guide"); if (guide !== null) guide.innerHTML = `<article><span>9.5</span><strong>Choix et conditions</strong><small>Les branches imbriquées suivent la réponse et l'état courant.</small></article><article><span>REPRISE</span><strong>Point de soin</strong><small>L'infirmière mémorise la carte et la position de retour.</small></article><article><span>COMBAT</span><strong>Rencontre source</strong><small>L'équipe persistante affronte le Pokémon sauvage puis récupère ses PV, statuts et PP.</small></article>`;
   const guidePhase = document.querySelector<HTMLElement>("#guide-phase"); if (guidePhase !== null) guidePhase.textContent = "Phase 9.5";
   const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "État des événements";
-  const encounter = document.querySelector<HTMLElement>("#encounter-panel"); if (encounter !== null) encounter.hidden = true;
   renderSourceDialogue();
+  renderEncounter();
 }
 
 function renderSourceDialogue(): void {
@@ -502,6 +518,9 @@ function renderEncounter(): void {
   panel.hidden = battleState === null;
   if (battleState === null) return;
   const localSourceBattle = battleState === sourceBattle;
+  const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
+  if (visualStage !== null) visualStage.hidden = !localSourceBattle;
+  if (localSourceBattle) void sourceBattleVisuals.render(battleState);
   const playerTeam = battleState.teams.player;
   const opponentTeam = battleState.teams.opponent;
   const player = playerTeam.members[playerTeam.activeIndex];
@@ -514,34 +533,43 @@ function renderEncounter(): void {
   const actions = document.querySelector<HTMLElement>("#encounter-actions");
   if (actions !== null) {
     actions.innerHTML = player.moves.map((slot, index) => {
-      const disabled = slot.pp <= 0 || (!localSourceBattle && (network?.ticket.side !== "player" || network.submittedTurn === battleState.turn));
+      const disabled = slot.pp <= 0 || (localSourceBattle && sourceBattleAnimating)
+        || (!localSourceBattle && (network?.ticket.side !== "player" || network.submittedTurn === battleState.turn));
       return `<button data-encounter-move="${index}" ${disabled ? "disabled" : ""}>${slot.move.name}<small>${slot.pp} PP</small></button>`;
     }).join("");
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-move]").forEach((button) => button.addEventListener("click", () => {
       const moveIndex = Number(button.dataset.encounterMove);
       if (Number.isInteger(moveIndex)) {
-        if (localSourceBattle) submitSourceEncounterAction(moveIndex);
+        if (localSourceBattle) void submitSourceEncounterAction(moveIndex);
         else submitEncounterAction(moveIndex);
       }
     }));
   }
 }
 
-function submitSourceEncounterAction(moveIndex: number): void {
-  if (sourceBattle === null || sourceBattleRng === null) return;
+async function submitSourceEncounterAction(moveIndex: number): Promise<void> {
+  if (sourceBattle === null || sourceBattleRng === null || sourceBattleAnimating) return;
+  sourceBattleAnimating = true;
+  render();
   try {
-    const result = resolveSourceEncounterTurn(sourceBattle, moveIndex, sourceBattleRng);
+    const before = sourceBattle;
+    const result = resolveSourceEncounterTurn(before, moveIndex, sourceBattleRng);
+    await sourceBattleVisuals.playTurn(before, result.events);
     sourceBattle = applyAutomaticReplacements(result.state);
     if (sourceBattle.status === "finished") {
       const winner = sourceBattle.winner;
-      const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle);
-      sourceEventState = { ...sourceEventState, party: settlement.party,
-        pendingEncounter: settlement.completed ? null : sourceEventState.pendingEncounter };
+      sourceBattleVisuals.endBattle(winner);
+      const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle, importedAssets?.battleCatalog);
+      sourceEventState = { ...sourceEventState, party: settlement.party };
+      if (settlement.completed) sourceEventState = completePendingEncounter(sourceEventState);
       persistSourceEventState();
       sourceBattle = null;
       sourceBattleRng = null;
+      const reward = settlement.experience;
+      const skippedMoves = reward?.skippedMoves.map((internalName) => importedAssets?.battleCatalog.moves
+        .find((move) => move.internalName === internalName)?.name ?? internalName) ?? [];
       importedNotice = winner === "player"
-        ? "Victoire : l'état de l'équipe (PV, statuts et PP) a été sauvegardé."
+        ? `Victoire : l'équipe a été sauvegardée${reward === null ? "." : ` · +${reward.amount} EXP${reward.levelsGained > 0 ? ` · +${reward.levelsGained} niveau(x)` : ""}.`}${skippedMoves.length === 0 ? "" : ` Capacité(s) en attente d'un choix : ${skippedMoves.join(", ")}.`}`
         : "Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.";
     } else {
       const active = sourceBattle.teams.opponent.members[sourceBattle.teams.opponent.activeIndex];
@@ -549,6 +577,8 @@ function submitSourceEncounterAction(moveIndex: number): void {
     }
   } catch (error) {
     importedNotice = error instanceof Error ? `Action refusée : ${error.message}` : "Action de combat impossible.";
+  } finally {
+    sourceBattleAnimating = false;
   }
   render();
 }
