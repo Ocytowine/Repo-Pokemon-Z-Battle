@@ -26,6 +26,18 @@ objet distant ou masqué.
 Les définitions de la phase 8 restent originales. L'adaptation des événements RPG
 Maker et des cartes Pokémon Z demeure réservée à la phase 9.
 
+## Politiques des hooks importes
+
+La phase 9.3 classe les hooks Ruby en 15 familles. Profil, inventaire, equipe,
+dialogue, transition, soin, boutique et presentation sont `PERSONAL`. Les mutations
+du monde, mouvements de PNJ et compagnons visibles sont `SHARED`. Les rencontres,
+reglages systeme et hooks inconnus sont `HOST_ONLY` par defaut. Les sequences
+globales de cinematique sont `SYNCED`.
+
+Cette attribution est une politique de migration, pas une autorisation d'executer
+le Ruby. Seules les actions declaratives explicitement portees peuvent devenir des
+effets serveur ; tout le reste demeure `reference-only`.
+
 ## Rencontres de la phase 8.2
 
 Une interaction peut produire `encounterRequested` avec un identifiant et le type

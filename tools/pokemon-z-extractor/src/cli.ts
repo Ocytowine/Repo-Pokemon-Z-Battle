@@ -4,6 +4,10 @@ import { createInventory } from "./inventory/create-inventory.js";
 import { extractPbsData } from "./pbs/extract-pbs.js";
 import { extractRuntimeData } from "./runtime/extract-runtime.js";
 import { extractAssets } from "./assets/extract-assets.js";
+import { extractWorldMaps } from "./runtime/extract-world-maps.js";
+import { prepareLocalTest, readExistingLocalTestPaths } from "./runtime/prepare-local-test.js";
+import { extractEvents } from "./runtime/extract-events.js";
+import { extractScriptHooks } from "./runtime/extract-script-hooks.js";
 
 interface PathArguments {
   readonly sourceDirectory: string;
@@ -17,8 +21,12 @@ Usage:
   pokemon-z-extractor extract-pbs --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-runtime --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-assets --source <game-directory> --output <output-directory>
+  pokemon-z-extractor extract-maps --source <game-directory> --output <output-directory>
+  pokemon-z-extractor prepare-local [--source <game-directory> --output <output-directory>]
+  pokemon-z-extractor extract-events --source <game-directory> --output <output-directory>
+  pokemon-z-extractor extract-hooks --source <game-directory> --output <output-directory>
 
-Both commands are read-only for the source game. The output directory must be
+All commands are read-only for the source game. The output directory must be
 outside the source game.
 `;
 
@@ -62,11 +70,35 @@ async function main(): Promise<void> {
   }
 
   if (command !== "inventory" && command !== "extract-pbs" && command !== "extract-runtime"
-    && command !== "extract-assets") {
+    && command !== "extract-assets" && command !== "extract-maps" && command !== "prepare-local"
+    && command !== "extract-events" && command !== "extract-hooks") {
     throw new Error(`Commande inconnue : ${command}`);
   }
 
-  const options = parsePathArguments(args);
+  const invocationDirectory = process.env.INIT_CWD ?? process.cwd();
+  const options = command === "prepare-local" && args.length === 0
+    ? await readExistingLocalTestPaths(invocationDirectory)
+    : parsePathArguments(args);
+  if (command === "extract-hooks") {
+    const result = await extractScriptHooks(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`Script hook catalog written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Map lines/signatures/groups: ${result.mapScriptLines}/${result.distinctMapSignatures}/${result.normalizedGroups}\n`);
+    process.stdout.write(`Target hooks ported: ${result.targetPorted}/${result.targetOccurrences}\n`);
+    return;
+  }
+  if (command === "prepare-local") {
+    const result = await prepareLocalTest(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`Local test data written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Local configuration: ${result.configPath}\n`);
+    return;
+  }
+  if (command === "extract-events") {
+    const result = await extractEvents(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`Event AST written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Maps/events/pages: ${result.mapCount}/${result.eventCount}/${result.pageCount}\n`);
+    process.stdout.write(`Commands: ${result.commandCount} (${result.convertedCommands} converted, ${result.referenceOnlyCommands} reference-only, ${result.rawCommands} raw)\n`);
+    return;
+  }
   if (command === "inventory") {
     const result = await createInventory(options);
     process.stdout.write(`Manifest written: ${result.manifestPath}\n`);
@@ -88,6 +120,15 @@ async function main(): Promise<void> {
     process.stdout.write(`Asset data written to: ${result.outputDirectory}\n`);
     process.stdout.write(`Assets: ${result.assetCount}\n`);
     process.stdout.write(`Pokemon indexed: ${result.pokemonCount}\n`);
+    return;
+  }
+  if (command === "extract-maps") {
+    const result = await extractWorldMaps(options.sourceDirectory, options.outputDirectory);
+    process.stdout.write(`World maps written to: ${result.outputDirectory}\n`);
+    process.stdout.write(`Maps: ${result.mapCount}\n`);
+    process.stdout.write(`Tilesets: ${result.tilesetCount}\n`);
+    process.stdout.write(`Simple transfers: ${result.transferCount}\n`);
+    process.stdout.write(`Invalid transfer targets: ${result.invalidTransferTargets}\n`);
     return;
   }
 

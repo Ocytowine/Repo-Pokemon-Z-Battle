@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { buildBattleScenes, selectBattler, type AssetManifest, type PokemonAssetRecord } from "../src/index.js";
+import { describe, expect, it, vi } from "vitest";
+import { buildBattleScenes, createHttpDirectoryHandle, fileFromLocalPath, selectBattler, type AssetManifest, type PokemonAssetRecord } from "../src/index.js";
 
 describe("local asset helpers", () => {
   it("groups battleback triplets and reports incomplete scenes", () => {
@@ -15,5 +15,19 @@ describe("local asset helpers", () => {
     const record = { id: 25, internalName: "PIKACHU", name: "Pikachu", assets: { battler: [front, back], icon: [], footprint: [], cry: [], overworld: [] } } satisfies PokemonAssetRecord;
     expect(selectBattler(record, true)?.path).toBe("back.png");
     expect(selectBattler(record, false)?.path).toBe("front.png");
+  });
+
+  it("loads a nested asset from the local development endpoint", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(new Blob(["image"], { type: "image/png" }), { status: 200 }),
+    );
+    const file = await fileFromLocalPath(
+      createHttpDirectoryHandle("/__pokemon-z/source"),
+      "Graphics/Battlers/Pikachu face.png",
+    );
+    expect(fetchMock).toHaveBeenCalledWith("/__pokemon-z/source/Graphics/Battlers/Pikachu%20face.png");
+    expect(file.name).toBe("Pikachu face.png");
+    expect(file.type).toBe("image/png");
+    fetchMock.mockRestore();
   });
 });

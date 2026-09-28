@@ -70,7 +70,11 @@ talent et objet vides.
 
 ## Assets locaux
 
-Le panneau `Presentation du combat` accepte `asset-manifest.json`,
+Avec une configuration creee par `pnpm prepare:local`, le serveur de developpement
+charge automatiquement les manifestes et sert les assets uniquement depuis
+`127.0.0.1`. Aucun selecteur n'est alors necessaire apres un redemarrage.
+
+Sans cette configuration, le panneau `Presentation du combat` accepte `asset-manifest.json`,
 `pokemon-assets.json` et facultativement `battle-animations.json`, puis demande le
 dossier original de Pokemon Z. Cette fonction
 necessite un navigateur Chromium recent pour l'API de selection de dossier.
@@ -82,8 +86,9 @@ transitions d'attaque, impact, KO et les barres de PV suivent exclusivement les
 evenements du moteur. Un rendu generique reste disponible si un manifeste, un
 triplet de scene ou un fichier local manque.
 
-Les fichiers du jeu sont lus directement par le navigateur et ne sont ni copies
-dans le depot, ni envoyes au serveur Vite.
+Les fichiers du jeu restent locaux et ne sont jamais copies dans le depot. En
+mode automatique, le serveur Vite de developpement les expose seulement a
+l'application locale ; les requetes distantes ou cross-site sont refusees.
 
 ## Presentation des attaques
 

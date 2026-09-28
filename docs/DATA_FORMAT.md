@@ -381,6 +381,92 @@ necessitent plusieurs rectangles ; le plus haut mesure 31 236 pixels. Ce plan ne
 duplique pas les PNG et pourra alimenter une conversion ou un chargement Canvas au
 moment du build du client.
 
+## Cartes statiques
+
+`pnpm extract:maps` lit `MapInfos.rxdata`, `Tilesets.rxdata` et les 507 fichiers
+`MapNNN.rxdata`. Il produit localement :
+
+- `tilesets.json`, avec les noms de planches et d'autotiles ainsi que les tables
+  de passage, de priorite et de terrain ;
+- `world-map-manifest.json`, index leger des cartes et de leur provenance ;
+- `maps/MapNNN.json`, avec les trois couches de tuiles, les collisions et les
+  transferts directs ;
+- `map-previews/index.html` et `MapNNN.svg`, galerie de controle sans copie des images source ;
+- `world-map-report.json`, bilan des references et des volumes importes.
+
+Les tableaux de couches utilisent l'ordre RPG Maker XP : `x` varie en premier,
+puis `y`. Le masque de collision d'une case emploie les bits `1` bas, `2` gauche,
+`4` droite et `8` haut ; un bit present signifie que la direction est autorisee.
+Le calcul parcourt les couches du dessus vers le dessous et utilise la priorite
+pour determiner si la couche suivante doit etre consultee. Le moteur de mouvement devra verifier a la fois la
+sortie de la case courante et l'entree opposee de la case cible.
+Ce masque de base ne tient pas encore compte des evenements mobiles, du surf, du
+velo ni de l'etat dynamique des ponts ; ces regles restent explicitement hors du
+perimetre `base-tiles-only` et seront raccordees avec les evenements de 9.2.
+
+Une teleportation simple correspond a la commande RPG Maker `201` en adressage
+direct. Elle conserve l'evenement, sa position, la page et l'index de commande,
+ainsi que la carte et les coordonnees cibles. Les variantes utilisant des
+variables seront traitees avec les evenements standard de l'increment 9.2.
+
+## AST des evenements
+
+`pnpm extract:events` produit un fichier `events/MapNNN.json` pour chaque carte,
+`common-events.json`, `event-manifest.json` et `event-coverage-report.json`. Chaque
+carte conserve son fichier et son SHA-256 source ; chaque commande conserve son
+code RPG Maker, son indentation et son index dans la page. La page contient les
+conditions d'activation, le graphique, les reglages de mouvement et le trigger.
+
+L'AST utilise trois statuts :
+
+- `converted` : commande RPG Maker standard normalisee ;
+- `reference-only` : Ruby ou script de mouvement conserve textuellement mais
+  interdit d'execution ;
+- `raw` : commande inconnue conservee avec ses parametres et sa provenance.
+
+Les dialogues et choix, interrupteurs globaux et locaux, variables, conditions,
+routes de mouvement, transferts, defilements, transitions visuelles et commandes
+audio ont des noms independants de Ruby. Les valeurs binaires `Tone` et `Color`
+sont developpees en composantes numeriques. Les routes exposent chaque pas et
+signalent individuellement les appels Ruby.
+
+Sur Pokemon Z v2.12 FR, les 507 cartes contiennent 12 070 evenements et 18 737
+pages. Avec les 100 evenements communs, 188 037 commandes sont inventoriees :
+170 199 sont converties (90,51 %), 17 838 restent `reference-only` et aucune ne
+tombe en `raw`. Ce pourcentage mesure la conversion de format, pas encore
+l'execution dans le moteur overworld.
+
+## Hooks Ruby specifiques
+
+`pnpm extract:hooks` inspecte les lignes `355` et `655` sans jamais les evaluer.
+Les sorties locales sont :
+
+- `script-hook-catalog.json`, signatures exactes et groupes normalises ;
+- `script-hook-policies.json`, famille, politique coop et justification ;
+- `ported-script-hooks.json`, actions declaratives du lot cible avec provenance ;
+- `script-hook-report.json`, volumes et couverture du lot.
+
+La normalisation remplace les nombres, chaines, symboles et constantes Pokemon par
+des marqueurs types. Elle regroupe ainsi, par exemple, les appels `pbItemBall`
+qui ne different que par l'objet. Le texte original et des localisations source
+restent presents dans le catalogue ; la normalisation n'est jamais utilisee comme
+code executable.
+
+Les 12 750 lignes script des cartes possedent exactement 2 483 signatures
+distinctes et deviennent 222 groupes parametres. Les evenements communs ajoutent
+2 899 lignes. Les conditions Ruby et scripts de mouvement sont comptes separement.
+
+Le premier lot cible est `Map001 - Intro`. Ses 15 occurrences sont traduites en
+cinq actions declaratives : choix d'avatar, saisie du nom, tonalite d'ecran,
+difficulte et mode Nuzlocke. Ces actions restent des donnees ; leur branchement a
+l'interface et a l'etat autoritaire sera realise avec l'execution des cartes.
+
+Sur Pokemon Z v2.12 FR, le rapport contient 507 cartes, 50 enregistrements de
+tileset, 1 058 059 cases et 2 613 transferts directs. Aucun fichier de carte ne
+manque et aucune destination de transfert n'est invalide. Les 49 planches de
+tileset graphiques mentionnees plus haut sont distinctes des 50 enregistrements
+de configuration : un enregistrement peut ne pas apporter de planche autonome.
+
 ## Asset Lab
 
 `apps/asset-preview/index.html` est une page de controle locale. Elle charge les deux

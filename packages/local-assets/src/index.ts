@@ -125,6 +125,44 @@ export async function loadLocalManifests(files: Iterable<File>): Promise<LocalMa
   return animations === undefined ? { assets, pokemon } : { assets, pokemon, animations };
 }
 
+export async function loadLocalManifestsFromUrls(urls: readonly string[]): Promise<LocalManifests> {
+  const files = await Promise.all(urls.map(async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Manifeste local indisponible : ${url}`);
+    const name = url.split("/").at(-1) ?? "manifest.json";
+    return new File([await response.blob()], name, { type: "application/json" });
+  }));
+  return loadLocalManifests(files);
+}
+
+export function createHttpDirectoryHandle(baseUrl: string, name = "Pokemon Z automatique"): LocalDirectoryHandle {
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  const createHandle = (parts: readonly string[]): LocalDirectoryHandle => ({
+    name: parts.at(-1) ?? name,
+    getDirectoryHandle(directoryName: string): Promise<LocalDirectoryHandle> {
+      if (directoryName.length === 0 || directoryName === "." || directoryName === "..") {
+        return Promise.reject(new Error(`Dossier local invalide : ${directoryName}`));
+      }
+      return Promise.resolve(createHandle([...parts, directoryName]));
+    },
+    async getFileHandle(fileName: string): Promise<{ getFile(): Promise<File> }> {
+      if (fileName.length === 0 || fileName === "." || fileName === "..") {
+        throw new Error(`Fichier local invalide : ${fileName}`);
+      }
+      const url = `${normalizedBase}${[...parts, fileName].map(encodeURIComponent).join("/")}`;
+      return {
+        async getFile(): Promise<File> {
+          const response = await fetch(url);
+          if (!response.ok) throw new Error(`Asset local indisponible : ${url}`);
+          const blob = await response.blob();
+          return new File([blob], fileName, { type: blob.type });
+        },
+      };
+    },
+  });
+  return createHandle([]);
+}
+
 export async function fileFromLocalPath(root: LocalDirectoryHandle, relativePath: string): Promise<File> {
   const parts = relativePath.replaceAll("\\", "/").split("/").filter((part) => part.length > 0);
   const fileName = parts.pop();

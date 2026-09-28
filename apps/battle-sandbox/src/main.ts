@@ -1,5 +1,5 @@
 import { MINIMAL_MOVE_CATALOG, SeededRandom, activeBattlers, replaceFaintedPokemon, resolveTeamTurn, type BattleAbility, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type HeldItem, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { loadLocalManifests } from "@pokemon-z-battle/local-assets";
+import { createHttpDirectoryHandle, loadLocalManifests, loadLocalManifestsFromUrls, type LocalManifests } from "@pokemon-z-battle/local-assets";
 import { PROTOCOL_VERSION, normalizeRoomCode, serializeMessage, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage, requestTicket, type MultiplayerTicket, type StoredMultiplayerSession } from "./multiplayer-client.js";
 import { POKEMON_PRESETS, findPreset } from "./presets.js";
@@ -817,18 +817,21 @@ ui.networkDisconnect.addEventListener("click", () => {
   void refreshVisuals();
 });
 
+async function applyVisualManifests(manifests: LocalManifests): Promise<void> {
+  const scenes = visuals.setManifests(manifests);
+  presenter.setSourceAnimations(manifests.animations ?? null, (path) => visuals.localUrl(path));
+  ui.battleScene.replaceChildren(...scenes.map((scene) => option(scene.id, `${scene.name}${scene.complete ? "" : " · incomplet"}`)));
+  ui.battleScene.disabled = scenes.length === 0;
+  const animationStatus = manifests.animations === undefined ? " Effets génériques actifs." : ` ${manifests.animations.animations.length} animations source prêtes.`;
+  ui.assetNotice.textContent = scenes.length === 0
+    ? "Aucune scène Battleback reconnue ; les battlers restent toutefois disponibles."
+    : `${scenes.length} scènes détectées, dont ${scenes.filter((scene) => scene.complete).length} triplets complets.${animationStatus}`;
+  await refreshVisuals();
+}
+
 ui.assetManifests.addEventListener("change", async () => {
   try {
-    const manifests = await loadLocalManifests(ui.assetManifests.files ?? []);
-    const scenes = visuals.setManifests(manifests);
-    presenter.setSourceAnimations(manifests.animations ?? null, (path) => visuals.localUrl(path));
-    ui.battleScene.replaceChildren(...scenes.map((scene) => option(scene.id, `${scene.name}${scene.complete ? "" : " · incomplet"}`)));
-    ui.battleScene.disabled = scenes.length === 0;
-    const animationStatus = manifests.animations === undefined ? " Effets génériques actifs." : ` ${manifests.animations.animations.length} animations source prêtes.`;
-    ui.assetNotice.textContent = scenes.length === 0
-      ? "Aucune scène Battleback reconnue ; les battlers restent toutefois disponibles."
-      : `${scenes.length} scènes détectées, dont ${scenes.filter((scene) => scene.complete).length} triplets complets.${animationStatus}`;
-    await refreshVisuals();
+    await applyVisualManifests(await loadLocalManifests(ui.assetManifests.files ?? []));
   } catch (error) {
     ui.assetState.textContent = "Manifestes invalides";
     ui.assetNotice.textContent = error instanceof Error ? error.message : "Chargement impossible.";
@@ -890,3 +893,22 @@ if (storedSession !== null) {
 if (findPreset(scenario.player) === undefined) throw new Error("Default player preset is missing.");
 if (!directoryPickerAvailable()) ui.assetFolder.disabled = true;
 render();
+
+async function loadAutomaticAssets(): Promise<void> {
+  try {
+    const manifests = await loadLocalManifestsFromUrls([
+      "/__pokemon-z/data/asset-manifest.json",
+      "/__pokemon-z/data/pokemon-assets.json",
+      "/__pokemon-z/data/battle-animations.json",
+    ]);
+    visuals.setDirectory(createHttpDirectoryHandle("/__pokemon-z/source/"));
+    await applyVisualManifests(manifests);
+    ui.assetFolder.textContent = "Dossier automatique actif";
+    ui.assetNotice.textContent += " Chargement automatique local actif.";
+    await refreshVisuals();
+  } catch {
+    // Production builds and unconfigured workspaces keep the explicit browser pickers.
+  }
+}
+
+void loadAutomaticAssets();

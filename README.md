@@ -73,6 +73,64 @@ les images et les cris localement ; aucun asset n'est copié dans le dépôt.
 
 Voir `docs/POKEMON_Z_ANALYSIS.md` pour l'analyse de la distribution, `docs/DATA_FORMAT.md` pour les schemas normalises et `docs/ROADMAP.md` pour les phases du projet.
 
+## Import local des cartes
+
+Pour preparer en une seule fois toutes les donnees et les assets necessaires aux
+tests locaux :
+
+```powershell
+pnpm prepare:local --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+```
+
+Cette commande enchaine les extractions PBS, runtime, assets et cartes. Elle
+memorise le chemin source dans `.pokemon-z/data/local-test.json`, fichier local
+ignore par Git. Ensuite, l'Asset Lab et le Battle Sandbox chargent automatiquement
+les manifestes et le dossier source au demarrage ; les selecteurs manuels restent
+disponibles en secours.
+
+Le premier lancement exige les deux chemins ci-dessus. Les mises a jour suivantes
+reutilisent automatiquement cette configuration :
+
+```powershell
+pnpm prepare:local
+```
+
+Pour ne regenerer que les cartes, leurs trois couches de tuiles, les collisions
+directionnelles et les teleportations directes :
+
+```powershell
+pnpm extract:maps --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+```
+
+Les 507 cartes normalisees sont ecrites dans `.pokemon-z/data/maps/`. Le dossier
+`map-previews/` contient un SVG de controle par carte : terrain en couleurs,
+cases entierement bloquees en noir et departs de teleportation en orange. Le
+fichier `map-previews/index.html` permet de les parcourir. Le manifeste et
+`world-map-report.json` permettent de verifier les dimensions, les
+hashes source et les references entre cartes. Ces fichiers restent locaux et
+sont ignores par Git.
+
+Pour ne regenerer que l'AST des evenements et son rapport de couverture :
+
+```powershell
+pnpm extract:events --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+```
+
+Les fichiers `events/MapNNN.json` et `common-events.json` conservent pages,
+conditions, graphismes et commandes avec leur index source. Les commandes Ruby ne
+sont jamais executees : elles restent marquees `reference-only` pour leur portage
+progressif.
+
+L'inventaire des hooks Ruby peut aussi etre regenere seul :
+
+```powershell
+pnpm extract:hooks --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+```
+
+Il regroupe les variantes equivalentes, attribue une famille et une politique
+coop, puis produit les actions declaratives du lot de cartes cible. Aucun code
+Ruby n'est evalue par cette commande ni par les sandboxes.
+
 ## Combat hors ligne
 
 Le paquet `@pokemon-z-battle/battle-engine` fournit le premier noyau de combat
@@ -137,6 +195,8 @@ un autre terminal, deux pages peuvent creer puis rejoindre la meme room : chacun
 ne controle alors que son avatar et recoit le monde autoritaire. Le ticket est
 restaure apres rechargement et une coupure du Worker declenche une reconnexion
 automatique. Une interaction de rencontre ouvre un panneau de combat autoritaire,
-verrouille la carte puis rend le controle avec le resultat persiste. Les deux cartes sont originales ; aucune carte ni
-aucun tileset Pokemon Z n'est encore importe. L'architecture est documentee dans
+verrouille la carte puis rend le controle avec le resultat persiste. Les deux
+cartes actuellement jouables dans ce sandbox restent originales. Les cartes
+Pokemon Z sont desormais normalisees localement par l'extracteur, mais leur rendu
+avec les vrais tilesets n'est pas encore branche a ce sandbox. L'architecture est documentee dans
 `docs/OVERWORLD_ARCHITECTURE.md` et `docs/COOP_ARCHITECTURE.md`.

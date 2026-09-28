@@ -13,7 +13,7 @@
 | 6 - Equipes completes | Terminee | Equipes de six, test local et mecanismes principaux |
 | 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
 | 8 - Prototype coop | Terminee | Interactions et evenements classes |
-| 9 - Import progressif du monde | En attente | Cartes compatibles importees par lots |
+| 9 - Import progressif du monde | En cours | Cartes compatibles importees par lots |
 
 Le rapport de reference de la Phase 0 est `docs/POKEMON_Z_ANALYSIS.md`.
 
@@ -464,22 +464,89 @@ interaction, combat sauvage, verrouillage et retour dans le monde.
 
 ### Increment 9.1 - Cartes statiques
 
-- decoder `MapInfos`, `RPG::Map`, `Table`, tilesets et autotiles ;
-- importer geometrie, collisions et teleports simples ;
-- produire des rapports visuels de comparaison.
+- [x] decoder `MapInfos`, `RPG::Map`, `Table`, tilesets et autotiles ;
+- [x] importer geometrie, collisions et teleports simples ;
+- [x] produire des rapports visuels de comparaison.
+
+Critere de sortie valide le 2026-09-28 : `extract:maps` normalise les trois couches
+et les collisions directionnelles des 507 cartes, les 50 configurations de
+tileset et 2 613 transferts directs. Les hashes SHA-256 conservent la provenance ;
+aucune des destinations n'est invalide et aucun fichier attendu ne manque. Un SVG
+local par carte superpose terrain, blocages complets et origines de transfert sans
+copier les images du jeu dans Git. Le branchement du rendu des vrais tilesets dans
+le sandbox overworld reste une etape distincte de l'import des donnees. La commande
+`prepare:local` enchaine toutes les extractions et configure le chargement
+automatique des assets dans les outils de test, sans selection repetee.
 
 ### Increment 9.2 - Evenements standard
 
-- convertir les commandes RPG Maker supportees vers un AST independant ;
-- conserver les commandes inconnues avec leur provenance ;
-- importer dialogues, interrupteurs, variables, mouvements et transitions par lots.
+- [x] convertir les commandes RPG Maker supportees vers un AST independant ;
+- [x] conserver les commandes inconnues avec leur provenance ;
+- [x] importer dialogues, interrupteurs, variables, mouvements et transitions par lots.
+
+Critere de sortie valide le 2026-09-28 : `extract:events` couvre les 507 cartes,
+12 070 evenements, 18 737 pages, 100 evenements communs et 188 037 commandes.
+170 199 commandes standard (90,51 %) sont normalisees, 17 838 appels ou conditions
+Ruby restent `reference-only`, et aucune commande observee ne tombe en `raw`.
+Chaque commande conserve code, indentation, index et provenance via sa carte,
+son evenement et sa page. Le rapport distingue explicitement conversion de format
+et execution : les commandes converties ne deviennent executables dans le moteur
+qu'au fil des prochains increments.
 
 ### Increment 9.3 - Scripts specifiques
 
-- inventorier les 2 483 signatures initiales distinctes observees dans les appels script ;
-- regrouper les appels equivalants ;
-- porter uniquement les fonctions necessaires aux cartes ciblees ;
-- attribuer et tester une politique coop a chaque famille d'evenements.
+- [x] inventorier les 2 483 signatures initiales distinctes observees dans les appels script ;
+- [x] regrouper les appels equivalants ;
+- [x] porter uniquement les fonctions necessaires aux cartes ciblees ;
+- [x] attribuer et tester une politique coop a chaque famille d'evenements.
+
+Critere de sortie valide le 2026-09-28 : les 12 750 lignes `355`/`655` des cartes
+reproduisent les 2 483 signatures distinctes de l'analyse et se regroupent en 222
+formes parametrees. Les 2 899 lignes des evenements communs, 2 177 conditions Ruby
+et huit scripts de route sont inventories separement. Les 15 hooks du premier lot
+`Map001 - Intro` sont tous traduits vers cinq actions declaratives sans evaluer de
+Ruby. Les 15 familles ont une politique `PERSONAL`, `SHARED`, `HOST_ONLY` ou
+`SYNCED`, testee et accompagnee de sa justification. La phase 9 reste en cours :
+les donnees sont importees, mais leur execution reste a integrer progressivement.
+
+### Increment 9.4 - Premier rendu jouable
+
+- [x] charger automatiquement une carte et ses images depuis la copie locale ;
+- [x] restituer tileset, trois couches et autotiles RPG Maker XP animes ;
+- [x] ajouter une camera et un deplacement local sur les collisions directionnelles ;
+- [x] conserver le prototype coop original dans des onglets separes ;
+- [x] afficher le joueur et les PNJ actifs avec leurs feuilles de personnages source ;
+- [x] lire les dialogues simples sans executer les commandes non supportees ;
+- [ ] executer les transferts et les conditions d'evenement persistantes.
+
+Premier increment valide le 2026-09-28 : `Map003 - Bourg Canvas` est la premiere
+carte source affichee et parcourable dans l'overworld sandbox. Le renderer compose
+les 48 motifs d'autotile par quarts de tuile, anime leurs planches, dessine les
+trois couches et suit l'avatar avec une camera. Le mouvement exige le passage dans
+les deux sens (sortie de la case courante et entree dans la cible). Les neuf
+origines de transfert sont signalees sans etre executees, car leurs pages et leurs
+conditions doivent encore passer par l'interpreteur d'evenements. L'avatar reste
+alors volontairement un marqueur temporaire, remplace dans l'increment suivant.
+
+Deuxieme increment valide le 2026-09-28 : le joueur utilise `trchar000` avec quatre
+directions et quatre poses de marche. Les pages sans condition des 47 evenements de
+Bourg Canvas selectionnent 22 apparences visibles, rendues avec leur taille native,
+leur opacite et un tri vertical. Ces evenements participent aux collisions lorsqu'ils
+ne sont pas traversables. Espace ou Entree lit les commandes `show-text` et
+`text-continuation` de l'evenement situe devant le joueur ; aucune autre commande
+n'est executee implicitement. La table issue de `Data/french.dat` est appliquee avec
+recomposition des messages coupes sur plusieurs commandes et normalisation des
+espaces : 114 des 118 groupes de texte de Map003 sont traduits ; les quatre fallbacks
+restants sont vides ou deja rediges en francais, donc aucun dialogue espagnol connu
+de cette carte n'est affiche dans ce parcours.
+
+Troisieme increment valide le 2026-09-28 : les transferts directs de la page active
+sont maintenant executes sur contact ou interaction. La carte cible, son tileset,
+ses autotiles, ses personnages et son contexte de traduction sont charges a la
+demande puis conserves en cache. Les quatre portes de Bourg Canvas ouvrent Map004
+ou Map005 et leurs sorties permettent le retour. Les transferts internes de ces
+batiments utilisent le meme mecanisme. Les pages conditionnelles et les zones
+`size(...)` restent volontairement hors de ce lot.
 
 L'import du monde ne sera jamais une bascule unique. Chaque lot de cartes devra avoir un taux de commandes supportees mesurable et des tests de parcours.
 

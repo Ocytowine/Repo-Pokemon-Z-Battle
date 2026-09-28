@@ -1,16 +1,35 @@
 # Overworld Sandbox
 
-Prototype Canvas des phases 7 et 8. Il utilise le même moteur de grille en
-mode local et côté serveur, sans importer de carte ou de tileset de Pokémon Z.
+Prototype Canvas des phases 7 à 9. Le mode de démonstration utilise le même moteur
+de grille en local et côté serveur. Le mode **Bourg Canvas** charge automatiquement
+la première vraie carte, son tileset, ses autotiles animés et ses collisions depuis
+la copie locale de Pokémon Z ; aucun de ces fichiers n'est ajouté au dépôt.
 
 ## Test local
 
 ```powershell
+corepack pnpm prepare:local
 corepack pnpm sandbox:overworld
 ```
 
-Ouvrez `http://127.0.0.1:5174`. Les flèches ou ZQSD contrôlent le joueur 1 ;
+Ouvrez `http://127.0.0.1:5174`. Bourg Canvas est sélectionnée automatiquement si
+les données locales sont prêtes. Les flèches ou ZQSD contrôlent le joueur 1 ;
 IJKL contrôle le joueur 2. Espace fait interagir le joueur 1 et O le joueur 2.
+
+Dans Bourg Canvas, seul le joueur 1 est actif. Son sprite et les personnages visibles
+proviennent du jeu source ; leurs cases bloquent le passage. La position initiale
+fait face à un PNJ : appuyez sur **Espace** pour parcourir son dialogue importé.
+Les textes espagnols sont recomposés si nécessaire puis traduits avec la table
+française extraite de `Data/french.dat`. Seuls les dialogues simples et transferts
+directs de la page active sont exécutés. Les contours jaunes signalent leurs
+origines. Les onglets
+**Prairie** et **Bosquet** conservent toute la recette coop/multijoueur existante.
+
+Les portes directes sont actives. Depuis la position initiale, avancez de six cases
+vers la droite, d'une case vers le haut, puis encore vers le haut contre la porte :
+le Laboratoire Flare (`Map005`) est chargé avec son propre décor, ses événements et
+ses traductions. Redescendez sur la sortie pour revenir à Bourg Canvas. Les grandes
+sorties nommées `size(...)` ne sont pas encore exécutées.
 
 Au départ, le joueur 1 regarde une baie `PERSONAL` : appuyez sur Espace pour
 l'ajouter uniquement à son inventaire. Le joueur 2 regarde le guide `SHARED` :

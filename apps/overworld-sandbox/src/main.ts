@@ -1,5 +1,6 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, moveImportedAvatar, selectDefaultEventPage, transferForEvent, type ImportedAvatar, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { buildWebSocketUrl, normalizeServerUrl, parseServerMessage, parseStoredSession, parseTicket, reconnectDelay, type MultiplayerTicket, type StoredOverworldSession } from "./multiplayer-client.js";
 import "./style.css";
 
@@ -11,6 +12,13 @@ const catalog = DEMO_WORLD_CATALOG;
 let state: OverworldState = initialState();
 let viewedMapId = "meadow";
 let events: OverworldEvent[] = [];
+let importedAssets: ImportedMapAssets | null = null;
+let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
+let importedPlayerPattern = 0;
+let importedNotice = "Chargement automatique de Bourg Canvas…";
+let importedAnimationFrame: number | null = null;
+let sourceDialogue: { readonly label: string; readonly lines: readonly string[]; index: number } | null = null;
+let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
 
 interface NetworkSession {
@@ -36,12 +44,12 @@ function initialState(): OverworldState {
 const root = document.querySelector<HTMLDivElement>("#app");
 if (root === null) throw new Error("Application root is missing.");
 root.innerHTML = `
-  <header><div><p class="eyebrow">Phase 8.3 · parcours coop</p><h1>Overworld <span>Sandbox</span></h1></div><p>Interactions concurrentes, synchronisation, reconnexion et combats réunis dans un même monde autoritaire.</p></header>
+  <header><div><p class="eyebrow">Phase 9.4 · première carte source</p><h1>Overworld <span>Sandbox</span></h1></div><p>Le prototype coop reste disponible ; Bourg Canvas peut maintenant être parcourue avec ses graphismes et collisions importés.</p></header>
   <main>
     <section class="world-panel">
-      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
-      <canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas>
-      <p class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
+      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
+      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><small>Espace/Entrée pour continuer · Échap pour fermer</small></div></div>
+      <p id="map-legend" class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
     </section>
     <aside>
       <section class="panel"><div class="log-heading"><div><p class="eyebrow">Phases 7–8</p><h2>Monde en ligne</h2></div><span id="network-state">Local</span></div>
@@ -53,7 +61,7 @@ root.innerHTML = `
         <article data-controller="player"><strong>Joueur 1</strong><small>Flèches/ZQSD · Espace</small><div class="pad" data-player="player"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="player">Interagir</button></article>
         <article data-controller="opponent"><strong>Joueur 2</strong><small>I J K L · O</small><div class="pad" data-player="opponent"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="opponent">Interagir</button></article>
       </div><button id="reset" class="reset">Réinitialiser le monde</button></section>
-      <section class="panel"><p class="eyebrow">Phase 8.3</p><h2>Parcours coop</h2><div id="coop-guide" class="coop-guide"></div></section>
+      <section class="panel"><p id="guide-phase" class="eyebrow">Phase 8.3</p><h2 id="guide-title">Parcours coop</h2><div id="coop-guide" class="coop-guide"></div></section>
       <section id="encounter-panel" class="panel encounter-panel" hidden><div class="log-heading"><div><p class="eyebrow">Rencontre autoritaire</p><h2 id="encounter-title">Combat</h2></div><span id="encounter-turn">Tour 1</span></div><p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div></section>
       <section class="panel"><div class="log-heading"><div><p class="eyebrow">Moteur</p><h2>Événements</h2></div><span id="tick">Tick 0</span></div><div id="progress" class="progress"></div><div id="events" class="events">Déplace un avatar pour commencer.</div></section>
     </aside>
@@ -160,7 +168,109 @@ function drawAvatar(id: AvatarId, color: string): void {
   context.fillStyle = "#f7fff9"; context.font = "700 10px system-ui"; context.textAlign = "center"; context.fillText(avatar.name, centerX, centerY - 23);
 }
 
+function animateImportedMap(now: number): void {
+  if (viewedMapId !== SOURCE_MAP_ID || importedAssets === null) {
+    importedAnimationFrame = null;
+    return;
+  }
+  drawImportedMap(context, canvas, importedAssets, importedAvatar, importedPlayerPattern, now);
+  importedAnimationFrame = requestAnimationFrame(animateImportedMap);
+}
+
+function renderImportedView(): void {
+  if (importedAssets === null) return;
+  if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
+  const name = document.querySelector<HTMLElement>("#map-name"); if (name !== null) name.textContent = `${importedAssets.map.name} · Map${String(importedAssets.map.id).padStart(3, "0")}`;
+  const tick = document.querySelector<HTMLElement>("#tick"); if (tick !== null) tick.textContent = `${importedAvatar.x},${importedAvatar.y}`;
+  const progress = document.querySelector<HTMLElement>("#progress");
+  const visibleEvents = importedAssets.events.filter((event) => {
+    const page = selectDefaultEventPage(event);
+    return page !== null && (page.graphic.characterName !== "" || page.graphic.tileId > 0);
+  }).length;
+  if (progress !== null) progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · 3 couches</p><p><strong>Personnages</strong> joueur animé · ${visibleEvents} événements visibles</p><p><strong>Langue</strong> ${importedAssets.mapTranslations.size} traductions françaises</p><p><strong>Collision</strong> terrain et événements visibles</p><p><strong>Sorties</strong> ${importedAssets.map.transfers.length} repérées, non exécutées</p>`;
+  const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
+  const legend = document.querySelector<HTMLElement>("#map-legend"); if (legend !== null) legend.innerHTML = `<span class="source"></span>Graphismes locaux originaux <span class="door"></span>Origine d'un transfert`;
+  document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
+  document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
+  const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) reset.disabled = false;
+  const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
+  const join = document.querySelector<HTMLButtonElement>("#join-room"); if (join !== null) join.disabled = true;
+  const guide = document.querySelector<HTMLElement>("#coop-guide"); if (guide !== null) guide.innerHTML = `<article><span>9.4</span><strong>Premier parcours source</strong><small>Flèches/ZQSD · Espace pour dialoguer</small></article><article><span>ACTIF</span><strong>Portes directes</strong><small>Les bâtiments reliés sont chargés à la demande.</small></article><article><span>LIMITÉ</span><strong>Commandes filtrées</strong><small>Les textes fonctionnent ; scripts et sorties mult cases restent inactifs.</small></article>`;
+  const guidePhase = document.querySelector<HTMLElement>("#guide-phase"); if (guidePhase !== null) guidePhase.textContent = "Phase 9.4";
+  const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "Parcours source";
+  const encounter = document.querySelector<HTMLElement>("#encounter-panel"); if (encounter !== null) encounter.hidden = true;
+  renderSourceDialogue();
+}
+
+function renderSourceDialogue(): void {
+  const panel = document.querySelector<HTMLElement>("#source-dialogue");
+  if (panel === null) return;
+  panel.hidden = sourceDialogue === null || viewedMapId !== SOURCE_MAP_ID;
+  if (sourceDialogue === null || viewedMapId !== SOURCE_MAP_ID) return;
+  const label = panel.querySelector<HTMLElement>("strong"); if (label !== null) label.textContent = sourceDialogue.label;
+  const text = panel.querySelector<HTMLElement>("p"); if (text !== null) text.textContent = sourceDialogue.lines[sourceDialogue.index] ?? "";
+  const hint = panel.querySelector<HTMLElement>("small"); if (hint !== null) hint.textContent = sourceDialogue.index + 1 < sourceDialogue.lines.length
+    ? `Espace/Entrée · ${sourceDialogue.index + 1}/${sourceDialogue.lines.length}` : "Espace/Entrée pour fermer";
+}
+
+function importedDirection(direction: number, fallback: Direction): Direction {
+  switch (direction) {
+    case 2: return "down";
+    case 4: return "left";
+    case 6: return "right";
+    case 8: return "up";
+    default: return fallback;
+  }
+}
+
+async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
+  if (sourceTransitionInProgress) return;
+  sourceTransitionInProgress = true;
+  sourceDialogue = null;
+  importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
+  renderImportedView();
+  try {
+    const next = await loadImportedMap(transfer.targetMapId);
+    importedAssets = next;
+    importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
+    importedPlayerPattern = 0;
+    importedNotice = `Arrivée dans ${next.map.name}, en ${transfer.targetX},${transfer.targetY}. Graphismes, événements et français chargés à la demande.`;
+  } catch (error) {
+    importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
+  } finally {
+    sourceTransitionInProgress = false;
+    renderImportedView();
+  }
+}
+
+async function resetSourceWorld(): Promise<void> {
+  if (sourceTransitionInProgress) return;
+  sourceTransitionInProgress = true;
+  sourceDialogue = null;
+  importedNotice = "Retour à Bourg Canvas…";
+  renderImportedView();
+  try {
+    importedAssets = await loadImportedMap003();
+    importedAvatar = { x: 28, y: 15, direction: "up" };
+    importedPlayerPattern = 0;
+    importedNotice = "Position de test restaurée en 28,15, face à un événement dialogué.";
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Réinitialisation impossible.";
+  } finally {
+    sourceTransitionInProgress = false;
+    renderImportedView();
+  }
+}
+
 function render(): void {
+  if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
+    renderImportedView();
+    return;
+  }
+  if (importedAnimationFrame !== null) {
+    cancelAnimationFrame(importedAnimationFrame);
+    importedAnimationFrame = null;
+  }
   const map = catalog.maps[viewedMapId];
   if (map === undefined) throw new Error(`Missing map ${viewedMapId}.`);
   drawMap(map); drawInteractions(map); drawAvatar("player", "#76e6bb"); drawAvatar("opponent", "#ff7c98");
@@ -175,6 +285,7 @@ function render(): void {
   const log = document.querySelector<HTMLElement>("#events");
   if (log !== null) log.innerHTML = events.length === 0 ? "Déplace un avatar pour commencer." : events.slice(-12).reverse().map((event) => `<p>${eventText(event)}</p>`).join("");
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
+  const legend = document.querySelector<HTMLElement>("#map-legend"); if (legend !== null) legend.innerHTML = `<span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction`;
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => {
     const disabled = network !== null && controller.dataset.controller !== network.ticket.side;
     controller.classList.toggle("disabled", disabled);
@@ -183,6 +294,8 @@ function render(): void {
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = network !== null;
   const join = document.querySelector<HTMLButtonElement>("#join-room"); if (join !== null) join.disabled = network !== null;
   const guide = document.querySelector<HTMLElement>("#coop-guide");
+  const guidePhase = document.querySelector<HTMLElement>("#guide-phase"); if (guidePhase !== null) guidePhase.textContent = "Phase 8.3";
+  const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "Parcours coop";
   if (guide !== null) guide.innerHTML = (catalog.interactions ?? []).map((interaction) => {
     const personalDone = Object.values(state.players).filter((player) => player.completedInteractions.includes(interaction.id)).length;
     const sharedDone = state.session.completedInteractions.includes(interaction.id);
@@ -190,6 +303,7 @@ function render(): void {
     const status = interaction.policy === "PERSONAL" ? `${personalDone}/2` : sharedDone ? "terminé" : waiting > 0 ? `${waiting}/2 en attente` : "disponible";
     return `<article><span>${interaction.policy}</span><strong>${interaction.label}</strong><small>${interaction.mapId} · ${status}</small></article>`;
   }).join("");
+  renderSourceDialogue();
   renderEncounter();
 }
 
@@ -220,6 +334,32 @@ function renderEncounter(): void {
 }
 
 function move(playerId: string, direction: Direction): void {
+  if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
+    if (playerId !== "player") return;
+    if (sourceDialogue !== null || sourceTransitionInProgress) return;
+    const eventAhead = eventInFront(importedAssets.events, importedAvatar);
+    const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
+    if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
+      void followSourceTransfer(transferAhead);
+      return;
+    }
+    const before = importedAvatar;
+    importedAvatar = moveImportedAvatar(importedAssets.map, importedAvatar, direction, blockingDefaultEventPoints(importedAssets.events));
+    if (before.x !== importedAvatar.x || before.y !== importedAvatar.y) {
+      importedPlayerPattern = (importedPlayerPattern + 1) % 4;
+      const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y);
+      const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
+      if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
+        void followSourceTransfer(enteredTransfer);
+        return;
+      }
+    }
+    importedNotice = before.x === importedAvatar.x && before.y === importedAvatar.y
+      ? `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`
+      : `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+    renderImportedView();
+    return;
+  }
   if (network !== null) {
     if (network.snapshot?.battle !== null && network.snapshot !== null) return;
     const socket = network.socket;
@@ -238,6 +378,28 @@ function move(playerId: string, direction: Direction): void {
 }
 
 function interact(playerId: AvatarId): void {
+  if (viewedMapId === SOURCE_MAP_ID) {
+    if (sourceDialogue !== null) {
+      if (sourceDialogue.index + 1 < sourceDialogue.lines.length) sourceDialogue.index += 1;
+      else sourceDialogue = null;
+      renderImportedView();
+      return;
+    }
+    if (importedAssets === null || playerId !== "player") return;
+    const target = eventInFront(importedAssets.events, importedAvatar);
+    const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
+    if (target !== null && targetTransfer !== null && target.page.settings.trigger === 1) {
+      void followSourceTransfer(targetTransfer);
+      return;
+    }
+    const lines = target === null || target.page.settings.trigger !== 0 ? [] : dialogueLines(target.page, importedAssets.mapTranslations);
+    if (target !== null && target.page.settings.trigger === 0 && lines.length > 0) {
+      sourceDialogue = { label: `Événement ${target.event.id} · ${target.event.name}`, lines, index: 0 };
+      importedNotice = `${lines.length} ligne(s) de dialogue source chargée(s), sans exécuter les autres commandes.`;
+    } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement ne contient aucun dialogue simple exécutable.";
+    renderImportedView();
+    return;
+  }
   if (network !== null) {
     if (network.snapshot?.battle !== null && network.snapshot !== null) return;
     const socket = network.socket;
@@ -415,6 +577,8 @@ const keys: Readonly<Record<string, readonly [string, Direction]>> = {
   KeyI: ["opponent", "up"], KeyK: ["opponent", "down"], KeyJ: ["opponent", "left"], KeyL: ["opponent", "right"],
 };
 window.addEventListener("keydown", (event) => {
+  if (event.code === "Escape" && sourceDialogue !== null) { event.preventDefault(); sourceDialogue = null; renderImportedView(); return; }
+  if (event.code === "Enter" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); interact("player"); return; }
   if (event.code === "Space") { event.preventDefault(); interact("player"); return; }
   if (event.code === "KeyO") { event.preventDefault(); interact("opponent"); return; }
   const command = keys[event.code]; if (command === undefined) return; event.preventDefault(); move(...command);
@@ -428,7 +592,12 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
   const playerId = button.dataset.interact;
   if (playerId === "player" || playerId === "opponent") interact(playerId);
 }));
-document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => { if (button.dataset.map !== undefined) viewedMapId = button.dataset.map; render(); }));
+document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
+  const mapId = button.dataset.map;
+  if (mapId === undefined || (mapId === SOURCE_MAP_ID && (importedAssets === null || network !== null))) return;
+  viewedMapId = mapId;
+  render();
+}));
 document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {
   const input = event.currentTarget as HTMLInputElement;
   input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/gu, "");
@@ -451,11 +620,31 @@ document.querySelector<HTMLButtonElement>("#disconnect")?.addEventListener("clic
 });
 document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", () => {
   if (network !== null) return;
+  if (viewedMapId === SOURCE_MAP_ID) {
+    void resetSourceWorld();
+    return;
+  }
   viewedMapId = "meadow";
   events = [];
   setAuthoritativeState(initialState(), false);
 });
 render();
+
+void loadImportedMap003().then((assets) => {
+  importedAssets = assets;
+  const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
+  if (sourceButton !== null) sourceButton.disabled = false;
+  if (network === null) {
+    viewedMapId = SOURCE_MAP_ID;
+    importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
+    render();
+  }
+}).catch((error: unknown) => {
+  importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
+  const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
+  if (sourceButton !== null) sourceButton.title = `${importedNotice} Relancez pnpm prepare:local.`;
+  setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`);
+});
 
 const storedPayload = sessionStorage.getItem(STORED_SESSION_KEY);
 if (storedPayload !== null) {

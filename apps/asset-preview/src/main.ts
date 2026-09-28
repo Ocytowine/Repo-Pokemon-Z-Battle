@@ -1,4 +1,4 @@
-import { fileFromLocalPath, findPokemonRecord, loadLocalManifests, type LocalDirectoryHandle, type LocalManifests, type PokemonAssetReference } from "@pokemon-z-battle/local-assets";
+import { createHttpDirectoryHandle, fileFromLocalPath, findPokemonRecord, loadLocalManifests, loadLocalManifestsFromUrls, type LocalDirectoryHandle, type LocalManifests, type PokemonAssetReference } from "@pokemon-z-battle/local-assets";
 
 function element<T extends HTMLElement>(id: string): T {
   const found = document.getElementById(id);
@@ -76,3 +76,20 @@ ui.folder.addEventListener("click", async () => {
 });
 ui.pokemonId.addEventListener("input", () => { void render(); });
 ui.kind.addEventListener("change", () => { void render(); });
+
+async function loadAutomaticAssets(): Promise<void> {
+  try {
+    manifests = await loadLocalManifestsFromUrls([
+      "/__pokemon-z/data/asset-manifest.json",
+      "/__pokemon-z/data/pokemon-assets.json",
+    ]);
+    directory = createHttpDirectoryHandle("/__pokemon-z/source/");
+    ui.folder.textContent = "Dossier automatique actif";
+    ui.status.textContent = "Assets locaux chargés automatiquement par le serveur de développement.";
+    await render();
+  } catch {
+    // Production builds and unconfigured workspaces keep the explicit browser pickers.
+  }
+}
+
+void loadAutomaticAssets();
