@@ -76,6 +76,8 @@ export interface ImportedMapEvent extends GridPoint {
 export interface ImportedEventPose extends GridPoint {
   readonly direction: number;
   readonly pattern?: number;
+  readonly characterName?: string;
+  readonly opacity?: number;
 }
 
 export interface ImportedMapAssets {
@@ -106,6 +108,19 @@ export interface ImportedAvatar extends GridPoint { readonly direction: Directio
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function routeCharacterNames(events: readonly ImportedMapEvent[]): readonly string[] {
+  const names: string[] = [];
+  for (const event of events) for (const page of event.pages) for (const command of page.commands) {
+    if (command.kind !== "move-route" || !isRecord(command.data.route) || !Array.isArray(command.data.route.steps)) continue;
+    for (const step of command.data.route.steps) {
+      if (!isRecord(step) || step.kind !== "change-graphic" || !Array.isArray(step.parameters)) continue;
+      const name = step.parameters[0];
+      if (typeof name === "string" && name !== "") names.push(name);
+    }
+  }
+  return names;
 }
 
 function isNumberArray(value: unknown, length: number): value is number[] {
@@ -461,7 +476,10 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
-  const characterNames = [...new Set(events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""))];
+  const characterNames = [...new Set([
+    ...events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""),
+    ...routeCharacterNames(events),
+  ])];
   const [tilesetImage, playerImage, autotileImages, characters] = await Promise.all([
     loadImage(sourceImageUrl("Tilesets", tileset.tilesetName)), loadImage(sourceImageUrl("Characters", "trchar000")),
     Promise.all(tileset.autotileNames.map((name) => name === "" ? Promise.resolve(null) : loadImage(sourceImageUrl("Autotiles", name)))),
@@ -589,8 +607,9 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   }
   const eventEntries = assets.events.flatMap((event) => {
     const page = selectEventPage(event, map.id, state);
-    return page === null || (page.graphic.characterName === "" && page.graphic.tileId === 0)
-      ? [] : [{ event, page, pose: eventPoses.get(event.id) }];
+    const pose = eventPoses.get(event.id);
+    const characterName = pose?.characterName ?? page?.graphic.characterName ?? "";
+    return page === null || (characterName === "" && page.graphic.tileId === 0) ? [] : [{ event, page, pose }];
   });
   const normalEntries = eventEntries.filter(({ page }) => !page.settings.alwaysOnTop);
   const topEntries = eventEntries.filter(({ page }) => page.settings.alwaysOnTop);
@@ -606,9 +625,10 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     const destinationY = eventY * 32 - cameraY;
     if (page.graphic.tileId > 0) drawTile(context, assets, page.graphic.tileId, destinationX, destinationY, frame);
     else {
-      const image = assets.characterImages.get(page.graphic.characterName);
+      const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
       if (image !== undefined) drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
-        pose?.pattern ?? eventGraphicPattern(page, now), page.graphic.opacity, eventX, eventY, cameraX, cameraY);
+        pose?.pattern ?? eventGraphicPattern(page, now), pose?.opacity ?? page.graphic.opacity,
+        eventX, eventY, cameraX, cameraY);
     }
   };
   renderables.sort((left, right) => left.y - right.y).forEach((renderable) => {

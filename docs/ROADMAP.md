@@ -744,13 +744,17 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 ### Increment 9.7 - Boucle de jeu et mise en scene
 
+Le statut operationnel detaille, les recettes de validation et l'ordre de reprise
+sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines sessions.
+
 - [x] verrouiller tous les autres socles des qu'un starter appartient a l'equipe ;
-- [ ] executer l'evenement automatique post-Keunotor et sa sequence narrative ;
+- [x] declencher l'evenement automatique post-Keunotor et sa progression narrative ;
 - [x] separer la position logique sur la grille de la position affichee ;
 - [x] interpoler les pas, la camera et les motifs de marche du joueur ;
 - [x] rendre les animations sur place declarees par les pages des PNJ ;
 - [x] executer et interpoler les deplacements aleatoires autonomes des PNJ ;
-- [ ] executer les routes personnalisees et les mouvements imposes par les cinematiques ;
+- [x] interpreter les primitives des routes personnalisees de RPG Maker ;
+- [x] ordonnancer les routes et mouvements imposes par les cinematiques ;
 - [ ] prendre en charge les declencheurs contact, automatique et parallele ;
 - [ ] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
 - [ ] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
@@ -789,6 +793,49 @@ des directions est deterministe pour une meme carte. Les PNJ alternent leurs pos
 de marche et respectent les collisions de carte, le joueur et les autres evenements.
 Ce lot couvre les promeneurs autonomes de Map003 et Map009 ; les routes explicites
 des cinematiques restent a brancher sur le meme controleur.
+
+Cinquieme noyau 9.7 implemente le 2026-09-29 : un interpreteur pur valide les
+routes personnalisees puis resout pas absolus, relatifs, aleatoires et diriges vers
+le joueur, sauts, orientations, attentes, vitesse, frequence, drapeaux d'animation,
+traversee, priorite, sprite, opacite et interrupteurs. Les attentes reprennent les
+40 images par seconde de RPG Maker XP. Une primitive inconnue produit un blocage
+explicite. Il reste a ordonnancer ces resultats dans le temps et a les raccorder aux
+acteurs affiches pour jouer la cinematique complete.
+
+Sixieme noyau 9.7 implemente le 2026-09-29 : apres la victoire obligatoire, le
+passage de l'interrupteur 65 a l'etat actif recherche et demarre automatiquement la
+page `autorun` de Map002. Les 145 commandes de l'evenement 17 sont projetees sans
+blocage, ses 15 dialogues utilisent la traduction chargee, puis les interrupteurs
+67 et 68 sont sauvegardes avant le transfert final vers Map003 en 15,16. Les effets
+audio/visuels et routes sont actuellement valides comme presentation sure mais ne
+sont pas encore ordonnances a l'ecran ; ils restent le prochain lot de mise en scene.
+
+Correction narrative validee le 2026-09-29 : l'autorun n'applique plus toute sa
+page apres avoir affiche tous les textes. Un curseur parcourt desormais les commandes
+dans l'ordre source, suspend la sequence a chaque dialogue, applique immediatement
+les interrupteurs et execute chaque transfert a sa position exacte. L'interrupteur
+68 retire ainsi le bonhomme de neige et revele Crisanto avant ses repliques de
+liberation ; l'interrupteur 69 fait apparaitre la lettre avant que le vent ne
+l'emporte. Les controles du joueur restent verrouilles jusqu'a la fin de la scene.
+
+Septieme noyau 9.7 implemente le 2026-09-29 : les routes imposees sont maintenant
+executees sur le joueur et les evenements avec interpolation, changements de
+direction, de sprite et d'opacite. Les routes concurrentes restent actives pendant
+les dialogues, tandis que `wait-for-movement` attend reellement leur terminaison.
+La scene des starters joue ainsi l'approche du Keunotor avant le combat ; apres la
+victoire, Crisanto s'extrait du bonhomme de neige et sa lettre est emportee. Les
+sprites cites uniquement par une route sont precharges avec ceux des pages.
+
+Huitieme noyau 9.7 implemente le 2026-09-29 : un registre unique classe chaque
+commande source par famille et niveau de support (`rendered`, `executed`, `absorbed`
+ou `accepted`). Le resoluteur de branches et l'application de l'etat consomment ce
+meme registre, supprimant leurs listes divergentes. Chaque page resolue est compilee
+en plan de scene et auditee avant lecture : commandes inconnues, routes invalides,
+cibles absentes, sprites de route manquants et effets audiovisuels encore non rendus
+sont exposes dans le panneau du sandbox et la console. `SourceSequenceRunner`
+centralise les attentes, la concurrence entre acteurs et l'ordre des routes d'un
+meme acteur. Les tests du registre et de l'ordonnanceur sont tabulaires afin que
+l'ajout d'une commande ne necessite pas un nouveau scenario de test volumineux.
 
 ### Comment la couverture s'etend au jeu complet
 

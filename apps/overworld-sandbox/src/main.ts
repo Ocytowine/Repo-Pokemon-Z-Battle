@@ -9,7 +9,13 @@ import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
-import { SourceNpcMotionController } from "./source-npc-motion.js";
+import { SourceNpcMotionController, sourceNpcStepDuration } from "./source-npc-motion.js";
+import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun } from "./source-autorun.js";
+import { resolveEventFlow } from "./source-event-flow.js";
+import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
+import { isSourceStateCommand } from "./source-command-registry.js";
+import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
+import { SourceSequenceRunner } from "./source-sequence-runner.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -27,10 +33,23 @@ let importedPlayerMotion: SourceGridMotion | null = null;
 let importedWalkingPattern: 1 | 3 = 1;
 const heldMovementKeys = new Set<string>();
 let importedNotice = "Chargement automatique de Bourg Canvas…";
+let sourceSceneAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
+interface SourceSequenceSession {
+  readonly label: string;
+  readonly mapId: number;
+  readonly eventId: number;
+  readonly plan: SourceScenePlan;
+  readonly translations: ReadonlyMap<string, string>;
+  cursor: number;
+  advancing: boolean;
+  readonly runner: SourceSequenceRunner;
+  readonly onComplete?: () => void;
+}
+let sourceSequence: SourceSequenceSession | null = null;
 let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
 
@@ -89,6 +108,171 @@ function sourceMapEvents(): readonly ImportedMapAssets["events"][number][] {
   return importedAssets === null ? [] : sourceNpcMotions.logicalEvents(importedAssets.events);
 }
 
+function compileAndReportSourceScene(page: ImportedEventPage, label: string): SourceScenePlan {
+  const plan = compileSourceScene(page, sourceMapEvents(),
+    importedAssets === null ? undefined : new Set(importedAssets.characterImages.keys()));
+  sourceSceneAuditNotice = `${label} · ${formatSourceSceneAudit(plan.audit)}`;
+  console.info(`[source-scene] ${sourceSceneAuditNotice}`, plan.audit);
+  return plan;
+}
+
+function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextState: SourceEventState): boolean {
+  if (importedAssets === null || sourceSequence !== null || sourceDialogues.current !== null
+    || sourceTransitionInProgress || sourceBattles.active) return false;
+  const autorun = findNewlyActivatedSourceAutorun(
+    sourceMapEvents(), importedAssets.map.id, previousState, nextState,
+  );
+  if (autorun === null) return false;
+  const flow = resolveEventFlow(autorun.page, [], sourceEventState, importedAssets.map.id, autorun.event.id,
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+  if (!flow.complete) {
+    importedNotice = `Événement automatique ${autorun.event.id} bloqué : ${flow.blockedReason ?? "séquence incomplète"}.`;
+    return false;
+  }
+  const plan = compileAndReportSourceScene(flow.page, autorun.event.name);
+  sourceSequence = { label: `Événement automatique ${autorun.event.id} · ${autorun.event.name}`,
+    mapId: importedAssets.map.id, eventId: autorun.event.id, plan,
+    translations: importedAssets.mapTranslations, cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
+  importedNotice = `Événement automatique ${autorun.event.id} démarré.`;
+  void advanceSourceSequence();
+  return true;
+}
+
+function sourcePlayerRouteActor(): SourceRouteActor {
+  return { ...importedAvatar, moveSpeed: 4, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+    directionFix: false, through: false, alwaysOnTop: false, opacity: 255,
+    characterName: "player", characterHue: 0, pattern: 0 };
+}
+
+async function runSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown): Promise<void> {
+  const route = parseSourceMoveRoute(rawRoute);
+  const assets = importedAssets;
+  if (route === null || assets === null || assets.map.id !== sequence.mapId) return;
+  const playerTarget = target === -1;
+  let actor = playerTarget ? sourcePlayerRouteActor()
+    : sourceNpcMotions.scriptedActor(target === 0 ? sequence.eventId : target, sequence.mapId,
+      assets.events, sourceEventState, performance.now());
+  if (actor === null) return;
+  const eventId = target === 0 ? sequence.eventId : target;
+  for (const step of route.steps) {
+    if (sourceSequence !== sequence) return;
+    const result = executeSourceMoveRouteStep(actor, step, { player: importedAvatar });
+    if (!result.supported) {
+      if (route.skippable) continue;
+      throw new Error(result.reason ?? `mouvement ${step.kind} invalide`);
+    }
+    actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
+    if (result.switchChange !== null) {
+      sourceEventState = { ...sourceEventState,
+        switches: { ...sourceEventState.switches, [result.switchChange.id]: result.switchChange.value } };
+      persistSourceEventState();
+    }
+    let duration = result.waitMs;
+    if (playerTarget) {
+      importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
+      if (result.destination !== null) {
+        duration = sourceNpcStepDuration(actor.moveSpeed);
+        importedPlayerMotion = createSourceGridMotion(result.actor, result.destination, actor.direction,
+          performance.now(), { duration, walkingPattern: importedWalkingPattern });
+        importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
+      }
+    } else duration = Math.max(duration,
+      sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now()));
+    renderImportedView();
+    if (duration > 0) await sequence.runner.delay(duration);
+    if (result.complete) return;
+  }
+}
+
+function startSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown): void {
+  sequence.runner.startRoute(target, () => runSourceMoveRoute(sequence, target, rawRoute), (error: unknown) => {
+    if (sourceSequence !== sequence) return;
+    importedNotice = `Séquence interrompue : ${error instanceof Error ? error.message : "route de mouvement invalide"}.`;
+    sourceSequence = null;
+    renderImportedView();
+  });
+}
+
+async function advanceSourceSequence(): Promise<void> {
+  const sequence = sourceSequence;
+  if (sequence === null || sequence.advancing || sourceDialogues.current !== null) return;
+  sequence.advancing = true;
+  try {
+    while (sourceSequence === sequence && sequence.cursor < sequence.plan.steps.length) {
+      const command = sequence.plan.steps[sequence.cursor]?.command;
+      if (command === undefined) break;
+      if (command.kind === "show-text") {
+        const dialogueCommands: ImportedEventPage["commands"][number][] = [command];
+        sequence.cursor += 1;
+        while (sequence.cursor < sequence.plan.steps.length) {
+          const continuation = sequence.plan.steps[sequence.cursor]?.command;
+          if (continuation === undefined || continuation.kind !== "text-continuation") break;
+          dialogueCommands.push(continuation);
+          sequence.cursor += 1;
+        }
+        const segment = { ...sequence.plan.page, commands: dialogueCommands };
+        beginSourceEvent(segment, sequence.mapId, sequence.eventId, sequence.label, sequence.translations);
+        renderImportedView();
+        return;
+      }
+      sequence.cursor += 1;
+      if (isSourceStateCommand(command.kind)) {
+        const result = applySafeStateCommands(sourceEventState, { ...sequence.plan.page, commands: [command] }, sequence.mapId,
+          sequence.eventId, { checkpoint: { mapId: sequence.mapId, x: importedAvatar.x, y: importedAvatar.y,
+            direction: importedAvatar.direction }, createPokemon: (species, level) => {
+              if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
+              return createPersistentPokemon(crypto.randomUUID(), species, level, importedAssets.battleCatalog);
+            } });
+        if (!result.safe) {
+          importedNotice = `Séquence interrompue : ${result.reason ?? "commande d'état invalide"}.`;
+          sourceSequence = null;
+          renderImportedView();
+          return;
+        }
+        sourceEventState = result.state;
+        persistSourceEventState();
+        renderImportedView();
+        if (sourceEventState.pendingEncounter !== null) {
+          startPendingSourceEncounter();
+          return;
+        }
+        continue;
+      }
+      if (command.kind === "transfer-player") {
+        const transfer = finalDirectSourceTransfer([command], sequence.eventId, 0, importedAvatar);
+        if (transfer === null) {
+          importedNotice = "Séquence interrompue : transfert invalide.";
+          sourceSequence = null;
+          renderImportedView();
+          return;
+        }
+        await followSourceTransfer(transfer);
+        continue;
+      }
+      if (command.kind === "move-route" && typeof command.data.target === "number") {
+        startSourceMoveRoute(sequence, command.data.target, command.data.route);
+        continue;
+      }
+      if (command.kind === "wait-for-movement") {
+        await sequence.runner.waitForMovement();
+        continue;
+      }
+      if (command.kind === "wait" && typeof command.data.frames === "number" && command.data.frames > 0) {
+        await sequence.runner.delay(command.data.frames * 25);
+      }
+    }
+    if (sourceSequence === sequence) {
+      await sequence.runner.waitForMovement();
+      sourceSequence = null;
+      importedNotice = "Séquence automatique terminée.";
+      renderImportedView();
+      sequence.onComplete?.();
+    }
+  } finally {
+    sequence.advancing = false;
+  }
+}
+
 const root = document.querySelector<HTMLDivElement>("#app");
 if (root === null) throw new Error("Application root is missing.");
 root.innerHTML = `
@@ -137,8 +321,10 @@ const sourceBattleVisuals = new SourceBattleVisuals();
 const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   getEventState: () => sourceEventState,
   updateEventState: (nextState) => {
+    const previousState = sourceEventState;
     sourceEventState = nextState;
     persistSourceEventState();
+    queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
   },
   getResources: () => importedAssets === null ? null : {
     catalog: importedAssets.battleCatalog,
@@ -266,13 +452,13 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  if (sourceDialogues.current === null && !sourceTransitionInProgress && !sourceBattles.active) {
+  if (sourceSequence === null && sourceDialogues.current === null && !sourceTransitionInProgress && !sourceBattles.active) {
     sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
   }
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now));
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
-    finishImportedStep();
+    if (sourceSequence === null) finishImportedStep();
   }
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
@@ -301,7 +487,7 @@ function renderImportedView(): void {
     const encounterLabel = pendingEncounter === null ? "aucune" : sourceBattle === null
       ? `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en attente <button id="start-source-encounter">Lancer</button>`
       : `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en cours`;
-    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p>`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p>${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
     progress.querySelector<HTMLButtonElement>("#start-source-encounter")?.addEventListener("click", startPendingSourceEncounter);
   }
   const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
@@ -309,7 +495,7 @@ function renderImportedView(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
   const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
-    reset.disabled = sourceBattle !== null;
+    reset.disabled = sourceBattle !== null || sourceSequence !== null;
     reset.textContent = sourceEventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
   }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
@@ -349,11 +535,7 @@ function renderSourceDialogue(): void {
       ? `Espace/Entrée · ${sourceDialogue.index + 1}/${sourceDialogue.lines.length}` : "Espace/Entrée pour continuer";
 }
 
-function finishSourceEvent(completed: SourceDialogueSession): void {
-  if (!completed.flow.complete) {
-    importedNotice = `Événement interrompu ; état inchangé (${completed.flow.blockedReason ?? "branche incomplète"}).`;
-    return;
-  }
+function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
   const result = applySafeStateCommands(sourceEventState, completed.flow.page, completed.mapId, completed.eventId,
     { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
       createPokemon: (species, level) => {
@@ -370,7 +552,49 @@ function finishSourceEvent(completed: SourceDialogueSession): void {
     persistSourceEventState();
     importedNotice = `Dialogue terminé ; ${result.appliedCommands} commande(s) d'état appliquée(s) et mémorisée(s).`;
   } else importedNotice = "Dialogue terminé.";
-  if (encounterQueued) startPendingSourceEncounter();
+  if (encounterQueued) {
+    startPendingSourceEncounter();
+    return;
+  }
+  const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
+  if (transfer !== null) void followSourceTransfer(transfer);
+}
+
+const PRE_ENCOUNTER_PRESENTATION = new Set(["move-route", "move-route-continuation", "wait-for-movement", "wait"]);
+
+function beginPreEncounterMovement(completed: SourceDialogueSession): boolean {
+  const commands = completed.flow.page.commands;
+  const encounterIndex = commands.findIndex((command) => command.kind === "request-encounter");
+  const firstRoute = commands.findIndex((command, index) => index < encounterIndex && command.kind === "move-route");
+  if (encounterIndex < 0 || firstRoute < 0) return false;
+  const presentationCommands = commands.slice(firstRoute, encounterIndex)
+    .filter((command) => PRE_ENCOUNTER_PRESENTATION.has(command.kind));
+  sourceSequence = { label: `${completed.label} · cinématique`, mapId: completed.mapId,
+    eventId: completed.eventId,
+    plan: compileAndReportSourceScene({ ...completed.flow.page, commands: presentationCommands },
+      `${completed.label} · avant-combat`),
+    translations: completed.translations, cursor: 0, advancing: false, runner: new SourceSequenceRunner(),
+    onComplete: () => applyCompletedSourceEvent(completed) };
+  importedNotice = "Cinématique avant le combat…";
+  void advanceSourceSequence();
+  return true;
+}
+
+function finishSourceEvent(completed: SourceDialogueSession): void {
+  if (sourceSequence !== null && completed.eventId === sourceSequence.eventId) {
+    if (!completed.flow.complete) {
+      importedNotice = `Séquence interrompue : ${completed.flow.blockedReason ?? "dialogue incomplet"}.`;
+      sourceSequence = null;
+      return;
+    }
+    void advanceSourceSequence();
+    return;
+  }
+  if (!completed.flow.complete) {
+    importedNotice = `Événement interrompu ; état inchangé (${completed.flow.blockedReason ?? "branche incomplète"}).`;
+    return;
+  }
+  if (!beginPreEncounterMovement(completed)) applyCompletedSourceEvent(completed);
 }
 
 function applySourceDialogueUpdate(update: SourceDialogueUpdate): void {
@@ -431,7 +655,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
 }
 
 async function resetSourceWorld(): Promise<void> {
-  if (sourceTransitionInProgress || sourceBattles.active) return;
+  if (sourceSequence !== null || sourceTransitionInProgress || sourceBattles.active) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   const checkpoint = sourceEventState.checkpoint;
@@ -455,7 +679,7 @@ async function resetSourceWorld(): Promise<void> {
 }
 
 async function openStarterTest(): Promise<void> {
-  if (sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
+  if (sourceSequence !== null || sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
   if (sourceEventState.party.members.length > 0) {
     importedNotice = "Un starter a déjà été choisi : les autres socles restent verrouillés.";
     render();
@@ -585,7 +809,8 @@ function renderEncounter(): void {
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattles.active || importedPlayerMotion !== null) return;
+    if (sourceSequence !== null || sourceDialogues.current !== null || sourceTransitionInProgress
+      || sourceBattles.active || importedPlayerMotion !== null) return;
     const events = sourceMapEvents();
     const eventAhead = eventInFront(events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
@@ -627,6 +852,7 @@ function interact(playerId: AvatarId): void {
       if (update.changed) renderImportedView();
       return;
     }
+    if (sourceSequence !== null) return;
     if (importedAssets === null || playerId !== "player") return;
     const target = eventInFront(sourceMapEvents(), importedAvatar, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
@@ -714,7 +940,8 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || sourceBattles.active || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
+  if (mapId === undefined || sourceSequence !== null || sourceBattles.active
+    || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
   viewedMapId = mapId;
   render();
 }));

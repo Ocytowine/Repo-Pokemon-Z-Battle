@@ -4,6 +4,12 @@ Pokemon Z-Battle est un nouveau moteur web destine a interpreter, sans les modif
 
 Le jeu source et ses assets ne doivent jamais etre ajoutes a ce depot.
 
+## Reprise du developpement
+
+Avant de poursuivre le moteur, lire [`docs/AI_HANDOFF.md`](docs/AI_HANDOFF.md). Ce
+document conserve l'etat valide de la progression, l'ordre des prochains jalons et
+les pieges deja identifies, notamment pour l'increment 9.7.
+
 ## Prerequis
 
 - Node.js 22 ou plus recent

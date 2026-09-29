@@ -1,6 +1,8 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import { portSourceRubyCommand } from "./source-script-ports.js";
+import { parseSourceMoveRoute } from "./source-move-route.js";
+import { isKnownSourceCommand } from "./source-command-registry.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -18,11 +20,6 @@ export interface EventFlowResult {
 }
 
 export interface EventFlowContext { readonly playerDirection: number }
-
-const EXECUTABLE_COMMANDS = new Set(["show-text", "text-continuation", "set-switches", "set-self-switch", "change-variables",
-  "grant-item", "remove-item", "set-checkpoint", "heal-party", "play-cry", "wait", "screen-tone", "play-jingle", "play-sound",
-  "play-music", "play-background-sound", "show-animation", "screen-flash", "show-picture", "move-picture", "erase-picture",
-  "move-route", "move-route-continuation", "wait-for-movement", "add-pokemon", "request-encounter", "set-follower", "end"]);
 
 function integer(value: unknown): value is number {
   return Number.isInteger(value);
@@ -145,8 +142,12 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
       }
       const executable = command.kind === "ruby-script" ? portSourceRubyCommand(command)
         : command.kind === "recover-all" ? { ...command, kind: "heal-party" } : command;
-      if (executable === null || !EXECUTABLE_COMMANDS.has(executable.kind)) {
+      if (executable === null || !isKnownSourceCommand(executable.kind)) {
         blockedReason = `commande ${command.kind} non prise en charge`;
+        return false;
+      }
+      if (executable.kind === "move-route" && parseSourceMoveRoute(executable.data.route) === null) {
+        blockedReason = "route de mouvement invalide";
         return false;
       }
       output.push(executable);

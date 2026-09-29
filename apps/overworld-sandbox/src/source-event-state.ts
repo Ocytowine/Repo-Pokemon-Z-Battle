@@ -1,6 +1,7 @@
 import type { ImportedEventPage, ImportedMapEvent } from "./imported-map.js";
 import { addPokemonToParty, createEmptyPlayerParty, healPlayerParty, parsePlayerParty, type PersistentPokemon, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 import { isSourceStarterSelectionPage } from "./source-script-ports.js";
+import { isKnownSourceCommand, isSourceStateCommand } from "./source-command-registry.js";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -81,12 +82,6 @@ export function selectActiveEventPage(event: ImportedMapEvent, mapId: number, st
   return null;
 }
 
-const SAFE_PRESENTATION_COMMANDS = new Set(["show-text", "text-continuation", "play-cry", "wait", "screen-tone",
-  "play-jingle", "play-sound", "play-music", "play-background-sound", "show-animation", "screen-flash", "show-picture",
-  "move-picture", "erase-picture", "move-route", "move-route-continuation", "wait-for-movement", "set-follower", "end"]);
-const STATE_COMMANDS = new Set(["set-switches", "set-self-switch", "change-variables", "grant-item", "remove-item", "set-checkpoint",
-  "heal-party", "add-pokemon", "request-encounter"]);
-
 function range(data: Readonly<Record<string, unknown>>): readonly number[] | null {
   if (!finiteInteger(data.firstId) || !finiteInteger(data.lastId) || data.firstId < 1 || data.lastId < data.firstId) return null;
   return Array.from({ length: data.lastId - data.firstId + 1 }, (_, index) => data.firstId as number + index);
@@ -115,7 +110,7 @@ function changedVariable(current: number, operation: unknown, operand: number): 
 
 export function applySafeStateCommands(state: SourceEventState, page: ImportedEventPage, mapId: number, eventId: number,
   context?: SourceExecutionContext): StateCommandResult {
-  const unsupported = page.commands.find((command) => !SAFE_PRESENTATION_COMMANDS.has(command.kind) && !STATE_COMMANDS.has(command.kind));
+  const unsupported = page.commands.find((command) => !isKnownSourceCommand(command.kind));
   if (unsupported !== undefined) {
     return { state, appliedCommands: 0, safe: false, reason: `commande ${unsupported.kind} non prise en charge` };
   }
@@ -129,7 +124,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   let encounterQueued = false;
   let appliedCommands = 0;
   for (const command of page.commands) {
-    if (!STATE_COMMANDS.has(command.kind)) continue;
+    if (!isSourceStateCommand(command.kind)) continue;
     if (encounterQueued) {
       if (command.kind !== "set-switches" || pendingEncounter === null) {
         return { state, appliedCommands: 0, safe: false, reason: `commande ${command.kind} après combat non prise en charge` };

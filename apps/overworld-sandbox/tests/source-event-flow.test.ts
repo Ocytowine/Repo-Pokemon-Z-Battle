@@ -92,6 +92,24 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["add-pokemon", "set-follower", "request-encounter"]);
   });
 
+  it("accepts the safe narrative envelope used by the post-battle autorun", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "$GameSpeed = 0" }),
+      command("transfer-player", 0, { addressing: "direct", map: 3, x: 15, y: 16, direction: 2, fade: 0 }),
+      command("change-map-settings", 0, { parameters: [] }),
+      command("move-route", 0, { target: -1, route: { repeat: false, skippable: false,
+        steps: [{ kind: "step-up", parameters: [] }, { kind: "end", parameters: [] }] } }),
+      command("move-route-continuation", 0, { step: { kind: "step-up", parameters: [] } }),
+      command("wait-for-movement", 0), command("text-options", 0), command("scroll-map", 0), command("fade-music", 0),
+      command("show-text", 0, { text: "Suite" }), command("end", 0),
+    ]), [], createSourceEventState(), 2, 17);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "runtime-noop", "transfer-player", "change-map-settings", "move-route", "move-route-continuation",
+      "wait-for-movement", "text-options", "scroll-map", "fade-music", "show-text", "end",
+    ]);
+  });
+
   it("stops before an unsupported command without exposing later dialogue", () => {
     const result = resolveEventFlow(page([command("show-text", 0, { text: "Avant" }), command("ruby-script", 0),
       command("show-text", 0, { text: "Après" })]), [], createSourceEventState(), 3, 1);

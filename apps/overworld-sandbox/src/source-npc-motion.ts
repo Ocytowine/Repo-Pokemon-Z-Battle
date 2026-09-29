@@ -3,6 +3,7 @@ import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type Impor
   type ImportedMapEvent } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
+import type { SourceRouteActor } from "./source-move-route.js";
 
 interface NpcRuntime {
   x: number;
@@ -12,6 +13,9 @@ interface NpcRuntime {
   nextMoveAt: number;
   randomState: number;
   walkingPattern: 1 | 3;
+  characterName?: string;
+  opacity?: number;
+  pattern?: number;
 }
 
 const DIRECTIONS: readonly Direction[] = ["down", "left", "right", "up"];
@@ -107,6 +111,42 @@ export class SourceNpcMotionController {
     });
   }
 
+  public scriptedActor(eventId: number, mapId: number, events: readonly ImportedMapEvent[], state: SourceEventState,
+    now: number): SourceRouteActor | null {
+    if (this.mapId !== mapId) this.reset(mapId, events, now);
+    const event = events.find((candidate) => candidate.id === eventId);
+    const page = event === undefined ? null : selectEventPage(event, mapId, state);
+    const runtime = this.runtimes.get(eventId);
+    if (event === undefined || page === null || runtime === undefined) return null;
+    return {
+      x: runtime.x, y: runtime.y, direction: runtime.direction,
+      moveSpeed: page.settings.moveSpeed, moveFrequency: page.settings.moveFrequency,
+      walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
+      directionFix: page.settings.directionFix, through: page.settings.through,
+      alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
+      characterName: runtime.characterName ?? page.graphic.characterName, characterHue: 0,
+      pattern: runtime.pattern ?? page.graphic.pattern,
+    };
+  }
+
+  public applyScriptedActor(eventId: number, actor: SourceRouteActor, destination: GridPoint | null, now: number): number {
+    const runtime = this.runtimes.get(eventId);
+    if (runtime === undefined) return 0;
+    const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
+    runtime.direction = actor.direction;
+    runtime.characterName = actor.characterName;
+    runtime.opacity = actor.opacity;
+    runtime.pattern = actor.pattern;
+    if (destination === null) return 0;
+    runtime.x = destination.x;
+    runtime.y = destination.y;
+    const duration = sourceNpcStepDuration(actor.moveSpeed);
+    runtime.motion = createSourceGridMotion(before, destination, actor.direction, now,
+      { duration, walkingPattern: runtime.walkingPattern });
+    runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
+    return duration;
+  }
+
   public poses(now: number): ReadonlyMap<number, ImportedEventPose> {
     const result = new Map<number, ImportedEventPose>();
     for (const [eventId, runtime] of this.runtimes) {
@@ -115,7 +155,10 @@ export class SourceNpcMotionController {
         x: sampled?.x ?? runtime.x,
         y: sampled?.y ?? runtime.y,
         direction: directionNumber(runtime.direction),
-        ...(sampled === null ? {} : { pattern: sampled.pattern }),
+        ...(sampled === null ? runtime.pattern === undefined ? {} : { pattern: runtime.pattern }
+          : { pattern: sampled.pattern }),
+        ...(runtime.characterName === undefined ? {} : { characterName: runtime.characterName }),
+        ...(runtime.opacity === undefined ? {} : { opacity: runtime.opacity }),
       };
       result.set(eventId, pose);
     }
