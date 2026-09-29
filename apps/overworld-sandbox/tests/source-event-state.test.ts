@@ -22,6 +22,28 @@ describe("persistent source event state", () => {
     expect(selectActiveEventPage(event, 4, { switches: {}, variables: {}, selfSwitches: { "3:7:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null })?.pageIndex).toBe(0);
   });
 
+  it("locks every starter selection page once the party contains a Pokemon", () => {
+    const starterPage = page(unconditional, [
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbAddPokemon(:CHESPIN,5)" } },
+      { kind: "set-switches", text: null, indent: 0, data: { firstId: 62, lastId: 62, value: true } },
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbWildBattle(PBSpecies::BIDOOF,2)" } },
+    ]);
+    const giftPage = page(unconditional, [
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbAddPokemon(:PIKACHU,5)" } },
+    ]);
+    const starterEvent: ImportedMapEvent = { id: 9, name: "Starter plante", x: 0, y: 0, pages: [starterPage] };
+    const giftEvent: ImportedMapEvent = { id: 20, name: "Cadeau", x: 1, y: 0, pages: [giftPage] };
+    const state = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0, members: [{
+      id: "starter", species: "CHESPIN", nickname: null, level: 5, experience: 135,
+      stats: { maxHp: 21, attack: 12, defense: 13, specialAttack: 11, specialDefense: 12, speed: 10 }, hp: 21,
+      majorStatus: null, ability: "OVERGROW", heldItem: null,
+      moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }],
+    }] } };
+    expect(selectActiveEventPage(starterEvent, 2, createSourceEventState())?.page).toBe(starterPage);
+    expect(selectActiveEventPage(starterEvent, 2, state)).toBeNull();
+    expect(selectActiveEventPage(giftEvent, 2, state)?.page).toBe(giftPage);
+  });
+
   it("applies supported switch, variable and self-switch mutations immutably", () => {
     const commands: ImportedEventPage["commands"] = [
       { kind: "set-switches", text: null, indent: 0, data: { firstId: 10, lastId: 11, value: true } },

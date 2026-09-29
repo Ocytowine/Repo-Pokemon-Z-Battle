@@ -247,6 +247,7 @@ function animateImportedMap(now: number): void {
 function renderImportedView(): void {
   const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
+  renderStarterTestButton();
   const assets = importedAssets;
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
   const name = document.querySelector<HTMLElement>("#map-name"); if (name !== null) name.textContent = `${importedAssets.map.name} · Map${String(importedAssets.map.id).padStart(3, "0")}`;
@@ -418,21 +419,22 @@ async function resetSourceWorld(): Promise<void> {
 
 async function openStarterTest(): Promise<void> {
   if (sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
+  if (sourceEventState.party.members.length > 0) {
+    importedNotice = "Un starter a déjà été choisi : les autres socles restent verrouillés.";
+    render();
+    return;
+  }
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   importedNotice = "Chargement de la salle de sélection des starters…";
   try {
-    if (sourceEventState.party.members.length === 0) {
-      sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
-      persistSourceEventState();
-    }
+    sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
+    persistSourceEventState();
     importedAssets = await loadImportedMap(2);
     importedAvatar = { x: 52, y: 22, direction: "up" };
     importedPlayerPattern = 0;
     viewedMapId = SOURCE_MAP_ID;
-    importedNotice = sourceEventState.party.members.length === 0
-      ? "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins."
-      : "Salle des starters chargée avec l'équipe déjà persistée.";
+    importedNotice = "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins.";
   } catch (error) {
     importedNotice = error instanceof Error ? `Salle des starters inaccessible : ${error.message}` : "Salle des starters inaccessible.";
   } finally {
@@ -441,7 +443,16 @@ async function openStarterTest(): Promise<void> {
   }
 }
 
+function renderStarterTestButton(): void {
+  const button = document.querySelector<HTMLButtonElement>("#starter-test");
+  if (button === null) return;
+  const starterChosen = sourceEventState.party.members.length > 0;
+  button.disabled = starterChosen;
+  button.title = starterChosen ? "Un starter a déjà été choisi dans cette sauvegarde." : "";
+}
+
 function render(): void {
+  renderStarterTestButton();
   const network = multiplayer.current;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     renderImportedView();

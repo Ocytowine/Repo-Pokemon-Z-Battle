@@ -11,6 +11,20 @@ function command(source: EventCommand, kind: string, data: Readonly<Record<strin
   return { kind, text: null, indent: source.indent, data };
 }
 
+function rubySource(source: EventCommand): string | null {
+  return source.kind === "ruby-script" && typeof source.data.source === "string" ? source.data.source.trim() : null;
+}
+
+export function isSourceStarterSelectionPage(page: ImportedEventPage): boolean {
+  const scripts = page.commands.map(rubySource).filter((source): source is string => source !== null);
+  const addsPokemon = scripts.some((source) => /^pbAddPokemon\(:[A-Z][A-Z0-9_]*,\s*\d+\)$/u.test(source));
+  const startsTrialBattle = scripts.some((source) => /^pbWildBattle\(PBSpecies::BIDOOF,\s*2\)$/u.test(source));
+  const selectsStarterType = page.commands.some((source) => source.kind === "set-switches"
+    && (source.data.firstId === 62 || source.data.firstId === 63 || source.data.firstId === 64)
+    && source.data.lastId === source.data.firstId && source.data.value === true);
+  return addsPokemon && startsTrialBattle && selectsStarterType;
+}
+
 export function portSourceRubyCommand(source: EventCommand): EventCommand | null {
   if (source.kind !== "ruby-script" || typeof source.data.source !== "string") return null;
   const ruby = source.data.source.trim();

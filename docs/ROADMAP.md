@@ -742,6 +742,28 @@ case. L'action generique `wait` ajoutee au moteur permet ce tour adverse sans
 simuler une fausse attaque du joueur. L'increment 9.6 est fonctionnellement clos ;
 la recette interactive du parcours complet reste a effectuer sur les assets locaux.
 
+### Increment 9.7 - Boucle de jeu et mise en scene
+
+- [x] verrouiller tous les autres socles des qu'un starter appartient a l'equipe ;
+- [ ] executer l'evenement automatique post-Keunotor et sa sequence narrative ;
+- [ ] separer la position logique sur la grille de la position affichee ;
+- [ ] interpoler les pas, la camera et les motifs de marche du joueur ;
+- [ ] animer les PNJ et executer leurs routes de deplacement ;
+- [ ] prendre en charge les declencheurs contact, automatique et parallele ;
+- [ ] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
+- [ ] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
+- [ ] sauvegarder la carte et la position courantes ;
+- [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
+
+Premier garde-fou 9.7 valide le 2026-09-29 : une page est reconnue comme choix de
+starter par sa sequence source (ajout d'un Pokemon, interrupteur de type et combat
+obligatoire contre Keunotor), sans dependre des numeros d'evenement ni de l'espece.
+Des qu'une equipe existe, ces pages ne peuvent plus devenir actives et le raccourci
+de test est desactive. Ce verrouillage protege immediatement la sauvegarde ; le
+futur executeur automatique devra encore jouer l'evenement 17 de Map002, qui
+transforme normalement la victoire (interrupteur 65) en progression (interrupteur
+67), puis enchainer la mise en scene originale.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

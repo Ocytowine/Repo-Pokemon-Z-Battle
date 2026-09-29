@@ -1,5 +1,6 @@
 import type { ImportedEventPage, ImportedMapEvent } from "./imported-map.js";
 import { addPokemonToParty, createEmptyPlayerParty, healPlayerParty, parsePlayerParty, type PersistentPokemon, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+import { isSourceStarterSelectionPage } from "./source-script-ports.js";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -74,6 +75,7 @@ export function selectActiveEventPage(event: ImportedMapEvent, mapId: number, st
     if (condition.switch2Id !== null && state.switches[String(condition.switch2Id)] !== true) continue;
     if (condition.variable !== null && (state.variables[String(condition.variable.id)] ?? 0) < condition.variable.minimum) continue;
     if (condition.selfSwitch !== null && state.selfSwitches[selfSwitchKey(mapId, event.id, condition.selfSwitch)] !== true) continue;
+    if (state.party.members.length > 0 && isSourceStarterSelectionPage(page)) continue;
     return { page, pageIndex: index };
   }
   return null;
