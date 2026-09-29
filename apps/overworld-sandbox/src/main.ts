@@ -1,7 +1,7 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
-import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
+import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
 import { SeededRandom, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -25,21 +25,7 @@ let importedPlayerPattern = 0;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
-interface SourceDialogueSession {
-  readonly label: string;
-  readonly mapId: number;
-  readonly eventId: number;
-  readonly page: ImportedEventPage;
-  readonly translations: ReadonlyMap<string, string>;
-  readonly selections: number[];
-  lines: readonly string[];
-  index: number;
-  shownLines: number;
-  flow: EventFlowResult;
-  choosing: boolean;
-}
-
-let sourceDialogue: SourceDialogueSession | null = null;
+const sourceDialogues = new SourceDialogueController();
 let sourceTransitionInProgress = false;
 let sourceBattle: TeamBattleState | null = null;
 let sourceBattleRng: SeededRandom | null = null;
@@ -311,6 +297,7 @@ function renderImportedView(): void {
 }
 
 function renderSourceDialogue(): void {
+  const sourceDialogue = sourceDialogues.current;
   const panel = document.querySelector<HTMLElement>("#source-dialogue");
   if (panel === null) return;
   panel.hidden = sourceDialogue === null || viewedMapId !== SOURCE_MAP_ID;
@@ -338,7 +325,6 @@ function renderSourceDialogue(): void {
 }
 
 function finishSourceEvent(completed: SourceDialogueSession): void {
-  sourceDialogue = null;
   if (!completed.flow.complete) {
     importedNotice = `Événement interrompu ; état inchangé (${completed.flow.blockedReason ?? "branche incomplète"}).`;
     return;
@@ -362,34 +348,20 @@ function finishSourceEvent(completed: SourceDialogueSession): void {
   if (encounterQueued) startPendingSourceEncounter();
 }
 
-function refreshSourceEvent(session: SourceDialogueSession): void {
-  session.flow = resolveEventFlow(session.page, session.selections, sourceEventState, session.mapId, session.eventId,
-    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
-  const allLines = dialogueLines(session.flow.page, session.translations);
-  session.lines = allLines.slice(session.shownLines);
-  session.index = 0;
-  session.choosing = session.lines.length === 0 && session.flow.pendingChoice !== null;
-  if (session.lines.length === 0 && !session.choosing) finishSourceEvent(session);
+function applySourceDialogueUpdate(update: SourceDialogueUpdate): void {
+  if (update.completed !== null) finishSourceEvent(update.completed);
 }
 
 function chooseSourceOption(index: number): void {
-  const session = sourceDialogue;
-  const pending = session?.flow.pendingChoice;
-  if (session === null || session === undefined || !session.choosing || pending === null || pending === undefined
-    || index < 0 || index >= pending.choices.length) return;
-  session.selections.push(index);
-  refreshSourceEvent(session);
-  renderImportedView();
+  const update = sourceDialogues.choose(index, sourceEventState, sourceDirectionNumber(importedAvatar.direction));
+  applySourceDialogueUpdate(update);
+  if (update.changed) renderImportedView();
 }
 
 function beginSourceEvent(page: ImportedEventPage, mapId: number, eventId: number, label: string,
   translations: ReadonlyMap<string, string>): void {
-  const flow = resolveEventFlow(page, [], sourceEventState, mapId, eventId,
-    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
-  const session: SourceDialogueSession = { label, mapId, eventId, page, translations, selections: [], lines: [], index: 0,
-    shownLines: 0, flow, choosing: false };
-  sourceDialogue = session;
-  refreshSourceEvent(session);
+  applySourceDialogueUpdate(sourceDialogues.begin(page, mapId, eventId, label, translations, sourceEventState,
+    sourceDirectionNumber(importedAvatar.direction)));
 }
 
 function importedDirection(direction: number, fallback: Direction): Direction {
@@ -414,7 +386,7 @@ function sourceDirectionNumber(direction: Direction): number {
 async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   if (sourceTransitionInProgress) return;
   sourceTransitionInProgress = true;
-  sourceDialogue = null;
+  sourceDialogues.cancel();
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
   renderImportedView();
   try {
@@ -434,7 +406,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
 async function resetSourceWorld(): Promise<void> {
   if (sourceTransitionInProgress || sourceBattle !== null) return;
   sourceTransitionInProgress = true;
-  sourceDialogue = null;
+  sourceDialogues.cancel();
   const checkpoint = sourceEventState.checkpoint;
   importedNotice = checkpoint === null ? "Retour à Bourg Canvas…" : `Retour au point de reprise Map${String(checkpoint.mapId).padStart(3, "0")}…`;
   renderImportedView();
@@ -456,7 +428,7 @@ async function resetSourceWorld(): Promise<void> {
 async function openStarterTest(): Promise<void> {
   if (sourceTransitionInProgress || multiplayer.active || sourceBattle !== null) return;
   sourceTransitionInProgress = true;
-  sourceDialogue = null;
+  sourceDialogues.cancel();
   importedNotice = "Chargement de la salle de sélection des starters…";
   try {
     if (sourceEventState.party.members.length === 0) {
@@ -644,7 +616,7 @@ async function submitSourceEncounterAction(moveIndex: number): Promise<void> {
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceDialogue !== null || sourceTransitionInProgress || sourceBattle !== null) return;
+    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattle !== null) return;
     const eventAhead = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
     if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
@@ -683,17 +655,10 @@ function move(playerId: string, direction: Direction): void {
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
     if (sourceBattle !== null) return;
-    if (sourceDialogue !== null) {
-      if (sourceDialogue.choosing) return;
-      if (sourceDialogue.index + 1 < sourceDialogue.lines.length) sourceDialogue.index += 1;
-      else {
-        sourceDialogue.shownLines += sourceDialogue.lines.length;
-        sourceDialogue.lines = [];
-        sourceDialogue.index = 0;
-        sourceDialogue.choosing = sourceDialogue.flow.pendingChoice !== null;
-        if (!sourceDialogue.choosing) finishSourceEvent(sourceDialogue);
-      }
-      renderImportedView();
+    if (sourceDialogues.current !== null) {
+      const update = sourceDialogues.advance();
+      applySourceDialogueUpdate(update);
+      if (update.changed) renderImportedView();
       return;
     }
     if (importedAssets === null || playerId !== "player") return;
@@ -706,7 +671,7 @@ function interact(playerId: AvatarId): void {
     if (target !== null && target.page.settings.trigger === 0) {
       beginSourceEvent(target.page, importedAssets.map.id, target.event.id,
         `Événement ${target.event.id} · ${target.event.name}`, importedAssets.mapTranslations);
-      if (sourceDialogue !== null) importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
+      if (sourceDialogues.current !== null) importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
     } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement n'est pas déclenché par interaction.";
     renderImportedView();
     return;
@@ -747,8 +712,8 @@ const keys: Readonly<Record<string, readonly [string, Direction]>> = {
   KeyI: ["opponent", "up"], KeyK: ["opponent", "down"], KeyJ: ["opponent", "left"], KeyL: ["opponent", "right"],
 };
 window.addEventListener("keydown", (event) => {
-  if (event.code === "Escape" && sourceDialogue !== null) { event.preventDefault(); sourceDialogue = null; renderImportedView(); return; }
-  if (/^Digit[1-9]$/u.test(event.code) && sourceDialogue?.choosing === true) {
+  if (event.code === "Escape" && sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
+  if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }
   if (event.code === "Enter" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); interact("player"); return; }
