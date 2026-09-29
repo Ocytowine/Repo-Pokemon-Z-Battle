@@ -837,6 +837,14 @@ centralise les attentes, la concurrence entre acteurs et l'ordre des routes d'un
 meme acteur. Les tests du registre et de l'ordonnanceur sont tabulaires afin que
 l'ajout d'une commande ne necessite pas un nouveau scenario de test volumineux.
 
+Neuvieme noyau 9.7 implemente le 2026-09-29 : une premiere machine de modes interdit
+l'ouverture du menu pendant dialogue, sequence, mouvement, transition ou combat.
+Le menu superpose l'overworld et gele ses controles ; ses onglets Equipe et Sac
+lisent l'etat persistant reel, Sauvegarde expose la position courante et Options
+memorise le volume. Le fond, la Poké Ball, les poches et le curseur reutilisent les
+assets originaux locaux sans les versionner. La sauvegarde generique de la carte et
+de la position reste necessaire avant de clore le point « menu en jeu minimal ».
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

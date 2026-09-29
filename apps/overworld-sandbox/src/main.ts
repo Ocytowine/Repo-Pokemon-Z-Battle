@@ -16,6 +16,7 @@ import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor
 import { isSourceStateCommand } from "./source-command-registry.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
+import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -38,6 +39,7 @@ let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
+const sourceScenes = new SourceSceneCoordinator();
 interface SourceSequenceSession {
   readonly label: string;
   readonly mapId: number;
@@ -279,8 +281,19 @@ root.innerHTML = `
   <header><div><p class="eyebrow">Phase 9.5 · état des événements</p><h1>Overworld <span>Sandbox</span></h1></div><p>Le prototype coop reste disponible ; les pages simples du monde source conservent maintenant leurs interrupteurs et variables.</p></header>
   <main>
     <section class="world-panel">
-      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
-      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div></div>
+      <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button id="open-source-menu">Menu</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
+      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
+        <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
+          <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
+          <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
+            <button data-source-menu-tab="team"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><span>Équipe</span></button>
+            <button data-source-menu-tab="bag"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><span>Sac</span></button>
+            <button data-source-menu-tab="save"><span class="source-menu-symbol">S</span><span>Sauvegarde</span></button>
+            <button data-source-menu-tab="options"><span class="source-menu-symbol">⚙</span><span>Options</span></button>
+          </nav><div id="source-menu-content" class="source-menu-content"></div></div>
+          <footer class="source-menu-footer"><span><kbd>Échap</kbd> Fermer</span><span>Les données affichées viennent de la partie en cours</span></footer>
+        </section>
+      </div>
       <p id="map-legend" class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
     </section>
     <aside>
@@ -452,7 +465,8 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  if (sourceSequence === null && sourceDialogues.current === null && !sourceTransitionInProgress && !sourceBattles.active) {
+  if (!sourceScenes.menuOpen && sourceSequence === null && sourceDialogues.current === null
+    && !sourceTransitionInProgress && !sourceBattles.active) {
     sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
   }
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now));
@@ -461,6 +475,73 @@ function animateImportedMap(now: number): void {
     if (sourceSequence === null) finishImportedStep();
   }
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
+}
+
+function sourceSceneActivity(): SourceSceneActivity {
+  return { dialogue: sourceDialogues.current !== null, battle: sourceBattles.active,
+    transition: sourceTransitionInProgress, sequence: sourceSequence !== null,
+    movement: importedPlayerMotion !== null };
+}
+
+function escapeMenuText(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+function sourceMenuVolume(): number {
+  const stored = Number(localStorage.getItem("pokemon-z-battle.options.volume.v1") ?? 80);
+  return Number.isFinite(stored) ? Math.max(0, Math.min(100, stored)) : 80;
+}
+
+function renderSourceMenu(): void {
+  const menu = document.querySelector<HTMLElement>("#source-menu");
+  const content = document.querySelector<HTMLElement>("#source-menu-content");
+  if (menu === null || content === null || importedAssets === null) return;
+  menu.hidden = !sourceScenes.menuOpen;
+  if (!sourceScenes.menuOpen) return;
+  const location = document.querySelector<HTMLElement>("#source-menu-location");
+  if (location !== null) location.textContent = importedAssets.map.name;
+  document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.sourceMenuTab === sourceScenes.menuTab);
+  });
+  const speciesName = (species: string): string => importedAssets?.battleCatalog.pokemon
+    .find((entry) => entry.internalName === species)?.name ?? species;
+  const moveName = (move: string): string => importedAssets?.battleCatalog.moves
+    .find((entry) => entry.internalName === move)?.name ?? move;
+  if (sourceScenes.menuTab === "team") {
+    const members = sourceEventState.party.members;
+    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${members.length === 0
+      ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Équipe vide</strong><small>Choisissez votre premier Pokémon pour commencer.</small></div>'
+      : members.map((member, index) => {
+        const name = escapeMenuText(member.nickname ?? speciesName(member.species));
+        const hp = Math.round(member.hp / member.stats.maxHp * 100);
+        const moves = member.moves.map((move) => escapeMenuText(moveName(move.internalName))).join(" · ");
+        return `<article class="source-team-card${index === sourceEventState.party.activeIndex ? " active" : ""}"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><div><small>${index === sourceEventState.party.activeIndex ? "EN TÊTE" : escapeMenuText(member.species)}</small><strong>${name} <span>N.${member.level}</span></strong><div class="source-menu-hp"><i style="width:${hp}%"></i></div><em>${member.hp}/${member.stats.maxHp} PV</em><p>${moves}</p></div></article>`;
+      }).join("")}</div>`;
+  } else if (sourceScenes.menuTab === "bag") {
+    const entries = Object.entries(sourceEventState.inventory);
+    content.innerHTML = `<div class="source-menu-title"><div><small>INVENTAIRE</small><h3>Sac</h3></div><span>${entries.length} type${entries.length > 1 ? "s" : ""}</span></div><div class="source-bag-list">${entries.length === 0
+      ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><strong>Le sac est vide</strong><small>Les objets ramassés apparaîtront ici.</small></div>'
+      : entries.map(([itemId, quantity], index) => `<article><img src="/__pokemon-z/source/Graphics/Icons/bagPocket${index % 8 + 1}.png" alt=""><strong>${escapeMenuText(importedAssets?.itemNames.get(itemId) ?? itemId)}</strong><span>×${quantity}</span></article>`).join("")}</div>`;
+  } else if (sourceScenes.menuTab === "save") {
+    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>AUTO</span></div><div class="source-save-card"><div class="source-save-location"><small>POSITION ACTUELLE</small><strong>${escapeMenuText(importedAssets.map.name)}</strong><span>${importedAvatar.x}, ${importedAvatar.y} · direction ${importedAvatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>Progression mémorisée</strong><small>Équipe, inventaire, interrupteurs et variables sont déjà conservés localement.</small></div></div><button disabled>Sauvegarde complète de la position · prochain lot</button></div>`;
+  } else {
+    const volume = sourceMenuVolume();
+    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list"><label><span><strong>Volume général</strong><small>La préférence est prête pour les futurs effets audio.</small></span><output id="source-volume-value">${volume}%</output><input id="source-volume" type="range" min="0" max="100" value="${volume}"></label><article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
+    content.querySelector<HTMLInputElement>("#source-volume")?.addEventListener("input", (event) => {
+      const input = event.currentTarget as HTMLInputElement;
+      localStorage.setItem("pokemon-z-battle.options.volume.v1", input.value);
+      const output = content.querySelector<HTMLOutputElement>("#source-volume-value");
+      if (output !== null) output.value = `${input.value}%`;
+    });
+  }
+}
+
+function toggleSourceMenu(): void {
+  if (sourceScenes.menuOpen) sourceScenes.closeMenu();
+  else if (!sourceScenes.openMenu(sourceSceneActivity())) return;
+  heldMovementKeys.clear();
+  renderImportedView();
 }
 
 function renderImportedView(): void {
@@ -495,7 +576,7 @@ function renderImportedView(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
   const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
-    reset.disabled = sourceBattle !== null || sourceSequence !== null;
+    reset.disabled = sourceScenes.menuOpen || sourceBattle !== null || sourceSequence !== null;
     reset.textContent = sourceEventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
   }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
@@ -505,6 +586,7 @@ function renderImportedView(): void {
   const guideTitle = document.querySelector<HTMLElement>("#guide-title"); if (guideTitle !== null) guideTitle.textContent = "État des événements";
   renderSourceDialogue();
   renderEncounter();
+  renderSourceMenu();
 }
 
 function renderSourceDialogue(): void {
@@ -555,6 +637,10 @@ function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
   if (encounterQueued) {
     startPendingSourceEncounter();
     return;
+  }
+  const menuButton = document.querySelector<HTMLButtonElement>("#open-source-menu"); if (menuButton !== null) {
+    menuButton.disabled = !sourceScenes.menuOpen && sourceScenes.mode(sourceSceneActivity()) !== "overworld";
+    menuButton.textContent = sourceScenes.menuOpen ? "Fermer le menu" : "Menu";
   }
   const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
   if (transfer !== null) void followSourceTransfer(transfer);
@@ -655,7 +741,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
 }
 
 async function resetSourceWorld(): Promise<void> {
-  if (sourceSequence !== null || sourceTransitionInProgress || sourceBattles.active) return;
+  if (sourceScenes.menuOpen || sourceSequence !== null || sourceTransitionInProgress || sourceBattles.active) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   const checkpoint = sourceEventState.checkpoint;
@@ -679,7 +765,7 @@ async function resetSourceWorld(): Promise<void> {
 }
 
 async function openStarterTest(): Promise<void> {
-  if (sourceSequence !== null || sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
+  if (sourceScenes.menuOpen || sourceSequence !== null || sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
   if (sourceEventState.party.members.length > 0) {
     importedNotice = "Un starter a déjà été choisi : les autres socles restent verrouillés.";
     render();
@@ -809,7 +895,7 @@ function renderEncounter(): void {
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceSequence !== null || sourceDialogues.current !== null || sourceTransitionInProgress
+    if (sourceScenes.menuOpen || sourceSequence !== null || sourceDialogues.current !== null || sourceTransitionInProgress
       || sourceBattles.active || importedPlayerMotion !== null) return;
     const events = sourceMapEvents();
     const eventAhead = eventInFront(events, importedAvatar, importedAssets.map.id, sourceEventState);
@@ -845,7 +931,7 @@ function move(playerId: string, direction: Direction): void {
 
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
-    if (sourceBattles.active || importedPlayerMotion !== null) return;
+    if (sourceScenes.menuOpen || sourceBattles.active || importedPlayerMotion !== null) return;
     if (sourceDialogues.current !== null) {
       const update = sourceDialogues.advance();
       applySourceDialogueUpdate(update);
@@ -911,7 +997,13 @@ function continueHeldSourceMovement(): void {
 }
 
 window.addEventListener("keydown", (event) => {
-  if (event.code === "Escape" && sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
+  if (event.code === "Escape") {
+    if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
+    if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
+    if (viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
+  }
+  if (event.code === "KeyM" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
+  if (sourceScenes.menuOpen) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }
@@ -940,10 +1032,18 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || sourceSequence !== null || sourceBattles.active
+  if (mapId === undefined || sourceScenes.menuOpen || sourceSequence !== null || sourceBattles.active
     || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
   viewedMapId = mapId;
   render();
+}));
+document.querySelector<HTMLButtonElement>("#open-source-menu")?.addEventListener("click", toggleSourceMenu);
+document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
+document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
+  const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
+  if (tab === undefined || !["team", "bag", "save", "options"].includes(tab)) return;
+  sourceScenes.selectMenuTab(tab);
+  renderSourceMenu();
 }));
 document.querySelector<HTMLButtonElement>("#starter-test")?.addEventListener("click", () => { void openStarterTest(); });
 document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {

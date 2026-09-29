@@ -100,9 +100,20 @@ Criteres d'acceptation :
 - un seul mode possede les controles a un instant donne ;
 - le coordinateur remplace progressivement les gardes dupliques de `main.ts`.
 
-### 4. Menu en jeu minimal — apres le gestionnaire de scenes
+### 4. Menu en jeu minimal — en cours
 
-Etat : a faire.
+Etat : premiere tranche visuelle et coordination terminees.
+
+- `SourceSceneCoordinator` expose les modes overworld, dialogue, combat, menu et
+  transition, et refuse l'ouverture pendant une activite incompatible.
+- Le menu s'ouvre avec `Echap`, `M` ou le bouton du sandbox et gele joueur, PNJ et
+  interactions.
+- Les onglets Equipe et Sac affichent les vraies donnees persistantes.
+- Sauvegarde montre la carte et la position, mais leur restauration generique reste
+  le prochain lot ; l'etat des evenements et l'equipe sont deja persistants.
+- Options memorise le volume choisi, sans encore le raccorder aux lecteurs audio.
+- Le visuel reutilise les assets locaux `partybg.png`, `partyBall.PNG`,
+  `bagPocket*.png` et `pause.png`, avec un repli CSS structurel.
 
 Le menu doit etre un mode du gestionnaire de scenes, pas une nouvelle page. Premier
 perimetre :
