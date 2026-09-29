@@ -2,10 +2,10 @@ import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMo
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
-import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
+import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
-import { SeededRandom, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { applyAutomaticReplacements, attemptSourceEncounterEscape, createSourceEncounterBattle, resolveSourceEncounterTurn, settleSourceEncounter, storeSourceEncounterParty } from "./source-encounter.js";
+import { SeededRandom } from "@pokemon-z-battle/battle-engine";
+import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import "./style.css";
@@ -27,10 +27,6 @@ let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 const sourceDialogues = new SourceDialogueController();
 let sourceTransitionInProgress = false;
-let sourceBattle: TeamBattleState | null = null;
-let sourceBattleRng: SeededRandom | null = null;
-let sourceBattleAnimating = false;
-let sourceEscapeAttempts = 0;
 type AvatarId = "player" | "opponent";
 
 function initialState(): OverworldState {
@@ -51,29 +47,8 @@ function persistSourceEventState(): void {
   localStorage.setItem(SOURCE_EVENT_STATE_KEY, JSON.stringify(sourceEventState));
 }
 
-function encounterSeed(species: string, level: number): number {
-  let seed = 0x5eed0000 ^ level;
-  for (const character of species) seed = Math.imul(seed ^ character.codePointAt(0)!, 16_777_619);
-  return seed >>> 0;
-}
-
 function startPendingSourceEncounter(): void {
-  const encounter = sourceEventState.pendingEncounter;
-  if (encounter === null || importedAssets === null || sourceBattle !== null) return;
-  try {
-    sourceBattle = createSourceEncounterBattle(sourceEventState.party, encounter, importedAssets.battleCatalog,
-      `wild-${encounter.species.toLowerCase()}`);
-    sourceBattleRng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
-    sourceEscapeAttempts = 0;
-    void sourceBattleVisuals.startBattle(sourceBattle,
-      { battleMusic: importedAssets.wildBattleBgm, victoryMusic: importedAssets.wildVictoryMe });
-    importedNotice = `Combat lancé contre ${encounter.species} niveau ${encounter.level}.`;
-  } catch (error) {
-    sourceBattle = null;
-    sourceBattleRng = null;
-    importedNotice = error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.";
-  }
-  render();
+  sourceBattles.startPendingEncounter();
 }
 
 function checkSourceWildEncounter(): boolean {
@@ -136,6 +111,21 @@ if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
 const canvas: HTMLCanvasElement = canvasElement;
 const context: CanvasRenderingContext2D = drawingContext;
 const sourceBattleVisuals = new SourceBattleVisuals();
+const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
+  getEventState: () => sourceEventState,
+  updateEventState: (nextState) => {
+    sourceEventState = nextState;
+    persistSourceEventState();
+  },
+  getResources: () => importedAssets === null ? null : {
+    catalog: importedAssets.battleCatalog,
+    battleback: importedAssets.battleback ?? "snow",
+    battleMusic: importedAssets.wildBattleBgm,
+    victoryMusic: importedAssets.wildVictoryMe,
+  },
+  setNotice: (notice) => { importedNotice = notice; },
+  render,
+});
 const renderPositions: Record<AvatarId, { mapId: string; x: number; y: number }> = {
   player: { ...state.avatars.player! },
   opponent: { ...state.avatars.opponent! },
@@ -255,6 +245,7 @@ function animateImportedMap(now: number): void {
 }
 
 function renderImportedView(): void {
+  const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
   const assets = importedAssets;
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
@@ -404,7 +395,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
 }
 
 async function resetSourceWorld(): Promise<void> {
-  if (sourceTransitionInProgress || sourceBattle !== null) return;
+  if (sourceTransitionInProgress || sourceBattles.active) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   const checkpoint = sourceEventState.checkpoint;
@@ -426,7 +417,7 @@ async function resetSourceWorld(): Promise<void> {
 }
 
 async function openStarterTest(): Promise<void> {
-  if (sourceTransitionInProgress || multiplayer.active || sourceBattle !== null) return;
+  if (sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   importedNotice = "Chargement de la salle de sélection des starters…";
@@ -501,6 +492,8 @@ function render(): void {
 
 function renderEncounter(): void {
   const network = multiplayer.current;
+  const sourceBattle = sourceBattles.current;
+  const sourceBattleAnimating = sourceBattles.animating;
   const panel = document.querySelector<HTMLElement>("#encounter-panel");
   const networkBattle = network?.snapshot?.battle ?? null;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : networkBattle?.state ?? null;
@@ -510,7 +503,7 @@ function renderEncounter(): void {
   const localSourceBattle = battleState === sourceBattle;
   const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
   if (visualStage !== null) visualStage.hidden = !localSourceBattle;
-  if (localSourceBattle) void sourceBattleVisuals.render(battleState, importedAssets?.battleback ?? "snow");
+  if (localSourceBattle) sourceBattles.renderVisuals();
   const playerTeam = battleState.teams.player;
   const opponentTeam = battleState.teams.opponent;
   const player = playerTeam.members[playerTeam.activeIndex];
@@ -531,92 +524,18 @@ function renderEncounter(): void {
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-move]").forEach((button) => button.addEventListener("click", () => {
       const moveIndex = Number(button.dataset.encounterMove);
       if (Number.isInteger(moveIndex)) {
-        if (localSourceBattle) void submitSourceEncounterAction(moveIndex);
+        if (localSourceBattle) void sourceBattles.submitAction(moveIndex);
         else submitEncounterAction(moveIndex);
       }
     }));
-    actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => { void escapeSourceEncounter(); });
+    actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => { void sourceBattles.escape(); });
   }
-}
-
-async function escapeSourceEncounter(): Promise<void> {
-  if (sourceBattle === null || sourceBattleRng === null || sourceBattleAnimating
-    || sourceEventState.pendingEncounter?.escapable !== true) return;
-  sourceBattleAnimating = true;
-  render();
-  try {
-    const before = sourceBattle;
-    const result = attemptSourceEncounterEscape(before, sourceEscapeAttempts, sourceBattleRng);
-    sourceEscapeAttempts += 1;
-    if (result.escaped) {
-      sourceEventState = { ...sourceEventState, party: storeSourceEncounterParty(sourceEventState.party, sourceBattle),
-        pendingEncounter: null, wildEncounterSteps: 0 };
-      persistSourceEventState();
-      sourceBattleVisuals.endBattle(null);
-      sourceBattle = null;
-      sourceBattleRng = null;
-      importedNotice = "Fuite réussie : retour à l'exploration, sur la même case.";
-    } else {
-      await sourceBattleVisuals.playTurn(before, result.turn.events);
-      sourceBattle = applyAutomaticReplacements(result.turn.state);
-      if (sourceBattle.status === "finished") {
-        const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle, importedAssets?.battleCatalog);
-        sourceEventState = { ...sourceEventState, party: settlement.party };
-        persistSourceEventState();
-        sourceBattleVisuals.endBattle(sourceBattle.winner);
-        sourceBattle = null;
-        sourceBattleRng = null;
-        importedNotice = "Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.";
-      } else importedNotice = "Fuite ratée : le Pokémon sauvage a pu attaquer.";
-    }
-  } catch (error) {
-    importedNotice = error instanceof Error ? `Fuite impossible : ${error.message}` : "Fuite impossible.";
-  } finally {
-    sourceBattleAnimating = false;
-  }
-  render();
-}
-
-async function submitSourceEncounterAction(moveIndex: number): Promise<void> {
-  if (sourceBattle === null || sourceBattleRng === null || sourceBattleAnimating) return;
-  sourceBattleAnimating = true;
-  render();
-  try {
-    const before = sourceBattle;
-    const result = resolveSourceEncounterTurn(before, moveIndex, sourceBattleRng);
-    await sourceBattleVisuals.playTurn(before, result.events);
-    sourceBattle = applyAutomaticReplacements(result.state);
-    if (sourceBattle.status === "finished") {
-      const winner = sourceBattle.winner;
-      sourceBattleVisuals.endBattle(winner);
-      const settlement = settleSourceEncounter(sourceEventState.party, sourceBattle, importedAssets?.battleCatalog);
-      sourceEventState = { ...sourceEventState, party: settlement.party };
-      if (settlement.completed) sourceEventState = completePendingEncounter(sourceEventState);
-      persistSourceEventState();
-      sourceBattle = null;
-      sourceBattleRng = null;
-      const reward = settlement.experience;
-      const skippedMoves = reward?.skippedMoves.map((internalName) => importedAssets?.battleCatalog.moves
-        .find((move) => move.internalName === internalName)?.name ?? internalName) ?? [];
-      importedNotice = winner === "player"
-        ? `Victoire : l'équipe a été sauvegardée${reward === null ? "." : ` · +${reward.amount} EXP${reward.levelsGained > 0 ? ` · +${reward.levelsGained} niveau(x)` : ""}.`}${skippedMoves.length === 0 ? "" : ` Capacité(s) en attente d'un choix : ${skippedMoves.join(", ")}.`}`
-        : "Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.";
-    } else {
-      const active = sourceBattle.teams.opponent.members[sourceBattle.teams.opponent.activeIndex];
-      importedNotice = `Tour résolu${active === undefined ? "." : ` · ${active.name} possède encore ${active.hp} PV.`}`;
-    }
-  } catch (error) {
-    importedNotice = error instanceof Error ? `Action refusée : ${error.message}` : "Action de combat impossible.";
-  } finally {
-    sourceBattleAnimating = false;
-  }
-  render();
 }
 
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattle !== null) return;
+    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattles.active) return;
     const eventAhead = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
     if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
@@ -654,7 +573,7 @@ function move(playerId: string, direction: Direction): void {
 
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
-    if (sourceBattle !== null) return;
+    if (sourceBattles.active) return;
     if (sourceDialogues.current !== null) {
       const update = sourceDialogues.advance();
       applySourceDialogueUpdate(update);
@@ -699,7 +618,7 @@ function setNetworkText(stateText: string, notice: string, active: boolean): voi
 }
 
 async function createOrJoin(kind: "create" | "join"): Promise<void> {
-  if (sourceBattle !== null) return;
+  if (sourceBattles.active) return;
   const serverInput = document.querySelector<HTMLInputElement>("#server-url");
   const codeInput = document.querySelector<HTMLInputElement>("#room-code");
   if (serverInput === null || codeInput === null) return;
@@ -732,7 +651,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || sourceBattle !== null || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
+  if (mapId === undefined || sourceBattles.active || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
   viewedMapId = mapId;
   render();
 }));
