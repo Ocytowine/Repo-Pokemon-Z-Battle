@@ -746,8 +746,8 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 - [x] verrouiller tous les autres socles des qu'un starter appartient a l'equipe ;
 - [ ] executer l'evenement automatique post-Keunotor et sa sequence narrative ;
-- [ ] separer la position logique sur la grille de la position affichee ;
-- [ ] interpoler les pas, la camera et les motifs de marche du joueur ;
+- [x] separer la position logique sur la grille de la position affichee ;
+- [x] interpoler les pas, la camera et les motifs de marche du joueur ;
 - [ ] animer les PNJ et executer leurs routes de deplacement ;
 - [ ] prendre en charge les declencheurs contact, automatique et parallele ;
 - [ ] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
@@ -763,6 +763,15 @@ de test est desactive. Ce verrouillage protege immediatement la sauvegarde ; le
 futur executeur automatique devra encore jouer l'evenement 17 de Map002, qui
 transforme normalement la victoire (interrupteur 65) en progression (interrupteur
 67), puis enchainer la mise en scene originale.
+
+Deuxieme noyau 9.7 implemente le 2026-09-29 : chaque pas conserve une destination
+logique entiere pour les collisions, mais expose une position d'affichage interpolee
+sur 125 ms. La camera suit cette position en restant alignee aux pixels pour eviter
+les coutures entre tuiles. Une seule pose de marche est jouee par case, en alternant
+les deux jambes, puis le motif de repos revient. L'etat des touches est lu en continu
+afin d'enchainer les pas sans le delai de repetition du systeme. Les commandes
+concurrentes sont bloquees jusqu'a la fin du pas ; transferts, evenements de contact
+et tirages de rencontres sont ensuite evalues sur la case d'arrivee.
 
 ### Comment la couverture s'etend au jeu complet
 

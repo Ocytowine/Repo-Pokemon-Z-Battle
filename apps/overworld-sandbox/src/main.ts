@@ -8,6 +8,7 @@ import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
+import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -21,7 +22,9 @@ let viewedMapId = "meadow";
 let events: OverworldEvent[] = [];
 let importedAssets: ImportedMapAssets | null = null;
 let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
-let importedPlayerPattern = 0;
+let importedPlayerMotion: SourceGridMotion | null = null;
+let importedWalkingPattern: 1 | 3 = 1;
+const heldMovementKeys = new Set<string>();
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
@@ -64,6 +67,20 @@ function checkSourceWildEncounter(): boolean {
   importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
   startPendingSourceEncounter();
   return true;
+}
+
+function finishImportedStep(): void {
+  if (importedAssets === null) return;
+  const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
+  const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
+  if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
+    void followSourceTransfer(enteredTransfer);
+    return;
+  }
+  if (checkSourceWildEncounter()) return;
+  importedNotice = `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+  renderImportedView();
+  continueHeldSourceMovement();
 }
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -240,7 +257,14 @@ function animateImportedMap(now: number): void {
     importedAnimationFrame = null;
     return;
   }
-  drawImportedMap(context, canvas, importedAssets, importedAvatar, importedPlayerPattern, now, sourceEventState);
+  const pose = importedPlayerMotion === null
+    ? { ...importedAvatar, pattern: 0, complete: true }
+    : sampleSourceGridMotion(importedPlayerMotion, now);
+  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState);
+  if (importedPlayerMotion !== null && pose.complete) {
+    importedPlayerMotion = null;
+    finishImportedStep();
+  }
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
 
@@ -385,7 +409,8 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     const next = await loadImportedMap(transfer.targetMapId);
     importedAssets = next;
     importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
-    importedPlayerPattern = 0;
+    importedPlayerMotion = null;
+    heldMovementKeys.clear();
     importedNotice = `Arrivée dans ${next.map.name}, en ${transfer.targetX},${transfer.targetY}. Graphismes, événements et français chargés à la demande.`;
   } catch (error) {
     importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
@@ -406,7 +431,8 @@ async function resetSourceWorld(): Promise<void> {
     importedAssets = checkpoint === null ? await loadImportedMap003() : await loadImportedMap(checkpoint.mapId);
     importedAvatar = checkpoint === null ? { x: 28, y: 15, direction: "up" }
       : { x: checkpoint.x, y: checkpoint.y, direction: checkpoint.direction };
-    importedPlayerPattern = 0;
+    importedPlayerMotion = null;
+    heldMovementKeys.clear();
     importedNotice = checkpoint === null ? "Position de test restaurée en 28,15, face à un événement dialogué."
       : `Point de reprise restauré dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
   } catch (error) {
@@ -432,7 +458,8 @@ async function openStarterTest(): Promise<void> {
     persistSourceEventState();
     importedAssets = await loadImportedMap(2);
     importedAvatar = { x: 52, y: 22, direction: "up" };
-    importedPlayerPattern = 0;
+    importedPlayerMotion = null;
+    heldMovementKeys.clear();
     viewedMapId = SOURCE_MAP_ID;
     importedNotice = "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins.";
   } catch (error) {
@@ -546,7 +573,7 @@ function renderEncounter(): void {
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattles.active) return;
+    if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattles.active || importedPlayerMotion !== null) return;
     const eventAhead = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
     if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
@@ -554,21 +581,17 @@ function move(playerId: string, direction: Direction): void {
       return;
     }
     const before = importedAvatar;
-    importedAvatar = moveImportedAvatar(importedAssets.map, importedAvatar, direction,
+    const next = moveImportedAvatar(importedAssets.map, importedAvatar, direction,
       blockingDefaultEventPoints(importedAssets.events, importedAssets.map.id, sourceEventState));
-    if (before.x !== importedAvatar.x || before.y !== importedAvatar.y) {
-      importedPlayerPattern = (importedPlayerPattern + 1) % 4;
-      const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
-      const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
-      if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
-        void followSourceTransfer(enteredTransfer);
-        return;
-      }
-      if (checkSourceWildEncounter()) return;
+    importedAvatar = next;
+    if (before.x !== next.x || before.y !== next.y) {
+      importedPlayerMotion = createSourceGridMotion(before, next, direction, performance.now(),
+        { walkingPattern: importedWalkingPattern });
+      importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
+      importedNotice = `Déplacement vers ${next.x},${next.y}…`;
+    } else {
+      importedNotice = `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`;
     }
-    importedNotice = before.x === importedAvatar.x && before.y === importedAvatar.y
-      ? `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`
-      : `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
     renderImportedView();
     return;
   }
@@ -584,7 +607,7 @@ function move(playerId: string, direction: Direction): void {
 
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
-    if (sourceBattles.active) return;
+    if (sourceBattles.active || importedPlayerMotion !== null) return;
     if (sourceDialogues.current !== null) {
       const update = sourceDialogues.advance();
       applySourceDialogueUpdate(update);
@@ -641,6 +664,13 @@ const keys: Readonly<Record<string, readonly [string, Direction]>> = {
   KeyW: ["player", "up"], KeyZ: ["player", "up"], KeyS: ["player", "down"], KeyA: ["player", "left"], KeyQ: ["player", "left"], KeyD: ["player", "right"],
   KeyI: ["opponent", "up"], KeyK: ["opponent", "down"], KeyJ: ["opponent", "left"], KeyL: ["opponent", "right"],
 };
+
+function continueHeldSourceMovement(): void {
+  const code = [...heldMovementKeys].at(-1);
+  const command = code === undefined ? undefined : keys[code];
+  if (command?.[0] === "player") move(...command);
+}
+
 window.addEventListener("keydown", (event) => {
   if (event.code === "Escape" && sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
@@ -649,8 +679,17 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Enter" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); interact("player"); return; }
   if (event.code === "Space") { event.preventDefault(); interact("player"); return; }
   if (event.code === "KeyO") { event.preventDefault(); interact("opponent"); return; }
-  const command = keys[event.code]; if (command === undefined) return; event.preventDefault(); move(...command);
+  const command = keys[event.code];
+  if (command === undefined) return;
+  event.preventDefault();
+  if (viewedMapId === SOURCE_MAP_ID && command[0] === "player") {
+    if (event.repeat) return;
+    heldMovementKeys.add(event.code);
+  }
+  move(...command);
 });
+window.addEventListener("keyup", (event) => { heldMovementKeys.delete(event.code); });
+window.addEventListener("blur", () => { heldMovementKeys.clear(); });
 document.querySelectorAll<HTMLButtonElement>(".pad button").forEach((button) => button.addEventListener("click", () => {
   const playerId = button.closest<HTMLElement>("[data-player]")?.dataset.player;
   const direction = button.dataset.direction as Direction | undefined;

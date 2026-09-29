@@ -535,13 +535,14 @@ function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElemen
 export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, assets: ImportedMapAssets,
   avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): void {
   const map = assets.map;
-  const cameraX = Math.max(0, Math.min(map.width * 32 - canvas.width, avatar.x * 32 + 16 - canvas.width / 2));
-  const cameraY = Math.max(0, Math.min(map.height * 32 - canvas.height, avatar.y * 32 + 16 - canvas.height / 2));
+  const cameraX = Math.round(Math.max(0, Math.min(map.width * 32 - canvas.width, avatar.x * 32 + 16 - canvas.width / 2)));
+  const cameraY = Math.round(Math.max(0, Math.min(map.height * 32 - canvas.height, avatar.y * 32 + 16 - canvas.height / 2)));
   const startX = Math.max(0, Math.floor(cameraX / 32));
   const startY = Math.max(0, Math.floor(cameraY / 32));
   const endX = Math.min(map.width, Math.ceil((cameraX + canvas.width) / 32));
   const endY = Math.min(map.height, Math.ceil((cameraY + canvas.height) / 32));
   const frame = Math.floor(now / 180);
+  context.imageSmoothingEnabled = false;
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#07110d";
   context.fillRect(0, 0, canvas.width, canvas.height);
