@@ -10,7 +10,8 @@ const command = (kind: string, indent: number, data: Readonly<Record<string, unk
   ({ kind, indent, text: typeof data.text === "string" ? data.text : null, data });
 const page = (commands: readonly Command[]): ImportedEventPage => ({ condition,
   graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
-  settings: { through: false, alwaysOnTop: false, trigger: 0 }, commands });
+  settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false, directionFix: false,
+    through: false, alwaysOnTop: false, trigger: 0 }, commands });
 
 describe("source event choice and condition flow", () => {
   it("pauses on a choice then projects only the selected nested branch", () => {

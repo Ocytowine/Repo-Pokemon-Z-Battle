@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventInFront, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -29,7 +29,8 @@ describe("imported RPG Maker map", () => {
   it("selects the last unconditional event page and exposes only simple dialogue", () => {
     const basePage = { condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
-      settings: { through: false, alwaysOnTop: false, trigger: 0 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false, directionFix: false,
+        through: false, alwaysOnTop: false, trigger: 0 },
       commands: [{ kind: "show-text", text: "Bonjour", indent: 0, data: { text: "Bonjour" } },
         { kind: "set-switches", text: null, indent: 0, data: { firstId: 10, lastId: 10, value: true } }] } as const;
     const event: ImportedMapEvent = { id: 1, name: "NPC", x: 2, y: 0, pages: [basePage,
@@ -55,7 +56,8 @@ describe("imported RPG Maker map", () => {
     const event: ImportedMapEvent = { id: 1, name: "NPC", x: 0, y: 0, pages: [{
       condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
-      settings: { through: false, alwaysOnTop: false, trigger: 0 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false, directionFix: false,
+        through: false, alwaysOnTop: false, trigger: 0 },
       commands: [{ kind: "show-text", text: "Hola ", indent: 0, data: { text: "Hola " } },
         { kind: "text-continuation", text: "mundo.", indent: 0, data: { text: "mundo." } }],
     }] };
@@ -66,7 +68,8 @@ describe("imported RPG Maker map", () => {
     const event: ImportedMapEvent = { id: 8, name: "sortie size(3,2)", x: 5, y: 4, pages: [{
       condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
-      settings: { through: false, alwaysOnTop: false, trigger: 1 }, commands: [],
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false, directionFix: false,
+        through: false, alwaysOnTop: false, trigger: 1 }, commands: [],
     }] };
     expect(eventFootprint(event)).toEqual([
       { x: 5, y: 3 }, { x: 6, y: 3 }, { x: 7, y: 3 },
@@ -74,5 +77,15 @@ describe("imported RPG Maker map", () => {
     ]);
     expect(activeEventAt([event], 7, 3)?.event.id).toBe(8);
     expect(activeEventAt([event], 4, 4)).toBeNull();
+  });
+
+  it("animates only event pages whose stationary animation is enabled", () => {
+    const animated = { condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 2, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: true, directionFix: false,
+        through: false, alwaysOnTop: false, trigger: 0 }, commands: [] } as const;
+    expect(eventGraphicPattern(animated, 0)).toBe(0);
+    expect(eventGraphicPattern(animated, 540)).toBe(3);
+    expect(eventGraphicPattern({ ...animated, settings: { ...animated.settings, stepAnimation: false } }, 540)).toBe(2);
   });
 });

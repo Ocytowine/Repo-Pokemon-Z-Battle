@@ -748,7 +748,9 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 - [ ] executer l'evenement automatique post-Keunotor et sa sequence narrative ;
 - [x] separer la position logique sur la grille de la position affichee ;
 - [x] interpoler les pas, la camera et les motifs de marche du joueur ;
-- [ ] animer les PNJ et executer leurs routes de deplacement ;
+- [x] rendre les animations sur place declarees par les pages des PNJ ;
+- [x] executer et interpoler les deplacements aleatoires autonomes des PNJ ;
+- [ ] executer les routes personnalisees et les mouvements imposes par les cinematiques ;
 - [ ] prendre en charge les declencheurs contact, automatique et parallele ;
 - [ ] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
 - [ ] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
@@ -772,6 +774,21 @@ les deux jambes, puis le motif de repos revient. L'etat des touches est lu en co
 afin d'enchainer les pas sans le delai de repetition du systeme. Les commandes
 concurrentes sont bloquees jusqu'a la fin du pas ; transferts, evenements de contact
 et tirages de rencontres sont ensuite evalues sur la case d'arrivee.
+
+Troisieme noyau 9.7 implemente le 2026-09-29 : les drapeaux d'animation des pages
+source sont maintenant conserves par le chargeur. Un evenement avec `stepAnimation`
+fait defiler son charset sur place, tandis qu'un evenement statique garde exactement
+le motif declare. Cette premiere couche rend les sprites animes sans encore modifier
+leur position logique ; les routes autonomes seront raccordees au meme interpolateur
+que le joueur dans le lot suivant.
+
+Quatrieme noyau 9.7 implemente le 2026-09-29 : les pages `moveType 1` disposent
+d'un etat logique propre et d'une position affichee interpolee. Leur vitesse et leur
+frequence pilotent respectivement la duree du pas et le temps d'attente ; le tirage
+des directions est deterministe pour une meme carte. Les PNJ alternent leurs poses
+de marche et respectent les collisions de carte, le joueur et les autres evenements.
+Ce lot couvre les promeneurs autonomes de Map003 et Map009 ; les routes explicites
+des cinematiques restent a brancher sur le meme controleur.
 
 ### Comment la couverture s'etend au jeu complet
 

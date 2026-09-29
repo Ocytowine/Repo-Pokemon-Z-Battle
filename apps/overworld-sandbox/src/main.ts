@@ -9,6 +9,7 @@ import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
+import { SourceNpcMotionController } from "./source-npc-motion.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -29,6 +30,7 @@ let importedNotice = "Chargement automatique de Bourg Canvas…";
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 const sourceDialogues = new SourceDialogueController();
+const sourceNpcMotions = new SourceNpcMotionController();
 let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
 
@@ -71,7 +73,7 @@ function checkSourceWildEncounter(): boolean {
 
 function finishImportedStep(): void {
   if (importedAssets === null) return;
-  const entered = activeEventAt(importedAssets.events, importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
+  const entered = activeEventAt(sourceMapEvents(), importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
   const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
   if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
     void followSourceTransfer(enteredTransfer);
@@ -81,6 +83,10 @@ function finishImportedStep(): void {
   importedNotice = `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
   renderImportedView();
   continueHeldSourceMovement();
+}
+
+function sourceMapEvents(): readonly ImportedMapAssets["events"][number][] {
+  return importedAssets === null ? [] : sourceNpcMotions.logicalEvents(importedAssets.events);
 }
 
 const root = document.querySelector<HTMLDivElement>("#app");
@@ -260,7 +266,10 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState);
+  if (sourceDialogues.current === null && !sourceTransitionInProgress && !sourceBattles.active) {
+    sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
+  }
+  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now));
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
     finishImportedStep();
@@ -408,6 +417,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   try {
     const next = await loadImportedMap(transfer.targetMapId);
     importedAssets = next;
+    sourceNpcMotions.reset(next.map.id, next.events, performance.now());
     importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
     importedPlayerMotion = null;
     heldMovementKeys.clear();
@@ -429,6 +439,7 @@ async function resetSourceWorld(): Promise<void> {
   renderImportedView();
   try {
     importedAssets = checkpoint === null ? await loadImportedMap003() : await loadImportedMap(checkpoint.mapId);
+    sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
     importedAvatar = checkpoint === null ? { x: 28, y: 15, direction: "up" }
       : { x: checkpoint.x, y: checkpoint.y, direction: checkpoint.direction };
     importedPlayerMotion = null;
@@ -457,6 +468,7 @@ async function openStarterTest(): Promise<void> {
     sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
     persistSourceEventState();
     importedAssets = await loadImportedMap(2);
+    sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
     importedAvatar = { x: 52, y: 22, direction: "up" };
     importedPlayerMotion = null;
     heldMovementKeys.clear();
@@ -574,7 +586,8 @@ function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
     if (sourceDialogues.current !== null || sourceTransitionInProgress || sourceBattles.active || importedPlayerMotion !== null) return;
-    const eventAhead = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
+    const events = sourceMapEvents();
+    const eventAhead = eventInFront(events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
     if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
       void followSourceTransfer(transferAhead);
@@ -582,7 +595,7 @@ function move(playerId: string, direction: Direction): void {
     }
     const before = importedAvatar;
     const next = moveImportedAvatar(importedAssets.map, importedAvatar, direction,
-      blockingDefaultEventPoints(importedAssets.events, importedAssets.map.id, sourceEventState));
+      blockingDefaultEventPoints(events, importedAssets.map.id, sourceEventState));
     importedAvatar = next;
     if (before.x !== next.x || before.y !== next.y) {
       importedPlayerMotion = createSourceGridMotion(before, next, direction, performance.now(),
@@ -615,7 +628,7 @@ function interact(playerId: AvatarId): void {
       return;
     }
     if (importedAssets === null || playerId !== "player") return;
-    const target = eventInFront(importedAssets.events, importedAvatar, importedAssets.map.id, sourceEventState);
+    const target = eventInFront(sourceMapEvents(), importedAvatar, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
     if (target !== null && targetTransfer !== null && target.page.settings.trigger === 1) {
       void followSourceTransfer(targetTransfer);
@@ -732,6 +745,7 @@ render();
 
 void loadImportedMap003().then((assets) => {
   importedAssets = assets;
+  sourceNpcMotions.reset(assets.map.id, assets.events, performance.now());
   const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
   if (sourceButton !== null) sourceButton.disabled = false;
   if (!multiplayer.active) {

@@ -4,7 +4,8 @@ import { applySafeStateCommands, completePendingEncounter, createSourceEventStat
 
 function page(condition: ImportedEventPage["condition"], commands: ImportedEventPage["commands"] = []): ImportedEventPage {
   return { condition, graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
-    settings: { through: false, alwaysOnTop: false, trigger: 0 }, commands };
+    settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false, directionFix: false,
+      through: false, alwaysOnTop: false, trigger: 0 }, commands };
 }
 
 const unconditional = { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null } as const;
