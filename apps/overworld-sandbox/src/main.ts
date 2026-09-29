@@ -1,7 +1,6 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
-import { PROTOCOL_VERSION, normalizeRoomCode, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, dialogueLines, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
-import { buildWebSocketUrl, normalizeServerUrl, parseServerMessage, parseStoredSession, parseTicket, reconnectDelay, type MultiplayerTicket, type StoredOverworldSession } from "./multiplayer-client.js";
+import { OverworldNetworkSession } from "./network-session.js";
 import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
 import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
@@ -47,22 +46,6 @@ let sourceBattleRng: SeededRandom | null = null;
 let sourceBattleAnimating = false;
 let sourceEscapeAttempts = 0;
 type AvatarId = "player" | "opponent";
-
-interface NetworkSession {
-  readonly serverUrl: string;
-  readonly ticket: MultiplayerTicket;
-  socket: WebSocket | null;
-  sequence: number;
-  revision: number;
-  lastSentAt: number;
-  reconnectAttempt: number;
-  reconnectTimer: number | null;
-  userDisconnected: boolean;
-  snapshot: RoomSnapshot | null;
-  submittedTurn: number | null;
-}
-
-let network: NetworkSession | null = null;
 
 function initialState(): OverworldState {
   return createDemoWorldState();
@@ -197,6 +180,20 @@ function setAuthoritativeState(next: OverworldState, animate: boolean): void {
   };
   animationFrame = requestAnimationFrame(frame);
 }
+
+const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
+  onStatus: setNetworkText,
+  onWorldState: setAuthoritativeState,
+  onEvents: (receivedEvents) => { events.push(...receivedEvents); },
+  onMapChanged: (mapId) => { viewedMapId = mapId; },
+  onConnectionFormChanged: (serverUrl, roomCode) => {
+    const serverInput = document.querySelector<HTMLInputElement>("#server-url");
+    if (serverInput !== null) serverInput.value = serverUrl;
+    const codeInput = document.querySelector<HTMLInputElement>("#room-code");
+    if (codeInput !== null) codeInput.value = roomCode;
+  },
+  onRender: render,
+});
 
 function eventText(event: OverworldEvent): string {
   switch (event.type) {
@@ -457,7 +454,7 @@ async function resetSourceWorld(): Promise<void> {
 }
 
 async function openStarterTest(): Promise<void> {
-  if (sourceTransitionInProgress || network !== null || sourceBattle !== null) return;
+  if (sourceTransitionInProgress || multiplayer.active || sourceBattle !== null) return;
   sourceTransitionInProgress = true;
   sourceDialogue = null;
   importedNotice = "Chargement de la salle de sélection des starters…";
@@ -482,6 +479,7 @@ async function openStarterTest(): Promise<void> {
 }
 
 function render(): void {
+  const network = multiplayer.current;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     renderImportedView();
     return;
@@ -530,6 +528,7 @@ function render(): void {
 }
 
 function renderEncounter(): void {
+  const network = multiplayer.current;
   const panel = document.querySelector<HTMLElement>("#encounter-panel");
   const networkBattle = network?.snapshot?.battle ?? null;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : networkBattle?.state ?? null;
@@ -671,15 +670,8 @@ function move(playerId: string, direction: Direction): void {
     renderImportedView();
     return;
   }
-  if (network !== null) {
-    if (network.snapshot?.battle !== null && network.snapshot !== null) return;
-    const socket = network.socket;
-    if (playerId !== network.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN) return;
-    const now = performance.now();
-    if (now - network.lastSentAt < 120) return;
-    network.lastSentAt = now;
-    network.sequence += 1;
-    socket.send(JSON.stringify({ type: "moveAvatar", version: PROTOCOL_VERSION, requestId: crypto.randomUUID(), direction, sequence: network.sequence }));
+  if (multiplayer.active) {
+    multiplayer.sendMovement(playerId, direction);
     return;
   }
   const result = resolveMovement(catalog, state, { playerId, direction });
@@ -719,11 +711,8 @@ function interact(playerId: AvatarId): void {
     renderImportedView();
     return;
   }
-  if (network !== null) {
-    if (network.snapshot?.battle !== null && network.snapshot !== null) return;
-    const socket = network.socket;
-    if (playerId !== network.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN) return;
-    socket.send(JSON.stringify({ type: "interact", version: PROTOCOL_VERSION, requestId: crypto.randomUUID() }));
+  if (multiplayer.active) {
+    multiplayer.sendInteraction(playerId);
     return;
   }
   const result = resolveInteraction(catalog, state, { playerId, hostPlayerId: "player" });
@@ -732,163 +721,24 @@ function interact(playerId: AvatarId): void {
 }
 
 function submitEncounterAction(moveIndex: number): void {
-  const session = network;
-  const battle = session?.snapshot?.battle;
-  const socket = session?.socket;
-  if (session === null || battle === null || battle === undefined || socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN || session.ticket.side !== "player") return;
-  session.submittedTurn = battle.state.turn;
-  socket.send(JSON.stringify({ type: "submitAction", version: PROTOCOL_VERSION, requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn, action: { kind: "move", moveIndex } }));
-  render();
+  multiplayer.submitEncounterAction(moveIndex);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function setNetworkText(stateText: string, notice: string): void {
-  const stateElement = document.querySelector<HTMLElement>("#network-state"); if (stateElement !== null) stateElement.textContent = stateText;
-  const noticeElement = document.querySelector<HTMLElement>("#network-notice"); if (noticeElement !== null) noticeElement.textContent = notice;
-  const disconnect = document.querySelector<HTMLButtonElement>("#disconnect"); if (disconnect !== null) disconnect.disabled = network === null;
-}
-
-function applySnapshot(snapshot: RoomSnapshot, animate: boolean): void {
-  if (network !== null && snapshot.revision < network.revision) return;
-  if (network !== null) {
-    network.revision = snapshot.revision;
-    network.sequence = Math.max(network.sequence, snapshot.movementSequences[network.ticket.side]);
-    network.snapshot = snapshot;
-    if (snapshot.battle === null || snapshot.battle.state.turn !== network.submittedTurn) network.submittedTurn = null;
-  }
-  const own = network === null ? undefined : snapshot.world.avatars[network.ticket.side];
-  if (own !== undefined) viewedMapId = own.mapId;
-  setAuthoritativeState(snapshot.world, animate);
-}
-
-function scheduleReconnect(session: NetworkSession): void {
-  if (network !== session || session.userDisconnected || session.reconnectTimer !== null) return;
-  const delay = reconnectDelay(session.reconnectAttempt);
-  session.reconnectAttempt += 1;
-  setNetworkText("Reconnexion…", `Room ${session.ticket.roomCode} · nouvelle tentative dans ${delay / 1_000} s.`);
-  session.reconnectTimer = window.setTimeout(() => {
-    session.reconnectTimer = null;
-    if (network === session && !session.userDisconnected) openNetworkSocket(session);
-  }, delay);
-}
-
-function openNetworkSocket(session: NetworkSession): void {
-  if (network !== session || session.userDisconnected) return;
-  const socket = new WebSocket(buildWebSocketUrl(session.serverUrl, session.ticket));
-  session.socket = socket;
-  setNetworkText("Connexion…", `Room ${session.ticket.roomCode} · ouverture du WebSocket.`);
-  socket.addEventListener("open", () => {
-    if (network !== session || session.socket !== socket) return;
-    setNetworkText("Synchronisation…", `Room ${session.ticket.roomCode} · récupération de l'état autoritaire.`);
-  });
-  socket.addEventListener("message", (event) => {
-    try {
-      if (network !== session || session.socket !== socket) return;
-      if (typeof event.data !== "string") throw new Error("Message binaire inattendu.");
-      const message = parseServerMessage(event.data);
-      if (message.type === "welcome") {
-        if (message.playerId !== session.ticket.playerId || message.side !== session.ticket.side) {
-          session.userDisconnected = true;
-          socket.close(4003, "Ticket incohérent");
-          throw new Error("Le serveur a renvoyé une place différente du ticket.");
-        }
-        session.reconnectAttempt = 0;
-        applySnapshot(message.snapshot, false);
-        setNetworkText(session.ticket.side === "player" ? "Joueur 1" : "Joueur 2", `Room ${session.ticket.roomCode} restaurée. Le serveur contrôle les déplacements.`);
-      } else if (message.type === "snapshot") {
-        applySnapshot(message.snapshot, false);
-      } else if (message.type === "worldUpdated") {
-        if (message.revision < session.revision) return;
-        session.revision = message.revision;
-        if (message.side === session.ticket.side) session.sequence = Math.max(session.sequence, message.sequence);
-        events.push(...message.events);
-        const own = message.state.avatars[session.ticket.side]; if (own !== undefined) viewedMapId = own.mapId;
-        setAuthoritativeState(message.state, true);
-      } else if (message.type === "interactionUpdated") {
-        if (message.revision < session.revision) return;
-        session.revision = message.revision;
-        events.push(...message.events);
-        setAuthoritativeState(message.state, false);
-      } else if (message.type === "turnResolved") {
-        const snapshot = session.snapshot;
-        if (snapshot?.battle?.id !== message.battleId) return;
-        session.snapshot = { ...snapshot, phase: message.state.status === "finished" ? "finished" : "battle", battle: { id: message.battleId, state: message.state } };
-        session.submittedTurn = null;
-        setNetworkText(message.state.status === "finished" ? "Combat terminé" : "Combat", message.state.status === "finished" ? `Victoire : ${message.state.winner}. Retour dans le monde…` : `Tour ${message.state.turn} prêt.`);
-        render();
-      } else if (message.type === "error") {
-        session.submittedTurn = null;
-        setNetworkText("Erreur", `${message.code} · ${message.message}`);
-      }
-    } catch (error) {
-      setNetworkText("Erreur", error instanceof Error ? error.message : "Message réseau invalide.");
-    }
-  });
-  socket.addEventListener("close", (event) => {
-    if (network !== session || session.socket !== socket) return;
-    session.socket = null;
-    if (event.code === 4001) {
-      session.userDisconnected = true;
-      setNetworkText("Remplacé", "Ce ticket a été ouvert dans une autre page.");
-    } else {
-      scheduleReconnect(session);
-    }
-    render();
-  });
-  socket.addEventListener("error", () => {
-    if (network === session && session.socket === socket) setNetworkText("Erreur réseau", "Le Worker est indisponible ; reconnexion automatique en attente.");
-  });
-  render();
-}
-
-function connect(serverUrl: string, ticket: MultiplayerTicket): void {
-  const previous = network;
-  if (previous !== null) {
-    previous.userDisconnected = true;
-    if (previous.reconnectTimer !== null) window.clearTimeout(previous.reconnectTimer);
-    previous.socket?.close(1000, "Nouvelle session");
-  }
-  const normalizedServerUrl = normalizeServerUrl(serverUrl);
-  const session: NetworkSession = {
-    serverUrl: normalizedServerUrl,
-    ticket,
-    socket: null,
-    sequence: 0,
-    revision: 0,
-    lastSentAt: 0,
-    reconnectAttempt: 0,
-    reconnectTimer: null,
-    userDisconnected: false,
-    snapshot: null,
-    submittedTurn: null,
-  };
-  network = session;
-  sessionStorage.setItem(STORED_SESSION_KEY, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
-  const serverInput = document.querySelector<HTMLInputElement>("#server-url"); if (serverInput !== null) serverInput.value = normalizedServerUrl;
-  const codeInput = document.querySelector<HTMLInputElement>("#room-code"); if (codeInput !== null) codeInput.value = ticket.roomCode;
-  openNetworkSocket(session);
+function setNetworkText(stateText: string, notice: string, active: boolean): void {
+  const stateElement = document.querySelector<HTMLElement>("#network-state");
+  if (stateElement !== null) stateElement.textContent = stateText;
+  const noticeElement = document.querySelector<HTMLElement>("#network-notice");
+  if (noticeElement !== null) noticeElement.textContent = notice;
+  const disconnect = document.querySelector<HTMLButtonElement>("#disconnect");
+  if (disconnect !== null) disconnect.disabled = !active;
 }
 
 async function createOrJoin(kind: "create" | "join"): Promise<void> {
   if (sourceBattle !== null) return;
-  try {
-    const input = document.querySelector<HTMLInputElement>("#server-url");
-    const codeInput = document.querySelector<HTMLInputElement>("#room-code");
-    if (input === null || codeInput === null) return;
-    const serverUrl = normalizeServerUrl(input.value);
-    const path = kind === "create" ? "/api/rooms" : `/api/rooms/${normalizeRoomCode(codeInput.value)}/join`;
-    const response = await fetch(`${serverUrl}${path}`, { method: "POST" });
-    const value: unknown = await response.json();
-    if (!response.ok) throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
-    const ticket = parseTicket(value);
-    codeInput.value = ticket.roomCode;
-    connect(serverUrl, ticket);
-  } catch (error) {
-    setNetworkText("Erreur", error instanceof Error ? error.message : "Connexion impossible.");
-  }
+  const serverInput = document.querySelector<HTMLInputElement>("#server-url");
+  const codeInput = document.querySelector<HTMLInputElement>("#room-code");
+  if (serverInput === null || codeInput === null) return;
+  await multiplayer.createOrJoin(kind, serverInput.value, codeInput.value);
 }
 
 const keys: Readonly<Record<string, readonly [string, Direction]>> = {
@@ -917,7 +767,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || sourceBattle !== null || (mapId === SOURCE_MAP_ID && (importedAssets === null || network !== null))) return;
+  if (mapId === undefined || sourceBattle !== null || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
   viewedMapId = mapId;
   render();
 }));
@@ -929,21 +779,13 @@ document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input"
 document.querySelector<HTMLButtonElement>("#create-room")?.addEventListener("click", () => { void createOrJoin("create"); });
 document.querySelector<HTMLButtonElement>("#join-room")?.addEventListener("click", () => { void createOrJoin("join"); });
 document.querySelector<HTMLButtonElement>("#disconnect")?.addEventListener("click", () => {
-  const session = network;
-  network = null;
-  if (session !== null) {
-    session.userDisconnected = true;
-    if (session.reconnectTimer !== null) window.clearTimeout(session.reconnectTimer);
-    session.socket?.close(1000, "Retour au mode local");
-  }
-  sessionStorage.removeItem(STORED_SESSION_KEY);
+  multiplayer.disconnect();
   viewedMapId = "meadow";
   events = [];
-  setNetworkText("Local", "Lance le Worker pour synchroniser deux navigateurs.");
   setAuthoritativeState(initialState(), false);
 });
 document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", () => {
-  if (network !== null) return;
+  if (multiplayer.active) return;
   if (viewedMapId === SOURCE_MAP_ID) {
     void resetSourceWorld();
     return;
@@ -958,7 +800,7 @@ void loadImportedMap003().then((assets) => {
   importedAssets = assets;
   const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
   if (sourceButton !== null) sourceButton.disabled = false;
-  if (network === null) {
+  if (!multiplayer.active) {
     viewedMapId = SOURCE_MAP_ID;
     importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
     render();
@@ -967,16 +809,7 @@ void loadImportedMap003().then((assets) => {
   importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
   const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
   if (sourceButton !== null) sourceButton.title = `${importedNotice} Relancez pnpm prepare:local.`;
-  setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`);
+  setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
 });
 
-const storedPayload = sessionStorage.getItem(STORED_SESSION_KEY);
-if (storedPayload !== null) {
-  try {
-    const stored = parseStoredSession(storedPayload);
-    connect(stored.serverUrl, stored.ticket);
-  } catch {
-    sessionStorage.removeItem(STORED_SESSION_KEY);
-    setNetworkText("Local", "La session mémorisée était invalide et a été supprimée.");
-  }
-}
+multiplayer.restore();
