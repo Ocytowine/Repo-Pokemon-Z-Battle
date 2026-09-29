@@ -23,7 +23,7 @@ export interface SourceBattlePresentation {
     readonly victoryMusic?: string | null;
   }) => Promise<void>;
   readonly playTurn: (before: TeamBattleState, events: readonly TeamBattleEvent[]) => Promise<void>;
-  readonly endBattle: (winner: BattleSide | null) => void;
+  readonly endBattle: (winner: BattleSide | null) => Promise<void> | void;
   readonly render: (state: TeamBattleState, battleback?: string) => Promise<void>;
 }
 
@@ -106,7 +106,7 @@ export class SourceBattleController {
           pendingEncounter: null,
           wildEncounterSteps: 0,
         });
-        this.presentation.endBattle(null);
+        await this.presentation.endBattle(null);
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
       } else {
@@ -115,7 +115,7 @@ export class SourceBattleController {
         if (this.battle.status === "finished") {
           const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
           this.callbacks.updateEventState({ ...eventState, party: settlement.party });
-          this.presentation.endBattle(this.battle.winner);
+          await this.presentation.endBattle(this.battle.winner);
           this.clear();
           this.callbacks.setNotice("Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.");
         } else {
@@ -142,7 +142,7 @@ export class SourceBattleController {
       this.battle = applyAutomaticReplacements(result.state);
       if (this.battle.status === "finished") {
         const winner = this.battle.winner;
-        this.presentation.endBattle(winner);
+        await this.presentation.endBattle(winner);
         const resources = this.callbacks.getResources();
         const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
         let nextState = { ...eventState, party: settlement.party };

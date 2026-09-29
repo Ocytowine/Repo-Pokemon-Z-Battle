@@ -17,6 +17,8 @@ import { isSourceStateCommand } from "./source-command-registry.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
+import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
+  type SourceWorldSave } from "./source-world-save.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -37,6 +39,7 @@ let importedNotice = "Chargement automatique de Bourg Canvas…";
 let sourceSceneAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
+let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
 const sourceScenes = new SourceSceneCoordinator();
@@ -293,6 +296,21 @@ root.innerHTML = `
           </nav><div id="source-menu-content" class="source-menu-content"></div></div>
           <footer class="source-menu-footer"><span><kbd>Échap</kbd> Fermer</span><span>Les données affichées viennent de la partie en cours</span></footer>
         </section>
+        <section id="encounter-panel" class="encounter-panel source-battle-overlay" hidden aria-label="Combat en cours">
+          <div id="source-battle-stage" class="source-battle-stage incomplete-scene" hidden>
+            <img id="source-battle-background" class="source-battle-background" alt="" hidden><div class="source-stage-wash"></div>
+            <img id="source-enemy-base" class="source-battle-base source-enemy-base" alt="" hidden><img id="source-player-base" class="source-battle-base source-player-base" alt="" hidden>
+            <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
+            <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
+            <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
+            <div id="source-move-effects" class="source-animation-layer source-move-effects" aria-hidden="true"></div>
+            <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><small id="source-opponent-hp"></small></article>
+            <article class="source-battle-hud source-player-hud"><div><strong id="source-player-name">Joueur</strong><span id="source-player-level"></span></div><div class="source-health-track"><span id="source-player-hp-bar"></span></div><small id="source-player-hp"></small></article>
+            <div id="source-battle-message" class="source-battle-message">Un Pokémon sauvage apparaît !</div>
+          </div>
+          <div class="encounter-overlay-heading"><h2 id="encounter-title">Combat</h2><span id="encounter-turn">Tour 1</span></div>
+          <p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div>
+        </section>
       </div>
       <p id="map-legend" class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
     </section>
@@ -307,19 +325,6 @@ root.innerHTML = `
         <article data-controller="opponent"><strong>Joueur 2</strong><small>I J K L · O</small><div class="pad" data-player="opponent"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="opponent">Interagir</button></article>
       </div><button id="reset" class="reset">Réinitialiser le monde</button></section>
       <section class="panel"><p id="guide-phase" class="eyebrow">Phase 8.3</p><h2 id="guide-title">Parcours coop</h2><div id="coop-guide" class="coop-guide"></div></section>
-      <section id="encounter-panel" class="panel encounter-panel" hidden><div class="log-heading"><div><p class="eyebrow">Rencontre autoritaire</p><h2 id="encounter-title">Combat</h2></div><span id="encounter-turn">Tour 1</span></div>
-        <div id="source-battle-stage" class="source-battle-stage incomplete-scene" hidden>
-          <img id="source-battle-background" class="source-battle-background" alt="" hidden><div class="source-stage-wash"></div>
-          <img id="source-enemy-base" class="source-battle-base source-enemy-base" alt="" hidden><img id="source-player-base" class="source-battle-base source-player-base" alt="" hidden>
-          <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
-          <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
-          <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
-          <div id="source-move-effects" class="source-animation-layer source-move-effects" aria-hidden="true"></div>
-          <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><small id="source-opponent-hp"></small></article>
-          <article class="source-battle-hud source-player-hud"><div><strong id="source-player-name">Joueur</strong><span id="source-player-level"></span></div><div class="source-health-track"><span id="source-player-hp-bar"></span></div><small id="source-player-hp"></small></article>
-          <div id="source-battle-message" class="source-battle-message">Un Pokémon sauvage apparaît !</div>
-        </div>
-        <p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div></section>
       <section class="panel"><div class="log-heading"><div><p class="eyebrow">Moteur</p><h2>Événements</h2></div><span id="tick">Tick 0</span></div><div id="progress" class="progress"></div><div id="events" class="events">Déplace un avatar pour commencer.</div></section>
     </aside>
   </main>`;
@@ -493,6 +498,23 @@ function sourceMenuVolume(): number {
   return Number.isFinite(stored) ? Math.max(0, Math.min(100, stored)) : 80;
 }
 
+function saveCurrentSourceWorld(): void {
+  if (importedAssets === null) return;
+  sourceWorldSave = createSourceWorldSave(importedAssets.map.id, importedAvatar.x, importedAvatar.y,
+    importedAvatar.direction);
+  persistSourceWorldSave(localStorage, sourceWorldSave);
+  persistSourceEventState();
+  importedNotice = `Partie sauvegardée dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
+  renderImportedView();
+}
+
+function deleteSourceWorldSave(): void {
+  clearSourceWorldSave(localStorage);
+  sourceWorldSave = null;
+  importedNotice = "Position sauvegardée supprimée ; la progression narrative reste conservée.";
+  renderImportedView();
+}
+
 function renderSourceMenu(): void {
   const menu = document.querySelector<HTMLElement>("#source-menu");
   const content = document.querySelector<HTMLElement>("#source-menu-content");
@@ -524,7 +546,11 @@ function renderSourceMenu(): void {
       ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><strong>Le sac est vide</strong><small>Les objets ramassés apparaîtront ici.</small></div>'
       : entries.map(([itemId, quantity], index) => `<article><img src="/__pokemon-z/source/Graphics/Icons/bagPocket${index % 8 + 1}.png" alt=""><strong>${escapeMenuText(importedAssets?.itemNames.get(itemId) ?? itemId)}</strong><span>×${quantity}</span></article>`).join("")}</div>`;
   } else if (sourceScenes.menuTab === "save") {
-    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>AUTO</span></div><div class="source-save-card"><div class="source-save-location"><small>POSITION ACTUELLE</small><strong>${escapeMenuText(importedAssets.map.name)}</strong><span>${importedAvatar.x}, ${importedAvatar.y} · direction ${importedAvatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>Progression mémorisée</strong><small>Équipe, inventaire, interrupteurs et variables sont déjà conservés localement.</small></div></div><button disabled>Sauvegarde complète de la position · prochain lot</button></div>`;
+    const savedLabel = sourceWorldSave === null ? "Aucune position enregistrée"
+      : `Map${String(sourceWorldSave.mapId).padStart(3, "0")} · ${sourceWorldSave.x},${sourceWorldSave.y} · ${new Date(sourceWorldSave.savedAt).toLocaleString("fr-FR")}`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>${sourceWorldSave === null ? "VIDE" : "MANUELLE"}</span></div><div class="source-save-card"><div class="source-save-location"><small>POSITION ACTUELLE</small><strong>${escapeMenuText(importedAssets.map.name)}</strong><span>${importedAvatar.x}, ${importedAvatar.y} · direction ${importedAvatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeMenuText(savedLabel)}</strong><small>La position rejoint l'équipe, l'inventaire, les interrupteurs et les variables déjà persistés.</small></div></div><div class="source-save-actions"><button id="save-source-world">Sauvegarder ici</button>${sourceWorldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>`;
+    content.querySelector<HTMLButtonElement>("#save-source-world")?.addEventListener("click", saveCurrentSourceWorld);
+    content.querySelector<HTMLButtonElement>("#delete-source-world")?.addEventListener("click", deleteSourceWorldSave);
   } else {
     const volume = sourceMenuVolume();
     content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list"><label><span><strong>Volume général</strong><small>La préférence est prête pour les futurs effets audio.</small></span><output id="source-volume-value">${volume}%</output><input id="source-volume" type="range" min="0" max="100" value="${volume}"></label><article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
@@ -1070,21 +1096,44 @@ document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", (
 });
 render();
 
-void loadImportedMap003().then((assets) => {
-  importedAssets = assets;
-  sourceNpcMotions.reset(assets.map.id, assets.events, performance.now());
-  const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
-  if (sourceButton !== null) sourceButton.disabled = false;
-  if (!multiplayer.active) {
-    viewedMapId = SOURCE_MAP_ID;
-    importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
-    render();
+async function initializeSourceWorld(): Promise<void> {
+  const requestedSave = sourceWorldSave;
+  try {
+    let assets: ImportedMapAssets;
+    try {
+      assets = requestedSave === null ? await loadImportedMap003() : await loadImportedMap(requestedSave.mapId);
+      if (requestedSave !== null && (requestedSave.x >= assets.map.width || requestedSave.y >= assets.map.height)) {
+        throw new Error("La position sauvegardée se trouve hors de la carte.");
+      }
+    } catch (savedError) {
+      if (requestedSave === null) throw savedError;
+      clearSourceWorldSave(localStorage);
+      sourceWorldSave = null;
+      assets = await loadImportedMap003();
+      importedNotice = "Sauvegarde de position ignorée car elle était inaccessible ; retour à Bourg Canvas.";
+    }
+    importedAssets = assets;
+    sourceNpcMotions.reset(assets.map.id, assets.events, performance.now());
+    if (sourceWorldSave !== null) {
+      importedAvatar = { x: sourceWorldSave.x, y: sourceWorldSave.y, direction: sourceWorldSave.direction };
+      importedNotice = `Partie reprise dans ${assets.map.name}, en ${sourceWorldSave.x},${sourceWorldSave.y}.`;
+    } else if (requestedSave === null) {
+      importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
+    }
+    const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
+    if (sourceButton !== null) sourceButton.disabled = false;
+    if (!multiplayer.active) {
+      viewedMapId = SOURCE_MAP_ID;
+      render();
+    }
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
+    const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
+    if (sourceButton !== null) sourceButton.title = `${importedNotice} Relancez pnpm prepare:local.`;
+    setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
   }
-}).catch((error: unknown) => {
-  importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
-  const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
-  if (sourceButton !== null) sourceButton.title = `${importedNotice} Relancez pnpm prepare:local.`;
-  setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
-});
+}
+
+void initializeSourceWorld();
 
 multiplayer.restore();

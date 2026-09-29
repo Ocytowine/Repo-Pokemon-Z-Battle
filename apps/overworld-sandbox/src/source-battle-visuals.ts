@@ -2,8 +2,15 @@ import { buildBattleScenes, loadLocalManifestsFromUrls, selectBattler, selectCry
   type AssetManifest, type BattleAnimationCel, type BattleAnimationRecord, type BattleAnimationsManifest,
   type LocalManifests, type PokemonAssetReference, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import type { BattleMove, BattleSide, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { sourceBattlePercent, sourceBattleSpritePlacement } from "./source-battle-layout.js";
 
-interface AnimatedCanvas { readonly element: HTMLCanvasElement; stop(): void }
+interface AnimatedCanvas {
+  readonly element: HTMLCanvasElement;
+  readonly frameWidth: number;
+  readonly frameHeight: number;
+  readonly visibleBottom: number;
+  stop(): void;
+}
 
 function sourceUrl(path: string): string {
   return `/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`;
@@ -28,8 +35,21 @@ async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCan
     frame = (frame + 1) % frameCount;
   };
   draw();
+  let visibleBottom = frameHeight - 1;
+  if (context !== null) {
+    const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
+    outer: for (let y = frameHeight - 1; y >= 0; y -= 1) {
+      for (let x = 0; x < frameWidth; x += 1) {
+        if (pixels[(y * frameWidth + x) * 4 + 3]! > 0) {
+          visibleBottom = y;
+          break outer;
+        }
+      }
+    }
+  }
   const timer = frameCount > 1 ? window.setInterval(draw, 110) : null;
-  return { element: canvas, stop: () => { if (timer !== null) window.clearInterval(timer); } };
+  return { element: canvas, frameWidth, frameHeight, visibleBottom,
+    stop: () => { if (timer !== null) window.clearInterval(timer); } };
 }
 
 function delay(milliseconds: number): Promise<void> {
@@ -91,6 +111,12 @@ export class SourceBattleVisuals {
 
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null; readonly victoryMusic?: string | null } = {}): Promise<void> {
     this.stopAudio();
+    this.#renderedSpecies = "";
+    this.resetBattlerTransforms();
+    const panel = document.getElementById("encounter-panel");
+    panel?.classList.remove("leaving");
+    panel?.classList.add("entering");
+    window.setTimeout(() => panel?.classList.remove("entering"), 700);
     const session = ++this.#audioSession;
     // Le chargement asynchrone des manifestes peut sortir de la fenêtre d'activation
     // utilisateur. Démarrer la BGM source immédiatement évite un blocage d'autoplay.
@@ -117,12 +143,17 @@ export class SourceBattleVisuals {
     }
   }
 
-  endBattle(winner: BattleSide | null): void {
+  async endBattle(winner: BattleSide | null): Promise<void> {
     const victoryPath = winner === "player" ? this.#victoryMusicPath : null;
     this.stopAudio();
     this.#audioSession += 1;
     this.#victoryMusicPath = null;
     if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
+    const panel = document.getElementById("encounter-panel");
+    panel?.classList.remove("entering");
+    panel?.classList.add("leaving");
+    await delay(420);
+    panel?.classList.remove("leaving");
   }
 
   async render(state: TeamBattleState, battleback = "snow"): Promise<void> {
@@ -247,6 +278,12 @@ export class SourceBattleVisuals {
       this.#animations.push(animation);
       slot.replaceChildren(animation.element);
       slot.classList.remove("sprite-fallback");
+      const placement = sourceBattleSpritePlacement(side, animation.frameWidth, animation.frameHeight, animation.visibleBottom);
+      slot.style.left = sourceBattlePercent(placement.left, "x");
+      slot.style.top = sourceBattlePercent(placement.top, "y");
+      slot.style.width = sourceBattlePercent(placement.width, "x");
+      slot.style.height = sourceBattlePercent(placement.height, "y");
+      slot.style.transformOrigin = `${(placement.originX / placement.width) * 100}% ${(placement.originY / placement.height) * 100}%`;
     } catch {
       this.fallback(side, record?.name ?? species);
     }
@@ -257,6 +294,12 @@ export class SourceBattleVisuals {
     if (slot === null) return;
     slot.textContent = name.slice(0, 1).toUpperCase();
     slot.classList.add("sprite-fallback");
+    const placement = sourceBattleSpritePlacement(side, 96, 96, 95);
+    slot.style.left = sourceBattlePercent(placement.left, "x");
+    slot.style.top = sourceBattlePercent(placement.top, "y");
+    slot.style.width = sourceBattlePercent(placement.width, "x");
+    slot.style.height = sourceBattlePercent(placement.height, "y");
+    slot.style.transformOrigin = "center bottom";
   }
 
   private clearSprites(): void {

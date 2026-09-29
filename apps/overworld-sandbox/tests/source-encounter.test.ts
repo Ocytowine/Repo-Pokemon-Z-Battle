@@ -3,6 +3,7 @@ import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import { attemptSourceEncounterEscape, createSourceEncounterBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { selectSourceBattleAnimation, selectSourceBattleAudio, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
+import { sourceBattleSpritePlacement } from "../src/source-battle-layout.js";
 
 const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
   category: "Physical" as const, accuracy: 100, pp: 35, priority: 0, effectChance: 0 };
@@ -45,6 +46,15 @@ describe("source encounter bridge", () => {
     expect(selectSourceBattleAnimation(manifest, "opponent", "TACKLE")).toMatchObject({ animation: { index: 10 }, reverse: true });
     expect(selectSourceBattleAnimation(manifest, "opponent", "GROWL")).toMatchObject({ animation: { index: 21 }, reverse: false });
     expect(transformBattleAnimationPoint(128, 224, true)).toEqual({ x: 384, y: 96 });
+  });
+
+  it("aligns battlers on the exact source-game ground lines", () => {
+    expect(sourceBattleSpritePlacement("player", 96, 96, 93)).toEqual({
+      left: 80, top: 227, width: 96, height: 96, originX: 48, originY: 93,
+    });
+    expect(sourceBattleSpritePlacement("opponent", 96, 96, 89)).toEqual({
+      left: 336, top: 79, width: 96, height: 96, originX: 48, originY: 89,
+    });
   });
 
   it("builds the scripted wild battle and writes its resources back to the persistent party", () => {

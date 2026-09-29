@@ -53,6 +53,7 @@ verifier l'impossibilite de choisir un autre starter et la scene de Crisanto.
 
 ```js
 localStorage.removeItem("pokemon-z-battle.source-event-state.v1");
+localStorage.removeItem("pokemon-z-battle.source-world-save.v1");
 location.reload();
 ```
 
@@ -75,9 +76,19 @@ Etat : termine pour les primitives de mouvement actuellement extraites.
 Les effets audiovisuels ne font pas partie de ce jalon de mouvement ; ils sont
 inventories automatiquement par l'audit de scene decrit plus bas.
 
-### 3. Gestionnaire de scenes — prochain jalon prioritaire
+### 3. Gestionnaire de scenes — en cours
 
-Etat : partiel.
+Etat : premier parcours overworld/combat integre ; centralisation des drapeaux encore partielle.
+
+- Le combat source est maintenant superpose au canvas overworld, au lieu d'etre
+  rendu dans un panneau lateral independant.
+- Un fondu masque l'entree et la sortie. La fin du combat attend le fondu avant de
+  rendre les controles a l'overworld ; la carte et la position ne sont pas recreees.
+- Les actions, le message et les HUD font partie de la meme scene 4:3.
+- Le placement des battlers reproduit les constantes de Pokemon Z et son script
+  `SpriteAutoAlign` : centre horizontal de la frame et dernier pixel visible pose
+  sur la ligne de sol. Les bases utilisent egalement leurs coordonnees source.
+- `source-battle-layout.ts` contient les calculs purs et leurs tests de regression.
 
 Les briques existent (`SourceBattleController`, dialogues, sequences, chargement de
 cartes), mais leur coordination repose encore sur plusieurs drapeaux dans `main.ts` :
@@ -100,17 +111,18 @@ Criteres d'acceptation :
 - un seul mode possede les controles a un instant donne ;
 - le coordinateur remplace progressivement les gardes dupliques de `main.ts`.
 
-### 4. Menu en jeu minimal — en cours
+### 4. Menu en jeu minimal — fonctionnel
 
-Etat : premiere tranche visuelle et coordination terminees.
+Etat : perimetre minimal termine ; validation manuelle a effectuer.
 
 - `SourceSceneCoordinator` expose les modes overworld, dialogue, combat, menu et
   transition, et refuse l'ouverture pendant une activite incompatible.
 - Le menu s'ouvre avec `Echap`, `M` ou le bouton du sandbox et gele joueur, PNJ et
   interactions.
 - Les onglets Equipe et Sac affichent les vraies donnees persistantes.
-- Sauvegarde montre la carte et la position, mais leur restauration generique reste
-  le prochain lot ; l'etat des evenements et l'equipe sont deja persistants.
+- Sauvegarde enregistre manuellement carte, position, direction et date. Le lancement
+  suivant recharge cette carte et cette position ; une donnee invalide revient
+  proprement a Bourg Canvas.
 - Options memorise le volume choisi, sans encore le raccorder aux lecteurs audio.
 - Le visuel reutilise les assets locaux `partybg.png`, `partyBall.PNG`,
   `bagPocket*.png` et `pause.png`, avec un repli CSS structurel.
@@ -124,9 +136,9 @@ perimetre :
 - options : volume et commandes essentielles ;
 - ouverture/fermeture par clavier avec gel de l'overworld.
 
-La carte et la position courantes ne sont pas encore sauvegardees de maniere
-generique. Ne pas confondre ce futur emplacement de sauvegarde avec le checkpoint
-de soin deja persiste.
+La sauvegarde manuelle de position utilise `pokemon-z-battle.source-world-save.v1`.
+Elle reste distincte du checkpoint de soin et de l'etat narratif persiste dans
+`pokemon-z-battle.source-event-state.v1`.
 
 ### 5. Moteur complet des evenements 9.7 — partiel
 
@@ -207,7 +219,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 194 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 209 tests et passe avec le build.
 
 ## Commandes utiles
 

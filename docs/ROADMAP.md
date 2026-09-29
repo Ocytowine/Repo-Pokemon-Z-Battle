@@ -756,9 +756,9 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] interpreter les primitives des routes personnalisees de RPG Maker ;
 - [x] ordonnancer les routes et mouvements imposes par les cinematiques ;
 - [ ] prendre en charge les declencheurs contact, automatique et parallele ;
-- [ ] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
-- [ ] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
-- [ ] sauvegarder la carte et la position courantes ;
+- [x] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
+- [x] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
+- [x] sauvegarder la carte et la position courantes ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
 
 Premier garde-fou 9.7 valide le 2026-09-29 : une page est reconnue comme choix de
@@ -842,8 +842,23 @@ l'ouverture du menu pendant dialogue, sequence, mouvement, transition ou combat.
 Le menu superpose l'overworld et gele ses controles ; ses onglets Equipe et Sac
 lisent l'etat persistant reel, Sauvegarde expose la position courante et Options
 memorise le volume. Le fond, la Poké Ball, les poches et le curseur reutilisent les
-assets originaux locaux sans les versionner. La sauvegarde generique de la carte et
-de la position reste necessaire avant de clore le point « menu en jeu minimal ».
+assets originaux locaux sans les versionner. Ce premier lot laissait la sauvegarde
+generique de la position au noyau suivant.
+
+Dixieme noyau 9.7 implemente le 2026-09-29 : l'onglet Sauvegarde cree un emplacement
+manuel versionne, distinct de l'etat narratif et des checkpoints de soin. Carte,
+coordonnees, direction et date sont restaurees au prochain lancement. Une position
+mal formee, inaccessible ou hors carte est rejetee puis ramenee vers Bourg Canvas.
+Le menu minimal couvre desormais equipe, sac, sauvegarde et options ; le volume est
+memorise en attente du raccordement des commandes audio de cinematique.
+
+Onzieme noyau 9.7 implemente le 2026-09-29 : le combat source est rendu directement
+au-dessus du canvas overworld et un fondu couvre son entree et sa sortie. La fin de
+combat attend la transition avant de rendre la carte, qui conserve sa position.
+Les battlers ne reposent plus sur des pourcentages visuels arbitraires : leurs
+frames sont placees d'apres `PokeBattle_SceneConstants` et le dernier pixel visible,
+comme le correctif `SpriteAutoAlign` du jeu source. Les deux bases reprennent aussi
+leurs coordonnees natives dans le repere 512 x 384.
 
 ### Comment la couverture s'etend au jeu complet
 
