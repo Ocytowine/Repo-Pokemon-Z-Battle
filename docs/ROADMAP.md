@@ -949,6 +949,28 @@ plus cette presence comme raccourci de porte ; il lance toujours son plan de sce
 qui executera le transfert a sa position exacte. Cela supprime la boucle de
 teleportation en `40,15` qui sautait toute la cinematique du duel.
 
+Dix-huitieme noyau 9.7 implemente le 2026-09-30 : le trajet de Bourg Canvas a la
+Route 1 (`Map003 -> Map007`) puis a la carte suivante (`Map009`) est raccorde. Les
+interactions directes qui ne contiennent pas de choix passent desormais par le meme
+lecteur que les cinematiques ; cris, sons, animations, mouvements et changements
+d'etat sont donc conserves dans leur ordre source. Les 24 pages actives de Map007
+sont resolues et auditees sans commande inconnue ni rendu en attente.
+
+Le premier sous-ensemble des evenements paralleles initialise leurs effets de
+presentation lors du chargement de carte. EV025 applique ainsi le panorama
+`fondoAgua` et son defilement. Les gains d'inventaire declenchent egalement le
+jingle `ItemGet`, un texte avec nom francais et quantite, puis la pose source
+`trchar000_2`, accompagnee d'un court saut, jusqu'a la fermeture du message. Le
+canvas laisse aussi ses pixels sans tuile transparents afin que le panorama soit
+visible au lieu d'etre masque par son ancien fond opaque. Cela couvre aussi bien les objets
+ramasses directement que ceux remis au milieu d'une sequence.
+
+Recette manuelle : apres Crisanto, prendre la sortie nord de Bourg Canvas, verifier
+le panorama anime et les cris, ramasser plusieurs objets, provoquer une rencontre
+dans les hautes herbes puis atteindre Map009 par la sortie nord. Le support parallele
+reste limite aux presentations idempotentes ; les boucles qui modifient l'etat a
+chaque frame restent a porter avant de cocher le jalon global.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

@@ -22,6 +22,7 @@ describe("source command registry", () => {
     ["show-animation", "audiovisual", "rendered", false],
     ["play-cry", "audiovisual", "rendered", false],
     ["play-jingle", "audiovisual", "rendered", false],
+    ["panorama-motion", "audiovisual", "rendered", false],
     ["request-trainer-battle", "transition", "executed", false],
     ["text-options", "metadata", "rendered", false],
     ["move-route-continuation", "movement", "absorbed", false],

@@ -246,6 +246,7 @@ export class SourceScenePresentation {
       return true;
     }
     if (command.kind === "change-map-settings") return this.changeMapSettings(command.data);
+    if (command.kind === "panorama-motion") return this.panoramaMotion(command.data);
     if (["show-picture", "move-picture", "erase-picture"].includes(command.kind)) {
       return this.picture(command.kind, command.data);
     }
@@ -269,6 +270,11 @@ export class SourceScenePresentation {
     this.options.onCameraOffset?.(this.cameraOffset);
     this.animationSession += 1;
     this.elements.animations.replaceChildren();
+    this.elements.panorama.style.backgroundImage = "none";
+    this.elements.panorama.style.animation = "none";
+    this.elements.panorama.style.removeProperty("--source-panorama-x");
+    this.elements.panorama.style.removeProperty("--source-panorama-y");
+    this.elements.fog.style.backgroundImage = "none";
     this.elements.dialogue.dataset.position = "bottom";
     this.elements.dialogue.classList.remove("transparent");
   }
@@ -307,6 +313,18 @@ export class SourceScenePresentation {
       layer.style.setProperty("--source-fog-x", `${visual.scrollX * 32}px`);
       layer.style.setProperty("--source-fog-y", `${visual.scrollY * 32}px`);
     }
+    return true;
+  }
+
+  private panoramaMotion(data: Readonly<Record<string, unknown>>): boolean {
+    const scrollX = finite(data.scrollX, Number.NaN);
+    const scrollY = finite(data.scrollY, Number.NaN);
+    if (!Number.isFinite(scrollX) || !Number.isFinite(scrollY)) return false;
+    this.elements.panorama.style.backgroundRepeat = "repeat";
+    this.elements.panorama.style.backgroundSize = "auto";
+    this.elements.panorama.style.setProperty("--source-panorama-x", `${scrollX * 32}px`);
+    this.elements.panorama.style.setProperty("--source-panorama-y", `${scrollY * 32}px`);
+    this.elements.panorama.style.animation = "source-panorama-drift 8s linear infinite";
     return true;
   }
 

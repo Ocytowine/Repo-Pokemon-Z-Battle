@@ -90,6 +90,7 @@ export interface ImportedMapAssets {
   readonly events: readonly ImportedMapEvent[];
   readonly characterImages: ReadonlyMap<string, HTMLImageElement>;
   readonly playerImage: HTMLImageElement;
+  readonly playerPickupImage: HTMLImageElement;
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerCreationCatalog;
@@ -545,13 +546,15 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     ...events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""),
     ...routeCharacterNames(events),
   ])];
-  const [tilesetImage, playerImage, autotileImages, characters] = await Promise.all([
+  const [tilesetImage, playerImage, playerPickupImage, autotileImages, characters] = await Promise.all([
     loadImage(sourceImageUrl("Tilesets", tileset.tilesetName)), loadImage(sourceImageUrl("Characters", "trchar000")),
+    loadImage(sourceImageUrl("Characters", "trchar000_2")),
     Promise.all(tileset.autotileNames.map((name) => name === "" ? Promise.resolve(null) : loadImage(sourceImageUrl("Autotiles", name)))),
     Promise.all(characterNames.map((name) => loadImage(sourceImageUrl("Characters", name)))),
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
-    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations, itemNames, battleCatalog,
+    characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
+    mapTranslations, itemNames, battleCatalog,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }
@@ -636,11 +639,12 @@ export function importedCameraPosition(canvas: Pick<HTMLCanvasElement, "width" |
 }
 
 function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElement, direction: number, pattern: number,
-  opacity: number, tileX: number, tileY: number, cameraX: number, cameraY: number, shadow = true): void {
+  opacity: number, tileX: number, tileY: number, cameraX: number, cameraY: number, shadow = true,
+  renderOffsetY = 0): void {
   const frameWidth = image.naturalWidth / 4;
   const frameHeight = image.naturalHeight / 4;
   const destinationX = tileX * 32 + 16 - frameWidth / 2 - cameraX;
-  const destinationY = tileY * 32 + 32 - frameHeight - cameraY;
+  const destinationY = tileY * 32 + 32 - frameHeight - cameraY + renderOffsetY;
   context.save();
   context.globalAlpha = Math.max(0, Math.min(1, opacity / 255));
   if (shadow && opacity > 0) {
@@ -675,7 +679,8 @@ export function eventPoseForActivePage(pose: ImportedEventPose | undefined, page
 
 export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, assets: ImportedMapAssets,
   avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE,
-  eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 }): void {
+  eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 },
+  playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -687,8 +692,6 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   const frame = Math.floor(now / 180);
   context.imageSmoothingEnabled = false;
   context.clearRect(0, 0, canvas.width, canvas.height);
-  context.fillStyle = "#07110d";
-  context.fillRect(0, 0, canvas.width, canvas.height);
   const mapLayers = [map.layers.lower, map.layers.middle, map.layers.upper] as const;
   for (const layer of mapLayers) {
     for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) {
@@ -754,9 +757,9 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
     renderables.push({ z, order: order++, draw: () => drawEvent(entry) });
   }
-  renderables.push({ z: sourceCharacterZ(avatar.y, assets.playerImage.naturalHeight / 4), order: order++, draw: () => {
-    drawCharacter(context, assets.playerImage, directionNumber(avatar.direction), playerPattern, 255,
-      avatar.x, avatar.y, cameraX, cameraY);
+  renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
+    drawCharacter(context, playerImage, directionNumber(avatar.direction), playerPattern, 255,
+      avatar.x, avatar.y, cameraX, cameraY, true, playerOffsetY);
   } });
   renderables.sort((left, right) => left.z - right.z || left.order - right.order).forEach((renderable) => {
     renderable.draw();

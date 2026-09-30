@@ -10,8 +10,8 @@ import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration } from "./source-npc-motion.js";
-import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun, findSourceMapEntryAutorun,
-  type ActiveSourceAutorun } from "./source-autorun.js";
+import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
+  findSourceMapEntryAutorun, isSourceParallelInitialization, type ActiveSourceAutorun } from "./source-autorun.js";
 import { resolveEventFlow } from "./source-event-flow.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
 import { isSourceStateCommand } from "./source-command-registry.js";
@@ -19,6 +19,8 @@ import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
 import { SourceScenePresentation } from "./source-scene-presentation.js";
+import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
+  type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   type SourceWorldSave } from "./source-world-save.js";
 import "./style.css";
@@ -39,6 +41,7 @@ let importedWalkingPattern: 1 | 3 = 1;
 const heldMovementKeys = new Set<string>();
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let sourceSceneAuditNotice: string | null = null;
+let sourceParallelAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
@@ -58,6 +61,9 @@ interface SourceSequenceSession {
   readonly onComplete?: () => void;
 }
 let sourceSequence: SourceSequenceSession | null = null;
+let sourcePickupPose = false;
+let sourcePickupStartedAt: number | null = null;
+let sourcePickupDialogueSequence: SourceSequenceSession | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
@@ -122,6 +128,37 @@ function compileAndReportSourceScene(page: ImportedEventPage, label: string): So
   sourceSceneAuditNotice = `${label} · ${formatSourceSceneAudit(plan.audit)}`;
   console.info(`[source-scene] ${sourceSceneAuditNotice}`, plan.audit);
   return plan;
+}
+
+async function refreshSourceParallelPresentation(assets: ImportedMapAssets): Promise<void> {
+  const parallels = findActiveSourceParallelEvents(sourceMapEvents(), assets.map.id, sourceEventState);
+  sourceParallelAuditNotice = null;
+  for (const parallel of parallels) {
+    const flow = resolveEventFlow(parallel.page, [], sourceEventState, assets.map.id, parallel.event.id,
+      { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+    if (!flow.complete) {
+      sourceParallelAuditNotice = `EV${parallel.event.id} bloqué : ${flow.blockedReason ?? "séquence incomplète"}`;
+      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`);
+      continue;
+    }
+    const plan = compileSourceScene(flow.page, sourceMapEvents(), new Set(assets.characterImages.keys()));
+    sourceParallelAuditNotice = `EV${parallel.event.id} · ${formatSourceSceneAudit(plan.audit)}`;
+    if (!plan.audit.complete) {
+      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`, plan.audit);
+      continue;
+    }
+    if (!isSourceParallelInitialization(flow.page)) {
+      sourceParallelAuditNotice = `EV${parallel.event.id} ignoré : boucle parallèle non prise en charge`;
+      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`);
+      continue;
+    }
+    for (const step of plan.steps) {
+      if (importedAssets !== assets) return;
+      await sourcePresentation.execute(step.command, async (milliseconds) =>
+        new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds)));
+    }
+  }
+  if (importedAssets === assets) renderImportedView();
 }
 
 function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolean {
@@ -250,6 +287,7 @@ async function advanceSourceSequence(): Promise<void> {
       sequence.cursor += 1;
       if (isSourceStateCommand(command.kind)) {
         const previousState = sourceEventState;
+        const previousInventory = sourceEventState.inventory;
         const result = applySafeStateCommands(sourceEventState, { ...sequence.plan.page, commands: [command] }, sequence.mapId,
           sequence.eventId, { checkpoint: { mapId: sequence.mapId, x: importedAvatar.x, y: importedAvatar.y,
             direction: importedAvatar.direction }, createPokemon: (species, level) => {
@@ -266,6 +304,12 @@ async function advanceSourceSequence(): Promise<void> {
         sourceEventState = result.state;
         persistSourceEventState();
         renderImportedView();
+        const itemGains = importedAssets === null ? []
+          : sourceItemGains(previousInventory, result.state.inventory, importedAssets.itemNames);
+        if (itemGains.length > 0) {
+          beginSequenceItemPresentation(sequence, itemGains);
+          return;
+        }
         if (sourceEventState.pendingEncounter !== null) {
           startPendingSourceEncounter();
           return;
@@ -319,6 +363,7 @@ async function advanceSourceSequence(): Promise<void> {
           heldMovementKeys.clear();
           sourcePresentation.resetMapPresentation();
           sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
+          void refreshSourceParallelPresentation(importedAssets);
           renderImportedView();
           continue;
         }
@@ -352,6 +397,9 @@ async function advanceSourceSequence(): Promise<void> {
   } catch (error) {
     if (sourceSequence === sequence) {
       sourceSequence = null;
+      if (sourcePickupDialogueSequence === sequence) sourcePickupDialogueSequence = null;
+      sourcePickupPose = false;
+      sourcePickupStartedAt = null;
       importedNotice = `Séquence interrompue sur ${currentCommand} : ${error instanceof Error ? error.message : "erreur inattendue"}.`;
       renderImportedView();
     }
@@ -587,7 +635,8 @@ function animateImportedMap(now: number): void {
     sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
   }
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now),
-    sourcePresentation.currentCameraOffset());
+    sourcePresentation.currentCameraOffset(), sourcePickupPose ? importedAssets.playerPickupImage : importedAssets.playerImage,
+    sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt));
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
     if (sourceSequence === null) finishImportedStep();
@@ -711,7 +760,7 @@ function renderImportedView(): void {
     const sequenceStatus = sourceSequence === null ? "aucune" : `${sourceSequence.label} · étape ${sourceSequence.cursor}/${sourceSequence.plan.steps.length}`
       + ` · ${sourceSequence.plan.steps[sourceSequence.cursor]?.command.kind ?? "finalisation"}`
       + ` · ${sourceSequence.runner.pendingRoutes} route(s)`;
-    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p><p><strong>Séquence</strong> ${escapeMenuText(sequenceStatus)}</p>${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p><p><strong>Séquence</strong> ${escapeMenuText(sequenceStatus)}</p>${sourceParallelAuditNotice === null ? "" : `<p><strong>Événement parallèle</strong> ${escapeMenuText(sourceParallelAuditNotice)}</p>`}${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
     progress.querySelector<HTMLButtonElement>("#start-source-encounter")?.addEventListener("click", startPendingSourceEncounter);
   }
   const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
@@ -760,7 +809,61 @@ function renderSourceDialogue(): void {
       ? `Espace/Entrée · ${sourceDialogue.index + 1}/${sourceDialogue.lines.length}` : "Espace/Entrée pour continuer";
 }
 
+function finishAppliedSourceEvent(completed: SourceDialogueSession, encounterQueued: boolean): void {
+  if (encounterQueued) {
+    startPendingSourceEncounter();
+    return;
+  }
+  const menuButton = document.querySelector<HTMLButtonElement>("#open-source-menu"); if (menuButton !== null) {
+    menuButton.disabled = !sourceScenes.menuOpen && !sourceScenes.allows("scene-change", sourceSceneActivity());
+    menuButton.textContent = sourceScenes.menuOpen ? "Fermer le menu" : "Menu";
+  }
+  const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
+  if (transfer !== null) void followSourceTransfer(transfer);
+}
+
+function beginSourceItemPresentation(completed: SourceDialogueSession, gains: readonly SourceItemGain[],
+  onComplete: () => void): void {
+  const commands: ImportedEventPage["commands"] = [
+    { kind: "play-sound", text: null, indent: 0,
+      data: { audio: { name: "ItemGet", volume: 100, pitch: 100 } } },
+    ...gains.map((gain) => ({ kind: "show-text", text: sourceItemGainMessage(gain), indent: 0,
+      data: { text: sourceItemGainMessage(gain) } })),
+    { kind: "end", text: null, indent: 0, data: {} },
+  ];
+  const page = { ...completed.flow.page, commands };
+  sourcePickupPose = true;
+  sourcePickupStartedAt = performance.now();
+  sourceSequence = { label: "Objet obtenu", mapId: completed.mapId, eventId: completed.eventId,
+    plan: compileAndReportSourceScene(page, "Obtention d'objet"), translations: new Map(), cursor: 0,
+    advancing: false, runner: new SourceSequenceRunner(), onComplete: () => {
+      sourcePickupPose = false;
+      sourcePickupStartedAt = null;
+      onComplete();
+      renderImportedView();
+    } };
+  importedNotice = gains.map(sourceItemGainMessage).join(" ");
+  void advanceSourceSequence();
+}
+
+function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: readonly SourceItemGain[]): void {
+  const commands: ImportedEventPage["commands"] = gains.map((gain) => ({
+    kind: "show-text", text: sourceItemGainMessage(gain), indent: 0,
+    data: { text: sourceItemGainMessage(gain) },
+  }));
+  sourcePickupPose = true;
+  sourcePickupStartedAt = performance.now();
+  sourcePickupDialogueSequence = sequence;
+  importedNotice = gains.map(sourceItemGainMessage).join(" ");
+  void sourcePresentation.execute({ kind: "play-sound",
+    data: { audio: { name: "ItemGet", volume: 100, pitch: 100 } } }, async () => undefined);
+  beginSourceEvent({ ...sequence.plan.page, commands }, sequence.mapId, sequence.eventId,
+    "Objet obtenu", sequence.translations);
+  renderImportedView();
+}
+
 function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
+  const previousInventory = sourceEventState.inventory;
   const result = applySafeStateCommands(sourceEventState, completed.flow.page, completed.mapId, completed.eventId,
     { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
       createPokemon: (species, level) => {
@@ -777,16 +880,13 @@ function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
     persistSourceEventState();
     importedNotice = `Dialogue terminé ; ${result.appliedCommands} commande(s) d'état appliquée(s) et mémorisée(s).`;
   } else importedNotice = "Dialogue terminé.";
-  if (encounterQueued) {
-    startPendingSourceEncounter();
+  const itemGains = importedAssets === null ? []
+    : sourceItemGains(previousInventory, result.state.inventory, importedAssets.itemNames);
+  if (itemGains.length > 0) {
+    beginSourceItemPresentation(completed, itemGains, () => finishAppliedSourceEvent(completed, encounterQueued));
     return;
   }
-  const menuButton = document.querySelector<HTMLButtonElement>("#open-source-menu"); if (menuButton !== null) {
-    menuButton.disabled = !sourceScenes.menuOpen && !sourceScenes.allows("scene-change", sourceSceneActivity());
-    menuButton.textContent = sourceScenes.menuOpen ? "Fermer le menu" : "Menu";
-  }
-  const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
-  if (transfer !== null) void followSourceTransfer(transfer);
+  finishAppliedSourceEvent(completed, encounterQueued);
 }
 
 const PRE_ENCOUNTER_PRESENTATION = new Set(["move-route", "move-route-continuation", "wait-for-movement", "wait"]);
@@ -815,6 +915,11 @@ function finishSourceEvent(completed: SourceDialogueSession): void {
       importedNotice = `Séquence interrompue : ${completed.flow.blockedReason ?? "dialogue incomplet"}.`;
       sourceSequence = null;
       return;
+    }
+    if (sourcePickupDialogueSequence === sourceSequence) {
+      sourcePickupDialogueSequence = null;
+      sourcePickupPose = false;
+      sourcePickupStartedAt = null;
     }
     void advanceSourceSequence();
     return;
@@ -878,6 +983,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
     importedPlayerMotion = null;
     heldMovementKeys.clear();
+    void refreshSourceParallelPresentation(next);
     importedNotice = `Arrivée dans ${next.map.name}, en ${transfer.targetX},${transfer.targetY}. Graphismes, événements et français chargés à la demande.`;
   } catch (error) {
     importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
@@ -903,6 +1009,7 @@ async function resetSourceWorld(): Promise<void> {
       : { x: checkpoint.x, y: checkpoint.y, direction: checkpoint.direction };
     importedPlayerMotion = null;
     heldMovementKeys.clear();
+    void refreshSourceParallelPresentation(importedAssets);
     importedNotice = checkpoint === null ? "Position de test restaurée en 28,15, face à un événement dialogué."
       : `Point de reprise restauré dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
   } catch (error) {
@@ -932,6 +1039,7 @@ async function openStarterTest(): Promise<void> {
     importedAvatar = { x: 52, y: 22, direction: "up" };
     importedPlayerMotion = null;
     heldMovementKeys.clear();
+    void refreshSourceParallelPresentation(importedAssets);
     viewedMapId = SOURCE_MAP_ID;
     importedNotice = "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins.";
   } catch (error) {
@@ -1097,9 +1205,13 @@ function interact(playerId: AvatarId): void {
       return;
     }
     if (target !== null && target.page.settings.trigger === 0) {
-      beginSourceEvent(target.page, importedAssets.map.id, target.event.id,
-        `Événement ${target.event.id} · ${target.event.name}`, importedAssets.mapTranslations);
-      if (sourceDialogues.current !== null) importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
+      const label = `Événement ${target.event.id} · ${target.event.name}`;
+      if (target.page.commands.some((command) => command.kind === "show-choices")) {
+        beginSourceEvent(target.page, importedAssets.map.id, target.event.id, label, importedAssets.mapTranslations);
+        if (sourceDialogues.current !== null) {
+          importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
+        }
+      } else beginSourceSequence(target, label);
     } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement n'est pas déclenché par interaction.";
     renderImportedView();
     return;
@@ -1149,6 +1261,7 @@ function continueHeldSourceMovement(): void {
 window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
+    if (sourceSequence !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
     if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
     if (viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
   }
@@ -1245,6 +1358,7 @@ async function initializeSourceWorld(): Promise<void> {
     } else if (requestedSave === null) {
       importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
     }
+    void refreshSourceParallelPresentation(assets);
     const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
     if (sourceButton !== null) sourceButton.disabled = false;
     if (!multiplayer.active) {

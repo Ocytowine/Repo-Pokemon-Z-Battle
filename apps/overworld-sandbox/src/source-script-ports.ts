@@ -60,6 +60,11 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   }
   match = /^pbPlayCry\(PBSpecies::([A-Z][A-Z0-9_]*)\)$/u.exec(ruby);
   if (match !== null) return command(source, "play-cry", { speciesId: match[1], policy: "PERSONAL" });
+  match = /^pbPanoramaMove\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)$/u.exec(ruby);
+  // Pokemon Z's helper accepts two arguments but its Ruby implementation always applies 1,1.
+  if (match !== null) return command(source, "panorama-motion", {
+    scrollX: 1, scrollY: 1, requestedX: Number(match[1]), requestedY: Number(match[2]), policy: "PRESENTATION",
+  });
   return null;
 }
 

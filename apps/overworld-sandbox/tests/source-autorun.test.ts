@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
-import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun, findSourceMapEntryAutorun } from "../src/source-autorun.js";
+import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
+  findSourceMapEntryAutorun, isSourceParallelInitialization } from "../src/source-autorun.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
 const commands: ImportedEventPage["commands"] = [
@@ -39,6 +40,22 @@ describe("source autorun selection", () => {
     const laterEvent = { ...openingEvent, id: 29, name: "later" };
     expect(findSourceMapEntryAutorun([laterEvent, openingEvent], 3, createSourceEventState()))
       .toMatchObject({ event: { id: 1 }, pageIndex: 0 });
+  });
+
+  it("selects active parallel pages in deterministic event order", () => {
+    const parallelPage = { ...page,
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      settings: { ...page.settings, trigger: 4 } };
+    const parallelEvent = { ...openingEvent, id: 25, pages: [parallelPage] };
+    const earlierParallel = { ...parallelEvent, id: 9 };
+    expect(findActiveSourceParallelEvents([parallelEvent, openingEvent, earlierParallel], 3,
+      createSourceEventState()).map(({ event: activeEvent }) => activeEvent.id)).toEqual([9, 25]);
+    expect(isSourceParallelInitialization({ ...parallelPage, commands: [
+      { kind: "change-map-settings", text: null, indent: 0, data: {} },
+      { kind: "panorama-motion", text: null, indent: 0, data: { scrollX: 1, scrollY: 1 } },
+      { kind: "end", text: null, indent: 0, data: {} },
+    ] })).toBe(true);
+    expect(isSourceParallelInitialization(parallelPage)).toBe(false);
   });
 
   it("uses the final direct transfer after a narrative sequence", () => {

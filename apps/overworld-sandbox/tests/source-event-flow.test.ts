@@ -92,6 +92,17 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["add-pokemon", "set-follower", "request-encounter"]);
   });
 
+  it("ports the source panorama motion without evaluating Ruby", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbPanoramaMove(4,4)" }),
+    ]), [], createSourceEventState(), 7, 25);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "panorama-motion",
+        data: expect.objectContaining({ scrollX: 1, scrollY: 1, requestedX: 4, requestedY: 4, policy: "PRESENTATION" }) }),
+    ]);
+  });
+
   it("accepts the safe narrative envelope used by the post-battle autorun", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "$GameSpeed = 0" }),

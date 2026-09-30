@@ -158,7 +158,9 @@ Etat actuel :
   l'evenement, pour les transferts comme pour une sequence ; le contact initie par
   un evenement autonome reste a completer ;
 - premier autorun actif apres un transfert de carte : pris en charge ;
-- evenements paralleles : a faire ;
+- evenements paralleles : les effets de presentation idempotents sont initialises
+  au chargement de la carte ; les boucles qui modifient continuellement l'etat
+  restent a faire ;
 - tonalite, flash, panorama, brouillard, images, musique et sons de cinematique :
   rendus par `SourceScenePresentation` ;
 - camera scriptable, animations de carte et options de boite de texte : rendues.
@@ -303,6 +305,25 @@ joue une porte courte comme une cinematique complexe avant d'executer son transf
 EV028 n'est ainsi plus reduit a son transfert initial vers `40,15` : ses mouvements,
 dialogues et son combat sont conserves.
 
+Le lot Route 1 relie maintenant Map003, Map007 et Map009 sans correctif lie a ces
+numeros de carte. Les interactions directes sans choix utilisent le lecteur de
+sequence complet, ce qui preserve notamment les cris, animations, routes, sons et
+objets dans leur ordre. Les 24 pages actives de Map007 compilent sans commande
+inconnue ni rendu en attente. EV025, parallele, initialise le panorama `fondoAgua`
+et son mouvement lors du chargement de la carte ; ce support parallele reste limite
+aux presentations idempotentes.
+
+Toute augmentation d'inventaire detectee pendant un dialogue ou une sequence joue
+le jingle `ItemGet`, affiche le nom localise et la quantite, et remplace temporairement
+le joueur par le charset de ramassage `trchar000_2`. Cette pose effectue un court
+saut de mise en valeur avant de rester affichee jusqu'a la fermeture du message.
+Le canvas de carte conserve ses pixels vides transparents afin que le panorama
+source reste visible sous les tuiles qui le revelent. La recette manuelle consiste a
+sortir au nord de Bourg Canvas apres Crisanto, verifier le panorama et les cris,
+ramasser plusieurs objets, provoquer une rencontre dans les herbes puis rejoindre
+Map009 par la sortie nord. Ne cocher le parcours complet de la roadmap qu'apres ce
+test avec les assets locaux.
+
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
 
@@ -316,7 +337,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 240 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 245 tests et passe avec le build.
 
 ## Commandes utiles
 

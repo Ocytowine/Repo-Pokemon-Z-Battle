@@ -31,6 +31,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   wait: capability("timing", "executed", "attente a 40 images par seconde"),
   "transfer-player": capability("transition", "executed", "changement de carte"),
   "change-map-settings": capability("audiovisual", "rendered", "panorama et brouillard de carte"),
+  "panorama-motion": capability("audiovisual", "rendered", "defilement du panorama source"),
   "screen-tone": capability("audiovisual", "rendered", "transition de teinte d'ecran"),
   "screen-flash": capability("audiovisual", "rendered", "flash colore"),
   "show-picture": capability("audiovisual", "rendered", "image superposee"),
