@@ -153,7 +153,7 @@ Etat actuel :
 - routes imposees et mouvements autonomes : pris en charge ;
 - autorun nouvellement active apres changement d'etat : pris en charge ;
 - contact joueur/evenement : partiel, notamment pour les transferts ;
-- autorun d'entree sur une carte : a generaliser ;
+- premier autorun actif apres un transfert de carte : pris en charge ;
 - evenements paralleles : a faire ;
 - tonalite, flash, panorama, brouillard, images, musique et sons de cinematique :
   rendus par `SourceScenePresentation` ;
@@ -234,8 +234,24 @@ route. La position logique reste preservee, mais un PNJ dont la nouvelle page es
 vide disparait bien. Cette synchronisation corrige notamment Crisanto apres sa
 marche vers la droite dans la scene d'arrivee de Map003.
 
-Prochain travail audiovisuel possible : `play-cry`, `play-jingle` et
+`play-cry` resout l'identifiant interne de l'espece dans `pokemon-assets.json` et
+lit son cri extrait. Prochain travail audiovisuel possible : `play-jingle` et
 `play-background-sound`, encore acceptes mais non rendus.
+
+La scene d'entree du laboratoire, Map005 evenement `crisanto`, est le prochain
+jalon vertical valide par les donnees locales : 302 commandes resolues, 30
+dialogues, 182 commandes de mouvement et aucun rendu en attente. Les scripts Ruby
+fractionnes sur plusieurs commandes sont reunis avant portage. Les appels
+`dependentEvents.remove_sprite(true)` et `refresh_sprite`, propres au compagnon du
+moteur original qui n'est pas encore rendu sur le web, sont absorbes explicitement
+comme presentation sans effet ; ils ne bloquent plus la progression.
+
+Les routes sont auditees primitive par primitive avant lecture. L'effet sonore
+embarque dans une route RPG Maker est execute par la meme couche audio que les
+commandes de scene. Cela corrige l'interruption de Map005 au moment ou M. Mime
+saute hors du bocal : la route `play-sound`, `jump` se poursuit sans rendre les
+controles au joueur. Un autorun dont l'audit reste incomplet est maintenant refuse
+avant son demarrage, au lieu de pouvoir echouer au milieu de la cinematique.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -250,7 +266,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 230 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 234 tests et passe avec le build.
 
 ## Commandes utiles
 

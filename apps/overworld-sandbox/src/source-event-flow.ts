@@ -140,8 +140,21 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         blockedReason = `marqueur ${command.kind} inattendu`;
         return false;
       }
-      const executable = command.kind === "ruby-script" ? portSourceRubyCommand(command)
-        : command.kind === "recover-all" ? { ...command, kind: "heal-party" } : command;
+      let consumedCommands = 1;
+      let sourceCommand = command;
+      if (command.kind === "ruby-script" && typeof command.data.source === "string") {
+        const lines = [command.data.source];
+        while (index + consumedCommands < end) {
+          const continuation = commands[index + consumedCommands];
+          if (continuation?.kind !== "ruby-script-continuation" || continuation.indent !== command.indent
+            || typeof continuation.data.source !== "string") break;
+          lines.push(continuation.data.source);
+          consumedCommands += 1;
+        }
+        sourceCommand = { ...command, data: { ...command.data, source: lines.join("\n") } };
+      }
+      const executable = sourceCommand.kind === "ruby-script" ? portSourceRubyCommand(sourceCommand)
+        : sourceCommand.kind === "recover-all" ? { ...sourceCommand, kind: "heal-party" } : sourceCommand;
       if (executable === null || !isKnownSourceCommand(executable.kind)) {
         blockedReason = `commande ${command.kind} non prise en charge`;
         return false;
@@ -151,7 +164,7 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         return false;
       }
       output.push(executable);
-      index += 1;
+      index += consumedCommands;
     }
     return true;
   };

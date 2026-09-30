@@ -110,6 +110,17 @@ describe("source event choice and condition flow", () => {
     ]);
   });
 
+  it("joins split Ruby calls and absorbs dependent-follower presentation hooks", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "$PokemonTemp.dependentEvents.remove_sprite" }),
+      command("ruby-script-continuation", 0, { source: "(true)" }),
+      command("show-text", 0, { text: "Suite" }),
+      command("ruby-script", 0, { source: "$PokemonTemp.dependentEvents.refresh_sprite" }),
+    ]), [], createSourceEventState(), 5, 5);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual(["runtime-noop", "show-text", "runtime-noop"]);
+  });
+
   it("stops before an unsupported command without exposing later dialogue", () => {
     const result = resolveEventFlow(page([command("show-text", 0, { text: "Avant" }), command("ruby-script", 0),
       command("show-text", 0, { text: "Après" })]), [], createSourceEventState(), 3, 1);

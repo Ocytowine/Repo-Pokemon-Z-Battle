@@ -37,6 +37,7 @@ export interface SourceRouteStepResult {
   readonly waitMs: number;
   readonly complete: boolean;
   readonly switchChange: { readonly id: number; readonly value: boolean } | null;
+  readonly sound: { readonly name: string; readonly volume: number; readonly pitch: number } | null;
   readonly supported: boolean;
   readonly reason: string | null;
 }
@@ -90,14 +91,14 @@ function movement(actor: SourceRouteActor, direction: Direction, preserveDirecti
 }
 
 function success(actor: SourceRouteActor, destination: GridPoint | null = null, waitMs = 0,
-  extra: Partial<Pick<SourceRouteStepResult, "complete" | "switchChange">> = {}): SourceRouteStepResult {
+  extra: Partial<Pick<SourceRouteStepResult, "complete" | "switchChange" | "sound">> = {}): SourceRouteStepResult {
   return { actor, destination, waitMs, complete: extra.complete ?? false, switchChange: extra.switchChange ?? null,
-    supported: true, reason: null };
+    sound: extra.sound ?? null, supported: true, reason: null };
 }
 
 function unsupported(actor: SourceRouteActor, kind: string): SourceRouteStepResult {
   return { actor, destination: null, waitMs: 0, complete: false, switchChange: null,
-    supported: false, reason: `mouvement ${kind} non pris en charge` };
+    sound: null, supported: false, reason: `mouvement ${kind} non pris en charge` };
 }
 
 export function executeSourceMoveRouteStep(actor: SourceRouteActor, step: SourceMoveRouteStep,
@@ -163,6 +164,16 @@ export function executeSourceMoveRouteStep(actor: SourceRouteActor, step: Source
     const [opacity] = step.parameters;
     return integer(opacity) && opacity >= 0 && opacity <= 255 ? success({ ...actor, opacity }) : unsupported(actor, step.kind);
   }
+  if (step.kind === "play-sound") {
+    const [rawAudio] = step.parameters;
+    const ivars = record(rawAudio) && record(rawAudio.ivars) ? rawAudio.ivars : null;
+    const name = ivars?.["@name"];
+    const volume = ivars?.["@volume"];
+    const pitch = ivars?.["@pitch"];
+    return typeof name === "string" && integer(volume) && volume >= 0 && volume <= 100
+      && integer(pitch) && pitch > 0
+      ? success(actor, null, 0, { sound: { name, volume, pitch } }) : unsupported(actor, step.kind);
+  }
   if (step.kind === "switch-on" || step.kind === "switch-off") {
     const [id] = step.parameters;
     return integer(id) && id > 0 ? success(actor, null, 0, { switchChange: { id, value: step.kind === "switch-on" } })
@@ -170,4 +181,16 @@ export function executeSourceMoveRouteStep(actor: SourceRouteActor, step: Source
   }
   if (step.kind === "end") return success(actor, null, 0, { complete: true });
   return unsupported(actor, step.kind);
+}
+
+export function sourceMoveRouteIsExecutable(route: SourceMoveRoute): boolean {
+  let actor: SourceRouteActor = { x: 0, y: 0, direction: "down", moveSpeed: 3, moveFrequency: 3,
+    walkAnimation: true, stepAnimation: false, directionFix: false, through: false, alwaysOnTop: false,
+    opacity: 255, characterName: "", characterHue: 0, pattern: 0 };
+  for (const step of route.steps) {
+    const result = executeSourceMoveRouteStep(actor, step, { player: { x: 1, y: 1 }, randomDirection: "right" });
+    if (!result.supported) return false;
+    actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
+  }
+  return true;
 }

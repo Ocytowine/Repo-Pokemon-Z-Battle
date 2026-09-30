@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "../src/source-move-route.js";
+import { executeSourceMoveRouteStep, parseSourceMoveRoute, sourceMoveRouteIsExecutable,
+  type SourceRouteActor } from "../src/source-move-route.js";
 
 const actor: SourceRouteActor = {
   x: 5, y: 5, direction: "up", moveSpeed: 3, moveFrequency: 3,
@@ -36,6 +37,16 @@ describe("source move routes", () => {
     });
     expect(run("change-opacity", [100])).toMatchObject({ actor: { opacity: 100 } });
     expect(run("direction-fix-on")).toMatchObject({ actor: { directionFix: true } });
+    expect(run("play-sound", [{ rubyClass: "RPG::AudioFile",
+      ivars: { "@volume": 80, "@name": "jump", "@pitch": 100 } }]))
+      .toMatchObject({ sound: { name: "jump", volume: 80, pitch: 100 }, supported: true });
+  });
+
+  it("validates every primitive before a route reaches the scene runner", () => {
+    expect(sourceMoveRouteIsExecutable({ repeat: false, skippable: false,
+      steps: [{ kind: "step-up", parameters: [] }, { kind: "end", parameters: [] }] })).toBe(true);
+    expect(sourceMoveRouteIsExecutable({ repeat: false, skippable: false,
+      steps: [{ kind: "future-step", parameters: [] }] })).toBe(false);
   });
 
   it("reports route completion, switch effects and unsupported steps", () => {

@@ -36,7 +36,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "move-picture": capability("audiovisual", "rendered", "animation d'image"),
   "erase-picture": capability("audiovisual", "rendered", "retrait d'image"),
   "show-animation": capability("audiovisual", "rendered", "animation de carte source"),
-  "play-cry": capability("audiovisual", "accepted", "cri non joue"),
+  "play-cry": capability("audiovisual", "rendered", "cri Pokemon source"),
   "play-jingle": capability("audiovisual", "accepted", "jingle non joue"),
   "play-sound": capability("audiovisual", "rendered", "effet sonore source"),
   "play-music": capability("audiovisual", "rendered", "musique source"),

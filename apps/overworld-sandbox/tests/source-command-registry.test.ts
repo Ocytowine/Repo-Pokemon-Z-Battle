@@ -20,6 +20,7 @@ describe("source command registry", () => {
     ["screen-tone", "audiovisual", "rendered", false],
     ["scroll-map", "audiovisual", "rendered", false],
     ["show-animation", "audiovisual", "rendered", false],
+    ["play-cry", "audiovisual", "rendered", false],
     ["text-options", "metadata", "rendered", false],
     ["move-route-continuation", "movement", "absorbed", false],
   ])("classifies %s once", (kind, family, support, state) => {

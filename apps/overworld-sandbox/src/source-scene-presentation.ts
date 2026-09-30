@@ -189,12 +189,22 @@ interface MapAnimationManifest {
   readonly animations: readonly MapAnimationRecord[];
 }
 
+interface SourcePokemonAssetsManifest {
+  readonly records: readonly { readonly internalName: string;
+    readonly assets: Readonly<Record<string, readonly { readonly path: string; readonly form: number | null }[]>> }[];
+}
+
 interface PresentationOptions {
   readonly onCameraOffset?: (offset: Readonly<{ x: number; y: number }>) => void;
   readonly resolveAnimationTarget?: (target: number) => SourceScreenTarget | null;
 }
 
 interface ManagedAudio { readonly audio: HTMLAudioElement; readonly sourceVolume: number }
+
+export function selectSourceCryPath(manifest: SourcePokemonAssetsManifest, speciesId: string): string | null {
+  const cries = manifest.records.find((record) => record.internalName === speciesId)?.assets.cry ?? [];
+  return (cries.find((cry) => cry.form === null) ?? cries[0])?.path ?? null;
+}
 
 export class SourceScenePresentation {
   private masterVolume: number;
@@ -205,6 +215,7 @@ export class SourceScenePresentation {
   private scrollQueue = Promise.resolve();
   private scrollSession = 0;
   private animationManifest: Promise<MapAnimationManifest | null> | null = null;
+  private pokemonAssetsManifest: Promise<SourcePokemonAssetsManifest | null> | null = null;
   private animationSession = 0;
 
   public constructor(private readonly elements: PresentationElements, masterVolume = 1,
@@ -240,6 +251,7 @@ export class SourceScenePresentation {
     }
     if (command.kind === "play-music") return this.playMusic(command.data);
     if (command.kind === "play-sound") return this.playSound(command.data);
+    if (command.kind === "play-cry") return this.playCry(command.data);
     if (command.kind === "fade-music") return this.fadeMusic(command.data);
     if (command.kind === "scroll-map") return this.scrollMap(command.data);
     if (command.kind === "text-options") return this.textOptions(command.data);
@@ -354,6 +366,20 @@ export class SourceScenePresentation {
     return true;
   }
 
+  private playCry(data: Readonly<Record<string, unknown>>): boolean {
+    if (typeof data.speciesId !== "string" || data.speciesId === "") return false;
+    void this.loadPokemonAssets().then(async (manifest) => {
+      const path = manifest === null ? null : selectSourceCryPath(manifest, data.speciesId as string);
+      if (path === null) return;
+      const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false);
+      this.oneShots.add(managed);
+      managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+      managed.audio.src = sourceUrl(path);
+      try { await managed.audio.play(); } catch { this.oneShots.delete(managed); }
+    });
+    return true;
+  }
+
   private fadeMusic(data: Readonly<Record<string, unknown>>): boolean {
     const duration = Math.max(0, finite(parameters(data)[0]) * 1_000);
     const managed = this.music;
@@ -419,6 +445,13 @@ export class SourceScenePresentation {
       .then(async (response) => response.ok ? await response.json() as MapAnimationManifest : null)
       .catch(() => null);
     return this.animationManifest;
+  }
+
+  private loadPokemonAssets(): Promise<SourcePokemonAssetsManifest | null> {
+    this.pokemonAssetsManifest ??= fetch("/__pokemon-z/data/pokemon-assets.json")
+      .then(async (response) => response.ok ? await response.json() as SourcePokemonAssetsManifest : null)
+      .catch(() => null);
+    return this.pokemonAssetsManifest;
   }
 
   private async playMapAnimation(request: SourceAnimationRequest, delay: Delay): Promise<void> {

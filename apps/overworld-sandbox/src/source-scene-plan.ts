@@ -1,6 +1,6 @@
 import type { ImportedEventPage, ImportedMapEvent } from "./imported-map.js";
 import { sourceCommandCapability, type SourceCommandCapability } from "./source-command-registry.js";
-import { parseSourceMoveRoute } from "./source-move-route.js";
+import { parseSourceMoveRoute, sourceMoveRouteIsExecutable } from "./source-move-route.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -53,7 +53,7 @@ export function compileSourceScene(page: ImportedEventPage, events: readonly Imp
     if (step.capability?.support === "accepted") pendingPresentation.add(step.command.kind);
     if (step.command.kind !== "move-route") continue;
     const route = parseSourceMoveRoute(step.command.data.route);
-    if (route === null) invalidRoutes.push(step.index);
+    if (route === null || !sourceMoveRouteIsExecutable(route)) invalidRoutes.push(step.index);
     if (typeof step.command.data.target === "number") routeTargets.add(step.command.data.target);
     routeCharacters(step.command).forEach((name) => characterAssets.add(name));
   }

@@ -133,6 +133,11 @@ function beginSourceAutorun(autorun: ActiveSourceAutorun): boolean {
     return false;
   }
   const plan = compileAndReportSourceScene(flow.page, autorun.event.name);
+  if (!plan.audit.complete) {
+    importedNotice = `Événement automatique ${autorun.event.id} bloqué par l'audit de scène.`;
+    renderImportedView();
+    return false;
+  }
   sourceSequence = { label: `Événement automatique ${autorun.event.id} · ${autorun.event.name}`,
     mapId: importedAssets.map.id, eventId: autorun.event.id, plan,
     translations: importedAssets.mapTranslations, cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
@@ -185,6 +190,9 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       sourceEventState = { ...sourceEventState,
         switches: { ...sourceEventState.switches, [result.switchChange.id]: result.switchChange.value } };
       persistSourceEventState();
+    }
+    if (result.sound !== null) {
+      await sourcePresentation.execute({ kind: "play-sound", data: { audio: result.sound } }, async () => undefined);
     }
     let duration = result.waitMs;
     if (playerTarget) {

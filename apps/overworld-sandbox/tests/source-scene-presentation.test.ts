@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSourceAnimation, parseSourceAudio, parseSourceMapVisual, parseSourcePicture, parseSourceScroll,
-  parseSourceTextOptions, parseSourceTone } from "../src/source-scene-presentation.js";
+  parseSourceTextOptions, parseSourceTone, selectSourceCryPath } from "../src/source-scene-presentation.js";
 
 describe("source scene presentation parameters", () => {
   it("normalizes RPG Maker tones and frame durations", () => {
@@ -22,6 +22,13 @@ describe("source scene presentation parameters", () => {
   it("normalizes source audio volume and pitch", () => {
     expect(parseSourceAudio({ audio: { name: "Crisanto", volume: 80, pitch: 120 } }))
       .toEqual({ name: "Crisanto", volume: 0.8, pitch: 1.2 });
+  });
+
+  it("selects the default extracted cry for a species", () => {
+    expect(selectSourceCryPath({ records: [{ internalName: "MRMIME", assets: { cry: [
+      { path: "Audio/SE/Cries/122Cry_1.ogg", form: 1 },
+      { path: "Audio/SE/Cries/122Cry.ogg", form: null },
+    ] } }] }, "MRMIME")).toBe("Audio/SE/Cries/122Cry.ogg");
   });
 
   it("decodes panorama and moving fog settings", () => {

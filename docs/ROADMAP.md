@@ -902,6 +902,22 @@ son apparence sans perdre la position logique de l'evenement. La page vide de
 Crisanto apres son depart sur Map003 ne laisse donc plus un sprite fige et
 traversable a l'ecran.
 
+Seizieme noyau 9.7 implemente le 2026-09-30 : le transfert de Bourg Canvas vers le
+laboratoire peut lancer l'autorun `crisanto` de Map005. Le resoluteur reconstitue
+les appels Ruby repartis entre `ruby-script` et leurs continuations ; les hooks de
+presentation du compagnon absent du moteur web sont absorbes explicitement. Le cri
+de Pokemon resout maintenant l'espece dans `pokemon-assets.json` et lit son asset
+source. Avec un des trois interrupteurs de starter actif, la scene du laboratoire
+compile 302 commandes, 30 dialogues et 182 commandes de mouvement sans blocage ni
+rendu en attente.
+
+Correction de route Map005 validee le 2026-09-30 : l'audit execute desormais une
+validation pure de chaque primitive contenue dans les routes. `play-sound`, utilise
+juste avant le saut de M. Mime hors du bocal, transmet son fichier, volume et pitch
+a la couche audio. Une primitive inconnue est donc signalee par l'audit avant la
+lecture, au lieu d'interrompre la sequence et de rendre les controles en plein
+milieu d'une cinematique.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul
