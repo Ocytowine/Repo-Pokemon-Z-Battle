@@ -53,6 +53,7 @@ export interface ImportedTileset {
   readonly id: number;
   readonly tilesetName: string;
   readonly autotileNames: readonly string[];
+  readonly priorities: readonly number[];
   readonly terrainTags: readonly number[];
 }
 
@@ -75,6 +76,7 @@ export interface ImportedMapEvent extends GridPoint {
 
 export interface ImportedEventPose extends GridPoint {
   readonly direction: number;
+  readonly pageIndex?: number;
   readonly pattern?: number;
   readonly characterName?: string;
   readonly opacity?: number;
@@ -163,11 +165,12 @@ function parseTilesets(value: unknown): TilesetFile {
   const records = value.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.tilesetName !== "string"
       || !Array.isArray(entry.autotileNames) || !entry.autotileNames.every((name) => typeof name === "string")
+      || !Array.isArray(entry.priorities) || !entry.priorities.every((priority) => Number.isInteger(priority) && (priority as number) >= 0)
       || !Array.isArray(entry.terrainTags) || !entry.terrainTags.every((tag) => Number.isInteger(tag) && (tag as number) >= 0)) {
       throw new Error("Une configuration de tileset est invalide.");
     }
     return { id: entry.id as number, tilesetName: entry.tilesetName, autotileNames: entry.autotileNames as string[],
-      terrainTags: entry.terrainTags as number[] };
+      priorities: entry.priorities as number[], terrainTags: entry.terrainTags as number[] };
   });
   return { records };
 }
@@ -556,25 +559,64 @@ export function eventGraphicPattern(page: ImportedEventPage, now: number): numbe
   return page.settings.stepAnimation ? Math.floor(Math.max(0, now) / 180) % 4 : page.graphic.pattern;
 }
 
+export interface ImportedCameraOffset { readonly x: number; readonly y: number }
+
+export function importedCameraPosition(canvas: Pick<HTMLCanvasElement, "width" | "height">,
+  map: Pick<ImportedMap, "width" | "height">, avatar: Pick<ImportedAvatar, "x" | "y">,
+  offset: ImportedCameraOffset = { x: 0, y: 0 }): ImportedCameraOffset {
+  return {
+    x: Math.round(Math.max(0, Math.min(map.width * 32 - canvas.width,
+      avatar.x * 32 + 16 - canvas.width / 2 + offset.x))),
+    y: Math.round(Math.max(0, Math.min(map.height * 32 - canvas.height,
+      avatar.y * 32 + 16 - canvas.height / 2 + offset.y))),
+  };
+}
+
 function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElement, direction: number, pattern: number,
-  opacity: number, tileX: number, tileY: number, cameraX: number, cameraY: number): void {
+  opacity: number, tileX: number, tileY: number, cameraX: number, cameraY: number, shadow = true): void {
   const frameWidth = image.naturalWidth / 4;
   const frameHeight = image.naturalHeight / 4;
   const destinationX = tileX * 32 + 16 - frameWidth / 2 - cameraX;
   const destinationY = tileY * 32 + 32 - frameHeight - cameraY;
   context.save();
   context.globalAlpha = Math.max(0, Math.min(1, opacity / 255));
+  if (shadow && opacity > 0) {
+    context.fillStyle = "rgba(8, 14, 12, 0.32)";
+    context.beginPath();
+    context.ellipse(tileX * 32 + 16 - cameraX, tileY * 32 + 29 - cameraY,
+      Math.max(6, Math.min(12, frameWidth * 0.28)), 4, 0, 0, Math.PI * 2);
+    context.fill();
+  }
   context.drawImage(image, (pattern % 4) * frameWidth, directionRow(direction) * frameHeight, frameWidth, frameHeight,
     destinationX, destinationY, frameWidth, frameHeight);
   context.restore();
 }
 
+export function sourcePriorityTileZ(tileY: number, priority: number): number {
+  return tileY * 32 + priority * 32 + 32;
+}
+
+export function sourceCharacterZ(tileY: number, frameHeight: number): number {
+  return tileY * 32 + 32 + (frameHeight > 32 ? 31 : 0);
+}
+
+export function sourceEventHasShadow(eventName: string): boolean {
+  return !/\/noShadow\//iu.test(eventName);
+}
+
+export function eventPoseForActivePage(pose: ImportedEventPose | undefined, page: ImportedEventPage,
+  pageIndex: number): ImportedEventPose | undefined {
+  if (pose === undefined || pose.pageIndex === undefined || pose.pageIndex === pageIndex) return pose;
+  return { x: pose.x, y: pose.y, direction: page.graphic.direction, pageIndex };
+}
+
 export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, assets: ImportedMapAssets,
   avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE,
-  eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map()): void {
+  eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 }): void {
   const map = assets.map;
-  const cameraX = Math.round(Math.max(0, Math.min(map.width * 32 - canvas.width, avatar.x * 32 + 16 - canvas.width / 2)));
-  const cameraY = Math.round(Math.max(0, Math.min(map.height * 32 - canvas.height, avatar.y * 32 + 16 - canvas.height / 2)));
+  const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
+  const cameraX = camera.x;
+  const cameraY = camera.y;
   const startX = Math.max(0, Math.floor(cameraX / 32));
   const startY = Math.max(0, Math.floor(cameraY / 32));
   const endX = Math.min(map.width, Math.ceil((cameraX + canvas.width) / 32));
@@ -584,9 +626,13 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = "#07110d";
   context.fillRect(0, 0, canvas.width, canvas.height);
-  for (const layer of [map.layers.lower, map.layers.middle, map.layers.upper]) {
+  const mapLayers = [map.layers.lower, map.layers.middle, map.layers.upper] as const;
+  for (const layer of mapLayers) {
     for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) {
-      drawTile(context, assets, layer[y * map.width + x] ?? 0, x * 32 - cameraX, y * 32 - cameraY, frame);
+      const tileId = layer[y * map.width + x] ?? 0;
+      if ((assets.tileset.priorities[tileId] ?? 0) === 0) {
+        drawTile(context, assets, tileId, x * 32 - cameraX, y * 32 - cameraY, frame);
+      }
     }
   }
   const drawnTransferEvents = new Set<number>();
@@ -606,18 +652,15 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     }
   }
   const eventEntries = assets.events.flatMap((event) => {
-    const page = selectEventPage(event, map.id, state);
-    const pose = eventPoses.get(event.id);
+    const selection = selectActiveEventPage(event, map.id, state);
+    if (selection === null) return [];
+    const page = selection.page;
+    const pose = eventPoseForActivePage(eventPoses.get(event.id), page, selection.pageIndex);
     const characterName = pose?.characterName ?? page?.graphic.characterName ?? "";
-    return page === null || (characterName === "" && page.graphic.tileId === 0) ? [] : [{ event, page, pose }];
+    return characterName === "" && page.graphic.tileId === 0 ? [] : [{ event, page, pose }];
   });
   const normalEntries = eventEntries.filter(({ page }) => !page.settings.alwaysOnTop);
   const topEntries = eventEntries.filter(({ page }) => page.settings.alwaysOnTop);
-  const renderables: ({ readonly kind: "event"; readonly y: number; readonly entry: typeof normalEntries[number] }
-    | { readonly kind: "player"; readonly y: number })[] = [
-      ...normalEntries.map((entry) => ({ kind: "event" as const, y: entry.pose?.y ?? entry.event.y, entry })),
-      { kind: "player", y: avatar.y },
-    ];
   const drawEvent = ({ event, page, pose }: typeof normalEntries[number]): void => {
     const eventX = pose?.x ?? event.x;
     const eventY = pose?.y ?? event.y;
@@ -628,13 +671,32 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
       if (image !== undefined) drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
         pose?.pattern ?? eventGraphicPattern(page, now), pose?.opacity ?? page.graphic.opacity,
-        eventX, eventY, cameraX, cameraY);
+        eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name));
     }
   };
-  renderables.sort((left, right) => left.y - right.y).forEach((renderable) => {
-    if (renderable.kind === "event") drawEvent(renderable.entry);
-    else drawCharacter(context, assets.playerImage, directionNumber(avatar.direction), playerPattern, 255,
+  type Renderable = { readonly z: number; readonly order: number; readonly draw: () => void };
+  const renderables: Renderable[] = [];
+  let order = 0;
+  for (const layer of mapLayers) for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) {
+    const tileId = layer[y * map.width + x] ?? 0;
+    const priority = assets.tileset.priorities[tileId] ?? 0;
+    if (tileId !== 0 && priority > 0) renderables.push({ z: sourcePriorityTileZ(y, priority), order: order++,
+      draw: () => drawTile(context, assets, tileId, x * 32 - cameraX, y * 32 - cameraY, frame) });
+  }
+  for (const entry of normalEntries) {
+    const eventY = entry.pose?.y ?? entry.event.y;
+    const tileId = entry.page.graphic.tileId;
+    const image = tileId > 0 ? undefined : assets.characterImages.get(entry.pose?.characterName ?? entry.page.graphic.characterName);
+    const z = tileId > 0 ? sourcePriorityTileZ(eventY, assets.tileset.priorities[tileId] ?? 0)
+      : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
+    renderables.push({ z, order: order++, draw: () => drawEvent(entry) });
+  }
+  renderables.push({ z: sourceCharacterZ(avatar.y, assets.playerImage.naturalHeight / 4), order: order++, draw: () => {
+    drawCharacter(context, assets.playerImage, directionNumber(avatar.direction), playerPattern, 255,
       avatar.x, avatar.y, cameraX, cameraY);
+  } });
+  renderables.sort((left, right) => left.z - right.z || left.order - right.order).forEach((renderable) => {
+    renderable.draw();
   });
   topEntries.forEach(drawEvent);
 }

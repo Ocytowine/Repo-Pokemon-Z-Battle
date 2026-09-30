@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
-import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun } from "../src/source-autorun.js";
+import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun, findSourceMapEntryAutorun } from "../src/source-autorun.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
 const commands: ImportedEventPage["commands"] = [
@@ -33,6 +33,12 @@ describe("source autorun selection", () => {
   it("does not restart an autorun that was already active", () => {
     const state = { ...createSourceEventState(), switches: { 65: true } };
     expect(findNewlyActivatedSourceAutorun([openingEvent, event], 2, state, state)).toBeNull();
+  });
+
+  it("selects the first active autorun when entering a map", () => {
+    const laterEvent = { ...openingEvent, id: 29, name: "later" };
+    expect(findSourceMapEntryAutorun([laterEvent, openingEvent], 3, createSourceEventState()))
+      .toMatchObject({ event: { id: 1 }, pageIndex: 0 });
   });
 
   it("uses the final direct transfer after a narrative sequence", () => {

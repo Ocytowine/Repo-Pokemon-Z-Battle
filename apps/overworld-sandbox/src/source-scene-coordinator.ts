@@ -1,5 +1,7 @@
 export type SourceSceneMode = "overworld" | "dialogue" | "battle" | "menu" | "transition";
 export type SourceMenuTab = "team" | "bag" | "save" | "options";
+export type SourceSceneAction = "ambient-motion" | "world-input" | "dialogue-input" | "scene-change"
+  | "start-sequence" | "source-transfer";
 
 export interface SourceSceneActivity {
   readonly dialogue: boolean;
@@ -24,8 +26,26 @@ export class SourceSceneCoordinator {
     return "overworld";
   }
 
+  public allows(action: SourceSceneAction, activity: SourceSceneActivity): boolean {
+    const mode = this.mode(activity);
+    switch (action) {
+      case "ambient-motion":
+        return mode === "overworld";
+      case "world-input":
+      case "scene-change":
+      case "start-sequence":
+        return mode === "overworld" && !activity.movement;
+      case "dialogue-input":
+        return mode === "dialogue" && activity.dialogue && !activity.movement;
+      case "source-transfer":
+        // Une commande de transfert peut appartenir à une séquence, mais jamais
+        // concurrencer un combat, un menu, un mouvement ou un autre transfert.
+        return !activity.battle && !activity.transition && !this.openedMenu && !activity.movement;
+    }
+  }
+
   public openMenu(activity: SourceSceneActivity): boolean {
-    if (this.mode(activity) !== "overworld" || activity.movement) return false;
+    if (!this.allows("scene-change", activity)) return false;
     this.openedMenu = true;
     return true;
   }

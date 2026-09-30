@@ -860,6 +860,48 @@ frames sont placees d'apres `PokeBattle_SceneConstants` et le dernier pixel visi
 comme le correctif `SpriteAutoAlign` du jeu source. Les deux bases reprennent aussi
 leurs coordonnees natives dans le repere 512 x 384.
 
+Douzieme noyau 9.7 implemente le 2026-09-29 : `SourceSceneCoordinator` centralise
+la politique des actions du joueur. Deplacement, interaction, dialogue, ouverture
+du menu, changement de carte et lancement d'une sequence partagent desormais les
+memes exclusions. Les mouvements ambiants restent autorises pendant un pas du
+joueur et les transferts ordonnes par une cinematique conservent un droit distinct.
+Les anciens assemblages de drapeaux ont ete retires de `main.ts` et couverts par
+des tests tabulaires.
+
+Treizieme noyau 9.7 implemente le 2026-09-30 : une couche
+`SourceScenePresentation` restitue les effets audiovisuels normalises sans les
+melanger au moteur narratif. Tonalite, flash, panoramas, brouillards mobiles,
+affichage/deplacement/retrait des images, musique, sons et fondu musical sont lus
+dans l'ordre de la sequence. Les images conservent le repere source 512 x 384 et
+le lecteur audio accepte le melange OGG/WAV/MP3 du jeu ; le volume du menu lui est
+raccorde. L'audit d'EV017 ne conserve plus que `show-animation`, `scroll-map` et
+`text-options` dans son rendu en attente.
+
+Quatorzieme noyau 9.7 implemente le 2026-09-30 : `scroll-map` anime un decalage de
+camera persistant avec les directions, distances et vitesses de RPG Maker, en
+parallele des dialogues. L'extracteur produit `map-animations.json` depuis les 100
+entrees de `Animations.rxdata` ; `show-animation` restitue leurs cellules, sons et
+flashs au-dessus du joueur ou de l'evenement cible. `text-options` pilote enfin la
+position et la transparence de la boite de dialogue. Les trois commandes passent
+au niveau `rendered` et l'audit d'EV017 n'a plus aucun rendu en attente.
+
+Quinzieme noyau 9.7 implemente le 2026-09-30 : l'ordre des couches conserve les
+images de cinematique au-dessus d'une tonalite noire, ce qui rend les portraits et
+cartons visibles pendant les fondus. Un transfert de carte arme maintenant le
+premier `autorun` actif de la destination ; il ne demarre qu'apres la fin de la
+sequence en cours. EV017 peut ainsi enchainer sur l'arrivee `crisanto` de Map003 et
+sortir normalement du noir. Le canvas applique aussi les priorites de tuiles RPG
+Maker XP aux acteurs et aux trois couches : les toits et cimes les masquent a la
+bonne profondeur. Enfin, les charsets recoivent une ombre de contact generique,
+sauf pour les evenements nommes avec la convention source `/noShadow/`.
+
+Correction de changement de page validee le 2026-09-30 : les substitutions de
+sprite produites par une route sont maintenant associees a la page qui les a
+creees. Si un interrupteur ou une variable active une autre page, le rendu reprend
+son apparence sans perdre la position logique de l'evenement. La page vide de
+Crisanto apres son depart sur Map003 ne laisse donc plus un sprite fige et
+traversable a l'ecran.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

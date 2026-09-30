@@ -59,10 +59,10 @@ pnpm extract:runtime --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --ou
 ```
 
 Elle produit le catalogue francais et son rapport de conflits, les 507 informations
-de carte, un manifeste de 262 scripts et `battle-animations.json` pour les attaques
-prises en charge par le sandbox. Les sources Ruby sont decomprimees
-dans `.pokemon-z/data/scripts/` uniquement comme references : elles ne sont jamais
-executees par le produit web.
+de carte, un manifeste de 262 scripts, `battle-animations.json` pour les attaques
+et `map-animations.json` pour les effets des evenements. Les sources Ruby sont
+decomprimees dans `.pokemon-z/data/scripts/` uniquement comme references : elles
+ne sont jamais executees par le produit web.
 
 Le combat source de l'overworld consomme également les battlebacks, sprites,
 animations, effets sonores, cris et musiques locales décrits par ces manifestes.

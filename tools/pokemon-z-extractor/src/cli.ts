@@ -113,6 +113,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Maps: ${result.mapCount}\n`);
     process.stdout.write(`Localized texts: ${result.localizedTextCount}\n`);
     process.stdout.write(`Battle animations normalized: ${result.battleAnimationCount}\n`);
+    process.stdout.write(`Map animations normalized: ${result.mapAnimationCount}\n`);
     return;
   }
   if (command === "extract-assets") {

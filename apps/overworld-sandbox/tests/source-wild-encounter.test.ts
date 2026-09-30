@@ -15,7 +15,7 @@ class ScriptedRandom implements RandomSource {
 const map = { schemaVersion: "1.0.0", id: 7, name: "Route 1", width: 1, height: 1, tilesetId: 1,
   layers: { lower: [3], middle: [2], upper: [1] }, collision: { masks: [15] }, transfers: [],
   source: { file: "Map007.rxdata", sha256: "test" } } as const;
-const tileset = { id: 1, tilesetName: "Field", autotileNames: [], terrainTags: [0, 15, 13, 2] } as const;
+const tileset = { id: 1, tilesetName: "Field", autotileNames: [], priorities: [], terrainTags: [0, 15, 13, 2] } as const;
 const encounters = { mapId: 7, landRate: 12, land: [
   { species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 },
   { species: "FLETCHLING", minimumLevel: 3, maximumLevel: 5, weight: 80 },

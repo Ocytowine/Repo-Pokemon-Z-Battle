@@ -8,6 +8,15 @@ export interface ActiveSourceAutorun {
   readonly pageIndex: number;
 }
 
+export function findSourceMapEntryAutorun(events: readonly ImportedMapEvent[], mapId: number,
+  state: SourceEventState): ActiveSourceAutorun | null {
+  for (const event of [...events].sort((left, right) => left.id - right.id)) {
+    const active = selectActiveEventPage(event, mapId, state);
+    if (active?.page.settings.trigger === 3) return { event, ...active };
+  }
+  return null;
+}
+
 export function findNewlyActivatedSourceAutorun(events: readonly ImportedMapEvent[], mapId: number,
   previousState: SourceEventState, nextState: SourceEventState): ActiveSourceAutorun | null {
   for (const event of events) {

@@ -1,5 +1,5 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, importedCameraPosition, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -10,13 +10,15 @@ import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration } from "./source-npc-motion.js";
-import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun } from "./source-autorun.js";
+import { finalDirectSourceTransfer, findNewlyActivatedSourceAutorun, findSourceMapEntryAutorun,
+  type ActiveSourceAutorun } from "./source-autorun.js";
 import { resolveEventFlow } from "./source-event-flow.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
 import { isSourceStateCommand } from "./source-command-registry.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
+import { SourceScenePresentation } from "./source-scene-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   type SourceWorldSave } from "./source-world-save.js";
 import "./style.css";
@@ -55,6 +57,7 @@ interface SourceSequenceSession {
   readonly onComplete?: () => void;
 }
 let sourceSequence: SourceSequenceSession | null = null;
+let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
 
@@ -121,13 +124,8 @@ function compileAndReportSourceScene(page: ImportedEventPage, label: string): So
   return plan;
 }
 
-function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextState: SourceEventState): boolean {
-  if (importedAssets === null || sourceSequence !== null || sourceDialogues.current !== null
-    || sourceTransitionInProgress || sourceBattles.active) return false;
-  const autorun = findNewlyActivatedSourceAutorun(
-    sourceMapEvents(), importedAssets.map.id, previousState, nextState,
-  );
-  if (autorun === null) return false;
+function beginSourceAutorun(autorun: ActiveSourceAutorun): boolean {
+  if (importedAssets === null || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
   const flow = resolveEventFlow(autorun.page, [], sourceEventState, importedAssets.map.id, autorun.event.id,
     { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
   if (!flow.complete) {
@@ -141,6 +139,22 @@ function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextS
   importedNotice = `Événement automatique ${autorun.event.id} démarré.`;
   void advanceSourceSequence();
   return true;
+}
+
+function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextState: SourceEventState): boolean {
+  if (importedAssets === null) return false;
+  const autorun = findNewlyActivatedSourceAutorun(
+    sourceMapEvents(), importedAssets.map.id, previousState, nextState,
+  );
+  return autorun !== null && beginSourceAutorun(autorun);
+}
+
+function beginPendingSourceMapEntryAutorun(): boolean {
+  if (importedAssets === null || pendingSourceMapEntryAutorun !== importedAssets.map.id
+    || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
+  pendingSourceMapEntryAutorun = null;
+  const autorun = findSourceMapEntryAutorun(sourceMapEvents(), importedAssets.map.id, sourceEventState);
+  return autorun !== null && beginSourceAutorun(autorun);
 }
 
 function sourcePlayerRouteActor(): SourceRouteActor {
@@ -262,6 +276,7 @@ async function advanceSourceSequence(): Promise<void> {
         await sequence.runner.waitForMovement();
         continue;
       }
+      if (await sourcePresentation.execute(command, (milliseconds) => sequence.runner.delay(milliseconds))) continue;
       if (command.kind === "wait" && typeof command.data.frames === "number" && command.data.frames > 0) {
         await sequence.runner.delay(command.data.frames * 25);
       }
@@ -272,6 +287,7 @@ async function advanceSourceSequence(): Promise<void> {
       importedNotice = "Séquence automatique terminée.";
       renderImportedView();
       sequence.onComplete?.();
+      queueMicrotask(beginPendingSourceMapEntryAutorun);
     }
   } finally {
     sequence.advancing = false;
@@ -285,7 +301,7 @@ root.innerHTML = `
   <main>
     <section class="world-panel">
       <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button id="open-source-menu">Menu</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
-      <div class="canvas-shell"><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-dialogue" class="source-dialogue" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
+      <div class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
         <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
           <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
           <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
@@ -335,6 +351,37 @@ const drawingContext = canvasElement.getContext("2d");
 if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
 const canvas: HTMLCanvasElement = canvasElement;
 const context: CanvasRenderingContext2D = drawingContext;
+const presentationElement = (id: string): HTMLElement => {
+  const element = document.getElementById(id);
+  if (element === null) throw new Error(`Élément de présentation absent : ${id}.`);
+  return element;
+};
+function resolveSourceAnimationTarget(target: number): { x: number; bottom: number; height: number } | null {
+  if (importedAssets === null) return null;
+  const now = performance.now();
+  const playerPose = importedPlayerMotion === null ? importedAvatar : sampleSourceGridMotion(importedPlayerMotion, now);
+  const camera = importedCameraPosition(canvas, importedAssets.map, playerPose, sourcePresentation.currentCameraOffset());
+  if (target === -1) return { x: playerPose.x * 32 + 16 - camera.x, bottom: playerPose.y * 32 + 32 - camera.y,
+    height: importedAssets.playerImage.naturalHeight / 4 };
+  const eventId = target === 0 ? sourceSequence?.eventId : target;
+  if (eventId === undefined) return null;
+  const event = importedAssets.events.find((candidate) => candidate.id === eventId);
+  if (event === undefined) return null;
+  const page = selectEventPage(event, importedAssets.map.id, sourceEventState);
+  if (page === null) return null;
+  const pose = sourceNpcMotions.poses(now).get(eventId);
+  const x = pose?.x ?? event.x;
+  const y = pose?.y ?? event.y;
+  const image = importedAssets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
+  return { x: x * 32 + 16 - camera.x, bottom: y * 32 + 32 - camera.y,
+    height: image === undefined ? 32 : image.naturalHeight / 4 };
+}
+const sourcePresentation = new SourceScenePresentation({
+  panorama: presentationElement("source-panorama-layer"), fog: presentationElement("source-fog-layer"),
+  pictures: presentationElement("source-picture-layer"), tone: presentationElement("source-tone-layer"),
+  flash: presentationElement("source-flash-layer"), animations: presentationElement("source-map-animation-layer"),
+  dialogue: presentationElement("source-dialogue"),
+}, sourceMenuVolume() / 100, { resolveAnimationTarget: resolveSourceAnimationTarget });
 const sourceBattleVisuals = new SourceBattleVisuals();
 const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   getEventState: () => sourceEventState,
@@ -470,11 +517,11 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  if (!sourceScenes.menuOpen && sourceSequence === null && sourceDialogues.current === null
-    && !sourceTransitionInProgress && !sourceBattles.active) {
+  if (sourceScenes.allows("ambient-motion", sourceSceneActivity())) {
     sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
   }
-  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now));
+  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now),
+    sourcePresentation.currentCameraOffset());
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
     if (sourceSequence === null) finishImportedStep();
@@ -553,10 +600,11 @@ function renderSourceMenu(): void {
     content.querySelector<HTMLButtonElement>("#delete-source-world")?.addEventListener("click", deleteSourceWorldSave);
   } else {
     const volume = sourceMenuVolume();
-    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list"><label><span><strong>Volume général</strong><small>La préférence est prête pour les futurs effets audio.</small></span><output id="source-volume-value">${volume}%</output><input id="source-volume" type="range" min="0" max="100" value="${volume}"></label><article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list"><label><span><strong>Volume général</strong><small>Contrôle les musiques et effets des cinématiques.</small></span><output id="source-volume-value">${volume}%</output><input id="source-volume" type="range" min="0" max="100" value="${volume}"></label><article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
     content.querySelector<HTMLInputElement>("#source-volume")?.addEventListener("input", (event) => {
       const input = event.currentTarget as HTMLInputElement;
       localStorage.setItem("pokemon-z-battle.options.volume.v1", input.value);
+      sourcePresentation.setMasterVolume(Number(input.value) / 100);
       const output = content.querySelector<HTMLOutputElement>("#source-volume-value");
       if (output !== null) output.value = `${input.value}%`;
     });
@@ -602,7 +650,7 @@ function renderImportedView(): void {
   document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.classList.toggle("active", button.dataset.map === viewedMapId));
   document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
   const reset = document.querySelector<HTMLButtonElement>("#reset"); if (reset !== null) {
-    reset.disabled = sourceScenes.menuOpen || sourceBattle !== null || sourceSequence !== null;
+    reset.disabled = !sourceScenes.allows("scene-change", sourceSceneActivity());
     reset.textContent = sourceEventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
   }
   const create = document.querySelector<HTMLButtonElement>("#create-room"); if (create !== null) create.disabled = true;
@@ -665,7 +713,7 @@ function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
     return;
   }
   const menuButton = document.querySelector<HTMLButtonElement>("#open-source-menu"); if (menuButton !== null) {
-    menuButton.disabled = !sourceScenes.menuOpen && sourceScenes.mode(sourceSceneActivity()) !== "overworld";
+    menuButton.disabled = !sourceScenes.menuOpen && !sourceScenes.allows("scene-change", sourceSceneActivity());
     menuButton.textContent = sourceScenes.menuOpen ? "Fermer le menu" : "Menu";
   }
   const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
@@ -745,7 +793,7 @@ function sourceDirectionNumber(direction: Direction): number {
 }
 
 async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
-  if (sourceTransitionInProgress) return;
+  if (!sourceScenes.allows("source-transfer", sourceSceneActivity())) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
@@ -753,6 +801,8 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   try {
     const next = await loadImportedMap(transfer.targetMapId);
     importedAssets = next;
+    pendingSourceMapEntryAutorun = next.map.id;
+    sourcePresentation.resetMapPresentation();
     sourceNpcMotions.reset(next.map.id, next.events, performance.now());
     importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
     importedPlayerMotion = null;
@@ -764,10 +814,11 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     sourceTransitionInProgress = false;
     renderImportedView();
   }
+  if (sourceSequence === null) queueMicrotask(beginPendingSourceMapEntryAutorun);
 }
 
 async function resetSourceWorld(): Promise<void> {
-  if (sourceScenes.menuOpen || sourceSequence !== null || sourceTransitionInProgress || sourceBattles.active) return;
+  if (!sourceScenes.allows("scene-change", sourceSceneActivity())) return;
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
   const checkpoint = sourceEventState.checkpoint;
@@ -775,6 +826,7 @@ async function resetSourceWorld(): Promise<void> {
   renderImportedView();
   try {
     importedAssets = checkpoint === null ? await loadImportedMap003() : await loadImportedMap(checkpoint.mapId);
+    sourcePresentation.resetMapPresentation();
     sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
     importedAvatar = checkpoint === null ? { x: 28, y: 15, direction: "up" }
       : { x: checkpoint.x, y: checkpoint.y, direction: checkpoint.direction };
@@ -791,7 +843,7 @@ async function resetSourceWorld(): Promise<void> {
 }
 
 async function openStarterTest(): Promise<void> {
-  if (sourceScenes.menuOpen || sourceSequence !== null || sourceTransitionInProgress || multiplayer.active || sourceBattles.active) return;
+  if (!sourceScenes.allows("scene-change", sourceSceneActivity()) || multiplayer.active) return;
   if (sourceEventState.party.members.length > 0) {
     importedNotice = "Un starter a déjà été choisi : les autres socles restent verrouillés.";
     render();
@@ -804,6 +856,7 @@ async function openStarterTest(): Promise<void> {
     sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
     persistSourceEventState();
     importedAssets = await loadImportedMap(2);
+    sourcePresentation.resetMapPresentation();
     sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
     importedAvatar = { x: 52, y: 22, direction: "up" };
     importedPlayerMotion = null;
@@ -921,8 +974,7 @@ function renderEncounter(): void {
 function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
-    if (sourceScenes.menuOpen || sourceSequence !== null || sourceDialogues.current !== null || sourceTransitionInProgress
-      || sourceBattles.active || importedPlayerMotion !== null) return;
+    if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
     const events = sourceMapEvents();
     const eventAhead = eventInFront(events, importedAvatar, importedAssets.map.id, sourceEventState);
     const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
@@ -957,14 +1009,14 @@ function move(playerId: string, direction: Direction): void {
 
 function interact(playerId: AvatarId): void {
   if (viewedMapId === SOURCE_MAP_ID) {
-    if (sourceScenes.menuOpen || sourceBattles.active || importedPlayerMotion !== null) return;
-    if (sourceDialogues.current !== null) {
+    const activity = sourceSceneActivity();
+    if (sourceScenes.allows("dialogue-input", activity)) {
       const update = sourceDialogues.advance();
       applySourceDialogueUpdate(update);
       if (update.changed) renderImportedView();
       return;
     }
-    if (sourceSequence !== null) return;
+    if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
     const target = eventInFront(sourceMapEvents(), importedAvatar, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
@@ -1058,7 +1110,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button)
 }));
 document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
   const mapId = button.dataset.map;
-  if (mapId === undefined || sourceScenes.menuOpen || sourceSequence !== null || sourceBattles.active
+  if (mapId === undefined || !sourceScenes.allows("scene-change", sourceSceneActivity())
     || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
   viewedMapId = mapId;
   render();
@@ -1113,6 +1165,7 @@ async function initializeSourceWorld(): Promise<void> {
       importedNotice = "Sauvegarde de position ignorée car elle était inaccessible ; retour à Bourg Canvas.";
     }
     importedAssets = assets;
+    sourcePresentation.resetMapPresentation();
     sourceNpcMotions.reset(assets.map.id, assets.events, performance.now());
     if (sourceWorldSave !== null) {
       importedAvatar = { x: sourceWorldSave.x, y: sourceWorldSave.y, direction: sourceWorldSave.direction };

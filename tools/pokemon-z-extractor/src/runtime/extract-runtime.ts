@@ -11,6 +11,7 @@ import { extractMapInfos } from "./extract-map-infos.js";
 import { extractScripts } from "./extract-scripts.js";
 import { extractBattleAnimations } from "./extract-battle-animations.js";
 import { extractMapBattleMetadata } from "./extract-map-metadata.js";
+import { extractMapAnimations } from "./extract-map-animations.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -26,6 +27,7 @@ export interface RuntimeExtractionResult {
   readonly mapCount: number;
   readonly localizedTextCount: number;
   readonly battleAnimationCount: number;
+  readonly mapAnimationCount: number;
   readonly files: readonly string[];
 }
 
@@ -74,7 +76,7 @@ export async function extractRuntimeData(
 ): Promise<RuntimeExtractionResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await validatePokemonZSource(paths.source);
-  const [localization, maps, scripts, encounters, tableProbe, battleAnimations, mapBattleMetadata] = await Promise.all([
+  const [localization, maps, scripts, encounters, tableProbe, battleAnimations, mapBattleMetadata, mapAnimations] = await Promise.all([
     extractLocalization(paths.source, paths.output),
     extractMapInfos(paths.source),
     extractScripts(paths.source, paths.output),
@@ -82,6 +84,7 @@ export async function extractRuntimeData(
     probeMapTable(paths.source),
     extractBattleAnimations(paths.source, paths.output),
     extractMapBattleMetadata(paths.source),
+    extractMapAnimations(paths.source),
   ]);
   const mapIds = new Set(maps.map((entry) => entry.id));
   const missingEncounterMaps = encounters.records
@@ -97,7 +100,8 @@ export async function extractRuntimeData(
       line: entry._source.line,
     }));
   const sourceFiles = await Promise.all(
-    ["Data/messages.dat", "Data/french.dat", "Data/Scripts.rxdata", "Data/MapInfos.rxdata", ...battleAnimations.sourceFiles]
+    ["Data/messages.dat", "Data/french.dat", "Data/Scripts.rxdata", "Data/MapInfos.rxdata",
+      ...battleAnimations.sourceFiles, ...mapAnimations.sourceFiles]
       .map(async (file) => ({ file, sha256: await hashFile(path.join(paths.source, ...file.split("/"))) })),
   );
   const scriptsManifest = {
@@ -125,6 +129,7 @@ export async function extractRuntimeData(
       missingEncounterMaps: missingEncounterMaps.length,
       encounterMapNameDifferences: encounterMapNameDifferences.length,
       normalizedBattleAnimations: battleAnimations.catalog.animations.length,
+      normalizedMapAnimations: mapAnimations.animations.length,
     },
     tableProbe,
     missingEncounterMaps,
@@ -143,6 +148,11 @@ export async function extractRuntimeData(
       mappings: battleAnimations.catalog.mappings,
       animations: battleAnimations.catalog.animations,
     }),
+    writeJsonAtomically(paths.output, "map-animations.json", {
+      schemaVersion: "1.0.0",
+      coordinateSystem: { cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
+      animations: mapAnimations.animations,
+    }),
   ]);
   return {
     outputDirectory: paths.output,
@@ -150,6 +160,7 @@ export async function extractRuntimeData(
     mapCount: maps.length,
     localizedTextCount: localization.report.summary.entries,
     battleAnimationCount: battleAnimations.catalog.animations.length,
+    mapAnimationCount: mapAnimations.animations.length,
     files,
   };
 }

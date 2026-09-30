@@ -24,4 +24,23 @@ describe("source scene coordinator", () => {
     scenes.openMenu(idle);
     expect(scenes.menuTab).toBe("bag");
   });
+
+  it.each(["world-input", "scene-change", "start-sequence"] as const)("only allows %s from an idle overworld", (action) => {
+    const scenes = new SourceSceneCoordinator();
+    expect(scenes.allows(action, idle)).toBe(true);
+    for (const key of ["dialogue", "battle", "transition", "sequence", "movement"] as const) {
+      expect(scenes.allows(action, { ...idle, [key]: true })).toBe(false);
+    }
+    scenes.openMenu(idle);
+    expect(scenes.allows(action, idle)).toBe(false);
+  });
+
+  it("separates dialogue input, ambient movement and scripted transfers", () => {
+    const scenes = new SourceSceneCoordinator();
+    expect(scenes.allows("dialogue-input", { ...idle, dialogue: true })).toBe(true);
+    expect(scenes.allows("world-input", { ...idle, dialogue: true })).toBe(false);
+    expect(scenes.allows("ambient-motion", { ...idle, movement: true })).toBe(true);
+    expect(scenes.allows("source-transfer", { ...idle, sequence: true })).toBe(true);
+    expect(scenes.allows("source-transfer", { ...idle, sequence: true, transition: true })).toBe(false);
+  });
 });

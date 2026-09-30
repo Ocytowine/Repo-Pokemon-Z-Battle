@@ -17,7 +17,10 @@ describe("source command registry", () => {
     ["show-text", "dialogue", "rendered", false],
     ["set-switches", "state", "executed", true],
     ["move-route", "movement", "rendered", false],
-    ["screen-tone", "audiovisual", "accepted", false],
+    ["screen-tone", "audiovisual", "rendered", false],
+    ["scroll-map", "audiovisual", "rendered", false],
+    ["show-animation", "audiovisual", "rendered", false],
+    ["text-options", "metadata", "rendered", false],
     ["move-route-continuation", "movement", "absorbed", false],
   ])("classifies %s once", (kind, family, support, state) => {
     expect(sourceCommandCapability(kind)).toMatchObject({ family, support });
@@ -36,8 +39,8 @@ describe("source command registry", () => {
     const event: ImportedMapEvent = { id: 5, name: "Christian", x: 1, y: 1, pages: [page([])] };
     const plan = compileSourceScene(page(commands), [event], new Set(["crisantow2"]));
     expect(plan.audit).toMatchObject({ commandCount: 3, routeTargets: [5], missingTargets: [],
-      characterAssets: ["crisantow2"], pendingPresentation: ["screen-tone"], complete: true });
-    expect(formatSourceSceneAudit(plan.audit)).toContain("rendu en attente: screen-tone");
+      characterAssets: ["crisantow2"], pendingPresentation: [], complete: true });
+    expect(formatSourceSceneAudit(plan.audit)).toContain("aucun rendu en attente");
   });
 
   it("fails the audit for unknown commands, invalid routes and missing actors", () => {
@@ -54,5 +57,13 @@ describe("source command registry", () => {
         { kind: "change-graphic", parameters: ["missing-sprite", 0, 2, 0] },
       ] } })]), [], new Set());
     expect(plan.audit).toMatchObject({ missingCharacterAssets: ["missing-sprite"], complete: false });
+  });
+
+  it("clears the EV017 presentation audit once every visual command is rendered", () => {
+    const rendered = ["screen-tone", "change-map-settings", "show-picture", "move-picture", "erase-picture",
+      "play-music", "play-sound", "fade-music"].map((kind) => command(kind));
+    const plan = compileSourceScene(page([...rendered, command("show-animation"), command("scroll-map"),
+      command("text-options")]));
+    expect(plan.audit.pendingPresentation).toEqual([]);
   });
 });

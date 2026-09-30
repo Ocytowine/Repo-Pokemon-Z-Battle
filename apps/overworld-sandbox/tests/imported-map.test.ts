@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -8,6 +8,38 @@ function map(masks: readonly number[]): ImportedMap {
 }
 
 describe("imported RPG Maker map", () => {
+  it("applies scripted camera offsets while respecting map edges", () => {
+    const largeMap = { width: 40, height: 30 };
+    expect(importedCameraPosition({ width: 576, height: 432 }, largeMap, { x: 20, y: 15 }, { x: 64, y: -32 }))
+      .toEqual({ x: 432, y: 248 });
+    expect(importedCameraPosition({ width: 576, height: 432 }, largeMap, { x: 0, y: 0 }, { x: -300, y: -300 }))
+      .toEqual({ x: 0, y: 0 });
+  });
+
+  it("orders priority tiles around characters like the RPG Maker tilemap", () => {
+    const character = sourceCharacterZ(10, 48);
+    expect(sourcePriorityTileZ(9, 1)).toBeLessThan(character);
+    expect(sourcePriorityTileZ(10, 1)).toBeGreaterThan(character);
+    expect(sourcePriorityTileZ(8, 3)).toBeGreaterThan(character);
+  });
+
+  it("honors the source noShadow event-name convention", () => {
+    expect(sourceEventHasShadow("Crisanto")).toBe(true);
+    expect(sourceEventHasShadow("carta/noShadow/")).toBe(false);
+  });
+
+  it("drops stale graphic overrides when an event changes page", () => {
+    const blankPage: ImportedMapEvent["pages"][number] = {
+      condition: { switch1Id: null, switch2Id: null, variable: { id: 55, minimum: 1 }, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 0 },
+      commands: [],
+    };
+    expect(eventPoseForActivePage({ x: 24, y: 16, direction: 6, pageIndex: 0,
+      characterName: "crisantow" }, blankPage, 1)).toEqual({ x: 24, y: 16, direction: 2, pageIndex: 1 });
+  });
+
   it("contains all 48 autotile compositions", () => {
     expect(AUTOTILE_PARTS).toHaveLength(48);
     expect(AUTOTILE_PARTS.flat()).toHaveLength(192);

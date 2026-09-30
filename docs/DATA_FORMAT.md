@@ -332,6 +332,20 @@ Cette sortie ne pretend pas encore supporter toutes les animations indexees. Une
 association non developpee reste dans `mappings`, mais son contenu graphique n'est
 pas duplique dans `animations`; le sandbox utilise alors son effet generique.
 
+## Animations de carte
+
+`map-animations.json` normalise les 100 entrees de `Data/Animations.rxdata`. Chaque
+animation conserve son ID RPG Maker, sa planche sous `Graphics/Animations/`, sa
+position par rapport au personnage cible, ses cellules et ses timings sonores ou
+lumineux. Une cellule expose motif, coordonnees, zoom, angle, miroir, opacite et
+mode de fusion ; les planches utilisent des cellules de 192 pixels sur cinq
+colonnes et sont lues a 20 images/seconde.
+
+Les commandes `show-animation` referencent ce catalogue par ID. La cible `-1`
+represente le joueur, `0` l'evenement courant et une valeur positive l'evenement de
+ce numero. Les entrees reservees sans planche restent presentes afin de conserver
+les IDs source, sans inventer d'asset.
+
 ## Manifeste des assets
 
 `asset-manifest.json` indexe les 18 455 fichiers de `Graphics/` et `Audio/`, sans les

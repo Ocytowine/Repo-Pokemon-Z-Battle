@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-09-29.
+Derniere mise a jour : 2026-09-30.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -18,17 +18,13 @@ structure de la commande source permet une detection generique.
 
 ## Etat Git au moment de cette note
 
-Le dernier commit connu est `a2768bd feat(overworld): animate source NPCs`. Le
-worktree contient un lot non commite important pour la fin de l'increment 9.7 :
+Le dernier commit connu est `7b21605 Ajout : Combat Canva principal et recentrage
+sprite`. Le worktree contient les lots non commites des douzieme, treizieme et
+quatorzieme noyaux 9.7 : politique des controles centralisee, couche audiovisuelle
+des cinematiques, camera scriptable, animations de carte, tests et documentation.
 
-- autorun post-combat et correction de sa selection ;
-- routes imposees et mouvements de cinematique ;
-- registre des commandes, plan et audit de scene ;
-- ordonnanceur `SourceSequenceRunner` ;
-- tests et mise a jour de la roadmap.
-
-Ne pas supprimer ou restaurer ces fichiers pour repartir du dernier commit. Le
-porteur du projet prefere effectuer lui-meme les commits apres validation manuelle.
+Le porteur du projet prefere effectuer lui-meme les commits apres validation
+manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
 
 ## Ordre de travail convenu
 
@@ -78,7 +74,7 @@ inventories automatiquement par l'audit de scene decrit plus bas.
 
 ### 3. Gestionnaire de scenes — en cours
 
-Etat : premier parcours overworld/combat integre ; centralisation des drapeaux encore partielle.
+Etat : parcours overworld/combat integre ; politique des controles centralisee.
 
 - Le combat source est maintenant superpose au canvas overworld, au lieu d'etre
   rendu dans un panneau lateral independant.
@@ -89,10 +85,14 @@ Etat : premier parcours overworld/combat integre ; centralisation des drapeaux e
   `SpriteAutoAlign` : centre horizontal de la frame et dernier pixel visible pose
   sur la ligne de sol. Les bases utilisent egalement leurs coordonnees source.
 - `source-battle-layout.ts` contient les calculs purs et leurs tests de regression.
+- `SourceSceneCoordinator.allows(...)` est l'unique politique d'autorisation pour
+  les controles du monde, les dialogues, les changements de scene, les mouvements
+  ambiants et les transferts de cinematique. Les boutons et les entrees clavier
+  consultent les memes regles.
 
 Les briques existent (`SourceBattleController`, dialogues, sequences, chargement de
-cartes), mais leur coordination repose encore sur plusieurs drapeaux dans `main.ts` :
-dialogue, sequence, transition, mouvement et combat.
+cartes). Leurs donnees d'activite sont encore produites par plusieurs sous-systemes,
+mais les decisions de controle ne dupliquent plus leurs combinaisons dans `main.ts`.
 
 Objectif : introduire un coordinateur ou une machine d'etats explicite couvrant au
 minimum :
@@ -108,8 +108,11 @@ Criteres d'acceptation :
   d'application ou d'ecran independant ;
 - une transition visuelle masque proprement le changement de mode ;
 - la victoire, la defaite ou la fuite rendent la meme carte et la meme position ;
-- un seul mode possede les controles a un instant donne ;
-- le coordinateur remplace progressivement les gardes dupliques de `main.ts`.
+- un seul mode possede les controles a un instant donne : couvert par la politique
+  et ses tests tabulaires ;
+- le coordinateur remplace les gardes dupliques de `main.ts` pour les actions
+  utilisateur ; les mouvements de camera et animations de carte sont raccordes a
+  la couche de presentation.
 
 ### 4. Menu en jeu minimal — fonctionnel
 
@@ -123,7 +126,8 @@ Etat : perimetre minimal termine ; validation manuelle a effectuer.
 - Sauvegarde enregistre manuellement carte, position, direction et date. Le lancement
   suivant recharge cette carte et cette position ; une donnee invalide revient
   proprement a Bourg Canvas.
-- Options memorise le volume choisi, sans encore le raccorder aux lecteurs audio.
+- Options memorise le volume choisi et le raccorde aux musiques et effets des
+  cinematiques. Le lecteur audio du combat conserve encore son reglage propre.
 - Le visuel reutilise les assets locaux `partybg.png`, `partyBall.PNG`,
   `bagPocket*.png` et `pause.png`, avec un repli CSS structurel.
 
@@ -151,7 +155,9 @@ Etat actuel :
 - contact joueur/evenement : partiel, notamment pour les transferts ;
 - autorun d'entree sur une carte : a generaliser ;
 - evenements paralleles : a faire ;
-- images, fondus, camera et audio de cinematique : reconnus mais partiels ou absents.
+- tonalite, flash, panorama, brouillard, images, musique et sons de cinematique :
+  rendus par `SourceScenePresentation` ;
+- camera scriptable, animations de carte et options de boite de texte : rendues.
 
 Ne pas lancer aveuglement le premier autorun actif d'une carte. `Map002` contient
 par exemple un autorun d'introduction inconditionnel et un autorun post-combat. Lors
@@ -189,22 +195,47 @@ Audit actuel observe pour `EV017` :
 
 ```text
 145 commandes · 15 dialogues · 64 commandes de mouvement
-rendu en attente:
-screen-tone, change-map-settings, show-animation, play-music,
-show-picture, move-picture, play-sound, erase-picture,
-scroll-map, fade-music, text-options
+aucun rendu en attente
 ```
 
 L'absence de `erreurs:` signifie que les routes, acteurs et sprites requis sont
 coherents. Les 64 entrees de mouvement comprennent les routes, leurs continuations
 et les barrieres ; ce ne sont pas 64 deplacements distincts.
 
-Prochain travail audiovisuel recommande, apres ou dans le gestionnaire de scenes :
+`SourceScenePresentation` rend maintenant `screen-tone`, `screen-flash`, les deux
+variantes observees de `change-map-settings` (panorama et brouillard), `show-picture`,
+`move-picture`, `erase-picture`, `play-music`, `play-sound` et `fade-music`. Les
+images utilisent le repere RPG Maker 512 x 384 et les fichiers audio essaient les
+extensions OGG, WAV et MP3. Le volume du menu pilote ces pistes de cinematique.
 
-1. `screen-tone` et `change-map-settings` ;
-2. `show-picture`, `move-picture`, `erase-picture` ;
-3. `play-music`, `play-sound`, `fade-music` ;
-4. `scroll-map`, `show-animation`, puis `text-options`.
+Le defilement de camera respecte direction, distance et vitesse RPG Maker sans
+bloquer les dialogues. `show-animation` lit les 100 animations normalisees depuis
+`map-animations.json`, les place sur le joueur ou l'evenement cible et joue leurs
+sons et flashs. `text-options` applique les positions haute, centrale et basse,
+ainsi que le mode transparent. L'audit d'EV017 ne signale donc plus aucun rendu en
+attente.
+
+Les images de cinematique sont composees au-dessus de la tonalite d'ecran : une
+tonalite noire peut donc masquer la carte sans cacher les portraits et cartons de
+chapitre. Apres un transfert commande par une sequence, le premier `autorun` actif
+de la carte d'arrivee est lance dans l'ordre des identifiants. Le transfert final
+d'EV017 enchaine ainsi sur l'evenement `crisanto` de Map003, qui restaure la
+tonalite au lieu de laisser la carte noire.
+
+Le rendu de carte utilise maintenant les `priorities` du tileset selon la formule
+RPG Maker XP. Les tuiles de toit et de cime peuvent donc repasser devant un acteur
+selon sa ligne. Une ombre de contact est dessinee sous les charsets du joueur et
+des PNJ ; la convention source `/noShadow/` dans le nom d'un evenement la retire
+pour les portes, objets et effets qui ne doivent pas en recevoir.
+
+Lorsqu'une commande d'etat active une autre page d'evenement, sa nouvelle apparence
+prime immediatement sur les substitutions de sprite conservees par une ancienne
+route. La position logique reste preservee, mais un PNJ dont la nouvelle page est
+vide disparait bien. Cette synchronisation corrige notamment Crisanto apres sa
+marche vers la droite dans la scene d'arrivee de Map003.
+
+Prochain travail audiovisuel possible : `play-cry`, `play-jingle` et
+`play-background-sound`, encore acceptes mais non rendus.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -219,7 +250,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 209 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 230 tests et passe avec le build.
 
 ## Commandes utiles
 

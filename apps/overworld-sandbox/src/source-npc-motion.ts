@@ -1,7 +1,7 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type ImportedMap,
   type ImportedMapEvent } from "./imported-map.js";
-import type { SourceEventState } from "./source-event-state.js";
+import { selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import type { SourceRouteActor } from "./source-move-route.js";
 
@@ -16,6 +16,7 @@ interface NpcRuntime {
   characterName?: string;
   opacity?: number;
   pattern?: number;
+  pageIndex: number | null;
 }
 
 const DIRECTIONS: readonly Direction[] = ["down", "left", "right", "up"];
@@ -66,6 +67,7 @@ export class SourceNpcMotionController {
       nextMoveAt: now + sourceNpcMoveDelay(event.pages[0]?.settings.moveFrequency ?? 3),
       randomState: (Math.imul(mapId, 0x9e37_79b1) ^ Math.imul(event.id, 0x85eb_ca6b)) >>> 0,
       walkingPattern: 1,
+      pageIndex: null,
     }));
   }
 
@@ -74,8 +76,16 @@ export class SourceNpcMotionController {
     if (this.mapId !== map.id) this.reset(map.id, events, now);
     for (const event of events) {
       const runtime = this.runtimes.get(event.id);
-      const page = selectEventPage(event, map.id, state);
-      if (runtime === undefined || page === null) continue;
+      const selection = selectActiveEventPage(event, map.id, state);
+      const page = selection?.page ?? null;
+      if (runtime === undefined || page === null || selection === null) continue;
+      if (runtime.pageIndex !== selection.pageIndex) {
+        runtime.pageIndex = selection.pageIndex;
+        runtime.direction = directionName(page.graphic.direction);
+        delete runtime.characterName;
+        delete runtime.opacity;
+        delete runtime.pattern;
+      }
       if (runtime.motion !== null) {
         if (sampleSourceGridMotion(runtime.motion, now).complete) {
           runtime.motion = null;
@@ -115,9 +125,17 @@ export class SourceNpcMotionController {
     now: number): SourceRouteActor | null {
     if (this.mapId !== mapId) this.reset(mapId, events, now);
     const event = events.find((candidate) => candidate.id === eventId);
-    const page = event === undefined ? null : selectEventPage(event, mapId, state);
+    const selection = event === undefined ? null : selectActiveEventPage(event, mapId, state);
+    const page = selection?.page ?? null;
     const runtime = this.runtimes.get(eventId);
-    if (event === undefined || page === null || runtime === undefined) return null;
+    if (event === undefined || page === null || selection === null || runtime === undefined) return null;
+    if (runtime.pageIndex !== selection.pageIndex) {
+      runtime.pageIndex = selection.pageIndex;
+      runtime.direction = directionName(page.graphic.direction);
+      delete runtime.characterName;
+      delete runtime.opacity;
+      delete runtime.pattern;
+    }
     return {
       x: runtime.x, y: runtime.y, direction: runtime.direction,
       moveSpeed: page.settings.moveSpeed, moveFrequency: page.settings.moveFrequency,
@@ -155,6 +173,7 @@ export class SourceNpcMotionController {
         x: sampled?.x ?? runtime.x,
         y: sampled?.y ?? runtime.y,
         direction: directionNumber(runtime.direction),
+        ...(runtime.pageIndex === null ? {} : { pageIndex: runtime.pageIndex }),
         ...(sampled === null ? runtime.pattern === undefined ? {} : { pattern: runtime.pattern }
           : { pattern: sampled.pattern }),
         ...(runtime.characterName === undefined ? {} : { characterName: runtime.characterName }),
