@@ -251,6 +251,7 @@ export class SourceScenePresentation {
     }
     if (command.kind === "play-music") return this.playMusic(command.data);
     if (command.kind === "play-sound") return this.playSound(command.data);
+    if (command.kind === "play-jingle") return this.playJingle(command.data);
     if (command.kind === "play-cry") return this.playCry(command.data);
     if (command.kind === "fade-music") return this.fadeMusic(command.data);
     if (command.kind === "scroll-map") return this.scrollMap(command.data);
@@ -362,6 +363,18 @@ export class SourceScenePresentation {
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
     void this.playCandidates(managed.audio, "SE", state.name, this.audioSession)
+      .then((played) => { if (!played) this.oneShots.delete(managed); });
+    return true;
+  }
+
+  private playJingle(data: Readonly<Record<string, unknown>>): boolean {
+    const state = parseSourceAudio(data);
+    if (state === null) return false;
+    if (state.name === "") return true;
+    const managed = this.createAudio(state, false);
+    this.oneShots.add(managed);
+    managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+    void this.playCandidates(managed.audio, "ME", state.name, this.audioSession)
       .then((played) => { if (!played) this.oneShots.delete(managed); });
     return true;
   }
@@ -535,7 +548,7 @@ export class SourceScenePresentation {
     return { audio, sourceVolume: state.volume };
   }
 
-  private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "SE", name: string, session: number): Promise<boolean> {
+  private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "SE" | "ME", name: string, session: number): Promise<boolean> {
     const names = /\.[a-z0-9]+$/iu.test(name) ? [name] : [name + ".ogg", name + ".wav", name + ".mp3"];
     for (const candidate of names) {
       if (folder === "BGM" && session !== this.audioSession) return false;

@@ -1,5 +1,5 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, importedCameraPosition, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, importedCameraPosition, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -53,6 +53,7 @@ interface SourceSequenceSession {
   readonly translations: ReadonlyMap<string, string>;
   cursor: number;
   advancing: boolean;
+  autorunBaseline?: SourceEventState;
   readonly runner: SourceSequenceRunner;
   readonly onComplete?: () => void;
 }
@@ -101,9 +102,8 @@ function checkSourceWildEncounter(): boolean {
 function finishImportedStep(): void {
   if (importedAssets === null) return;
   const entered = activeEventAt(sourceMapEvents(), importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
-  const enteredTransfer = entered === null ? null : transferForEvent(importedAssets.map, entered);
-  if (entered !== null && enteredTransfer !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
-    void followSourceTransfer(enteredTransfer);
+  if (entered !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
+    beginSourceSequence(entered, `Événement de contact ${entered.event.id} · ${entered.event.name}`);
     return;
   }
   if (checkSourceWildEncounter()) return;
@@ -124,26 +124,29 @@ function compileAndReportSourceScene(page: ImportedEventPage, label: string): So
   return plan;
 }
 
-function beginSourceAutorun(autorun: ActiveSourceAutorun): boolean {
+function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolean {
   if (importedAssets === null || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
-  const flow = resolveEventFlow(autorun.page, [], sourceEventState, importedAssets.map.id, autorun.event.id,
+  const flow = resolveEventFlow(active.page, [], sourceEventState, importedAssets.map.id, active.event.id,
     { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
   if (!flow.complete) {
-    importedNotice = `Événement automatique ${autorun.event.id} bloqué : ${flow.blockedReason ?? "séquence incomplète"}.`;
+    importedNotice = `${label} bloqué : ${flow.blockedReason ?? "séquence incomplète"}.`;
     return false;
   }
-  const plan = compileAndReportSourceScene(flow.page, autorun.event.name);
+  const plan = compileAndReportSourceScene(flow.page, active.event.name);
   if (!plan.audit.complete) {
-    importedNotice = `Événement automatique ${autorun.event.id} bloqué par l'audit de scène.`;
+    importedNotice = `${label} bloqué par l'audit de scène.`;
     renderImportedView();
     return false;
   }
-  sourceSequence = { label: `Événement automatique ${autorun.event.id} · ${autorun.event.name}`,
-    mapId: importedAssets.map.id, eventId: autorun.event.id, plan,
+  sourceSequence = { label, mapId: importedAssets.map.id, eventId: active.event.id, plan,
     translations: importedAssets.mapTranslations, cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
-  importedNotice = `Événement automatique ${autorun.event.id} démarré.`;
+  importedNotice = `${label} démarré.`;
   void advanceSourceSequence();
   return true;
+}
+
+function beginSourceAutorun(autorun: ActiveSourceAutorun): boolean {
+  return beginSourceSequence(autorun, `Événement automatique ${autorun.event.id} · ${autorun.event.name}`);
 }
 
 function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextState: SourceEventState): boolean {
@@ -224,10 +227,12 @@ async function advanceSourceSequence(): Promise<void> {
   const sequence = sourceSequence;
   if (sequence === null || sequence.advancing || sourceDialogues.current !== null) return;
   sequence.advancing = true;
+  let currentCommand = "initialisation";
   try {
     while (sourceSequence === sequence && sequence.cursor < sequence.plan.steps.length) {
       const command = sequence.plan.steps[sequence.cursor]?.command;
       if (command === undefined) break;
+      currentCommand = command.kind;
       if (command.kind === "show-text") {
         const dialogueCommands: ImportedEventPage["commands"][number][] = [command];
         sequence.cursor += 1;
@@ -244,6 +249,7 @@ async function advanceSourceSequence(): Promise<void> {
       }
       sequence.cursor += 1;
       if (isSourceStateCommand(command.kind)) {
+        const previousState = sourceEventState;
         const result = applySafeStateCommands(sourceEventState, { ...sequence.plan.page, commands: [command] }, sequence.mapId,
           sequence.eventId, { checkpoint: { mapId: sequence.mapId, x: importedAvatar.x, y: importedAvatar.y,
             direction: importedAvatar.direction }, createPokemon: (species, level) => {
@@ -256,6 +262,7 @@ async function advanceSourceSequence(): Promise<void> {
           renderImportedView();
           return;
         }
+        sequence.autorunBaseline ??= previousState;
         sourceEventState = result.state;
         persistSourceEventState();
         renderImportedView();
@@ -265,6 +272,38 @@ async function advanceSourceSequence(): Promise<void> {
         }
         continue;
       }
+      if (command.kind === "request-trainer-battle") {
+        if (importedAssets === null || typeof command.data.trainerType !== "string"
+          || typeof command.data.trainerName !== "string" || !Number.isInteger(command.data.version)) {
+          importedNotice = "Séquence interrompue : combat de Dresseur invalide.";
+          sourceSequence = null;
+          renderImportedView();
+          return;
+        }
+        const trainer = importedAssets.trainers.find((candidate) => candidate.trainerType === command.data.trainerType
+          && candidate.name === command.data.trainerName && candidate.version === command.data.version);
+        const trainerType = importedAssets.trainerTypes.find((candidate) => candidate.internalName === command.data.trainerType);
+        if (trainer === undefined || trainerType === undefined) {
+          importedNotice = "Séquence interrompue : équipe ou classe de Dresseur introuvable.";
+          sourceSequence = null;
+          renderImportedView();
+          return;
+        }
+        const started = sourceBattles.startTrainerBattle(trainer, {
+          battleMusic: trainerType.battleBgm ?? importedAssets.wildBattleBgm,
+          victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
+        }, (won) => {
+          if (sourceSequence !== sequence) return;
+          if (!won) sequence.cursor = sequence.plan.steps.length;
+          void advanceSourceSequence();
+        });
+        if (!started) {
+          importedNotice = "Séquence interrompue : le combat de Dresseur n'a pas pu démarrer.";
+          sourceSequence = null;
+          renderImportedView();
+        }
+        return;
+      }
       if (command.kind === "transfer-player") {
         const transfer = finalDirectSourceTransfer([command], sequence.eventId, 0, importedAvatar);
         if (transfer === null) {
@@ -272,6 +311,16 @@ async function advanceSourceSequence(): Promise<void> {
           sourceSequence = null;
           renderImportedView();
           return;
+        }
+        if (importedAssets?.map.id === transfer.targetMapId) {
+          importedAvatar = { x: transfer.targetX, y: transfer.targetY,
+            direction: importedDirection(transfer.direction, importedAvatar.direction) };
+          importedPlayerMotion = null;
+          heldMovementKeys.clear();
+          sourcePresentation.resetMapPresentation();
+          sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
+          renderImportedView();
+          continue;
         }
         await followSourceTransfer(transfer);
         continue;
@@ -291,11 +340,20 @@ async function advanceSourceSequence(): Promise<void> {
     }
     if (sourceSequence === sequence) {
       await sequence.runner.waitForMovement();
+      const autorunBaseline = sequence.autorunBaseline;
       sourceSequence = null;
       importedNotice = "Séquence automatique terminée.";
       renderImportedView();
       sequence.onComplete?.();
-      queueMicrotask(beginPendingSourceMapEntryAutorun);
+      const activated = autorunBaseline !== undefined && importedAssets?.map.id === sequence.mapId
+        && beginNewlyActivatedSourceAutorun(autorunBaseline, sourceEventState);
+      if (!activated) queueMicrotask(beginPendingSourceMapEntryAutorun);
+    }
+  } catch (error) {
+    if (sourceSequence === sequence) {
+      sourceSequence = null;
+      importedNotice = `Séquence interrompue sur ${currentCommand} : ${error instanceof Error ? error.message : "erreur inattendue"}.`;
+      renderImportedView();
     }
   } finally {
     sequence.advancing = false;
@@ -650,7 +708,10 @@ function renderImportedView(): void {
     const encounterLabel = pendingEncounter === null ? "aucune" : sourceBattle === null
       ? `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en attente <button id="start-source-encounter">Lancer</button>`
       : `${speciesName(pendingEncounter.species)} N.${pendingEncounter.level} en cours`;
-    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p>${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
+    const sequenceStatus = sourceSequence === null ? "aucune" : `${sourceSequence.label} · étape ${sourceSequence.cursor}/${sourceSequence.plan.steps.length}`
+      + ` · ${sourceSequence.plan.steps[sourceSequence.cursor]?.command.kind ?? "finalisation"}`
+      + ` · ${sourceSequence.runner.pendingRoutes} route(s)`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p><p><strong>Séquence</strong> ${escapeMenuText(sequenceStatus)}</p>${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
     progress.querySelector<HTMLButtonElement>("#start-source-encounter")?.addEventListener("click", startPendingSourceEncounter);
   }
   const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
@@ -807,9 +868,11 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
   renderImportedView();
   try {
-    const next = await loadImportedMap(transfer.targetMapId);
+    const current = importedAssets;
+    const changesMap = current === null || current.map.id !== transfer.targetMapId;
+    const next = changesMap ? await loadImportedMap(transfer.targetMapId) : current;
     importedAssets = next;
-    pendingSourceMapEntryAutorun = next.map.id;
+    if (changesMap) pendingSourceMapEntryAutorun = next.map.id;
     sourcePresentation.resetMapPresentation();
     sourceNpcMotions.reset(next.map.id, next.events, performance.now());
     importedAvatar = { x: transfer.targetX, y: transfer.targetY, direction: importedDirection(transfer.direction, importedAvatar.direction) };
@@ -984,10 +1047,11 @@ function move(playerId: string, direction: Direction): void {
     if (playerId !== "player") return;
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
     const events = sourceMapEvents();
-    const eventAhead = eventInFront(events, importedAvatar, importedAssets.map.id, sourceEventState);
-    const transferAhead = eventAhead === null ? null : transferForEvent(importedAssets.map, eventAhead);
-    if (eventAhead !== null && transferAhead !== null && eventAhead.page.settings.trigger === 1) {
-      void followSourceTransfer(transferAhead);
+    const facingAvatar = { ...importedAvatar, direction };
+    const eventAhead = playerTouchEventInDirection(events, importedAvatar, direction, importedAssets.map.id, sourceEventState);
+    if (eventAhead !== null) {
+      importedAvatar = facingAvatar;
+      beginSourceSequence(eventAhead, `Événement de contact ${eventAhead.event.id} · ${eventAhead.event.name}`);
       return;
     }
     const before = importedAvatar;

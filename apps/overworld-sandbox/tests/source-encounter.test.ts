@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
-import { attemptSourceEncounterEscape, createSourceEncounterBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
+import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { selectSourceBattleAnimation, selectSourceBattleAudio, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
 import { sourceBattleSpritePlacement } from "../src/source-battle-layout.js";
 
@@ -67,6 +67,14 @@ describe("source encounter bridge", () => {
     const stored = storeSourceEncounterParty(party, battle);
     expect(stored.members[0]?.moves[0]?.pp).toBe(34);
     expect(stored.members[0]?.hp).toBe(battle.teams.player.members[0]?.hp);
+  });
+
+  it("builds a trainer team from the extracted trainer definition", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "RIVAL", name: "Crisanto", version: 1,
+      pokemon: [{ species: "BIDOOF", level: 3, moves: ["TACKLE", null, null, null] }] }, catalog);
+    expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 3,
+      moves: [{ move: { internalName: "TACKLE" }, pp: 35 }] });
   });
 
   it("rejects an exhausted player move before consuming a turn", () => {

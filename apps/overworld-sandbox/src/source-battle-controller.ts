@@ -4,9 +4,11 @@ import {
   applyAutomaticReplacements,
   attemptSourceEncounterEscape,
   createSourceEncounterBattle,
+  createSourceTrainerBattle,
   resolveSourceEncounterTurn,
   settleSourceEncounter,
   storeSourceEncounterParty,
+  type SourceTrainerDefinition,
 } from "./source-encounter.js";
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
 
@@ -35,6 +37,11 @@ export interface SourceBattleCallbacks {
   readonly render: () => void;
 }
 
+export interface SourceTrainerBattleAudio {
+  readonly battleMusic: string | null;
+  readonly victoryMusic: string | null;
+}
+
 function encounterSeed(species: string, level: number): number {
   let seed = 0x5eed0000 ^ level;
   for (const character of species) seed = Math.imul(seed ^ character.codePointAt(0)!, 16_777_619);
@@ -46,6 +53,7 @@ export class SourceBattleController {
   private rng: SeededRandom | null = null;
   private escapeAttempts = 0;
   private resolving = false;
+  private trainerCompletion: ((won: boolean) => void) | null = null;
 
   public constructor(
     private readonly presentation: SourceBattlePresentation,
@@ -83,6 +91,30 @@ export class SourceBattleController {
       this.callbacks.setNotice(error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.");
     }
     this.callbacks.render();
+  }
+
+  public startTrainerBattle(trainer: SourceTrainerDefinition, audio: SourceTrainerBattleAudio,
+    onComplete: (won: boolean) => void): boolean {
+    const eventState = this.callbacks.getEventState();
+    const resources = this.callbacks.getResources();
+    if (resources === null || this.battle !== null) return false;
+    try {
+      this.battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog);
+      this.rng = new SeededRandom(encounterSeed(`${trainer.trainerType}:${trainer.name}`, trainer.version));
+      this.escapeAttempts = 0;
+      this.trainerCompletion = onComplete;
+      void this.presentation.startBattle(this.battle, audio);
+      this.callbacks.setNotice(`Combat de Dresseur lancé contre ${trainer.name}.`);
+    } catch (error) {
+      this.battle = null;
+      this.rng = null;
+      this.trainerCompletion = null;
+      this.callbacks.setNotice(error instanceof Error ? `Combat impossible : ${error.message}` : "Combat de Dresseur impossible.");
+      this.callbacks.render();
+      return false;
+    }
+    this.callbacks.render();
+    return true;
   }
 
   public renderVisuals(): void {
@@ -146,7 +178,8 @@ export class SourceBattleController {
         const resources = this.callbacks.getResources();
         const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
         let nextState = { ...eventState, party: settlement.party };
-        if (settlement.completed) nextState = completePendingEncounter(nextState);
+        const trainerCompletion = this.trainerCompletion;
+        if (trainerCompletion === null && settlement.completed) nextState = completePendingEncounter(nextState);
         this.callbacks.updateEventState(nextState);
         this.clear();
         const skippedMoves = settlement.experience?.skippedMoves.map((internalName) => resources?.catalog.moves
@@ -155,6 +188,7 @@ export class SourceBattleController {
         this.callbacks.setNotice(winner === "player"
           ? `Victoire : l'équipe a été sauvegardée${reward === null ? "." : ` · +${reward.amount} EXP${reward.levelsGained > 0 ? ` · +${reward.levelsGained} niveau(x)` : ""}.`}${skippedMoves.length === 0 ? "" : ` Capacité(s) en attente d'un choix : ${skippedMoves.join(", ")}.`}`
           : "Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.");
+        trainerCompletion?.(winner === "player");
       } else {
         const active = this.battle.teams.opponent.members[this.battle.teams.opponent.activeIndex];
         this.callbacks.setNotice(`Tour résolu${active === undefined ? "." : ` · ${active.name} possède encore ${active.hp} PV.`}`);
@@ -170,5 +204,6 @@ export class SourceBattleController {
   private clear(): void {
     this.battle = null;
     this.rng = null;
+    this.trainerCompletion = null;
   }
 }

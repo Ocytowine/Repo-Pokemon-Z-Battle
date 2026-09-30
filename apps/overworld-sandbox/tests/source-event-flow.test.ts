@@ -121,6 +121,20 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["runtime-noop", "show-text", "runtime-noop"]);
   });
 
+  it("turns a trainer-battle condition into a deferred sequence command", () => {
+    const result = resolveEventFlow(page([
+      command("condition", 0, { kind: "ruby-script",
+        script: "pbTrainerBattle(PBTrainers::CRISANTO1,\"Crisanto\",_I(\"Perdu\"),false,2,true)" }),
+      command("end", 1), command("else", 0), command("exit-event", 1), command("condition-end", 0),
+    ]), [], createSourceEventState(), 3, 28);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "request-trainer-battle",
+        data: expect.objectContaining({ trainerType: "CRISANTO1", trainerName: "Crisanto", version: 2 }) }),
+      expect.objectContaining({ kind: "end" }),
+    ]);
+  });
+
   it("stops before an unsupported command without exposing later dialogue", () => {
     const result = resolveEventFlow(page([command("show-text", 0, { text: "Avant" }), command("ruby-script", 0),
       command("show-text", 0, { text: "Après" })]), [], createSourceEventState(), 3, 1);

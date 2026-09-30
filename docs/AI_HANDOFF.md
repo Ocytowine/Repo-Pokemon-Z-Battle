@@ -18,10 +18,9 @@ structure de la commande source permet une detection generique.
 
 ## Etat Git au moment de cette note
 
-Le dernier commit connu est `7b21605 Ajout : Combat Canva principal et recentrage
-sprite`. Le worktree contient les lots non commites des douzieme, treizieme et
-quatorzieme noyaux 9.7 : politique des controles centralisee, couche audiovisuelle
-des cinematiques, camera scriptable, animations de carte, tests et documentation.
+Le dernier commit connu est `1b4b9d0 FIX : Histoire bloqué`. Le worktree contient
+le dix-septieme noyau 9.7 non commite : contact joueur, combat de Dresseur source
+contre Crisanto, reprise de la scene apres combat, tests et documentation.
 
 Le porteur du projet prefere effectuer lui-meme les commits apres validation
 manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
@@ -78,6 +77,9 @@ Etat : parcours overworld/combat integre ; politique des controles centralisee.
 
 - Le combat source est maintenant superpose au canvas overworld, au lieu d'etre
   rendu dans un panneau lateral independant.
+- Les combats de Dresseurs demandes par une condition source utilisent le meme
+  moteur et la meme transition, mais interdisent la fuite et reprennent la sequence
+  narrative avec le resultat du combat.
 - Un fondu masque l'entree et la sortie. La fin du combat attend le fondu avant de
   rendre les controles a l'overworld ; la carte et la position ne sont pas recreees.
 - Les actions, le message et les HUD font partie de la meme scene 4:3.
@@ -152,7 +154,9 @@ Etat actuel :
 - pages conditionnelles et choix : pris en charge pour le sous-ensemble converti ;
 - routes imposees et mouvements autonomes : pris en charge ;
 - autorun nouvellement active apres changement d'etat : pris en charge ;
-- contact joueur/evenement : partiel, notamment pour les transferts ;
+- contact joueur/evenement : pris en charge quand le joueur atteint la zone de
+  l'evenement, pour les transferts comme pour une sequence ; le contact initie par
+  un evenement autonome reste a completer ;
 - premier autorun actif apres un transfert de carte : pris en charge ;
 - evenements paralleles : a faire ;
 - tonalite, flash, panorama, brouillard, images, musique et sons de cinematique :
@@ -235,11 +239,11 @@ vide disparait bien. Cette synchronisation corrige notamment Crisanto apres sa
 marche vers la droite dans la scene d'arrivee de Map003.
 
 `play-cry` resout l'identifiant interne de l'espece dans `pokemon-assets.json` et
-lit son cri extrait. Prochain travail audiovisuel possible : `play-jingle` et
-`play-background-sound`, encore acceptes mais non rendus.
+lit son cri extrait. `play-jingle` lit maintenant les fichiers de `Audio/ME`.
+`play-background-sound` reste accepte mais non rendu.
 
-La scene d'entree du laboratoire, Map005 evenement `crisanto`, est le prochain
-jalon vertical valide par les donnees locales : 302 commandes resolues, 30
+La scene d'entree du laboratoire, Map005 evenement `crisanto`, est un jalon
+vertical valide par les donnees locales : 302 commandes resolues, 30
 dialogues, 182 commandes de mouvement et aucun rendu en attente. Les scripts Ruby
 fractionnes sur plusieurs commandes sont reunis avant portage. Les appels
 `dependentEvents.remove_sprite(true)` et `refresh_sprite`, propres au compagnon du
@@ -252,6 +256,52 @@ commandes de scene. Cela corrige l'interruption de Map005 au moment ou M. Mime
 saute hors du bocal : la route `play-sound`, `jump` se poursuit sans rendre les
 controles au joueur. Un autorun dont l'audit reste incomplet est maintenant refuse
 avant son demarrage, au lieu de pouvoir echouer au milieu de la cinematique.
+
+Le premier combat de Dresseur, Map003 evenement 28, constitue le dix-septieme
+noyau vertical. Une zone de contact non visible demarre sa sequence, puis les
+conditions Ruby `pbTrainerBattle` sont converties en demandes de combat differees.
+`trainers.json` fournit l'equipe correspondant a la variable de starter et
+`trainer-types.json` fournit la musique de combat. Crisanto utilise donc Grenousse,
+Marisson ou Feunnec niveau 5 selon le choix initial. La fuite est interdite ; a la
+fin, le resultat revient dans la sequence, puis l'autorun nouvellement active par
+le switch 70 joue les dialogues, mouvements et objets d'apres-combat. La commande
+`play-jingle`, rencontree sur un autre evenement de la carte, est egalement rendue
+par la couche audio.
+
+Les trois variantes d'avant-combat compilent chacune 59 commandes, 7 dialogues et
+30 commandes de mouvement. La page d'apres-combat compile 111 commandes, 16
+dialogues et 52 commandes de mouvement. Les quatre audits sont complets et ne
+signalent aucun rendu en attente.
+
+Recette manuelle : apres la scene du laboratoire, sortir vers Bourg Canvas puis
+avancer dans la zone devant Crisanto. Verifier que la mise en place se joue, que le
+combat affiche le starter complementaire de Crisanto, que la fuite n'est pas
+proposee et que la victoire enchaine sur les dialogues et la remise des objets sans
+rendre le controle entre les deux scenes.
+
+Correction de reprise : le premier transfert de cette scene vise Map003 depuis
+Map003. Un transfert vers la carte deja chargee repositionne maintenant les acteurs
+sans recharger tous les assets et sans armer un autorun d'entree parasite. Toute
+exception de sequence libere aussi les controles et affiche la commande fautive au
+lieu de laisser le jeu silencieusement fige. Les pages `player touch` sont detectees
+dans la direction demandee avant la resolution du pas : une zone placee sur une
+tuile infranchissable demarre donc bien depuis la case voisine, meme si le joueur
+regardait auparavant dans une autre direction.
+
+Le transfert interne d'une sequence vers la carte deja chargee est execute de
+maniere synchrone par le lecteur de sequence. Il repositionne le joueur et remet les
+PNJ a leur position source sans ouvrir une transition de carte intermediaire. Cela
+evite que la zone de contact du duel soit reevaluee entre le teleport en `40,15` et
+la route qui fait avancer le joueur. Le panneau Moteur expose aussi la sequence, son
+curseur, sa prochaine commande et le nombre de routes actives pour diagnostiquer un
+eventuel prochain blocage sans ouvrir les outils du navigateur.
+
+Important : une entree de `map.transfers` signifie seulement qu'une page contient
+une commande de transfert ; elle ne prouve pas que la page est une porte simple.
+Tous les evenements `player touch` passent donc par le lecteur de sequence. Celui-ci
+joue une porte courte comme une cinematique complexe avant d'executer son transfert.
+EV028 n'est ainsi plus reduit a son transfert initial vers `40,15` : ses mouvements,
+dialogues et son combat sont conserves.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -266,7 +316,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 234 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 240 tests et passe avec le build.
 
 ## Commandes utiles
 

@@ -93,6 +93,8 @@ export interface ImportedMapAssets {
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerCreationCatalog;
+  readonly trainers: readonly ImportedTrainer[];
+  readonly trainerTypes: readonly ImportedTrainerType[];
   readonly encounter: ImportedEncounterTable | null;
   readonly battleback: string | null;
   readonly wildBattleBgm: string | null;
@@ -104,6 +106,25 @@ export interface ImportedEncounterSlot {
 }
 export interface ImportedEncounterTable {
   readonly mapId: number; readonly landRate: number; readonly land: readonly ImportedEncounterSlot[];
+}
+
+export interface ImportedTrainerPokemon {
+  readonly species: string;
+  readonly level: number;
+  readonly moves: readonly (string | null)[];
+}
+
+export interface ImportedTrainer {
+  readonly trainerType: string;
+  readonly name: string;
+  readonly version: number;
+  readonly pokemon: readonly ImportedTrainerPokemon[];
+}
+
+export interface ImportedTrainerType {
+  readonly internalName: string;
+  readonly battleBgm: string | null;
+  readonly victoryMe: string | null;
 }
 
 export interface ImportedAvatar extends GridPoint { readonly direction: Direction }
@@ -193,6 +214,37 @@ function parseEncounter(value: unknown, mapId: number): ImportedEncounterTable |
   return { mapId, landRate: entry.encounterRates.land as number, land };
 }
 
+export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[] {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de Dresseurs est invalide.");
+  return value.records.map((entry) => {
+    if (!isRecord(entry) || typeof entry.trainerType !== "string" || typeof entry.name !== "string"
+      || !Number.isInteger(entry.version) || !Array.isArray(entry.pokemon)) throw new Error("Un Dresseur est invalide.");
+    const pokemon = entry.pokemon.map((member) => {
+      if (!isRecord(member) || typeof member.species !== "string" || !Number.isInteger(member.level)
+        || (member.level as number) < 1 || !Array.isArray(member.moves)
+        || !member.moves.every((move) => move === null || typeof move === "string")) {
+        throw new Error("Une équipe de Dresseur est invalide.");
+      }
+      return { species: member.species, level: member.level as number, moves: member.moves as (string | null)[] };
+    });
+    if (pokemon.length < 1 || pokemon.length > 6) throw new Error("Une équipe de Dresseur doit contenir entre un et six Pokémon.");
+    return { trainerType: entry.trainerType, name: entry.name, version: entry.version as number, pokemon };
+  });
+}
+
+export function parseImportedTrainerTypes(value: unknown): readonly ImportedTrainerType[] {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de classes de Dresseur est invalide.");
+  return value.records.map((entry) => {
+    if (!isRecord(entry) || typeof entry.internalName !== "string"
+      || (entry.battleBgm !== null && typeof entry.battleBgm !== "string")
+      || (entry.victoryMe !== null && typeof entry.victoryMe !== "string")) {
+      throw new Error("Une classe de Dresseur est invalide.");
+    }
+    return { internalName: entry.internalName, battleBgm: entry.battleBgm as string | null,
+      victoryMe: entry.victoryMe as string | null };
+  });
+}
+
 function parseBattlePresentation(value: unknown, mapId: number): { readonly battleback: string | null;
   readonly wildBattleBgm: string | null; readonly wildVictoryMe: string | null } {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Les métadonnées de combat sont invalides.");
@@ -245,6 +297,12 @@ export function activeEventAt(events: readonly ImportedMapEvent[], x: number, y:
 export function eventInFront(events: readonly ImportedMapEvent[], avatar: ImportedAvatar, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
   const delta = DELTAS[avatar.direction];
   return activeEventAt(events, avatar.x + delta.x, avatar.y + delta.y, mapId, state);
+}
+
+export function playerTouchEventInDirection(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
+  direction: Direction, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
+  const active = eventInFront(events, { ...avatar, direction }, mapId, state);
+  return active?.page.settings.trigger === 1 ? active : null;
 }
 
 export function transferForEvent(map: ImportedMap, activeEvent: ActiveMapEvent): ImportedTransfer | null {
@@ -463,12 +521,14 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue, encountersValue, battleMetadataValue] = await Promise.all([
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue, encountersValue,
+    battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/moves.json"),
     fetchJson("/__pokemon-z/data/encounters.json"),
     fetchJson("/__pokemon-z/data/map-battle-metadata.json"),
+    fetchJson("/__pokemon-z/data/trainers.json"), fetchJson("/__pokemon-z/data/trainer-types.json"),
   ]);
   const map = parseImportedMap(mapValue);
   const tilesets = parseTilesets(tilesetValue);
@@ -476,6 +536,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const itemNames = parseItemNames(itemsValue, localizationValue);
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
+  const trainers = parseImportedTrainers(trainersValue);
+  const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
   const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
@@ -490,6 +552,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, mapTranslations, itemNames, battleCatalog,
+    trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }
 

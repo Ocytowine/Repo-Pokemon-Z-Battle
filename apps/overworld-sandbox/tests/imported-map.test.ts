@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar, parseImportedMap, parseMapTranslations, selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection, selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -109,6 +109,19 @@ describe("imported RPG Maker map", () => {
     ]);
     expect(activeEventAt([event], 7, 3)?.event.id).toBe(8);
     expect(activeEventAt([event], 4, 4)).toBeNull();
+    expect(playerTouchEventInDirection([event], { x: 6, y: 4, direction: "right" }, "up")?.event.id).toBe(8);
+  });
+
+  it("loads the minimal trainer data needed by scripted battles", () => {
+    expect(parseImportedTrainers({ records: [{ trainerType: "CRISANTO1", name: "Crisanto", version: 2,
+      pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] }] })).toEqual([
+      { trainerType: "CRISANTO1", name: "Crisanto", version: 2,
+        pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] },
+    ]);
+    expect(parseImportedTrainerTypes({ records: [{ internalName: "CRISANTO1",
+      battleBgm: "Rival.ogg", victoryMe: null }] })).toEqual([
+      { internalName: "CRISANTO1", battleBgm: "Rival.ogg", victoryMe: null },
+    ]);
   });
 
   it("animates only event pages whose stationary animation is enabled", () => {

@@ -8,11 +8,41 @@ export interface SourceEncounterRequest {
   readonly level: number;
 }
 
+export interface SourceTrainerDefinition {
+  readonly trainerType: string;
+  readonly name: string;
+  readonly version: number;
+  readonly pokemon: readonly { readonly species: string; readonly level: number;
+    readonly moves: readonly (string | null)[] }[];
+}
+
 export function createSourceEncounterBattle(party: PlayerPartyState, encounter: SourceEncounterRequest,
   catalog: PlayerCreationCatalog, opponentId: string): TeamBattleState {
   const player = playerPartyToBattleTeam(party, catalog);
   const opponentParty = addPokemonToParty(createEmptyPlayerParty(),
     createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog));
+  const opponent = playerPartyToBattleTeam(opponentParty, catalog);
+  return createTeamBattleState({ player: player.members, opponent: opponent.members },
+    { player: player.activeIndex, opponent: opponent.activeIndex });
+}
+
+export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
+  catalog: PlayerCreationCatalog): TeamBattleState {
+  const player = playerPartyToBattleTeam(party, catalog);
+  let opponentParty = createEmptyPlayerParty();
+  trainer.pokemon.forEach((member, index) => {
+    let pokemon = createPersistentPokemon(`trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${index}`,
+      member.species, member.level, catalog);
+    const explicitMoves = member.moves.filter((move): move is string => move !== null && move !== "");
+    if (explicitMoves.length > 0) {
+      pokemon = { ...pokemon, moves: explicitMoves.map((internalName) => {
+        const move = catalog.moves.find((candidate) => candidate.internalName === internalName);
+        if (move === undefined) throw new Error(`Capacité de Dresseur absente du catalogue : ${internalName}.`);
+        return { internalName, pp: move.pp, maxPp: move.pp };
+      }) };
+    }
+    opponentParty = addPokemonToParty(opponentParty, pokemon);
+  });
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
   return createTeamBattleState({ player: player.members, opponent: opponent.members },
     { player: player.activeIndex, opponent: opponent.activeIndex });

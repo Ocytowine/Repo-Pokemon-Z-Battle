@@ -29,6 +29,9 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (source.kind !== "ruby-script" || typeof source.data.source !== "string") return null;
   const ruby = source.data.source.trim();
   if (/^\$GameSpeed\s*=\s*0$/u.test(ruby)) return command(source, "runtime-noop", { policy: "PRESENTATION" });
+  if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
+    return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });
+  }
   if (/^\$PokemonTemp\.dependentEvents\.(?:remove_sprite\s*\(\s*true\s*\)|refresh_sprite)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "FOLLOWER_PRESENTATION" });
   }
@@ -58,4 +61,14 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   match = /^pbPlayCry\(PBSpecies::([A-Z][A-Z0-9_]*)\)$/u.exec(ruby);
   if (match !== null) return command(source, "play-cry", { speciesId: match[1], policy: "PERSONAL" });
   return null;
+}
+
+export function portSourceRubyCondition(source: EventCommand): EventCommand | null {
+  if (source.kind !== "condition" || source.data.kind !== "ruby-script" || typeof source.data.script !== "string") return null;
+  const match = /^pbTrainerBattle\(PBTrainers::([A-Z][A-Z0-9_]*),\s*"([^"]+)",[\s\S]*,\s*(\d+),\s*(?:true|false)\)$/u
+    .exec(source.data.script.trim());
+  if (match === null) return null;
+  return command(source, "request-trainer-battle", {
+    trainerType: match[1], trainerName: match[2], version: Number(match[3]), policy: "HOST_ONLY",
+  });
 }

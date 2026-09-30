@@ -918,6 +918,37 @@ a la couche audio. Une primitive inconnue est donc signalee par l'audit avant la
 lecture, au lieu d'interrompre la sequence et de rendre les controles en plein
 milieu d'une cinematique.
 
+Dix-septieme noyau 9.7 implemente le 2026-09-30 : les zones de contact non visibles
+peuvent lancer une sequence source, pas seulement un transfert. Une condition Ruby
+`pbTrainerBattle` devient une transition differee vers le moteur de combat, avec
+equipe chargee depuis `trainers.json`, musique issue de `trainer-types.json`, fuite
+interdite et reprise de la sequence a la fin. Le premier duel contre Crisanto choisit
+ainsi Grenousse, Marisson ou Feunnec niveau 5 selon la variable de starter. Le
+switch 70 active ensuite generiquement la page automatique d'apres-combat. Ses
+dialogues, mouvements et gains d'objets sont joues dans l'ordre sans rendre les
+controles entre les deux pages. Les trois plans d'avant-combat comptent
+59 commandes, 7 dialogues et 30 mouvements ; le plan d'apres-combat compte 111
+commandes, 16 dialogues et 52 mouvements. Leurs audits ne signalent aucun rendu en
+attente.
+
+Correction du duel Crisanto validee le 2026-09-30 : son transfert initial vise la
+carte courante. Ce cas repositionne desormais la scene sans recharger les assets ni
+programmer un autorun d'entree parasite. L'executeur intercepte egalement toute
+exception inattendue, rend les controles et nomme la commande fautive dans le
+panneau au lieu de conserver une sequence figee. Le contact joueur est maintenant
+cherche dans la direction du pas demande, avant la collision : la zone de Crisanto
+peut ainsi se declencher depuis `40,15` bien que sa tuile ne soit pas franchissable.
+Dans une sequence, le transfert vers la carte courante est maintenant un
+repositionnement synchrone ; aucun interstice de changement de carte ne peut donc
+relancer la zone avant le premier mouvement impose. L'etat courant du lecteur est
+visible dans le panneau Moteur.
+
+Correction de classification : `map.transfers` indexe toute page contenant un
+transfert, y compris EV028 et ses 87 commandes. Un contact joueur n'utilise donc
+plus cette presence comme raccourci de porte ; il lance toujours son plan de scene,
+qui executera le transfert a sa position exacte. Cela supprime la boucle de
+teleportation en `40,15` qui sautait toute la cinematique du duel.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

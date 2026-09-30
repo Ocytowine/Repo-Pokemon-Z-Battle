@@ -1,6 +1,6 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
-import { portSourceRubyCommand } from "./source-script-ports.js";
+import { portSourceRubyCommand, portSourceRubyCondition } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 
@@ -127,8 +127,15 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         const otherwise = matchingIndex(commands, index + 1, conditionEnd, command.indent, new Set(["else"]));
         const result = evaluateCondition(command, state, mapId, eventId, context);
         if (result === null) {
-          blockedReason = `condition ${String(command.data.kind ?? "inconnue")} non prise en charge`;
-          return false;
+          const deferred = portSourceRubyCondition(command);
+          if (deferred === null) {
+            blockedReason = `condition ${String(command.data.kind ?? "inconnue")} non prise en charge`;
+            return false;
+          }
+          output.push(deferred);
+          if (!walk(index + 1, otherwise < 0 ? conditionEnd : otherwise)) return false;
+          index = conditionEnd + 1;
+          continue;
         }
         const branchStart = result ? index + 1 : otherwise < 0 ? conditionEnd : otherwise + 1;
         const branchEnd = result && otherwise >= 0 ? otherwise : conditionEnd;

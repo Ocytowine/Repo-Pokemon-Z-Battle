@@ -95,4 +95,28 @@ describe("source battle controller", () => {
     expect(visuals.startBattle).not.toHaveBeenCalled();
     expect(callbacks.render).not.toHaveBeenCalled();
   });
+
+  it("starts a non-escapable trainer battle and reports its result", async () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party };
+    const visuals = presentation();
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "wild-win.ogg" }),
+      setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(visuals, callbacks);
+    const completed = vi.fn();
+    expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
+      pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
+    { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg" }, completed)).toBe(true);
+    expect(controller.current?.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 2 });
+    expect(visuals.startBattle).toHaveBeenCalledWith(controller.current,
+      { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg" });
+    for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
+    expect(controller.active).toBe(false);
+    expect(completed).toHaveBeenCalledWith(true);
+    expect(eventState.pendingEncounter).toBeNull();
+  });
 });
