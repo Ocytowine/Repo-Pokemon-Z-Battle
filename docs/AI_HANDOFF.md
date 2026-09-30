@@ -324,6 +324,22 @@ ramasser plusieurs objets, provoquer une rencontre dans les herbes puis rejoindr
 Map009 par la sortie nord. Ne cocher le parcours complet de la roadmap qu'apres ce
 test avec les assets locaux.
 
+La scene principale suivante se trouve sur Map009 dans EV011, une zone de contact
+en `59,34`. Elle est maintenant entierement resolue : 238 commandes apres fusion
+des continuations Ruby, 36 dialogues, 110 commandes de mouvement et aucun rendu en
+attente. L'obtention du Pokedex est conservee dans `SourceEventState.pokedexEnabled`
+et migre les anciennes sauvegardes vers `false`, mais aucun nouvel ecran n'est
+affiche. Le porteur souhaite revoir plus tard les interfaces lourdes du Pokedex,
+du ranch et de la carte.
+
+L'autorun d'entree EV035 est egalement complet. `weather` gere effacement, pluie,
+orage et neige dans une couche CSS legere ; `erase-event` est absorbe par le cycle
+de visite de carte, qui ne lance deja l'autorun qu'une fois par chargement. EV040
+peut remettre `ACapsula`, car les identifiants mixtes de `pbItemBall` sont maintenant
+preserves. EV039 reste volontairement hors de ce lot : son arbre appelle l'evenement
+commun 59 et sa fabrication de hache demandera le support generique des evenements
+communs et des conditions d'inventaire.
+
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
 
@@ -337,7 +353,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 245 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 250 tests et passe avec le build.
 
 ## Commandes utiles
 

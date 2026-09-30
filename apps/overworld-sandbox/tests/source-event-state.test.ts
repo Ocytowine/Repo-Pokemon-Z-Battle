@@ -17,10 +17,10 @@ describe("persistent source event state", () => {
       page({ ...unconditional, switch1Id: 4 }), page({ ...unconditional, variable: { id: 9, minimum: 3 } }),
       page({ ...unconditional, selfSwitch: "A" })] };
     expect(selectActiveEventPage(event, 3, createSourceEventState())?.pageIndex).toBe(0);
-    expect(selectActiveEventPage(event, 3, { switches: { 4: true }, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null })?.pageIndex).toBe(1);
-    expect(selectActiveEventPage(event, 3, { switches: {}, variables: { 9: 3 }, selfSwitches: {}, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null })?.pageIndex).toBe(2);
-    expect(selectActiveEventPage(event, 3, { switches: {}, variables: {}, selfSwitches: { "3:7:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null })?.pageIndex).toBe(3);
-    expect(selectActiveEventPage(event, 4, { switches: {}, variables: {}, selfSwitches: { "3:7:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null })?.pageIndex).toBe(0);
+    expect(selectActiveEventPage(event, 3, { ...createSourceEventState(), switches: { 4: true } })?.pageIndex).toBe(1);
+    expect(selectActiveEventPage(event, 3, { ...createSourceEventState(), variables: { 9: 3 } })?.pageIndex).toBe(2);
+    expect(selectActiveEventPage(event, 3, { ...createSourceEventState(), selfSwitches: { "3:7:A": true } })?.pageIndex).toBe(3);
+    expect(selectActiveEventPage(event, 4, { ...createSourceEventState(), selfSwitches: { "3:7:A": true } })?.pageIndex).toBe(0);
   });
 
   it("locks every starter selection page once the party contains a Pokemon", () => {
@@ -51,13 +51,14 @@ describe("persistent source event state", () => {
       { kind: "change-variables", text: null, indent: 0, data: { firstId: 5, lastId: 5, operation: "set", operand: { kind: "constant", values: [7] } } },
       { kind: "change-variables", text: null, indent: 0, data: { firstId: 5, lastId: 5, operation: "add", operand: { kind: "constant", values: [2] } } },
       { kind: "set-self-switch", text: null, indent: 0, data: { id: "A", value: true } },
+      { kind: "set-pokedex-enabled", text: null, indent: 0, data: { value: true, policy: "PERSONAL" } },
     ];
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
-    expect(result).toMatchObject({ safe: true, appliedCommands: 4 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(result).toMatchObject({ safe: true, appliedCommands: 5 });
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, pokedexEnabled: true, checkpoint: null, party: emptyParty, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
   });
 
@@ -72,8 +73,9 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, checkpoint: null, party: emptyParty, pendingEncounter: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
         wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
+    expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(() => parseSourceEventState({ switches: { 2: "yes" }, variables: {}, selfSwitches: {} })).toThrow("invalide");
   });
 

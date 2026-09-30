@@ -415,7 +415,7 @@ root.innerHTML = `
   <main>
     <section class="world-panel">
       <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button id="open-source-menu">Menu</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
-      <div class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
+      <div class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-weather-layer" class="source-weather-layer" data-weather="none" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
         <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
           <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
           <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
@@ -492,6 +492,7 @@ function resolveSourceAnimationTarget(target: number): { x: number; bottom: numb
 }
 const sourcePresentation = new SourceScenePresentation({
   panorama: presentationElement("source-panorama-layer"), fog: presentationElement("source-fog-layer"),
+  weather: presentationElement("source-weather-layer"),
   pictures: presentationElement("source-picture-layer"), tone: presentationElement("source-tone-layer"),
   flash: presentationElement("source-flash-layer"), animations: presentationElement("source-map-animation-layer"),
   dialogue: presentationElement("source-dialogue"),

@@ -971,6 +971,21 @@ dans les hautes herbes puis atteindre Map009 par la sortie nord. Le support para
 reste limite aux presentations idempotentes ; les boucles qui modifient l'etat a
 chaque frame restent a porter avant de cocher le jalon global.
 
+Dix-neuvieme noyau 9.7 implemente le 2026-09-30 : la grande scene d'arrivee de
+Map009 peut maintenant etre lue jusqu'au bout. L'appel Ruby qui active le Pokedex
+devient un etat personnel persistant, sans imposer encore d'ecran Pokedex. Le choix
+de son interface, comme ceux du ranch et de la carte, est reporte a une refonte
+graphique ulterieure. Le plan resolu d'EV011 compte 238 commandes, 36 dialogues et
+110 commandes de mouvement ; ses acteurs, sprites et effets sont complets et son
+audit ne signale aucun rendu en attente.
+
+La commande native `weather` restitue l'effacement, la pluie, l'orage et la neige
+dans une couche legere superposee a la carte. `erase-event` est absorbe comme
+effacement temporaire : l'autorun ne reboucle pas pendant la visite et redevient
+disponible apres un rechargement de carte, comme dans RPG Maker. L'autorun EV035
+de Map009 compile ainsi ses 5 commandes sans blocage. Les identifiants d'objets
+mixtes sont egalement preserves, ce qui rend l'objet `ACapsula` d'EV040 compatible.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

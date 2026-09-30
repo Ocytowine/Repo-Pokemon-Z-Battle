@@ -24,6 +24,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "add-pokemon": capability("state", "executed", "ajout a l'equipe"),
   "request-encounter": capability("state", "executed", "rencontre source"),
   "request-trainer-battle": capability("transition", "executed", "combat de Dresseur source"),
+  "set-pokedex-enabled": capability("state", "executed", "acces au Pokedex persistant"),
   "set-follower": capability("state", "accepted", "suiveur non rendu"),
   "move-route": capability("movement", "rendered", "route animee"),
   "move-route-continuation": capability("movement", "absorbed", "etape deja incluse dans la route"),
@@ -34,6 +35,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "panorama-motion": capability("audiovisual", "rendered", "defilement du panorama source"),
   "screen-tone": capability("audiovisual", "rendered", "transition de teinte d'ecran"),
   "screen-flash": capability("audiovisual", "rendered", "flash colore"),
+  weather: capability("audiovisual", "rendered", "meteo de carte"),
   "show-picture": capability("audiovisual", "rendered", "image superposee"),
   "move-picture": capability("audiovisual", "rendered", "animation d'image"),
   "erase-picture": capability("audiovisual", "rendered", "retrait d'image"),
@@ -46,6 +48,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "fade-music": capability("audiovisual", "rendered", "fondu musical"),
   "scroll-map": capability("audiovisual", "rendered", "defilement anime de camera"),
   "runtime-noop": capability("metadata", "absorbed", "commande source sans effet web"),
+  "erase-event": capability("metadata", "absorbed", "effacement temporaire de l'evenement courant"),
   end: capability("metadata", "absorbed", "fin de liste"),
 });
 

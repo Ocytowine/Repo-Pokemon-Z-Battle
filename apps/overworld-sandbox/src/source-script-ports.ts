@@ -32,6 +32,9 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });
   }
+  if (/^\$Trainer\.pokedex\s*=\s*true$/u.test(ruby)) {
+    return command(source, "set-pokedex-enabled", { value: true, policy: "PERSONAL" });
+  }
   if (/^\$PokemonTemp\.dependentEvents\.(?:remove_sprite\s*\(\s*true\s*\)|refresh_sprite)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "FOLLOWER_PRESENTATION" });
   }
@@ -41,7 +44,7 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   match = /^pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-encounter", { species: match[1], level: Number(match[2]), policy: "HOST_ONLY" });
   if (/^pbPokemonFollow\(-?\d+\)$/u.test(ruby)) return command(source, "set-follower", { policy: "SHARED" });
-  match = /^(?:Kernel\.)?pbItemBall\(PBItems::([A-Z][A-Z0-9_]*)\)$/u.exec(ruby);
+  match = /^(?:Kernel\.)?pbItemBall\(PBItems::([A-Za-z][A-Za-z0-9_]*)\)$/u.exec(ruby);
   if (match !== null) return command(source, "grant-item", { itemId: match[1], quantity: 1, policy: "PERSONAL" });
   match = /^(?:Kernel\.)?pbReceiveItem\(:(\w+)(?:,\s*(\d+))?\)$/u.exec(ruby);
   if (match !== null) {

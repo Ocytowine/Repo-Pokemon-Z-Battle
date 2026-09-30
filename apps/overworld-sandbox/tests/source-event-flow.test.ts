@@ -39,7 +39,7 @@ describe("source event choice and condition flow", () => {
       command("condition", 0, { kind: "variable", operands: [4, 0, 3, 1] }), command("show-text", 1, { text: "VAR" }), command("condition-end", 0),
       command("condition", 0, { kind: "self-switch", operands: ["A", 0] }), command("show-text", 1, { text: "SELF" }), command("condition-end", 0),
     ]);
-    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, checkpoint: null,
+    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, pokedexEnabled: false, checkpoint: null,
       party: emptyParty, pendingEncounter: null };
     expect(resolveEventFlow(eventPage, [], state, 3, 9).page.commands.map((entry) => entry.text)).toEqual(["ON", "VAR", "SELF"]);
   });
@@ -68,6 +68,13 @@ describe("source event choice and condition flow", () => {
     expect(result).toMatchObject({ complete: true, blockedReason: null });
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["grant-item", "play-cry", "set-self-switch"]);
     expect(result.page.commands[0]?.data).toMatchObject({ itemId: "ORANBERRY", quantity: 1, policy: "PERSONAL" });
+  });
+
+  it("preserves mixed-case source item identifiers", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "Kernel.pbItemBall(PBItems::ACapsula)" }),
+    ]), [], createSourceEventState(), 9, 40);
+    expect(result.page.commands[0]).toMatchObject({ kind: "grant-item", data: { itemId: "ACapsula", quantity: 1 } });
   });
 
   it("ports healing checkpoints and accepts non-authoritative presentation commands", () => {
@@ -100,6 +107,18 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands).toEqual([
       expect.objectContaining({ kind: "panorama-motion",
         data: expect.objectContaining({ scrollX: 1, scrollY: 1, requestedX: 4, requestedY: 4, policy: "PRESENTATION" }) }),
+    ]);
+  });
+
+  it("ports the Pokedex grant and accepts the map-entry weather cleanup", () => {
+    const result = resolveEventFlow(page([
+      command("weather", 0, { parameters: [0, 5, 0] }),
+      command("ruby-script", 0, { source: "$Trainer.pokedex=true" }),
+      command("erase-event", 0),
+    ]), [], createSourceEventState(), 9, 35);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "weather", "set-pokedex-enabled", "erase-event",
     ]);
   });
 

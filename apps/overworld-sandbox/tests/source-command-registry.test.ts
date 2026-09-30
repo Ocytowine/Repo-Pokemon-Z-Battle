@@ -23,7 +23,10 @@ describe("source command registry", () => {
     ["play-cry", "audiovisual", "rendered", false],
     ["play-jingle", "audiovisual", "rendered", false],
     ["panorama-motion", "audiovisual", "rendered", false],
+    ["weather", "audiovisual", "rendered", false],
     ["request-trainer-battle", "transition", "executed", false],
+    ["set-pokedex-enabled", "state", "executed", true],
+    ["erase-event", "metadata", "absorbed", false],
     ["text-options", "metadata", "rendered", false],
     ["move-route-continuation", "movement", "absorbed", false],
   ])("classifies %s once", (kind, family, support, state) => {

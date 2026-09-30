@@ -41,6 +41,12 @@ export interface SourceMapVisualState {
   readonly scrollY: number;
 }
 
+export interface SourceWeatherState {
+  readonly kind: "none" | "rain" | "storm" | "snow";
+  readonly power: number;
+  readonly durationMs: number;
+}
+
 export interface SourceScrollState {
   readonly direction: 2 | 4 | 6 | 8;
   readonly distancePixels: number;
@@ -136,6 +142,16 @@ export function parseSourceMapVisual(data: Readonly<Record<string, unknown>>): S
   };
 }
 
+export function parseSourceWeather(data: Readonly<Record<string, unknown>>): SourceWeatherState | null {
+  const values = parameters(data);
+  const type = finite(values[0], -1);
+  const power = finite(values[1], -1);
+  const duration = finite(values[2], -1);
+  if (!Number.isInteger(type) || type < 0 || type > 3 || power < 0 || duration < 0) return null;
+  const kinds = ["none", "rain", "storm", "snow"] as const;
+  return { kind: kinds[type]!, power: clamp(power, 0, 9), durationMs: duration * 25 };
+}
+
 export function parseSourceScroll(data: Readonly<Record<string, unknown>>): SourceScrollState | null {
   const direction = finite(data.direction);
   const distance = finite(data.distance, -1);
@@ -163,6 +179,7 @@ export function parseSourceAnimation(data: Readonly<Record<string, unknown>>): S
 interface PresentationElements {
   readonly panorama: HTMLElement;
   readonly fog: HTMLElement;
+  readonly weather: HTMLElement;
   readonly pictures: HTMLElement;
   readonly tone: HTMLElement;
   readonly flash: HTMLElement;
@@ -245,6 +262,7 @@ export class SourceScenePresentation {
       await delay(duration);
       return true;
     }
+    if (command.kind === "weather") return this.weather(command.data, delay);
     if (command.kind === "change-map-settings") return this.changeMapSettings(command.data);
     if (command.kind === "panorama-motion") return this.panoramaMotion(command.data);
     if (["show-picture", "move-picture", "erase-picture"].includes(command.kind)) {
@@ -275,6 +293,8 @@ export class SourceScenePresentation {
     this.elements.panorama.style.removeProperty("--source-panorama-x");
     this.elements.panorama.style.removeProperty("--source-panorama-y");
     this.elements.fog.style.backgroundImage = "none";
+    this.elements.weather.dataset.weather = "none";
+    this.elements.weather.style.opacity = "0";
     this.elements.dialogue.dataset.position = "bottom";
     this.elements.dialogue.classList.remove("transparent");
   }
@@ -325,6 +345,17 @@ export class SourceScenePresentation {
     this.elements.panorama.style.setProperty("--source-panorama-x", `${scrollX * 32}px`);
     this.elements.panorama.style.setProperty("--source-panorama-y", `${scrollY * 32}px`);
     this.elements.panorama.style.animation = "source-panorama-drift 8s linear infinite";
+    return true;
+  }
+
+  private async weather(data: Readonly<Record<string, unknown>>, delay: Delay): Promise<boolean> {
+    const weather = parseSourceWeather(data);
+    if (weather === null) return false;
+    this.elements.weather.style.transition = `opacity ${weather.durationMs}ms linear`;
+    if (weather.kind !== "none") this.elements.weather.dataset.weather = weather.kind;
+    this.elements.weather.style.opacity = weather.kind === "none" ? "0" : String(0.2 + weather.power / 15);
+    await delay(weather.durationMs);
+    if (weather.kind === "none") this.elements.weather.dataset.weather = "none";
     return true;
   }
 
