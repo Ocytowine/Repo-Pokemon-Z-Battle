@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-09-30.
+Derniere mise a jour : 2026-10-01.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -393,6 +393,38 @@ CT/CS, Ingredients, Mega-Gemmes, objets de combat et objets rares). Le catalogue
 de la poche choisie. Les nombres affiches sur les onglets comptent les types
 d'objets, pas leur quantite totale.
 
+## Decoupage de l'orchestrateur overworld
+
+Premier lot structurel valide le 2026-10-01 : `main.ts` ne porte plus directement
+le rendu du menu, du Sac, de la sauvegarde, des options et de la boutique. Ces vues,
+leurs echappements HTML, le volume persistant, la poche selectionnee et les liaisons
+DOM vivent dans `source-menu-view.ts`. Les mutations metier restent explicites dans
+l'orchestrateur : sauvegarde, suppression, achat et reprise de sequence.
+
+La presentation de l'ancien prototype coop local est egalement isolee dans
+`demo-overworld-view.ts`. Le dessin de ses cartes et avatars, son journal, son etat
+de session et son guide ne sont donc plus melanges au parcours Pokemon source.
+Le grand gabarit DOM vit maintenant dans `overworld-app-shell.ts`, qui centralise
+aussi la resolution stricte des elements requis. Le panneau de diagnostic du monde
+source, ses controles et ses libelles sont rendus par `source-overworld-hud.ts` ;
+les donnees issues des catalogues y sont echappees avant insertion HTML.
+
+`source-dialogue-view.ts` porte maintenant la boite de dialogue, les choix, les
+indications de progression et leurs liaisons DOM. `source-battle-overlay.ts` rend
+le resume, les attaques, l'observation reseau et la fuite, tandis que le controleur
+de combat conserve seul la resolution des tours et les mutations de partie.
+
+`source-world-navigation.ts` centralise maintenant les decisions pures du cycle de
+cartes : conversion des directions RPG Maker, repositionnement sans rechargement,
+chargement d'une destination, checkpoint, restauration d'une sauvegarde et repli
+sur Bourg Canvas lorsqu'elle est inaccessible. `main.ts` conserve l'installation
+des assets dans la scene, la transition visuelle et l'armement des autoruns.
+
+`main.ts` passe ainsi de 1 520 a 1 186 lignes. Les prochains decoupages doivent
+conserver cette approche incrementale. Le lecteur de sequences est maintenant le
+principal candidat, mais il doit faire l'objet d'un lot dedie avec ses tests, pas
+d'un simple deplacement mecanique.
+
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
 
@@ -406,7 +438,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 262 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 272 tests et passe avec le build.
 
 ## Commandes utiles
 
@@ -434,7 +466,7 @@ sont attendues.
   sprites standards. Ne pas imposer une taille globale sans verifier le charset.
 - Les donnees `.pokemon-z` existent localement mais pas dans la CI GitHub. Les tests
   versionnes doivent employer de petits fixtures structurels.
-- `main.ts` reste proche de 1 000 lignes. Le gestionnaire de scenes doit continuer
+- `main.ts` contient encore 1 186 lignes. Le gestionnaire de scenes doit continuer
   l'extraction progressive, sans refonte monolithique.
 - Apres une modification de progression, une ancienne sauvegarde locale peut masquer
   le nouveau declenchement. Rejouer la recette avec un etat vierge.
