@@ -1,0 +1,101 @@
+import { createDefaultPlayerProfile, parsePlayerProfile, type PlayerProfile } from "@pokemon-z-battle/player-state";
+
+export const AVATAR_LAB_MAP_ID = "avatar-lab";
+export const AVATAR_LAB_STORAGE_KEY = "pokemon-z-battle.avatar-lab-profile.v1";
+
+interface AssetReference { readonly path: string | null; readonly native: boolean; readonly fallbackContext: string | null }
+interface AvatarRecord { readonly id: string; readonly presentation: "masculine" | "feminine";
+  readonly legacyPalette: "classic" | "light" | "dark";
+  readonly assets: Readonly<Record<string, AssetReference>>; readonly battleBackVariants: readonly string[] }
+interface AvatarCatalog { readonly records: readonly AvatarRecord[] }
+interface AuditProfile { readonly id: string; readonly missing: readonly string[]; readonly fallbacks: readonly string[];
+  readonly missingBattleBackVariants: readonly number[] }
+interface AuditReport { readonly profiles: readonly AuditProfile[] }
+interface StoredLabState { readonly schemaVersion: 1; readonly avatarId: string; readonly profile: PlayerProfile }
+
+const COLORS = { navy: "#16345d", gold: "#d9a632", red: "#c74848", blue: "#397dc0", green: "#3d906d",
+  purple: "#7756a8", rose: "#c65b82", orange: "#d77738", cream: "#e6d8b4", charcoal: "#313744", white: "#eef2f2", black: "#12151b" } as const;
+
+function sourceUrl(path: string): string { return `/__pokemon-z/source/${path.split("/").map(encodeURIComponent).join("/")}`; }
+function freshState(): StoredLabState { return { schemaVersion: 1, avatarId: "legacy-0", profile: createDefaultPlayerProfile() }; }
+function loadState(storage: Pick<Storage, "getItem" | "removeItem">): StoredLabState {
+  const raw = storage.getItem(AVATAR_LAB_STORAGE_KEY); if (raw === null) return freshState();
+  try { const value = JSON.parse(raw) as Partial<StoredLabState>; if (value.schemaVersion !== 1 || typeof value.avatarId !== "string") throw new Error();
+    return { schemaVersion: 1, avatarId: value.avatarId, profile: parsePlayerProfile(value.profile) }; }
+  catch { storage.removeItem(AVATAR_LAB_STORAGE_KEY); return freshState(); }
+}
+
+export class AvatarLabView {
+  private catalog: AvatarCatalog | null = null;
+  private report: AuditReport | null = null;
+  private state = loadState(localStorage);
+  private overworldAnimationSession = 0;
+  private battleAnimationSession = 0;
+
+  public constructor(private readonly root: HTMLElement) {}
+
+  public async load(): Promise<void> {
+    const responses = await Promise.all([fetch("/__pokemon-z/data/player-avatars.json"), fetch("/__pokemon-z/data/player-avatar-report.json")]);
+    if (responses.some((response) => !response.ok)) throw new Error("Catalogue des personnages indisponible.");
+    [this.catalog, this.report] = await Promise.all([responses[0]!.json() as Promise<AvatarCatalog>, responses[1]!.json() as Promise<AuditReport>]);
+    if (!this.catalog.records.some((record) => record.id === this.state.avatarId)) this.state = freshState();
+  }
+
+  public show(): void { this.root.hidden = false; this.render(); }
+  public hide(): void { this.root.hidden = true; this.overworldAnimationSession += 1; this.battleAnimationSession += 1; }
+
+  private save(profile: PlayerProfile = this.state.profile): void {
+    this.state = { ...this.state, profile: parsePlayerProfile(profile) };
+    localStorage.setItem(AVATAR_LAB_STORAGE_KEY, JSON.stringify(this.state)); this.render();
+  }
+
+  private render(): void {
+    if (this.root.hidden) return;
+    const record = this.catalog?.records.find((candidate) => candidate.id === this.state.avatarId);
+    if (record === undefined) { this.root.textContent = "Chargement du catalogue des personnages…"; return; }
+    const colorOptions = Object.keys(COLORS).map((id) => `<option value="${id}">${id}</option>`).join("");
+    this.root.innerHTML = `<div class="embedded-avatar-editor"><label>Nom<input data-avatar-name maxlength="12"></label>
+      <label>Pronoms<select data-avatar-pronouns><option value="masculine">Masculins</option><option value="feminine">Féminins</option><option value="neutral">Neutres</option></select></label>
+      <div class="embedded-avatar-options"></div><label>Animation<select data-avatar-context><option value="overworld">Marche</option><option value="run">Course</option><option value="bicycle">Vélo</option><option value="surf">Surf</option><option value="fish">Pêche</option><option value="fishSurf">Pêche en surf</option><option value="dive">Plongée</option></select></label>
+      <div class="embedded-avatar-colors"><label>Principale<select data-color="primary">${colorOptions}</select></label><label>Secondaire<select data-color="secondary">${colorOptions}</select></label><label>Accent<select data-color="accent">${colorOptions}</select></label></div>
+      <p class="embedded-avatar-note">Profil de test indépendant. Les couleurs sont mémorisées mais attendent encore les masques graphiques pour modifier les PNG.</p></div>
+      <div class="embedded-avatar-previews"><article><canvas width="150" height="150"></canvas><strong>Overworld</strong><small data-avatar-context-detail></small></article>
+      <article><img data-avatar-front alt="Face du Dresseur"><strong>Face</strong></article><article><img data-avatar-back alt="Dos du Dresseur"><strong>Combat</strong></article><div data-avatar-audit class="embedded-avatar-audit"></div></div>`;
+    const name = this.root.querySelector<HTMLInputElement>("[data-avatar-name]")!; name.value = this.state.profile.displayName;
+    const pronouns = this.root.querySelector<HTMLSelectElement>("[data-avatar-pronouns]")!; pronouns.value = this.state.profile.pronouns;
+    const options = this.root.querySelector<HTMLElement>(".embedded-avatar-options")!;
+    for (const candidate of this.catalog!.records) { const button = document.createElement("button"); button.type = "button";
+      button.className = candidate.id === record.id ? "selected" : ""; const image = document.createElement("img"); const front = candidate.assets.battleFront?.path;
+      if (front !== null && front !== undefined) image.src = sourceUrl(front); button.append(image);
+      const label = document.createElement("span"); label.textContent = `${candidate.presentation === "masculine" ? "A" : "B"} · ${candidate.legacyPalette}`; button.append(label);
+      button.addEventListener("click", () => { this.state = { ...this.state, avatarId: candidate.id, profile: { ...this.state.profile,
+        bodyModel: `legacy-${candidate.presentation}`, skinTone: candidate.legacyPalette, hairColor: `legacy-${candidate.legacyPalette}` } }; this.save(); }); options.append(button); }
+    name.addEventListener("change", () => this.save({ ...this.state.profile, displayName: name.value.trim() || "Joueur" }));
+    pronouns.addEventListener("change", () => this.save({ ...this.state.profile, pronouns: pronouns.value as PlayerProfile["pronouns"] }));
+    this.root.querySelectorAll<HTMLSelectElement>("[data-color]").forEach((select) => { const key = select.dataset.color as keyof PlayerProfile["colors"];
+      select.value = this.state.profile.colors[key]; select.addEventListener("change", () => this.save({ ...this.state.profile,
+        colors: { ...this.state.profile.colors, [key]: select.value } })); });
+    const context = this.root.querySelector<HTMLSelectElement>("[data-avatar-context]")!;
+    context.addEventListener("change", () => { void this.drawOverworld(record, context.value); }); void this.drawOverworld(record, context.value);
+    const front = record.assets.battleFront?.path; if (front !== null && front !== undefined) this.root.querySelector<HTMLImageElement>("[data-avatar-front]")!.src = sourceUrl(front);
+    this.animateBack(record); const audit = this.report?.profiles.find((candidate) => candidate.id === record.id);
+    this.root.querySelector<HTMLElement>("[data-avatar-audit]")!.textContent = audit === undefined ? ""
+      : `Replis : ${audit.fallbacks.join(", ") || "aucun"} · variantes de dos absentes : ${audit.missingBattleBackVariants.join(", ") || "aucune"}`;
+  }
+
+  private async drawOverworld(record: AvatarRecord, contextName: string): Promise<void> {
+    const reference = record.assets[contextName]; const canvas = this.root.querySelector<HTMLCanvasElement>("canvas"); if (reference?.path === null || reference === undefined || canvas === null) return;
+    const detail = this.root.querySelector<HTMLElement>("[data-avatar-context-detail]"); if (detail !== null) detail.textContent = reference.native ? contextName : `${contextName} · repli ${reference.fallbackContext}`;
+    const session = ++this.overworldAnimationSession; const image = new Image(); image.src = sourceUrl(reference.path); try { await image.decode(); } catch { return; }
+    const context = canvas.getContext("2d"); if (context === null) return; const width = image.naturalWidth / 4; const height = image.naturalHeight / 4; let frame = 0;
+    const draw = (): void => { if (session !== this.overworldAnimationSession || this.root.hidden) return; context.clearRect(0, 0, 150, 150); context.imageSmoothingEnabled = false;
+      const scale = Math.min(2, 120 / Math.max(width, height)); context.drawImage(image, frame * width, 0, width, height, 75 - width * scale / 2, 135 - height * scale, width * scale, height * scale);
+      frame = (frame + 1) % 4; window.setTimeout(draw, 180); }; draw();
+  }
+
+  private animateBack(record: AvatarRecord): void {
+    const paths = [record.assets.battleBack?.path, ...record.battleBackVariants].filter((path): path is string => typeof path === "string");
+    const image = this.root.querySelector<HTMLImageElement>("[data-avatar-back]"); if (image === null || paths.length === 0) return; const session = ++this.battleAnimationSession; let index = 0;
+    const draw = (): void => { if (session !== this.battleAnimationSession || this.root.hidden) return; image.src = sourceUrl(paths[index++ % paths.length]!); window.setTimeout(draw, 420); }; draw();
+  }
+}

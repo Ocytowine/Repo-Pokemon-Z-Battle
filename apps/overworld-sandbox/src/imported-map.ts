@@ -2,6 +2,7 @@ import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { EMPTY_SOURCE_EVENT_STATE, selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import type { SourceShopItem } from "./source-economy.js";
+import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -65,6 +66,7 @@ export interface ImportedEventPage {
   readonly condition: { readonly switch1Id: number | null; readonly switch2Id: number | null; readonly variable: { readonly id: number; readonly minimum: number } | null; readonly selfSwitch: string | null };
   readonly graphic: { readonly tileId: number; readonly characterName: string; readonly direction: number; readonly pattern: number; readonly opacity: number };
   readonly settings: { readonly moveType: number; readonly moveSpeed: number; readonly moveFrequency: number;
+    readonly moveRoute?: SourceMoveRoute | null;
     readonly walkAnimation: boolean; readonly stepAnimation: boolean; readonly directionFix: boolean;
     readonly through: boolean; readonly alwaysOnTop: boolean; readonly trigger: number };
   readonly commands: readonly { readonly kind: string; readonly text: string | null; readonly indent: number; readonly data: Readonly<Record<string, unknown>> }[];
@@ -96,6 +98,7 @@ export interface ImportedMapAssets {
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
+  readonly pokemonOverworldPaths: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerCreationCatalog;
   readonly trainers: readonly ImportedTrainer[];
   readonly trainerTypes: readonly ImportedTrainerType[];
@@ -396,6 +399,8 @@ function parseMapEvents(value: unknown): ImportedMapEvent[] {
       if (page.condition.variable !== null && (!isRecord(page.condition.variable) || !Number.isInteger(page.condition.variable.id)
         || !Number.isInteger(page.condition.variable.minimum))) throw new Error("Une variable d'evenement est invalide.");
       if (page.condition.selfSwitch !== null && typeof page.condition.selfSwitch !== "string") throw new Error("Un self switch est invalide.");
+      const moveRoute = page.settings.moveRoute === undefined ? null : parseSourceMoveRoute(page.settings.moveRoute);
+      if (page.settings.moveType === 3 && moveRoute === null) throw new Error("Une route autonome d'evenement est invalide.");
       return {
         condition: { switch1Id: nullableNumber(page.condition.switch1Id), switch2Id: nullableNumber(page.condition.switch2Id),
           variable: page.condition.variable as { readonly id: number; readonly minimum: number } | null, selfSwitch: page.condition.selfSwitch },
@@ -403,6 +408,7 @@ function parseMapEvents(value: unknown): ImportedMapEvent[] {
           direction: page.graphic.direction as number, pattern: page.graphic.pattern as number, opacity: page.graphic.opacity as number },
         settings: { moveType: page.settings.moveType as number, moveSpeed: page.settings.moveSpeed as number,
           moveFrequency: page.settings.moveFrequency as number,
+          moveRoute,
           walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
           directionFix: page.settings.directionFix, through: page.settings.through,
           alwaysOnTop: page.settings.alwaysOnTop, trigger: page.settings.trigger as number },
@@ -532,6 +538,15 @@ function sourceImageUrl(folder: "Tilesets" | "Autotiles" | "Characters", name: s
   return `/__pokemon-z/source/Graphics/${folder}/${encodeURIComponent(name)}.png`;
 }
 
+export interface ImportedFollowerRender {
+  readonly image: HTMLImageElement;
+  readonly pose: ImportedAvatar & { readonly pattern: number };
+}
+
+function sourceAssetUrl(path: string): string {
+  return `/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`;
+}
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   const cached = imageCache.get(url);
   if (cached !== undefined) return cached;
@@ -546,14 +561,36 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   return pending;
 }
 
+export function loadSourceAssetImage(path: string): Promise<HTMLImageElement> {
+  const normalized = path.replaceAll("\\", "/");
+  if (!normalized.startsWith("Graphics/Characters/") || normalized.includes("..")) {
+    return Promise.reject(new Error(`Asset de personnage invalide : ${path}`));
+  }
+  return loadImage(sourceAssetUrl(normalized));
+}
+
+function parsePokemonOverworldPaths(value: unknown): ReadonlyMap<string, string> {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le manifeste des sprites Pokémon est invalide.");
+  const paths = new Map<string, string>();
+  for (const record of value.records) {
+    if (!isRecord(record) || typeof record.internalName !== "string" || !isRecord(record.assets)
+      || !Array.isArray(record.assets.overworld)) continue;
+    const candidates = record.assets.overworld.filter((entry) => isRecord(entry) && typeof entry.path === "string");
+    const selected = candidates.find((entry) => entry.form === null && entry.shiny === false) ?? candidates[0];
+    if (selected !== undefined && typeof selected.path === "string") paths.set(record.internalName, selected.path);
+  }
+  return paths;
+}
+
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, movesValue, encountersValue,
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, pokemonAssetsValue, movesValue, encountersValue,
     battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
-    fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/moves.json"),
+    fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/pokemon-assets.json"),
+    fetchJson("/__pokemon-z/data/moves.json"),
     fetchJson("/__pokemon-z/data/encounters.json"),
     fetchJson("/__pokemon-z/data/map-battle-metadata.json"),
     fetchJson("/__pokemon-z/data/trainers.json"), fetchJson("/__pokemon-z/data/trainer-types.json"),
@@ -565,6 +602,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const items = parseImportedItems(itemsValue, localizationValue);
   const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
+  const pokemonOverworldPaths = parsePokemonOverworldPaths(pokemonAssetsValue);
   const trainers = parseImportedTrainers(trainersValue);
   const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
   const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
@@ -582,7 +620,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
-    mapTranslations, itemNames, items, battleCatalog,
+    mapTranslations, itemNames, items, pokemonOverworldPaths, battleCatalog,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }
@@ -708,7 +746,8 @@ export function eventPoseForActivePage(pose: ImportedEventPose | undefined, page
 export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLCanvasElement, assets: ImportedMapAssets,
   avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE,
   eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 },
-  playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0): void {
+  playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0,
+  follower: ImportedFollowerRender | null = null): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -784,6 +823,13 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     const z = tileId > 0 ? sourcePriorityTileZ(eventY, assets.tileset.priorities[tileId] ?? 0)
       : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
     renderables.push({ z, order: order++, draw: () => drawEvent(entry) });
+  }
+  if (follower !== null) {
+    const pose = follower.pose;
+    renderables.push({ z: sourceCharacterZ(pose.y, follower.image.naturalHeight / 4), order: order++, draw: () => {
+      drawCharacter(context, follower.image, directionNumber(pose.direction), pose.pattern, 255,
+        pose.x, pose.y, cameraX, cameraY, true);
+    } });
   }
   renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
     drawCharacter(context, playerImage, directionNumber(avatar.direction), playerPattern, 255,

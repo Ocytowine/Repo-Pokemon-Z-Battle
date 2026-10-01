@@ -1,6 +1,9 @@
 import type { BattleAbility, BattleMove, BattleStats, BattleTeam, BattlerState, HeldItem, MajorStatusState } from "@pokemon-z-battle/battle-engine";
 import type { MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 
+export { createDefaultPlayerProfile, parsePlayerProfile, PLAYER_PROFILE_SCHEMA_VERSION,
+  type PlayerProfile, type PlayerPronouns } from "./profile.js";
+
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const MAX_PARTY_SIZE = 6;
 

@@ -14,6 +14,7 @@ import {
   type PokemonAssetKind,
 } from "./classify-assets.js";
 import { readImageMetadata, type ImageDimensions } from "./image-metadata.js";
+import { buildPlayerAvatarCatalog } from "./player-avatar-catalog.js";
 
 const HASH_CONCURRENCY = 8;
 const WEBGL_CHUNK_HEIGHT = 4096;
@@ -223,6 +224,10 @@ export async function extractAssets(
     count: pokemonRecords.length,
     records: pokemonRecords,
   };
+  const playerAvatars = buildPlayerAvatarCatalog(
+    await readFile(path.join(paths.source, "PBS", "metadata.txt"), "utf8"),
+    entries.map((entry) => entry.path),
+  );
 
   const duplicateGroups = [...new Set(entries.filter((entry) => entry.duplicateOf !== null)
     .map((entry) => entry.duplicateOf as string))].map((canonical) => ({
@@ -300,6 +305,8 @@ export async function extractAssets(
     writeJsonAtomically(paths.output, "asset-manifest.json", manifest),
     writeJsonAtomically(paths.output, "pokemon-assets.json", pokemonAssets),
     writeJsonAtomically(paths.output, "asset-report.json", report),
+    writeJsonAtomically(paths.output, "player-avatars.json", playerAvatars.catalog),
+    writeJsonAtomically(paths.output, "player-avatar-report.json", playerAvatars.report),
   ]);
   return { outputDirectory: paths.output, assetCount: entries.length, pokemonCount: pokemonRecords.length, files };
 }

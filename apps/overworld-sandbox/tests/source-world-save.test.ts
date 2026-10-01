@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SOURCE_WORLD_SAVE_KEY, createSourceWorldSave, loadSourceWorldSave,
+import { SOURCE_WORLD_SAVE_KEY, clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave,
   parseSourceWorldSave, persistSourceWorldSave } from "../src/source-world-save.js";
 
 describe("source world save", () => {
@@ -29,5 +29,12 @@ describe("source world save", () => {
     values.set(SOURCE_WORLD_SAVE_KEY, "not-json");
     expect(loadSourceWorldSave(storage)).toBeNull();
     expect(storage.removeItem).toHaveBeenCalledWith(SOURCE_WORLD_SAVE_KEY);
+  });
+
+  it("does not remove the independent avatar laboratory profile", () => {
+    const values = new Map([[SOURCE_WORLD_SAVE_KEY, "world"],
+      ["pokemon-z-battle.avatar-lab-profile.v1", "avatar"]]);
+    clearSourceWorldSave({ removeItem: (key) => { values.delete(key); } });
+    expect(values.get("pokemon-z-battle.avatar-lab-profile.v1")).toBe("avatar");
   });
 });

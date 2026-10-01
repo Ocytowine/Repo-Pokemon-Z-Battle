@@ -70,7 +70,7 @@ describe("source command registry", () => {
 
   it("clears the EV017 presentation audit once every visual command is rendered", () => {
     const rendered = ["screen-tone", "change-map-settings", "show-picture", "move-picture", "erase-picture",
-      "play-music", "play-sound", "fade-music"].map((kind) => command(kind));
+      "play-music", "play-background-sound", "play-sound", "fade-music"].map((kind) => command(kind));
     const plan = compileSourceScene(page([...rendered, command("show-animation"), command("scroll-map"),
       command("text-options")]));
     expect(plan.audit.pendingPresentation).toEqual([]);

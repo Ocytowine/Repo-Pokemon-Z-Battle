@@ -55,6 +55,7 @@ export class SourceBattleController {
   private rng: SeededRandom | null = null;
   private escapeAttempts = 0;
   private resolving = false;
+  private encounterCompletion: ((won: boolean) => void) | null = null;
   private trainerCompletion: ((won: boolean) => void) | null = null;
   private trainerAudio: SourceTrainerBattleAudio | null = null;
 
@@ -75,25 +76,30 @@ export class SourceBattleController {
     return this.resolving;
   }
 
-  public startPendingEncounter(): void {
+  public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null): boolean {
     const eventState = this.callbacks.getEventState();
     const encounter = eventState.pendingEncounter;
     const resources = this.callbacks.getResources();
-    if (encounter === null || resources === null || this.battle !== null) return;
+    if (encounter === null || resources === null || this.battle !== null) return false;
     try {
       this.battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
         `wild-${encounter.species.toLowerCase()}`);
       this.rng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
       this.escapeAttempts = 0;
+      this.encounterCompletion = onComplete;
       void this.presentation.startBattle(this.battle,
         { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic });
       this.callbacks.setNotice(`Combat lancé contre ${encounter.species} niveau ${encounter.level}.`);
     } catch (error) {
       this.battle = null;
       this.rng = null;
+      this.encounterCompletion = null;
       this.callbacks.setNotice(error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.");
+      this.callbacks.render();
+      return false;
     }
     this.callbacks.render();
+    return true;
   }
 
   public startTrainerBattle(trainer: SourceTrainerDefinition, audio: SourceTrainerBattleAudio,
@@ -136,6 +142,7 @@ export class SourceBattleController {
       const result = attemptSourceEncounterEscape(before, this.escapeAttempts, this.rng);
       this.escapeAttempts += 1;
       if (result.escaped) {
+        const encounterCompletion = this.encounterCompletion;
         this.callbacks.updateEventState({
           ...eventState,
           party: storeSourceEncounterParty(eventState.party, before),
@@ -145,16 +152,19 @@ export class SourceBattleController {
         await this.presentation.endBattle(null);
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
+        encounterCompletion?.(false);
       } else {
         await this.presentation.playTurn(before, result.turn.events);
         this.battle = applyAutomaticReplacements(result.turn.state);
         if (this.battle.status === "finished") {
+          const encounterCompletion = this.encounterCompletion;
           const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
           await this.presentation.endBattle(this.battle.winner);
           this.clear();
           this.callbacks.setNotice(`Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.${loss > 0 ? ` · -${loss.toLocaleString("fr-FR")} ₽` : ""}`);
+          encounterCompletion?.(false);
         } else {
           this.callbacks.setNotice("Fuite ratée : le Pokémon sauvage a pu attaquer.");
         }
@@ -184,6 +194,7 @@ export class SourceBattleController {
         const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
         let nextState = { ...eventState, party: settlement.party };
         const trainerCompletion = this.trainerCompletion;
+        const encounterCompletion = this.encounterCompletion;
         let moneyNotice = "";
         if (winner === "player" && trainerCompletion !== null) {
           const amount = sourceTrainerReward(before.teams.opponent.members.map((member) => member.level),
@@ -205,6 +216,7 @@ export class SourceBattleController {
           ? `Victoire : l'équipe a été sauvegardée${reward === null ? "." : ` · +${reward.amount} EXP${reward.levelsGained > 0 ? ` · +${reward.levelsGained} niveau(x)` : ""}.`}${moneyNotice}${skippedMoves.length === 0 ? "" : ` Capacité(s) en attente d'un choix : ${skippedMoves.join(", ")}.`}`
           : `Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.${moneyNotice}`);
         trainerCompletion?.(winner === "player");
+        encounterCompletion?.(winner === "player");
       } else {
         const active = this.battle.teams.opponent.members[this.battle.teams.opponent.activeIndex];
         this.callbacks.setNotice(`Tour résolu${active === undefined ? "." : ` · ${active.name} possède encore ${active.hp} PV.`}`);
@@ -220,6 +232,7 @@ export class SourceBattleController {
   private clear(): void {
     this.battle = null;
     this.rng = null;
+    this.encounterCompletion = null;
     this.trainerCompletion = null;
     this.trainerAudio = null;
   }

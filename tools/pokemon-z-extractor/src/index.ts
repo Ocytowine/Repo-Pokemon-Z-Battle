@@ -23,6 +23,9 @@ export { decodeRpgTable } from "./ruby-marshal/table.js";
 export type * from "./ruby-marshal/types.js";
 export { extractRuntimeData, type RuntimeExtractionResult } from "./runtime/extract-runtime.js";
 export { extractAssets, type AssetManifestEntry } from "./assets/extract-assets.js";
+export { buildPlayerAvatarCatalog, PLAYER_AVATAR_CATALOG_SCHEMA_VERSION,
+  type PlayerAvatarAssetReference, type PlayerAvatarAuditReport, type PlayerAvatarCatalog,
+  type PlayerAvatarCatalogRecord, type PlayerAvatarContext } from "./assets/player-avatar-catalog.js";
 export { extractWorldMaps, type WorldMapExtractionResult } from "./runtime/extract-world-maps.js";
 export { prepareLocalTest, type LocalTestPreparationResult } from "./runtime/prepare-local-test.js";
 export { extractEvents, type EventExtractionResult } from "./runtime/extract-events.js";

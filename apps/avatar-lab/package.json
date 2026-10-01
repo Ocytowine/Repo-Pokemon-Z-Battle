@@ -1,0 +1,14 @@
+{
+  "name": "@pokemon-z-battle/avatar-lab",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1 --port 4174",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "@pokemon-z-battle/player-state": "workspace:*" },
+  "devDependencies": { "vite": "8.3.0" }
+}

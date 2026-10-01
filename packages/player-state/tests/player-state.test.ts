@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerParty, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
+import { addPokemonToParty, createDefaultPlayerProfile, createEmptyPlayerParty, createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerParty, parsePlayerProfile, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
   id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
@@ -13,6 +13,16 @@ const catalog: PlayerBattleCatalog = {
   moves: [{ id: 303, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
     category: "Physical", accuracy: 100, pp: 35, priority: 0, effectChance: 0 }],
 };
+
+describe("player profile", () => {
+  it("validates a standalone versioned cosmetic profile", () => {
+    const profile = createDefaultPlayerProfile();
+    expect(parsePlayerProfile(profile)).toEqual(profile);
+    expect(() => parsePlayerProfile({ ...profile, displayName: "" })).toThrow("Profil joueur");
+    expect(() => parsePlayerProfile({ ...profile, colors: { ...profile.colors, primary: "#ff00ff" } }))
+      .toThrow("Profil joueur");
+  });
+});
 
 describe("persistent player party", () => {
   it("represents an empty story party without inventing a starter", () => {

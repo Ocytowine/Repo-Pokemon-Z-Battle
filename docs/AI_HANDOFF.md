@@ -19,8 +19,9 @@ structure de la commande source permet une detection generique.
 ## Etat Git au moment de cette note
 
 Le dernier commit connu est `1b4b9d0 FIX : Histoire bloqué`. Le worktree contient
-le dix-septieme noyau 9.7 non commite : contact joueur, combat de Dresseur source
-contre Crisanto, reprise de la scene apres combat, tests et documentation.
+le decoupage stabilise de l'orchestrateur overworld et le noyau 9.7 qui raccorde
+les routes autonomes personnalisees, le contact initie par un evenement, les
+ambiances BGS, l'ordonnanceur des pages paralleles et le Pokemon suiveur.
 
 Le porteur du projet prefere effectuer lui-meme les commits apres validation
 manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
@@ -154,13 +155,15 @@ Etat actuel :
 - pages conditionnelles et choix : pris en charge pour le sous-ensemble converti ;
 - routes imposees et mouvements autonomes : pris en charge ;
 - autorun nouvellement active apres changement d'etat : pris en charge ;
-- contact joueur/evenement : pris en charge quand le joueur atteint la zone de
-  l'evenement, pour les transferts comme pour une sequence ; le contact initie par
-  un evenement autonome reste a completer ;
+- contact joueur/evenement : pris en charge dans les deux sens. Un evenement en
+  mouvement aleatoire ou sur une route autonome personnalisee lance sa page de
+  contact lorsqu'il tente d'atteindre la case du joueur, sans l'occuper ;
 - premier autorun actif apres un transfert de carte : pris en charge ;
-- evenements paralleles : les effets de presentation idempotents sont initialises
-  au chargement de la carte ; les boucles qui modifient continuellement l'etat
-  restent a faire ;
+- evenements paralleles : un ordonnanceur par carte/evenement/page execute en
+  concurrence les presentations, attentes, mutations d'etat et routes ; une page
+  interactive est serialisee temporairement par le lecteur de scene ;
+- Pokemon suiveur : activation persistante, asset de l'espece active, suivi fluide
+  et repositionnement entre les cartes pris en charge ;
 - tonalite, flash, panorama, brouillard, images, musique et sons de cinematique :
   rendus par `SourceScenePresentation` ;
 - camera scriptable, animations de carte et options de boite de texte : rendues.
@@ -241,16 +244,56 @@ vide disparait bien. Cette synchronisation corrige notamment Crisanto apres sa
 marche vers la droite dans la scene d'arrivee de Map003.
 
 `play-cry` resout l'identifiant interne de l'espece dans `pokemon-assets.json` et
-lit son cri extrait. `play-jingle` lit maintenant les fichiers de `Audio/ME`.
-`play-background-sound` reste accepte mais non rendu.
+lit son cri extrait. `play-jingle` lit les fichiers de `Audio/ME` et
+`play-background-sound` pilote une piste bouclée distincte dans `Audio/BGS`. La
+musique, l'ambiance et les sons ponctuels suivent tous le volume du menu.
+
+Les routes autonomes `moveType 3` sont conservees au chargement et parcourues par
+le meme interpreteur pur que les routes imposees. Les pas cardinaux, orientations,
+attentes et repetitions observes sur les pages de contact sont donc joues dans
+l'overworld. Le controleur renvoie le couple evenement/page exact lorsqu'un de ces
+pas vise le joueur ; l'orchestrateur demarre alors la sequence source auditee.
+
+`SourceParallelController` maintient une tache annulable pour chaque page
+`trigger 4` active. Les boucles sont reevaluees apres au moins une frame RPG Maker,
+ce qui evite les boucles CPU sans attente source. Un changement de page ou de carte
+annule l'ancienne tache ; une mutation persistante resynchronise immediatement les
+pages actives. Etat, presentation, temporisation et routes s'executent en fond avec
+leurs barrieres de mouvement. Les pages qui ouvrent dialogue, choix, combat,
+boutique ou transfert passent par le lecteur de scene exclusif, puis les paralleles
+sont resynchronises a sa terminaison.
+
+Correction de stabilite des choix : une boucle parallele de presentation ne doit
+pas appeler le rendu complet de l'interface a chaque frame. Sur Map002, cela
+remplacait les boutons Oui/Non entre `pointerdown` et `click`. Les boucles mettent
+maintenant a jour leur couche directement, et `SourceDialogueView` conserve les
+noeuds de choix lorsque leurs libelles sont inchanges.
+
+Correction de reprise apres rencontre sauvage scriptée :
+`SourceBattleController.startPendingEncounter` accepte un callback de resultat,
+comme les combats de Dresseur. `SourceSequenceEffects` l'installe uniquement pour
+les rencontres lancees par une sequence et reprend le curseur apres une victoire ;
+une fuite ou une defaite termine proprement la sequence. Sans ce raccord, le combat
+du Keunotor de Map002 se terminait mais EV003 restait en pause avant ses quatre
+dernieres commandes. Le catalogue local `map-animations.json`, absent d'une
+ancienne extraction, peut etre regenere seul par `extract:runtime` sans recopier
+les assets.
+
+`set-follower` active maintenant un drapeau personnel persistant. Le Pokemon a
+l'index actif de l'equipe utilise son sprite par defaut lu dans
+`pokemon-assets.json`. `SourceFollowerMotionController` le place sur une case
+praticable derriere le joueur, interpole son trajet vers chaque case liberee et le
+repositionne apres un transfert. La position elle-meme reste visuelle et transitoire
+afin de ne pas alourdir la sauvegarde narrative. Une ancienne sauvegarde sans ce
+drapeau l'active automatiquement lorsqu'une equipe existe deja.
 
 La scene d'entree du laboratoire, Map005 evenement `crisanto`, est un jalon
 vertical valide par les donnees locales : 302 commandes resolues, 30
 dialogues, 182 commandes de mouvement et aucun rendu en attente. Les scripts Ruby
 fractionnes sur plusieurs commandes sont reunis avant portage. Les appels
-`dependentEvents.remove_sprite(true)` et `refresh_sprite`, propres au compagnon du
-moteur original qui n'est pas encore rendu sur le web, sont absorbes explicitement
-comme presentation sans effet ; ils ne bloquent plus la progression.
+`dependentEvents.remove_sprite(true)` et `refresh_sprite`, utilises pour masquer ou
+rafraichir ponctuellement le compagnon pendant certaines scenes, restent absorbes
+comme hooks de presentation ; ils ne modifient pas son activation persistante.
 
 Les routes sont auditees primitive par primitive avant lecture. L'effet sonore
 embarque dans une route RPG Maker est execute par la meme couche audio que les
@@ -310,8 +353,7 @@ numeros de carte. Les interactions directes sans choix utilisent le lecteur de
 sequence complet, ce qui preserve notamment les cris, animations, routes, sons et
 objets dans leur ordre. Les 24 pages actives de Map007 compilent sans commande
 inconnue ni rendu en attente. EV025, parallele, initialise le panorama `fondoAgua`
-et son mouvement lors du chargement de la carte ; ce support parallele reste limite
-aux presentations idempotentes.
+et son mouvement par le meme ordonnanceur que les autres boucles `trigger 4`.
 
 Toute augmentation d'inventaire detectee pendant un dialogue ou une sequence joue
 le jingle `ItemGet`, affiche le nom localise et la quantite, et remplace temporairement
@@ -420,10 +462,50 @@ chargement d'une destination, checkpoint, restauration d'une sauvegarde et repli
 sur Bourg Canvas lorsqu'elle est inaccessible. `main.ts` conserve l'installation
 des assets dans la scene, la transition visuelle et l'armement des autoruns.
 
-`main.ts` passe ainsi de 1 520 a 1 186 lignes. Les prochains decoupages doivent
-conserver cette approche incrementale. Le lecteur de sequences est maintenant le
-principal candidat, mais il doit faire l'objet d'un lot dedie avec ses tests, pas
-d'un simple deplacement mecanique.
+`source-sequence-controller.ts` possede maintenant la session narrative active,
+son curseur, le regroupement des continuations de texte, les pauses, les choix, la
+barriere finale des mouvements et le cycle erreur/terminaison. Les effets concrets
+des commandes restent injectes depuis `main.ts`, ce qui preserve l'acces explicite
+au combat, a l'inventaire, aux transferts et a la presentation sans coupler le
+controleur au DOM.
+
+`source-sequence-effects.ts` route enfin les commandes selon six familles : etat,
+combat de Dresseur, boutique, transfert, mouvement et presentation. Il applique les
+effets a travers des dependances injectees ; le registre des commandes reste la
+source de verite pour reconnaitre les mutations persistantes.
+
+`main.ts` passe ainsi de 1 520 a 1 084 lignes. Le jalon de decoupage est considere
+stabilise ici a la demande du porteur du projet. Ne pas poursuivre la fragmentation
+par principe : reprendre les fonctionnalites de la roadmap, et n'extraire un autre
+module que lorsqu'une nouvelle responsabilite le justifie concretement.
+
+## Profil joueur en laboratoire
+
+Le chantier de personnalisation commence sans raccord au jeu source. L'extracteur
+genere `player-avatars.json` et `player-avatar-report.json` a partir des declarations
+`PlayerA` a `PlayerF` de `PBS/metadata.txt`. Le catalogue relie les six profils aux
+actions overworld, portraits et vues de combat ; le rapport distingue asset natif,
+repli et absence, puis compare les suffixes de variantes entre profils.
+
+Le paquet `player-state` expose un `PlayerProfile` schema 1, mais cet objet ne fait
+partie ni de `SourceEventState`, ni de `SourceWorldSave`, ni du protocole reseau.
+Le futur ecran aura sa propre cle locale et servira uniquement de laboratoire. Ne
+pas brancher implicitement ses choix sur `trchar000`, Map001 ou une partie en cours.
+La creation de nouvelles tenues, coiffures ou silhouettes est reportee ; le prochain
+lot attendu est l'ecran autonome sur les six profils extraits.
+
+Ce lot existe maintenant dans `apps/avatar-lab` et se lance avec
+`corepack pnpm lab:avatar` sur `http://127.0.0.1:4174`. Son stockage se limite a
+`pokemon-z-battle.avatar-lab-profile.v1`; le bouton de reinitialisation ne touche
+aucune cle de l'aventure. Les apercus utilisent directement les chemins audites.
+La palette est editee et exportee mais pas encore rendue, afin de ne pas recolorer
+la peau et les cheveux avec un filtre global incorrect.
+
+L'Overworld Sandbox expose aussi ce laboratoire via l'onglet `Personnage`.
+`AvatarLabView` partage la meme cle locale avec l'application autonome, masque la
+scene de jeu sans modifier son etat, et ignore les commandes de mouvement tant que
+l'onglet est ouvert. `clearSourceWorldSave` et la reinitialisation narrative ne
+touchent pas cette cle ; un test protege explicitement cette separation.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -438,12 +520,13 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 272 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 292 tests et passe avec le build.
 
 ## Commandes utiles
 
 ```powershell
 corepack pnpm sandbox:overworld
+corepack pnpm lab:avatar
 corepack pnpm test
 corepack pnpm build
 corepack pnpm --filter @pokemon-z-battle/overworld-sandbox typecheck
@@ -466,7 +549,8 @@ sont attendues.
   sprites standards. Ne pas imposer une taille globale sans verifier le charset.
 - Les donnees `.pokemon-z` existent localement mais pas dans la CI GitHub. Les tests
   versionnes doivent employer de petits fixtures structurels.
-- `main.ts` contient encore 1 186 lignes. Le gestionnaire de scenes doit continuer
-  l'extraction progressive, sans refonte monolithique.
+- `main.ts` contient encore 1 084 lignes, mais ses vues, sa navigation et son cycle
+  narratif sont separes. Le decoupage est volontairement arrete a ce jalon ; eviter
+  une refonte monolithique ou des extractions sans besoin fonctionnel.
 - Apres une modification de progression, une ancienne sauvegarde locale peut masquer
   le nouveau declenchement. Rejouer la recette avec un etat vierge.

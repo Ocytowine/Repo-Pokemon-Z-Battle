@@ -34,8 +34,19 @@ export class SourceDialogueView {
     if (choices === null) return;
     const pending = session.flow.pendingChoice;
     choices.hidden = !session.choosing || pending === null;
-    choices.innerHTML = !session.choosing || pending === null ? "" : pending.choices.map((choice, index) =>
-      `<button type="button" data-source-choice="${index}"><span>${index + 1}</span>${escapeSourceHtml(localizedDialogueText(choice, session.translations))}</button>`).join("");
+    if (!session.choosing || pending === null) {
+      if (choices.dataset.sourceChoiceSignature !== undefined) {
+        choices.replaceChildren();
+        delete choices.dataset.sourceChoiceSignature;
+      }
+      return;
+    }
+    const labels = pending.choices.map((choice) => localizedDialogueText(choice, session.translations));
+    const signature = JSON.stringify(labels);
+    if (choices.dataset.sourceChoiceSignature === signature) return;
+    choices.dataset.sourceChoiceSignature = signature;
+    choices.innerHTML = labels.map((choice, index) =>
+      `<button type="button" data-source-choice="${index}"><span>${index + 1}</span>${escapeSourceHtml(choice)}</button>`).join("");
     choices.querySelectorAll<HTMLButtonElement>("[data-source-choice]").forEach((button) =>
       button.addEventListener("click", () => {
         const index = Number(button.dataset.sourceChoice);

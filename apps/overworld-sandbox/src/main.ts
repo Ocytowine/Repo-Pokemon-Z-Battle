@@ -1,5 +1,5 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -11,12 +11,18 @@ import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
-  findSourceMapEntryAutorun, isSourceParallelInitialization, type ActiveSourceAutorun } from "./source-autorun.js";
+  findSourceMapEntryAutorun, type ActiveSourceAutorun } from "./source-autorun.js";
 import { resolveEventFlow, type PendingEventChoice } from "./source-event-flow.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
-import { isSourceStateCommand } from "./source-command-registry.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
+import { SourceSequenceController, type SourceSequenceCommandResult, type SourceSequenceSession }
+  from "./source-sequence-controller.js";
+import { SourceSequenceEffects } from "./source-sequence-effects.js";
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
+import { SourceParallelController, type SourceParallelTask } from "./source-parallel-controller.js";
+import { SourceFollowerMotionController } from "./source-follower-motion.js";
+import { AVATAR_LAB_MAP_ID, AvatarLabView } from "./avatar-lab-view.js";
+import { isSourceStateCommand, sourceCommandCapability } from "./source-command-registry.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
 import { SourceScenePresentation } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView, sourceMenuVolume } from "./source-menu-view.js";
@@ -56,23 +62,21 @@ let sourceEventState = loadSourceEventState();
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
+const sourceFollowerMotion = new SourceFollowerMotionController();
 const sourceScenes = new SourceSceneCoordinator();
-interface SourceSequenceSession {
-  readonly label: string;
-  readonly mapId: number;
-  readonly eventId: number;
-  plan: SourceScenePlan;
-  readonly translations: ReadonlyMap<string, string>;
-  readonly sourcePage?: ImportedEventPage;
-  selections: number[];
-  pendingChoice: PendingEventChoice | null;
-  cursor: number;
-  advancing: boolean;
-  autorunBaseline?: SourceEventState;
-  readonly runner: SourceSequenceRunner;
-  readonly onComplete?: () => void;
-}
-let sourceSequence: SourceSequenceSession | null = null;
+const sourceParallelEvents = new SourceParallelController(runSourceParallelCycle, (program, error) => {
+  sourceParallelAuditNotice = `EV${program.eventId} interrompu : ${error instanceof Error ? error.message : "erreur inattendue"}`;
+  console.warn(`[source-parallel] ${sourceParallelAuditNotice}`, error);
+});
+const sourceSequences = new SourceSequenceController({
+  dialogueActive: () => sourceDialogues.current !== null,
+  onText: showSourceSequenceText,
+  onChoice: beginSourceSequenceChoice,
+  executeCommand: executeSourceSequenceCommand,
+  onComplete: completeSourceSequence,
+  onError: failSourceSequence,
+});
+let sourceSequenceEffects: SourceSequenceEffects;
 let sourcePickupPose = false;
 let sourcePickupStartedAt: number | null = null;
 let sourcePickupDialogueSequence: SourceSequenceSession | null = null;
@@ -81,6 +85,8 @@ interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly
 let sourceShop: SourceShopSession | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
+let sourceFollowerImage: HTMLImageElement | null = null;
+let sourceFollowerAssetPath: string | null = null;
 type AvatarId = DemoAvatarId;
 
 function initialState(): OverworldState {
@@ -99,6 +105,8 @@ function loadSourceEventState(): SourceEventState {
 
 function persistSourceEventState(): void {
   localStorage.setItem(SOURCE_EVENT_STATE_KEY, JSON.stringify(sourceEventState));
+  const assets = importedAssets;
+  if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
 }
 
 function startPendingSourceEncounter(): void {
@@ -145,35 +153,86 @@ function compileAndReportSourceScene(page: ImportedEventPage, label: string): So
   return plan;
 }
 
-async function refreshSourceParallelPresentation(assets: ImportedMapAssets): Promise<void> {
+function refreshSourceParallelPresentation(assets: ImportedMapAssets): void {
+  if (importedAssets !== assets) return;
   const parallels = findActiveSourceParallelEvents(sourceMapEvents(), assets.map.id, sourceEventState);
-  sourceParallelAuditNotice = null;
-  for (const parallel of parallels) {
-    const flow = resolveEventFlow(parallel.page, [], sourceEventState, assets.map.id, parallel.event.id,
-      { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
-    if (!flow.complete) {
-      sourceParallelAuditNotice = `EV${parallel.event.id} bloqué : ${flow.blockedReason ?? "séquence incomplète"}`;
-      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`);
+  sourceParallelEvents.synchronize(parallels.map(({ event, pageIndex }) => ({ mapId: assets.map.id,
+    eventId: event.id, pageIndex })));
+  sourceParallelAuditNotice = parallels.length === 0 ? null : `${parallels.length} boucle(s) parallèle(s) active(s)`;
+}
+
+async function runSourceParallelCycle(task: SourceParallelTask): Promise<"repeat" | "stop"> {
+  const assets = importedAssets;
+  if (assets === null || assets.map.id !== task.mapId || !task.active()) return "stop";
+  const active = findActiveSourceParallelEvents(sourceMapEvents(), task.mapId, sourceEventState)
+    .find(({ event, pageIndex }) => event.id === task.eventId && pageIndex === task.pageIndex);
+  if (active === undefined) return "stop";
+  const flow = resolveEventFlow(active.page, [], sourceEventState, task.mapId, task.eventId,
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+  if (!flow.complete && flow.pendingChoice === null) {
+    sourceParallelAuditNotice = `EV${task.eventId} bloqué : ${flow.blockedReason ?? "choix interactif en parallèle"}`;
+    return "stop";
+  }
+  const plan = compileSourceScene(flow.page, sourceMapEvents(), new Set(assets.characterImages.keys()));
+  sourceParallelAuditNotice = `EV${task.eventId} · ${formatSourceSceneAudit(plan.audit)}`;
+  if (!plan.audit.complete) return "stop";
+  const foreground = flow.pendingChoice !== null || plan.steps.some(({ command }) => ["show-text", "grant-item",
+    "request-encounter", "request-trainer-battle", "open-shop", "transfer-player"].includes(command.kind));
+  if (foreground) {
+    if (!sourceScenes.allows("start-sequence", sourceSceneActivity())) return "repeat";
+    beginSourceSequence(active, `Événement parallèle ${task.eventId} · ${active.event.name}`);
+    return "stop";
+  }
+  const runner = new SourceSequenceRunner();
+  const session: SourceSequenceSession = { label: `Parallèle EV${task.eventId}`, mapId: task.mapId,
+    eventId: task.eventId, plan, translations: assets.mapTranslations, sourcePage: active.page,
+    selections: [], pendingChoice: null, cursor: 0, advancing: true, runner };
+  let routeError: unknown = null;
+  for (const { command } of plan.steps) {
+    if (!task.active() || importedAssets !== assets) return "stop";
+    if (isSourceStateCommand(command.kind)) {
+      const result = applySafeStateCommands(sourceEventState, { ...plan.page, commands: [command] }, task.mapId,
+        task.eventId, { checkpoint: { mapId: task.mapId, x: importedAvatar.x, y: importedAvatar.y,
+          direction: importedAvatar.direction }, createPokemon: (species, level) =>
+          createPersistentPokemon(crypto.randomUUID(), species, level, assets.battleCatalog) });
+      if (!result.safe) throw new Error(result.reason ?? `commande ${command.kind} invalide`);
+      sourceEventState = result.state;
+      persistSourceEventState();
+      if (result.state.pendingEncounter !== null) { startPendingSourceEncounter(); return "stop"; }
       continue;
     }
-    const plan = compileSourceScene(flow.page, sourceMapEvents(), new Set(assets.characterImages.keys()));
-    sourceParallelAuditNotice = `EV${parallel.event.id} · ${formatSourceSceneAudit(plan.audit)}`;
-    if (!plan.audit.complete) {
-      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`, plan.audit);
+    if (command.kind === "move-route" && typeof command.data.target === "number") {
+      const target = command.data.target;
+      runner.startRoute(target, () => runSourceMoveRoute(session, target, command.data.route, task.active),
+        (error) => { routeError = error; });
       continue;
     }
-    if (!isSourceParallelInitialization(flow.page)) {
-      sourceParallelAuditNotice = `EV${parallel.event.id} ignoré : boucle parallèle non prise en charge`;
-      console.warn(`[source-parallel] ${sourceParallelAuditNotice}`);
+    if (command.kind === "wait-for-movement") {
+      await runner.waitForMovement();
+      if (routeError !== null) throw routeError;
       continue;
     }
-    for (const step of plan.steps) {
-      if (importedAssets !== assets) return;
-      await sourcePresentation.execute(step.command, async (milliseconds) =>
-        new Promise<void>((resolve) => globalThis.setTimeout(resolve, milliseconds)));
+    if (command.kind === "erase-event") return "stop";
+    const presentationCommand = command.kind === "show-animation" && Array.isArray(command.data.parameters)
+      && command.data.parameters[0] === 0
+      ? { ...command, data: { ...command.data, parameters: [task.eventId, ...command.data.parameters.slice(1)] } }
+      : command;
+    if (await sourcePresentation.execute(presentationCommand, (milliseconds) => runner.delay(milliseconds))) continue;
+    if (command.kind === "wait" && typeof command.data.frames === "number" && command.data.frames > 0) {
+      await runner.delay(command.data.frames * 25);
+      continue;
+    }
+    const capability = sourceCommandCapability(command.kind);
+    if (capability === null || capability.support === "accepted") {
+      throw new Error(`commande ${command.kind} non exécutable en parallèle`);
     }
   }
-  if (importedAssets === assets) renderImportedView();
+  await runner.waitForMovement();
+  if (routeError !== null) throw routeError;
+  if (importedAssets === assets) {
+    refreshSourceParallelPresentation(assets);
+  }
+  return task.active() ? "repeat" : "stop";
 }
 
 function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolean {
@@ -190,11 +249,10 @@ function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolea
     renderImportedView();
     return false;
   }
-  sourceSequence = { label, mapId: importedAssets.map.id, eventId: active.event.id, plan,
-    translations: importedAssets.mapTranslations, sourcePage: active.page, selections: [], pendingChoice: flow.pendingChoice,
-    cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
   importedNotice = `${label} démarré.`;
-  void advanceSourceSequence();
+  sourceSequences.start({ label, mapId: importedAssets.map.id, eventId: active.event.id, plan,
+    translations: importedAssets.mapTranslations, sourcePage: active.page, selections: [], pendingChoice: flow.pendingChoice,
+  });
   return true;
 }
 
@@ -224,7 +282,8 @@ function sourcePlayerRouteActor(): SourceRouteActor {
     characterName: "player", characterHue: 0, pattern: 0 };
 }
 
-async function runSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown): Promise<void> {
+async function runSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown,
+  isActive: () => boolean = () => sourceSequences.isActive(sequence)): Promise<void> {
   const route = parseSourceMoveRoute(rawRoute);
   const assets = importedAssets;
   if (route === null || assets === null || assets.map.id !== sequence.mapId) return;
@@ -235,7 +294,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
   if (actor === null) return;
   const eventId = target === 0 ? sequence.eventId : target;
   for (const step of route.steps) {
-    if (sourceSequence !== sequence) return;
+    if (!isActive()) return;
     const result = executeSourceMoveRouteStep(actor, step, { player: importedAvatar });
     if (!result.supported) {
       if (route.skippable) continue;
@@ -252,11 +311,14 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
     }
     let duration = result.waitMs;
     if (playerTarget) {
+      const playerBefore = importedAvatar;
       importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
       if (result.destination !== null) {
         duration = sourceNpcStepDuration(actor.moveSpeed);
+        const startedAt = performance.now();
         importedPlayerMotion = createSourceGridMotion(result.actor, result.destination, actor.direction,
-          performance.now(), { duration, walkingPattern: importedWalkingPattern });
+          startedAt, { duration, walkingPattern: importedWalkingPattern });
+        sourceFollowerMotion.followPlayerStep(playerBefore, importedAvatar, startedAt, duration);
         importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
       }
     } else duration = Math.max(duration,
@@ -269,9 +331,9 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
 
 function startSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown): void {
   sequence.runner.startRoute(target, () => runSourceMoveRoute(sequence, target, rawRoute), (error: unknown) => {
-    if (sourceSequence !== sequence) return;
+    if (!sourceSequences.isActive(sequence)) return;
     importedNotice = `Séquence interrompue : ${error instanceof Error ? error.message : "route de mouvement invalide"}.`;
-    sourceSequence = null;
+    sourceSequences.clear(sequence);
     renderImportedView();
   });
 }
@@ -299,13 +361,13 @@ function continueSourceSequenceChoice(sequence: SourceSequenceSession, selected:
     { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
   if (!flow.complete && flow.pendingChoice === null) {
     importedNotice = `Séquence interrompue : ${flow.blockedReason ?? "branche incomplète"}.`;
-    sourceSequence = null;
+    sourceSequences.clear(sequence);
     return false;
   }
   const nextPlan = compileAndReportSourceScene(flow.page, sequence.label);
   if (!nextPlan.audit.complete || nextPlan.steps.length < sequence.cursor) {
     importedNotice = "Séquence interrompue : branche de choix incohérente.";
-    sourceSequence = null;
+    sourceSequences.clear(sequence);
     return false;
   }
   sequence.selections = selections;
@@ -314,175 +376,44 @@ function continueSourceSequenceChoice(sequence: SourceSequenceSession, selected:
   return true;
 }
 
-async function advanceSourceSequence(): Promise<void> {
-  const sequence = sourceSequence;
-  if (sequence === null || sequence.advancing || sourceDialogues.current !== null) return;
-  sequence.advancing = true;
-  let currentCommand = "initialisation";
-  try {
-    while (sourceSequence === sequence && sequence.cursor < sequence.plan.steps.length) {
-      const command = sequence.plan.steps[sequence.cursor]?.command;
-      if (command === undefined) break;
-      currentCommand = command.kind;
-      if (command.kind === "show-text") {
-        const dialogueCommands: ImportedEventPage["commands"][number][] = [command];
-        sequence.cursor += 1;
-        while (sequence.cursor < sequence.plan.steps.length) {
-          const continuation = sequence.plan.steps[sequence.cursor]?.command;
-          if (continuation === undefined || continuation.kind !== "text-continuation") break;
-          dialogueCommands.push(continuation);
-          sequence.cursor += 1;
-        }
-        const segment = { ...sequence.plan.page, commands: dialogueCommands };
-        beginSourceEvent(segment, sequence.mapId, sequence.eventId, sequence.label, sequence.translations);
-        renderImportedView();
-        return;
-      }
-      sequence.cursor += 1;
-      if (isSourceStateCommand(command.kind)) {
-        const previousState = sourceEventState;
-        const previousInventory = sourceEventState.inventory;
-        const result = applySafeStateCommands(sourceEventState, { ...sequence.plan.page, commands: [command] }, sequence.mapId,
-          sequence.eventId, { checkpoint: { mapId: sequence.mapId, x: importedAvatar.x, y: importedAvatar.y,
-            direction: importedAvatar.direction }, createPokemon: (species, level) => {
-              if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
-              return createPersistentPokemon(crypto.randomUUID(), species, level, importedAssets.battleCatalog);
-            } });
-        if (!result.safe) {
-          importedNotice = `Séquence interrompue : ${result.reason ?? "commande d'état invalide"}.`;
-          sourceSequence = null;
-          renderImportedView();
-          return;
-        }
-        sequence.autorunBaseline ??= previousState;
-        sourceEventState = result.state;
-        persistSourceEventState();
-        renderImportedView();
-        const itemGains = importedAssets === null ? []
-          : sourceItemGains(previousInventory, result.state.inventory, importedAssets.itemNames);
-        if (itemGains.length > 0) {
-          beginSequenceItemPresentation(sequence, itemGains);
-          return;
-        }
-        if (sourceEventState.pendingEncounter !== null) {
-          startPendingSourceEncounter();
-          return;
-        }
-        continue;
-      }
-      if (command.kind === "request-trainer-battle") {
-        if (importedAssets === null || typeof command.data.trainerType !== "string"
-          || typeof command.data.trainerName !== "string" || !Number.isInteger(command.data.version)) {
-          importedNotice = "Séquence interrompue : combat de Dresseur invalide.";
-          sourceSequence = null;
-          renderImportedView();
-          return;
-        }
-        const trainer = importedAssets.trainers.find((candidate) => candidate.trainerType === command.data.trainerType
-          && candidate.name === command.data.trainerName && candidate.version === command.data.version);
-        const trainerType = importedAssets.trainerTypes.find((candidate) => candidate.internalName === command.data.trainerType);
-        if (trainer === undefined || trainerType === undefined) {
-          importedNotice = "Séquence interrompue : équipe ou classe de Dresseur introuvable.";
-          sourceSequence = null;
-          renderImportedView();
-          return;
-        }
-        const started = sourceBattles.startTrainerBattle(trainer, {
-          battleMusic: trainerType.battleBgm ?? importedAssets.wildBattleBgm,
-          victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
-          baseMoney: trainerType.baseMoney,
-        }, (won) => {
-          if (sourceSequence !== sequence) return;
-          if (!won) sequence.cursor = sequence.plan.steps.length;
-          void advanceSourceSequence();
-        });
-        if (!started) {
-          importedNotice = "Séquence interrompue : le combat de Dresseur n'a pas pu démarrer.";
-          sourceSequence = null;
-          renderImportedView();
-        }
-        return;
-      }
-      if (command.kind === "open-shop") {
-        const stockIds = command.data.stock;
-        if (importedAssets === null || !Array.isArray(stockIds) || !stockIds.every((id) => typeof id === "string")) {
-          throw new Error("stock de boutique invalide");
-        }
-        const stock = stockIds.map((id) => importedAssets?.items.get(id)).filter((item): item is SourceShopItem => item !== undefined);
-        if (stock.length === 0) throw new Error("aucun objet du stock n'est disponible");
-        sourceShop = { sequence, stock, notice: null };
-        renderImportedView();
-        return;
-      }
-      if (command.kind === "transfer-player") {
-        const transfer = finalDirectSourceTransfer([command], sequence.eventId, 0, importedAvatar);
-        if (transfer === null) {
-          importedNotice = "Séquence interrompue : transfert invalide.";
-          sourceSequence = null;
-          renderImportedView();
-          return;
-        }
-        if (importedAssets?.map.id === transfer.targetMapId) {
-          importedAvatar = { x: transfer.targetX, y: transfer.targetY,
-            direction: sourceDirection(transfer.direction, importedAvatar.direction) };
-          importedPlayerMotion = null;
-          heldMovementKeys.clear();
-          sourcePresentation.resetMapPresentation();
-          sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
-          void refreshSourceParallelPresentation(importedAssets);
-          renderImportedView();
-          continue;
-        }
-        await followSourceTransfer(transfer);
-        continue;
-      }
-      if (command.kind === "move-route" && typeof command.data.target === "number") {
-        startSourceMoveRoute(sequence, command.data.target, command.data.route);
-        continue;
-      }
-      if (command.kind === "wait-for-movement") {
-        await sequence.runner.waitForMovement();
-        continue;
-      }
-      if (await sourcePresentation.execute(command, (milliseconds) => sequence.runner.delay(milliseconds))) continue;
-      if (command.kind === "wait" && typeof command.data.frames === "number" && command.data.frames > 0) {
-        await sequence.runner.delay(command.data.frames * 25);
-      }
-    }
-    if (sourceSequence === sequence && sequence.pendingChoice !== null) {
-      const choice = sequence.pendingChoice;
-      sequence.pendingChoice = null;
-      beginSourceSequenceChoice(sequence, choice);
-      return;
-    }
-    if (sourceSequence === sequence) {
-      await sequence.runner.waitForMovement();
+function showSourceSequenceText(sequence: SourceSequenceSession, page: ImportedEventPage): void {
+  beginSourceEvent(page, sequence.mapId, sequence.eventId, sequence.label, sequence.translations);
+  renderImportedView();
+}
+
+async function executeSourceSequenceCommand(sequence: SourceSequenceSession,
+  command: ImportedEventPage["commands"][number]): Promise<SourceSequenceCommandResult> {
+  return sourceSequenceEffects.execute(sequence, command);
+}
+
+function completeSourceSequence(sequence: SourceSequenceSession): void {
       const autorunBaseline = sequence.autorunBaseline;
-      sourceSequence = null;
       if (sourceSequenceChoicePrompt === sequence) sourceSequenceChoicePrompt = null;
       importedNotice = "Séquence automatique terminée.";
       renderImportedView();
       sequence.onComplete?.();
+      if (importedAssets?.map.id === sequence.mapId) refreshSourceParallelPresentation(importedAssets);
       const activated = autorunBaseline !== undefined && importedAssets?.map.id === sequence.mapId
         && beginNewlyActivatedSourceAutorun(autorunBaseline, sourceEventState);
       if (!activated) queueMicrotask(beginPendingSourceMapEntryAutorun);
-    }
-  } catch (error) {
-    if (sourceSequence === sequence) {
-      sourceSequence = null;
+}
+
+function failSourceSequence(sequence: SourceSequenceSession, currentCommand: string, error: unknown): void {
       if (sourceSequenceChoicePrompt === sequence) sourceSequenceChoicePrompt = null;
       if (sourcePickupDialogueSequence === sequence) sourcePickupDialogueSequence = null;
       sourcePickupPose = false;
       sourcePickupStartedAt = null;
       importedNotice = `Séquence interrompue sur ${currentCommand} : ${error instanceof Error ? error.message : "erreur inattendue"}.`;
       renderImportedView();
-    }
-  } finally {
-    sequence.advancing = false;
-  }
+}
+
+function advanceSourceSequence(): Promise<void> {
+  return sourceSequences.advance();
 }
 
 const canvasElement = mountOverworldApp();
+const avatarLabView = new AvatarLabView(requiredAppElement("embedded-avatar-lab"));
+void avatarLabView.load().then(() => { if (viewedMapId === AVATAR_LAB_MAP_ID) render(); });
 const drawingContext = canvasElement.getContext("2d");
 if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
 const canvas: HTMLCanvasElement = canvasElement;
@@ -495,7 +426,7 @@ function resolveSourceAnimationTarget(target: number): { x: number; bottom: numb
   const camera = importedCameraPosition(canvas, importedAssets.map, playerPose, sourcePresentation.currentCameraOffset());
   if (target === -1) return { x: playerPose.x * 32 + 16 - camera.x, bottom: playerPose.y * 32 + 32 - camera.y,
     height: importedAssets.playerImage.naturalHeight / 4 };
-  const eventId = target === 0 ? sourceSequence?.eventId : target;
+  const eventId = target === 0 ? sourceSequences.current?.eventId : target;
   if (eventId === undefined) return null;
   const event = importedAssets.events.find((candidate) => candidate.id === eventId);
   if (event === undefined) return null;
@@ -539,6 +470,33 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   },
   setNotice: (notice) => { importedNotice = notice; },
   render,
+});
+sourceSequenceEffects = new SourceSequenceEffects({
+  getEventState: () => sourceEventState,
+  updateEventState: (nextState) => {
+    sourceEventState = nextState;
+    persistSourceEventState();
+    renderImportedView();
+  },
+  getAssets: () => importedAssets,
+  getAvatar: () => importedAvatar,
+  abort: (sequence, notice) => {
+    importedNotice = notice;
+    sourceSequences.clear(sequence);
+    renderImportedView();
+  },
+  beginItemPresentation: beginSequenceItemPresentation,
+  startPendingEncounter: (onComplete) => sourceBattles.startPendingEncounter(onComplete),
+  startTrainerBattle: (trainer, audio, onComplete) => sourceBattles.startTrainerBattle(trainer, audio, onComplete),
+  openShop: (sequence, stock) => {
+    sourceShop = { sequence, stock, notice: null };
+    renderImportedView();
+  },
+  transferPlayer: executeSourceSequenceTransfer,
+  startMoveRoute: startSourceMoveRoute,
+  present: (command, delay) => sourcePresentation.execute(command, delay),
+  isActive: (sequence) => sourceSequences.isActive(sequence),
+  resume: () => { void advanceSourceSequence(); },
 });
 const sourceDialogueView = new SourceDialogueView(chooseSourceOption);
 const sourceBattleOverlay = new SourceBattleOverlay({
@@ -603,21 +561,27 @@ function animateImportedMap(now: number): void {
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())) {
-    sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
+    const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
+    if (contact !== null) {
+      beginSourceSequence(contact, `Contact événement ${contact.event.id} · ${contact.event.name}`);
+    }
   }
+  synchronizeSourceFollower();
+  const followerPose = sourceFollowerMotion.pose(now);
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), sourcePickupPose ? importedAssets.playerPickupImage : importedAssets.playerImage,
-    sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt));
+    sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt),
+    sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose });
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
-    if (sourceSequence === null) finishImportedStep();
+    if (sourceSequences.current === null) finishImportedStep();
   }
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
 
 function sourceSceneActivity(): SourceSceneActivity {
   return { dialogue: sourceDialogues.current !== null, battle: sourceBattles.active,
-    transition: sourceTransitionInProgress, sequence: sourceSequence !== null,
+    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
 
@@ -650,7 +614,7 @@ function closeSourceShop(): void {
   sourceShop = null;
   importedNotice = "Boutique fermée.";
   renderImportedView();
-  if (sourceSequence === shop.sequence) void advanceSourceSequence();
+  if (sourceSequences.isActive(shop.sequence)) void advanceSourceSequence();
 }
 
 function buySourceShopItem(itemId: string): void {
@@ -686,10 +650,11 @@ function renderImportedView(): void {
   if (importedAssets === null) return;
   renderStarterTestButton();
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
-  const sequenceStatus = sourceSequence === null ? "aucune"
-    : `${sourceSequence.label} · étape ${sourceSequence.cursor}/${sourceSequence.plan.steps.length}`
-      + ` · ${sourceSequence.plan.steps[sourceSequence.cursor]?.command.kind ?? "finalisation"}`
-      + ` · ${sourceSequence.runner.pendingRoutes} route(s)`;
+  const activeSequence = sourceSequences.current;
+  const sequenceStatus = activeSequence === null ? "aucune"
+    : `${activeSequence.label} · étape ${activeSequence.cursor}/${activeSequence.plan.steps.length}`
+      + ` · ${activeSequence.plan.steps[activeSequence.cursor]?.command.kind ?? "finalisation"}`
+      + ` · ${activeSequence.runner.pendingRoutes} route(s)`;
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice,
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
@@ -729,17 +694,14 @@ function beginSourceItemPresentation(completed: SourceDialogueSession, gains: re
   const page = { ...completed.flow.page, commands };
   sourcePickupPose = true;
   sourcePickupStartedAt = performance.now();
-  sourceSequence = { label: "Objet obtenu", mapId: completed.mapId, eventId: completed.eventId,
-    plan: compileAndReportSourceScene(page, "Obtention d'objet"), translations: new Map(), cursor: 0,
-    selections: [], pendingChoice: null,
-    advancing: false, runner: new SourceSequenceRunner(), onComplete: () => {
+  importedNotice = gains.map(sourceItemGainMessage).join(" ");
+  sourceSequences.start({ label: "Objet obtenu", mapId: completed.mapId, eventId: completed.eventId,
+    plan: compileAndReportSourceScene(page, "Obtention d'objet"), translations: new Map(), onComplete: () => {
       sourcePickupPose = false;
       sourcePickupStartedAt = null;
       onComplete();
       renderImportedView();
-    } };
-  importedNotice = gains.map(sourceItemGainMessage).join(" ");
-  void advanceSourceSequence();
+    } });
 }
 
 function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: readonly SourceItemGain[]): void {
@@ -794,34 +756,33 @@ function beginPreEncounterMovement(completed: SourceDialogueSession): boolean {
   if (encounterIndex < 0 || firstRoute < 0) return false;
   const presentationCommands = commands.slice(firstRoute, encounterIndex)
     .filter((command) => PRE_ENCOUNTER_PRESENTATION.has(command.kind));
-  sourceSequence = { label: `${completed.label} · cinématique`, mapId: completed.mapId,
+  importedNotice = "Cinématique avant le combat…";
+  sourceSequences.start({ label: `${completed.label} · cinématique`, mapId: completed.mapId,
     eventId: completed.eventId,
     plan: compileAndReportSourceScene({ ...completed.flow.page, commands: presentationCommands },
       `${completed.label} · avant-combat`),
-    translations: completed.translations, selections: [], pendingChoice: null, cursor: 0, advancing: false, runner: new SourceSequenceRunner(),
-    onComplete: () => applyCompletedSourceEvent(completed) };
-  importedNotice = "Cinématique avant le combat…";
-  void advanceSourceSequence();
+    translations: completed.translations, onComplete: () => applyCompletedSourceEvent(completed) });
   return true;
 }
 
 function finishSourceEvent(completed: SourceDialogueSession): void {
-  if (sourceSequence !== null && completed.eventId === sourceSequence.eventId) {
+  const activeSequence = sourceSequences.current;
+  if (activeSequence !== null && completed.eventId === activeSequence.eventId) {
     if (!completed.flow.complete) {
       importedNotice = `Séquence interrompue : ${completed.flow.blockedReason ?? "dialogue incomplet"}.`;
-      sourceSequence = null;
+      sourceSequences.clear(activeSequence);
       sourceSequenceChoicePrompt = null;
       return;
     }
-    if (sourceSequenceChoicePrompt === sourceSequence) {
+    if (sourceSequenceChoicePrompt === activeSequence) {
       sourceSequenceChoicePrompt = null;
       const selected = completed.selections[0];
-      if (selected === undefined || !continueSourceSequenceChoice(sourceSequence, selected)) {
+      if (selected === undefined || !continueSourceSequenceChoice(activeSequence, selected)) {
         renderImportedView();
         return;
       }
     }
-    if (sourcePickupDialogueSequence === sourceSequence) {
+    if (sourcePickupDialogueSequence === activeSequence) {
       sourcePickupDialogueSequence = null;
       sourcePickupPose = false;
       sourcePickupStartedAt = null;
@@ -861,6 +822,26 @@ function sourceDirectionNumber(direction: Direction): number {
   }
 }
 
+function synchronizeSourceFollower(): void {
+  if (importedAssets === null) return;
+  const activeIndex = sourceEventState.party.activeIndex;
+  const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
+  const enabled = sourceEventState.followerEnabled && member !== null;
+  sourceFollowerMotion.synchronize(enabled, importedAssets.map, importedAvatar);
+  const path = enabled ? importedAssets.pokemonOverworldPaths.get(member.species) ?? null : null;
+  if (path === sourceFollowerAssetPath) return;
+  sourceFollowerAssetPath = path;
+  sourceFollowerImage = null;
+  if (path === null) return;
+  void loadSourceAssetImage(path).then((image) => {
+    if (sourceFollowerAssetPath !== path) return;
+    sourceFollowerImage = image;
+    renderImportedView();
+  }).catch((error: unknown) => {
+    if (sourceFollowerAssetPath === path) console.warn(`[source-follower] ${error instanceof Error ? error.message : "asset introuvable"}`);
+  });
+}
+
 function activateSourceWorld(world: LoadedSourceWorld): void {
   importedAssets = world.assets;
   importedAvatar = world.avatar;
@@ -868,7 +849,24 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   heldMovementKeys.clear();
   sourcePresentation.resetMapPresentation();
   sourceNpcMotions.reset(world.assets.map.id, world.assets.events, performance.now());
+  sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
+}
+
+async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promise<void> {
+  if (importedAssets?.map.id !== transfer.targetMapId) {
+    await followSourceTransfer(transfer);
+    return;
+  }
+  importedAvatar = { x: transfer.targetX, y: transfer.targetY,
+    direction: sourceDirection(transfer.direction, importedAvatar.direction) };
+  importedPlayerMotion = null;
+  heldMovementKeys.clear();
+  sourcePresentation.resetMapPresentation();
+  sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
+  sourceFollowerMotion.reset(importedAssets.map, importedAvatar);
+  void refreshSourceParallelPresentation(importedAssets);
+  renderImportedView();
 }
 
 async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -888,7 +886,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     sourceTransitionInProgress = false;
     renderImportedView();
   }
-  if (sourceSequence === null) queueMicrotask(beginPendingSourceMapEntryAutorun);
+  if (sourceSequences.current === null) queueMicrotask(beginPendingSourceMapEntryAutorun);
 }
 
 async function resetSourceWorld(): Promise<void> {
@@ -946,6 +944,18 @@ function renderStarterTestButton(): void {
 
 function render(): void {
   renderStarterTestButton();
+  const avatarLabVisible = viewedMapId === AVATAR_LAB_MAP_ID;
+  requiredAppElement("world-stage").hidden = avatarLabVisible;
+  requiredAppElement("map-legend").hidden = avatarLabVisible;
+  document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) =>
+    button.classList.toggle("active", button.dataset.map === viewedMapId));
+  if (avatarLabVisible) {
+    if (importedAnimationFrame !== null) { cancelAnimationFrame(importedAnimationFrame); importedAnimationFrame = null; }
+    const title = document.querySelector<HTMLElement>("#map-name"); if (title !== null) title.textContent = "Personnage de test";
+    avatarLabView.show();
+    return;
+  }
+  avatarLabView.hide();
   const network = multiplayer.current;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     renderImportedView();
@@ -973,6 +983,7 @@ function renderEncounter(): void {
 }
 
 function move(playerId: string, direction: Direction): void {
+  if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
@@ -989,8 +1000,10 @@ function move(playerId: string, direction: Direction): void {
       blockingDefaultEventPoints(events, importedAssets.map.id, sourceEventState));
     importedAvatar = next;
     if (before.x !== next.x || before.y !== next.y) {
-      importedPlayerMotion = createSourceGridMotion(before, next, direction, performance.now(),
+      const startedAt = performance.now();
+      importedPlayerMotion = createSourceGridMotion(before, next, direction, startedAt,
         { walkingPattern: importedWalkingPattern });
+      sourceFollowerMotion.followPlayerStep(before, next, startedAt);
       importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
       importedNotice = `Déplacement vers ${next.x},${next.y}…`;
     } else {
@@ -1010,6 +1023,7 @@ function move(playerId: string, direction: Direction): void {
 }
 
 function interact(playerId: AvatarId): void {
+  if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID) {
     const activity = sourceSceneActivity();
     if (sourceScenes.allows("dialogue-input", activity)) {
@@ -1080,7 +1094,7 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
-    if (sourceSequence !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
+    if (sourceSequences.current !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
     if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
     if (viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
   }
@@ -1142,6 +1156,7 @@ document.querySelector<HTMLButtonElement>("#disconnect")?.addEventListener("clic
 });
 document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", () => {
   if (multiplayer.active) return;
+  if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID) {
     void resetSourceWorld();
     return;

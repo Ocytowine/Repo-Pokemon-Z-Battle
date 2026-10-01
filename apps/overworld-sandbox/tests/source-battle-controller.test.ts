@@ -57,7 +57,8 @@ describe("source battle controller", () => {
     };
     const controller = new SourceBattleController(visuals, callbacks);
 
-    controller.startPendingEncounter();
+    const completed = vi.fn();
+    expect(controller.startPendingEncounter(completed)).toBe(true);
 
     expect(controller.active).toBe(true);
     expect(controller.current?.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 2 });
@@ -75,6 +76,7 @@ describe("source battle controller", () => {
     expect(callbacks.updateEventState).toHaveBeenCalledOnce();
     expect(visuals.endBattle).toHaveBeenCalledWith(null);
     expect(notices.at(-1)).toContain("Fuite réussie");
+    expect(completed).toHaveBeenCalledWith(false);
   });
 
   it("does nothing when no encounter or battle resources are available", () => {
@@ -89,11 +91,32 @@ describe("source battle controller", () => {
     };
     const controller = new SourceBattleController(visuals, callbacks);
 
-    controller.startPendingEncounter();
+    expect(controller.startPendingEncounter()).toBe(false);
 
     expect(controller.active).toBe(false);
     expect(visuals.startBattle).not.toHaveBeenCalled();
     expect(callbacks.render).not.toHaveBeenCalled();
+  });
+
+  it("reports a scripted wild battle victory so its source sequence can resume", async () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: {}, escapable: false } };
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "victory.ogg" }),
+      setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(presentation(), callbacks);
+    const completed = vi.fn();
+
+    expect(controller.startPendingEncounter(completed)).toBe(true);
+    for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
+
+    expect(controller.active).toBe(false);
+    expect(eventState.pendingEncounter).toBeNull();
+    expect(completed).toHaveBeenCalledWith(true);
   });
 
   it("starts a non-escapable trainer battle and reports its result", async () => {

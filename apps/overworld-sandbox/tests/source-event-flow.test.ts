@@ -39,7 +39,7 @@ describe("source event choice and condition flow", () => {
       command("condition", 0, { kind: "variable", operands: [4, 0, 3, 1] }), command("show-text", 1, { text: "VAR" }), command("condition-end", 0),
       command("condition", 0, { kind: "self-switch", operands: ["A", 0] }), command("show-text", 1, { text: "SELF" }), command("condition-end", 0),
     ]);
-    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, money: 3000, pokedexEnabled: false, checkpoint: null,
+    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, checkpoint: null,
       party: emptyParty, pendingEncounter: null };
     expect(resolveEventFlow(eventPage, [], state, 3, 9).page.commands.map((entry) => entry.text)).toEqual(["ON", "VAR", "SELF"]);
   });

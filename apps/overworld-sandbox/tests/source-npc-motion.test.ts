@@ -49,6 +49,37 @@ describe("source NPC motion", () => {
     expect(logical).toMatchObject({ x: 2, y: 2 });
   });
 
+  it("starts an event-touch sequence when a random autonomous step reaches the player", () => {
+    const probe = new SourceNpcMotionController();
+    probe.reset(map.id, [event], 0);
+    probe.update(150, map, [event], createSourceEventState(), { x: 4, y: 4 });
+    const destination = probe.logicalEvents([event])[0]!;
+    const touchingEvent: ImportedMapEvent = {
+      ...event, pages: [{ ...event.pages[0]!, settings: { ...event.pages[0]!.settings, trigger: 2 } }],
+    };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [touchingEvent], 0);
+    const contact = controller.update(150, map, [touchingEvent], createSourceEventState(), destination);
+    expect(contact).toMatchObject({ event: { id: event.id }, pageIndex: 0 });
+    expect(controller.logicalEvents([touchingEvent])[0]).toMatchObject({ x: 2, y: 2 });
+  });
+
+  it("loops a custom autonomous route and reports its event-touch contact", () => {
+    const routedEvent: ImportedMapEvent = {
+      ...event, pages: [{ ...event.pages[0]!, settings: { ...event.pages[0]!.settings, moveType: 3, trigger: 2,
+        moveRoute: { repeat: true, skippable: false, steps: [
+          { kind: "face-right", parameters: [] }, { kind: "step-right", parameters: [] },
+          { kind: "end", parameters: [] },
+        ] } } }],
+    };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [routedEvent], 0);
+    expect(controller.update(150, map, [routedEvent], createSourceEventState(), { x: 3, y: 2 })).toBeNull();
+    const contact = controller.update(151, map, [routedEvent], createSourceEventState(), { x: 3, y: 2 });
+    expect(contact).toMatchObject({ event: { id: event.id }, pageIndex: 0 });
+    expect(controller.poses(151).get(event.id)).toMatchObject({ x: 2, y: 2, direction: 6 });
+  });
+
   it("animates a scripted route and exposes its graphic changes", () => {
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [event], 0);

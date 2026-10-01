@@ -226,7 +226,9 @@ export function selectSourceCryPath(manifest: SourcePokemonAssetsManifest, speci
 export class SourceScenePresentation {
   private masterVolume: number;
   private music: ManagedAudio | null = null;
+  private backgroundSound: ManagedAudio | null = null;
   private audioSession = 0;
+  private backgroundSoundSession = 0;
   private readonly oneShots = new Set<ManagedAudio>();
   private cameraOffset = { x: 0, y: 0 };
   private scrollQueue = Promise.resolve();
@@ -243,6 +245,9 @@ export class SourceScenePresentation {
   public setMasterVolume(volume: number): void {
     this.masterVolume = clamp(volume, 0, 1);
     if (this.music !== null) this.music.audio.volume = this.music.sourceVolume * this.masterVolume;
+    if (this.backgroundSound !== null) {
+      this.backgroundSound.audio.volume = this.backgroundSound.sourceVolume * this.masterVolume;
+    }
     for (const entry of this.oneShots) entry.audio.volume = entry.sourceVolume * this.masterVolume;
   }
 
@@ -269,6 +274,7 @@ export class SourceScenePresentation {
       return this.picture(command.kind, command.data);
     }
     if (command.kind === "play-music") return this.playMusic(command.data);
+    if (command.kind === "play-background-sound") return this.playBackgroundSound(command.data);
     if (command.kind === "play-sound") return this.playSound(command.data);
     if (command.kind === "play-jingle") return this.playJingle(command.data);
     if (command.kind === "play-cry") return this.playCry(command.data);
@@ -413,6 +419,19 @@ export class SourceScenePresentation {
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
     void this.playCandidates(managed.audio, "SE", state.name, this.audioSession)
       .then((played) => { if (!played) this.oneShots.delete(managed); });
+    return true;
+  }
+
+  private playBackgroundSound(data: Readonly<Record<string, unknown>>): boolean {
+    const state = parseSourceAudio(data);
+    if (state === null) return false;
+    this.stopManaged(this.backgroundSound);
+    this.backgroundSound = null;
+    const session = ++this.backgroundSoundSession;
+    if (state.name === "") return true;
+    const managed = this.createAudio(state, true);
+    this.backgroundSound = managed;
+    void this.playCandidates(managed.audio, "BGS", state.name, session);
     return true;
   }
 
@@ -597,10 +616,12 @@ export class SourceScenePresentation {
     return { audio, sourceVolume: state.volume };
   }
 
-  private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "SE" | "ME", name: string, session: number): Promise<boolean> {
+  private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "BGS" | "SE" | "ME", name: string,
+    session: number): Promise<boolean> {
     const names = /\.[a-z0-9]+$/iu.test(name) ? [name] : [name + ".ogg", name + ".wav", name + ".mp3"];
     for (const candidate of names) {
       if (folder === "BGM" && session !== this.audioSession) return false;
+      if (folder === "BGS" && session !== this.backgroundSoundSession) return false;
       audio.src = sourceUrl(`Audio/${folder}/${candidate}`);
       try { await audio.play(); return true; } catch { /* Essayer l'extension source suivante. */ }
     }

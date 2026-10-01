@@ -8,12 +8,6 @@ export interface ActiveSourceAutorun {
   readonly pageIndex: number;
 }
 
-const PARALLEL_INITIALIZATION_COMMANDS = new Set(["change-map-settings", "panorama-motion", "end"]);
-
-export function isSourceParallelInitialization(page: ImportedEventPage): boolean {
-  return page.commands.every((command) => PARALLEL_INITIALIZATION_COMMANDS.has(command.kind));
-}
-
 export function findSourceMapEntryAutorun(events: readonly ImportedMapEvent[], mapId: number,
   state: SourceEventState): ActiveSourceAutorun | null {
   for (const event of [...events].sort((left, right) => left.id - right.id)) {

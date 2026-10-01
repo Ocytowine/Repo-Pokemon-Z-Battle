@@ -755,7 +755,7 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] executer et interpoler les deplacements aleatoires autonomes des PNJ ;
 - [x] interpreter les primitives des routes personnalisees de RPG Maker ;
 - [x] ordonnancer les routes et mouvements imposes par les cinematiques ;
-- [ ] prendre en charge les declencheurs contact, automatique et parallele ;
+- [x] prendre en charge les declencheurs contact, automatique et parallele ;
 - [x] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
 - [x] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
 - [x] sauvegarder la carte et la position courantes ;
@@ -956,9 +956,10 @@ lecteur que les cinematiques ; cris, sons, animations, mouvements et changements
 d'etat sont donc conserves dans leur ordre source. Les 24 pages actives de Map007
 sont resolues et auditees sans commande inconnue ni rendu en attente.
 
-Le premier sous-ensemble des evenements paralleles initialise leurs effets de
+Le premier raccord des evenements paralleles initialise leurs effets de
 presentation lors du chargement de carte. EV025 applique ainsi le panorama
-`fondoAgua` et son defilement. Les gains d'inventaire declenchent egalement le
+`fondoAgua` et son defilement ; le noyau vingt-quatre generalise ensuite leur
+execution en boucle. Les gains d'inventaire declenchent egalement le
 jingle `ItemGet`, un texte avec nom francais et quantite, puis la pose source
 `trchar000_2`, accompagnee d'un court saut, jusqu'a la fermeture du message. Le
 canvas laisse aussi ses pixels sans tuile transparents afin que le panorama soit
@@ -967,9 +968,9 @@ ramasses directement que ceux remis au milieu d'une sequence.
 
 Recette manuelle : apres Crisanto, prendre la sortie nord de Bourg Canvas, verifier
 le panorama anime et les cris, ramasser plusieurs objets, provoquer une rencontre
-dans les hautes herbes puis atteindre Map009 par la sortie nord. Le support parallele
-reste limite aux presentations idempotentes ; les boucles qui modifient l'etat a
-chaque frame restent a porter avant de cocher le jalon global.
+dans les hautes herbes puis atteindre Map009 par la sortie nord. Les boucles
+paralleles sont maintenant ordonnancees par le noyau generique decrit plus bas ;
+le parcours complet reste a valider manuellement avant de cocher le jalon global.
 
 Dix-neuvieme noyau 9.7 implemente le 2026-09-30 : la grande scene d'arrivee de
 Map009 peut maintenant etre lue jusqu'au bout. L'appel Ruby qui active le Pokedex
@@ -1019,11 +1020,92 @@ table source dependante du nombre de badges, plafonnee au solde, et respecte le
 switch 33 `NO_MONEY_LOSS`. Les multiplicateurs lies aux objets tenus ou aux effets
 de combat seront ajoutes lorsque ces mecanismes existeront.
 
+Vingt-deuxieme noyau 9.7 implemente le 2026-10-01 : le contact peut maintenant etre
+initie par l'evenement lui-meme. Les routes autonomes personnalisees `moveType 3`
+sont conservees par le chargeur et executees en boucle avec leurs pas cardinaux,
+orientations et attentes. Lorsqu'un pas aleatoire ou personnalise d'une page
+`trigger 2` vise la case du joueur, l'evenement reste sur sa case et sa sequence
+source auditee demarre. Cette capacite generique couvre notamment les 23 pages de
+contact a mouvement aleatoire et les 62 pages a route personnalisee observees dans
+les donnees locales ; les 189 pages fixes etaient deja joignables par le contact
+initie par le joueur.
+
+Vingt-troisieme noyau 9.7 implemente le 2026-10-01 : la commande
+`play-background-sound` passe de reconnue a rendue. Elle lit `Audio/BGS`, boucle
+l'ambiance independamment de la musique BGM et remplace ou arrete proprement la
+piste precedente. Son volume suit le reglage global sans perturber les sons
+ponctuels et les jingles.
+
+Vingt-quatrieme noyau 9.7 implemente le 2026-10-01 : les pages `trigger 4` ne sont
+plus reduites a une initialisation visuelle. `SourceParallelController` lance une
+tache concurrente par carte, evenement et page active, repete son plan avec un
+minimum d'une frame RPG Maker, puis l'annule lors d'un changement de page ou de
+carte. Mutations persistantes, attentes, effets audiovisuels et routes de mouvement
+sont executes dans leur ordre, avec les barrieres de mouvement existantes. Les
+pages qui demandent une interaction exclusive — dialogue, choix, combat, boutique
+ou transfert — sont promues dans le lecteur de scene puis resynchronisent les
+boucles a leur terminaison. Une mutation d'etat peut egalement activer une nouvelle
+page parallele sans recharger la carte.
+
+Vingt-cinquieme noyau 9.7 implemente le 2026-10-01 : `set-follower` n'est plus une
+commande seulement reconnue. Son activation est conservee dans l'etat personnel
+avec migration des anciennes sauvegardes possedant deja une equipe. Le Pokemon actif de l'equipe resout son
+sprite overworld par `pokemon-assets.json`, apparait sur une case praticable derriere
+le joueur et rejoint chaque case liberee avec la meme interpolation de grille. Un
+transfert ou un chargement de carte le replace proprement sans sauvegarder une
+coordonnee visuelle devenue obsolete. Le rendu rejoint la pile de profondeur des
+PNJ, du joueur et des tuiles prioritaires.
+
+Correction des choix de starter le 2026-10-01 : la boucle parallele visuelle de
+Map002 ne reconstruit plus toute l'interface toutes les 25 ms. Le panorama conserve
+son animation sans remplacer les boutons de dialogue ; la vue reutilise aussi les
+memes noeuds Oui/Non tant que les choix n'ont pas change. Un clic commence et se
+termine donc sur le meme bouton.
+
 Correction visuelle du Sac : les fiches d'objet de la boutique et de l'inventaire
 chargent desormais leur sprite source `itemNNN.png`, avec `item000.png` en repli.
 Les huit `bagPocketN.png` retrouvent leur role de selecteurs de categorie. Le Sac
 regroupe et trie les objets selon le champ `pocket` extrait, affiche le nombre de
 types par poche et conserve la poche selectionnee pendant la session.
+
+### Chantier profil joueur et personnalisation
+
+Ce chantier est volontairement isole de la progression source pendant sa phase de
+validation. Le laboratoire de personnalisation possedera son propre etat local : il
+ne changera ni le sprite de l'overworld, ni la sauvegarde narrative, ni Map001, ni
+le profil effectivement transmis au multijoueur avant un raccord explicite.
+
+- [x] extraire les six profils historiques et auditer leurs contextes graphiques ;
+- [x] definir un `PlayerProfile` cosmetique, strict et versionne ;
+- [x] construire le laboratoire autonome avec apercus overworld, portrait et combat ;
+- [ ] preparer le contrat reseau du profil sans l'activer dans la partie ;
+- [ ] reproduire l'introduction de combat, le lancer et l'apparition du Pokemon ;
+- [ ] raccorder ulterieurement profil, overworld, sauvegarde, reseau et Map001 ;
+- [ ] creer de nouveaux corps, coiffures et tenues — explicitement reporte.
+
+Premier jalon implemente le 2026-10-01 : `extract:assets` produit
+`player-avatars.json` et `player-avatar-report.json` depuis `PBS/metadata.txt` et
+le manifeste reel des assets. Chaque profil conserve ses contextes overworld,
+course, velo, surf, plongee, peche, portrait d'introduction, face et dos de combat,
+ainsi que ses variantes de pose. Un asset absent reste visible dans l'audit avec
+son repli au lieu d'etre masque. `PlayerProfile`, dans le paquet `player-state`,
+decrit separement nom, pronoms, modele, peau, cheveux, tenue et trois couleurs par
+identifiants controles ; il n'est encore persiste par aucune vue du jeu.
+
+Deuxieme jalon implemente le 2026-10-01 : `apps/avatar-lab` est une application
+Vite autonome lancee par `corepack pnpm lab:avatar`. Elle charge les six profils
+depuis les catalogues locaux, anime les quatre poses de chaque charset, permet de
+parcourir marche, course, velo, surf et peche, affiche la face du Dresseur et fait
+defiler ses poses de dos. Nom, pronoms, profil source et trois couleurs controlees
+sont conserves sous la seule cle `pokemon-z-battle.avatar-lab-profile.v1` et peuvent
+etre exportes en JSON. Les couleurs ne sont volontairement pas appliquees aux PNG
+tant que leurs masques semantiques ne sont pas produits ; l'interface le signale.
+
+Le meme laboratoire est integre a l'Overworld Sandbox dans l'onglet `Personnage`,
+au meme niveau que Monde source, Prairie et Bosquet. Cet onglet masque la scene et
+bloque ses commandes de deplacement sans modifier la partie en cours. Il partage
+uniquement la cle cosmetique du laboratoire : supprimer ou reinitialiser une
+sauvegarde du monde ne supprime donc jamais le personnage edite.
 
 ### Comment la couverture s'etend au jeu complet
 

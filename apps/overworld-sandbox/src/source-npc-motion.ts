@@ -3,7 +3,7 @@ import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type Impor
   type ImportedMapEvent } from "./imported-map.js";
 import { selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
-import type { SourceRouteActor } from "./source-move-route.js";
+import { executeSourceMoveRouteStep, type SourceRouteActor } from "./source-move-route.js";
 
 interface NpcRuntime {
   x: number;
@@ -17,6 +17,13 @@ interface NpcRuntime {
   opacity?: number;
   pattern?: number;
   pageIndex: number | null;
+  routeIndex: number;
+}
+
+export interface SourceNpcEventContact {
+  readonly event: ImportedMapEvent;
+  readonly page: NonNullable<ReturnType<typeof selectActiveEventPage>>["page"];
+  readonly pageIndex: number;
 }
 
 const DIRECTIONS: readonly Direction[] = ["down", "left", "right", "up"];
@@ -68,11 +75,12 @@ export class SourceNpcMotionController {
       randomState: (Math.imul(mapId, 0x9e37_79b1) ^ Math.imul(event.id, 0x85eb_ca6b)) >>> 0,
       walkingPattern: 1,
       pageIndex: null,
+      routeIndex: 0,
     }));
   }
 
   public update(now: number, map: ImportedMap, events: readonly ImportedMapEvent[], state: SourceEventState,
-    player: GridPoint): void {
+    player: GridPoint): SourceNpcEventContact | null {
     if (this.mapId !== map.id) this.reset(map.id, events, now);
     for (const event of events) {
       const runtime = this.runtimes.get(event.id);
@@ -85,6 +93,7 @@ export class SourceNpcMotionController {
         delete runtime.characterName;
         delete runtime.opacity;
         delete runtime.pattern;
+        runtime.routeIndex = 0;
       }
       if (runtime.motion !== null) {
         if (sampleSourceGridMotion(runtime.motion, now).complete) {
@@ -93,9 +102,43 @@ export class SourceNpcMotionController {
         }
         continue;
       }
-      if (page.settings.moveType !== 1 || now < runtime.nextMoveAt) continue;
-      const direction = DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down";
+      if ((page.settings.moveType !== 1 && page.settings.moveType !== 3) || now < runtime.nextMoveAt) continue;
+      const actor = this.runtimeActor(runtime, page);
+      const route = page.settings.moveType === 3 ? page.settings.moveRoute ?? null : null;
+      const step = route?.steps[runtime.routeIndex] ?? null;
+      const result = step === null ? null : executeSourceMoveRouteStep(actor, step,
+        { player, randomDirection: DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down" });
+      if (route !== null && result !== null) {
+        runtime.direction = result.actor.direction;
+        runtime.characterName = result.actor.characterName;
+        runtime.opacity = result.actor.opacity;
+        runtime.pattern = result.actor.pattern;
+        runtime.routeIndex = result.complete ? route.repeat ? 0 : route.steps.length
+          : Math.min(runtime.routeIndex + 1, route.steps.length);
+        if (!result.supported) {
+          runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+          continue;
+        }
+        if (result.waitMs > 0 || result.destination === null) {
+          runtime.nextMoveAt = now + Math.max(result.waitMs, result.complete ? sourceNpcMoveDelay(page.settings.moveFrequency) : 0);
+          continue;
+        }
+      }
+      if (route !== null && (result === null || result.destination === null)) continue;
+      const direction = result === null
+        ? DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down"
+        : this.directionTo(actor, result.destination!);
+      if (direction === null) {
+        runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+        continue;
+      }
       if (!page.settings.directionFix) runtime.direction = direction;
+      const destination = { x: runtime.x + (direction === "left" ? -1 : direction === "right" ? 1 : 0),
+        y: runtime.y + (direction === "up" ? -1 : direction === "down" ? 1 : 0) };
+      if (page.settings.trigger === 2 && destination.x === player.x && destination.y === player.y) {
+        runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+        return { event, page, pageIndex: selection.pageIndex };
+      }
       const occupied = [{ ...player }, ...events.flatMap((candidate) => {
         if (candidate.id === event.id) return [];
         const otherPage = selectEventPage(candidate, map.id, state);
@@ -112,6 +155,25 @@ export class SourceNpcMotionController {
         runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
       } else runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
     }
+    return null;
+  }
+
+  private runtimeActor(runtime: NpcRuntime, page: NonNullable<ReturnType<typeof selectActiveEventPage>>["page"]): SourceRouteActor {
+    return { x: runtime.x, y: runtime.y, direction: runtime.direction,
+      moveSpeed: page.settings.moveSpeed, moveFrequency: page.settings.moveFrequency,
+      walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
+      directionFix: page.settings.directionFix, through: page.settings.through,
+      alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
+      characterName: runtime.characterName ?? page.graphic.characterName, characterHue: 0,
+      pattern: runtime.pattern ?? page.graphic.pattern };
+  }
+
+  private directionTo(actor: GridPoint, destination: GridPoint): Direction | null {
+    if (destination.x === actor.x - 1 && destination.y === actor.y) return "left";
+    if (destination.x === actor.x + 1 && destination.y === actor.y) return "right";
+    if (destination.x === actor.x && destination.y === actor.y - 1) return "up";
+    if (destination.x === actor.x && destination.y === actor.y + 1) return "down";
+    return null;
   }
 
   public logicalEvents(events: readonly ImportedMapEvent[]): readonly ImportedMapEvent[] {
