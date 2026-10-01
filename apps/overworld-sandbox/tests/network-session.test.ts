@@ -3,7 +3,7 @@ import { OverworldNetworkSession, type NetworkSessionCallbacks } from "../src/ne
 import { createDefaultNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
-  protocolVersion: 7,
+  protocolVersion: 8,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",
@@ -43,6 +43,7 @@ function callbacks(): NetworkSessionCallbacks {
     onMapChanged: vi.fn(),
     onConnectionFormChanged: vi.fn(),
     onPlayersChanged: vi.fn(),
+    onSourceWorldState: vi.fn(),
     onRender: vi.fn(),
   };
 }

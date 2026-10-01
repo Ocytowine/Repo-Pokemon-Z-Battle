@@ -1,6 +1,6 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
-  type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type RoomSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -40,6 +40,7 @@ export interface NetworkSessionCallbacks {
   readonly onMapChanged: (mapId: string) => void;
   readonly onConnectionFormChanged: (serverUrl: string, roomCode: string) => void;
   readonly onPlayersChanged: (players: readonly RoomPlayerSnapshot[]) => void;
+  readonly onSourceWorldState: (state: SourceWorldSnapshot, animate: boolean) => void;
   readonly onRender: () => void;
 }
 
@@ -64,12 +65,12 @@ export class OverworldNetworkSession {
   }
 
   public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string,
-    profile: NetworkPlayerProfile): Promise<void> {
+    profile: NetworkPlayerProfile, sourceWorld: SourceWorldHostState | null = null): Promise<void> {
     try {
       const serverUrl = normalizeServerUrl(rawServerUrl);
       const path = kind === "create" ? "/api/rooms" : `/api/rooms/${normalizeRoomCode(rawRoomCode)}/join`;
       const response = await fetch(`${serverUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ profile }) });
+        body: JSON.stringify(kind === "create" ? { profile, sourceWorld } : { profile }) });
       const value: unknown = await response.json();
       if (!response.ok) throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
       this.connect(serverUrl, parseTicket(value), profile);
@@ -138,6 +139,15 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), profile }));
   }
 
+  public publishSourceWorld(world: SourceWorldHostState): void {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    if (session === null || session.ticket.side !== "player" || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "setSourceWorld", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), world }));
+  }
+
   public submitEncounterAction(moveIndex: number): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
@@ -193,7 +203,8 @@ export class OverworldNetworkSession {
       session.snapshot = snapshot;
       if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) session.submittedTurn = null;
       const own = snapshot.world.avatars[session.ticket.side];
-      if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
+      if (snapshot.sourceWorld !== null) this.callbacks.onSourceWorldState(snapshot.sourceWorld, animate);
+      else if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
     }
     this.callbacks.onPlayersChanged(snapshot.players);
     this.callbacks.onWorldState(snapshot.world, animate);
@@ -249,6 +260,13 @@ export class OverworldNetworkSession {
           session.revision = message.revision;
           this.callbacks.onEvents(message.events);
           this.callbacks.onWorldState(message.state, false);
+        } else if (message.type === "sourceWorldUpdated") {
+          if (message.revision < session.revision) return;
+          session.revision = message.revision;
+          if (message.side === session.ticket.side) session.sequence = Math.max(session.sequence, message.sequence);
+          if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceWorld: message.state,
+            revision: message.revision };
+          this.callbacks.onSourceWorldState(message.state, true);
         } else if (message.type === "turnResolved") {
           const snapshot = session.snapshot;
           if (snapshot?.battle?.id !== message.battleId) return;

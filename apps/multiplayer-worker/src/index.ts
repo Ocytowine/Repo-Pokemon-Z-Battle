@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
-import { PROTOCOL_VERSION, ProtocolValidationError, parseClientMessage, parseNetworkPlayerProfile,
-  type NetworkPlayerProfile, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { PROTOCOL_VERSION, ProtocolValidationError, parseClientMessage, parseNetworkPlayerProfile, parseSourceWorldHostState,
+  type NetworkPlayerProfile, type ServerMessage, type SourceWorldHostState } from "@pokemon-z-battle/multiplayer-protocol";
 import { AuthoritativeBattleRoom, type PersistedRoomState, type RoomDispatch } from "@pokemon-z-battle/room-server-core";
 import { DEMO_WORLD_CATALOG, createDemoWorldState } from "@pokemon-z-battle/overworld-engine";
 import { createDemoBattle } from "./demo-battle.js";
@@ -111,7 +111,13 @@ export class BattleRoom extends DurableObject<Env> {
     catch { return json({ error: "INVALID_PROFILE" }, 400); }
     this.#roomCode = body.roomCode;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
-    this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed), { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() });
+    let sourceWorld: SourceWorldHostState | null = null;
+    if ("sourceWorld" in body && body.sourceWorld !== null) {
+      try { sourceWorld = parseSourceWorldHostState(body.sourceWorld); }
+      catch { return json({ error: "INVALID_SOURCE_WORLD" }, 400); }
+    }
+    this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed),
+      { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState(), sourceWorld });
     const ticket = await this.issueTicket(profile);
     await this.persist();
     return json(ticket, 201);
@@ -218,11 +224,11 @@ export class BattleRoom extends DurableObject<Env> {
 }
 
 async function proxyTicket(stub: DurableObjectStub<BattleRoom>, operation: "create" | "join", profile: unknown,
-  roomCode?: string): Promise<Response> {
+  roomCode?: string, sourceWorld?: unknown): Promise<Response> {
   return stub.fetch(`https://room.internal/${operation}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(operation === "create" ? { roomCode, profile } : { profile }),
+    body: JSON.stringify(operation === "create" ? { roomCode, profile, sourceWorld: sourceWorld ?? null } : { profile }),
   });
 }
 
@@ -244,9 +250,10 @@ export default {
       let body: unknown;
       try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
       const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
+      const sourceWorld = typeof body === "object" && body !== null && "sourceWorld" in body ? body.sourceWorld : null;
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const roomCode = generateRoomCode(crypto.getRandomValues(new Uint8Array(6)));
-        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", profile, roomCode);
+        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", profile, roomCode, sourceWorld);
         if (response.status !== 409) return withCors(response, origin);
       }
       return withCors(json({ error: "ROOM_CODE_EXHAUSTED" }, 503), origin);

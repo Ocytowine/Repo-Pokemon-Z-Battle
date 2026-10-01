@@ -7,6 +7,7 @@ import {
   normalizeRoomCode,
   parseClientMessage,
   parseNetworkPlayerProfile,
+  parseSourceWorldHostState,
   serializeMessage,
   type ClientMessage,
 } from "../src/index.js";
@@ -30,7 +31,7 @@ describe("multiplayer protocol", () => {
   it("round-trips a move intent without accepting a computed result", () => {
     const message: ClientMessage = {
       type: "submitAction",
-      version: 7,
+      version: 8,
       requestId: "request-7",
       battleId: "battle-1",
       turn: 3,
@@ -41,34 +42,46 @@ describe("multiplayer protocol", () => {
   });
 
   it("validates every client message shape strictly", () => {
-    expect(parseClientMessage('{"type":"setReady","version":7,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
-    expect(parseClientMessage('{"type":"requestSnapshot","version":7,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
-    expect(parseClientMessage('{"type":"ping","version":7,"nonce":"n1"}')).toMatchObject({ type: "ping" });
+    expect(parseClientMessage('{"type":"setReady","version":8,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
+    expect(parseClientMessage('{"type":"requestSnapshot","version":8,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
+    expect(parseClientMessage('{"type":"ping","version":8,"nonce":"n1"}')).toMatchObject({ type: "ping" });
     expect(() => parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toThrow("version de protocole");
-    expect(() => parseClientMessage('{"type":"setReady","version":7,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
-    expect(() => parseClientMessage('{"type":"submitAction","version":7,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
+    expect(() => parseClientMessage('{"type":"setReady","version":8,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
+    expect(() => parseClientMessage('{"type":"submitAction","version":8,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
   });
 
   it("accepts team switches and forced replacements", () => {
-    expect(parseClientMessage('{"type":"submitAction","version":7,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
-    expect(parseClientMessage('{"type":"submitReplacement","version":7,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
-    expect(() => parseClientMessage('{"type":"submitReplacement","version":7,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");
+    expect(parseClientMessage('{"type":"submitAction","version":8,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
+    expect(parseClientMessage('{"type":"submitReplacement","version":8,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
+    expect(() => parseClientMessage('{"type":"submitReplacement","version":8,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");
   });
 
   it("accepts only directional overworld intentions with a positive sequence", () => {
-    expect(parseClientMessage('{"type":"moveAvatar","version":7,"requestId":"w1","direction":"left","sequence":3}')).toMatchObject({ type: "moveAvatar", direction: "left", sequence: 3 });
-    expect(parseClientMessage('{"type":"interact","version":7,"requestId":"i1"}')).toMatchObject({ type: "interact" });
-    expect(() => parseClientMessage('{"type":"interact","version":7,"requestId":"i1","interactionId":"secret"}')).toThrow("interact mal formé");
-    expect(() => parseClientMessage('{"type":"moveAvatar","version":7,"requestId":"w1","direction":"teleport","sequence":3}')).toThrow("moveAvatar mal formé");
-    expect(() => parseClientMessage('{"type":"moveAvatar","version":7,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
+    expect(parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"left","sequence":3}')).toMatchObject({ type: "moveAvatar", direction: "left", sequence: 3 });
+    expect(parseClientMessage('{"type":"interact","version":8,"requestId":"i1"}')).toMatchObject({ type: "interact" });
+    expect(() => parseClientMessage('{"type":"interact","version":8,"requestId":"i1","interactionId":"secret"}')).toThrow("interact mal formé");
+    expect(() => parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"teleport","sequence":3}')).toThrow("moveAvatar mal formé");
+    expect(() => parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
   });
 
   it("validates a cosmetic profile update without gameplay data", () => {
     const profile = createNetworkPlayerProfile("legacy-2", { ...createDefaultPlayerProfile(), displayName: "Lina" });
-    const message: ClientMessage = { type: "setProfile", version: 7, requestId: "profile-1", profile };
+    const message: ClientMessage = { type: "setProfile", version: 8, requestId: "profile-1", profile };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseClientMessage(JSON.stringify({ ...message, profile: { ...profile, party: [] } })))
       .toThrow("setProfile mal formé");
+  });
+
+  it("validates a compact source-world topology and rejects computed avatars", () => {
+    const world = { mapId: 3, width: 2, height: 2, passages: "ffff", blockedPoints: [{ x: 1, y: 1 }],
+      host: { x: 0, y: 0, direction: "down" }, story: { switches: { "67": true }, variables: { "20": 3 },
+        selfSwitches: { "3:7:A": true } } } as const;
+    expect(parseSourceWorldHostState(world)).toEqual(world);
+    const message: ClientMessage = { type: "setSourceWorld", version: 8, requestId: "source-1", world };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message, world: { ...world, avatars: {} } })))
+      .toThrow("setSourceWorld mal formé");
+    expect(() => parseSourceWorldHostState({ ...world, passages: "fff" })).toThrow("Passages");
   });
 
   it("rejects malformed and oversized payloads", () => {

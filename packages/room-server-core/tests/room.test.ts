@@ -5,6 +5,10 @@ import { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile } from "@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, createOverworldState, type OverworldCatalog } from "@pokemon-z-battle/overworld-engine";
 
 const world = { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() } as const;
+const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff",
+  blockedPoints: [{ x: 2, y: 1 }], host: { x: 1, y: 1, direction: "down" as const },
+  story: { switches: { "67": true }, variables: {}, selfSwitches: {} } };
+const worldWithSource = { ...world, sourceWorld } as const;
 
 const syncedCatalog: OverworldCatalog = {
   maps: { test: { id: "test", name: "Test", width: 3, height: 1, blocked: [], transitions: [] } },
@@ -53,10 +57,38 @@ function encounterBattle(encounter?: { readonly kind: "wild" | "trainer" }): Tea
 }
 
 function ready(requestId: string) {
-  return { type: "setReady", version: 7, requestId, ready: true } as const;
+  return { type: "setReady", version: 8, requestId, ready: true } as const;
 }
 
 describe("authoritative battle room", () => {
+  it("hosts the source map, validates both movements and reserves story publication for the host", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 3,
+      avatars: { player: { x: 1, y: 1 }, opponent: { x: 1, y: 2 } } });
+
+    const blocked = room.receive("alice", { type: "moveAvatar", version: 8, requestId: "source-host-1",
+      direction: "right", sequence: 1 });
+    expect(blocked[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { player: { x: 1, y: 1, direction: "right" } } } });
+    room.receive("bob", { type: "moveAvatar", version: 8, requestId: "source-guest-1",
+      direction: "left", sequence: 1 });
+    expect(room.snapshot().sourceWorld?.avatars.opponent).toMatchObject({ x: 0, y: 2, direction: "left" });
+
+    const forbidden = room.receive("bob", { type: "setSourceWorld", version: 8,
+      requestId: "source-guest-map", world: sourceWorld });
+    expect(forbidden[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
+    const changed = { ...sourceWorld, mapId: 7, host: { x: 0, y: 0, direction: "right" as const } };
+    room.receive("alice", { type: "setSourceWorld", version: 8, requestId: "source-host-map", world: changed });
+    expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, avatars: { player: { x: 0, y: 0 } } });
+
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
+  });
+
   it("publishes, updates and persists each player's cosmetic profile", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);
     const base = createDefaultNetworkPlayerProfile().profile;
@@ -66,7 +98,7 @@ describe("authoritative battle room", () => {
     room.connect("alice");
     expect(room.snapshot().players[0]?.profile).toEqual(ariane);
 
-    const updated = room.receive("alice", { type: "setProfile", version: 7, requestId: "profile-1", profile: lina });
+    const updated = room.receive("alice", { type: "setProfile", version: 8, requestId: "profile-1", profile: lina });
     expect(updated.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().players[0]?.profile).toEqual(lina);
 
@@ -91,16 +123,16 @@ describe("authoritative battle room", () => {
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
     room.receive("bob", ready("ready-b"));
-    room.receive("alice", { type: "moveAvatar", version: 7, requestId: "world-a-1", direction: "right", sequence: 1 });
-    room.receive("alice", { type: "submitAction", version: 7, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("alice", { type: "moveAvatar", version: 8, requestId: "world-a-1", direction: "right", sequence: 1 });
+    room.receive("alice", { type: "submitAction", version: 8, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
 
     const state = room.exportState();
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(state.rngState), world, state);
     expect(restored.snapshot()).toEqual(room.snapshot());
     expect(restored.snapshot()).toMatchObject({ world: { avatars: { player: { x: 3 } } }, movementSequences: { player: 1 } });
-    expect(restored.receive("alice", { type: "moveAvatar", version: 7, requestId: "world-a-stale", direction: "right", sequence: 1 })[0]?.message)
+    expect(restored.receive("alice", { type: "moveAvatar", version: 8, requestId: "world-a-stale", direction: "right", sequence: 1 })[0]?.message)
       .toMatchObject({ type: "error", code: "STALE_MOVEMENT" });
-    const secondAction = { type: "submitAction", version: 7, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
+    const secondAction = { type: "submitAction", version: 8, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
     const uninterruptedOutput = room.receive("bob", secondAction);
     const restoredOutput = restored.receive("bob", secondAction);
     expect(restoredOutput).toEqual(uninterruptedOutput);
@@ -116,10 +148,10 @@ describe("authoritative battle room", () => {
     room.receive("bob", ready("ready-b"));
     expect(room.snapshot()).toMatchObject({ phase: "battle", battle: { id: "ABC234-1", state: { turn: 1 } } });
 
-    const first = room.receive("alice", { type: "submitAction", version: 7, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const first = room.receive("alice", { type: "submitAction", version: 8, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(first.map((entry) => entry.message.type)).toEqual(["ack"]);
     expect(room.snapshot().battle?.state.turn).toBe(1);
-    const second = room.receive("bob", { type: "submitAction", version: 7, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const second = room.receive("bob", { type: "submitAction", version: 8, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(second.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
     expect(room.snapshot().battle?.state.turn).toBe(2);
   });
@@ -133,7 +165,7 @@ describe("authoritative battle room", () => {
     const repeatedReady = room.receive("bob", ready("ready-b"));
     expect(repeatedReady[0]?.message).toEqual(firstReady[0]?.message);
 
-    const action = { type: "submitAction", version: 7, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
+    const action = { type: "submitAction", version: 8, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } } as const;
     room.receive("alice", action);
     expect(room.receive("alice", action)[0]?.message.type).toBe("ack");
     const duplicate = room.receive("alice", { ...action, requestId: "move-a-2" });
@@ -148,11 +180,11 @@ describe("authoritative battle room", () => {
     room.connect("bob");
     room.receive("alice", ready("ready-a"));
     room.receive("bob", ready("ready-b"));
-    room.receive("alice", { type: "submitAction", version: 7, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
-    room.receive("bob", { type: "submitAction", version: 7, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("alice", { type: "submitAction", version: 8, requestId: "move-a", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 8, requestId: "move-b", battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(room.snapshot().battle?.state.replacementRequired).toEqual(["opponent"]);
 
-    const replacement = room.receive("bob", { type: "submitReplacement", version: 7, requestId: "replace-b", battleId: "ABC234-1", turn: 2, teamIndex: 1 });
+    const replacement = room.receive("bob", { type: "submitReplacement", version: 8, requestId: "replace-b", battleId: "ABC234-1", turn: 2, teamIndex: 1 });
     expect(replacement.map((entry) => entry.message.type)).toEqual(["ack", "replacementResolved", "snapshot"]);
     expect(room.snapshot().battle?.state.teams.opponent.activeIndex).toBe(1);
     expect(room.snapshot().battle?.state.replacementRequired).toEqual([]);
@@ -162,12 +194,12 @@ describe("authoritative battle room", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(3), world);
     room.connect("alice");
     room.connect("bob");
-    const moved = room.receive("alice", { type: "moveAvatar", version: 7, requestId: "world-a-1", direction: "right", sequence: 1 });
+    const moved = room.receive("alice", { type: "moveAvatar", version: 8, requestId: "world-a-1", direction: "right", sequence: 1 });
     expect(moved.map((entry) => entry.message.type)).toEqual(["ack", "worldUpdated"]);
     expect(room.snapshot().world.avatars.player).toMatchObject({ x: 3, y: 4, direction: "right" });
     expect(moved[1]?.message).toMatchObject({ type: "worldUpdated", side: "player", sequence: 1 });
 
-    const stale = room.receive("alice", { type: "moveAvatar", version: 7, requestId: "world-a-stale", direction: "left", sequence: 1 });
+    const stale = room.receive("alice", { type: "moveAvatar", version: 8, requestId: "world-a-stale", direction: "left", sequence: 1 });
     expect(stale[0]?.message).toMatchObject({ type: "error", code: "STALE_MOVEMENT" });
     expect(room.snapshot().world.avatars.player).toMatchObject({ x: 3, y: 4 });
   });
@@ -177,11 +209,11 @@ describe("authoritative battle room", () => {
     room.connect("alice");
     room.connect("bob");
 
-    const personal = room.receive("alice", { type: "interact", version: 7, requestId: "interact-a" });
+    const personal = room.receive("alice", { type: "interact", version: 8, requestId: "interact-a" });
     expect(personal.map((entry) => entry.message.type)).toEqual(["ack", "interactionUpdated"]);
     expect(room.snapshot().world.players.player?.inventory.ORAN_BERRY).toBe(1);
 
-    const shared = room.receive("bob", { type: "interact", version: 7, requestId: "interact-b" });
+    const shared = room.receive("bob", { type: "interact", version: 8, requestId: "interact-b" });
     expect(shared[1]?.message).toMatchObject({ type: "interactionUpdated", events: [expect.objectContaining({ type: "dialogueShown" }), expect.objectContaining({ type: "interactionCompleted", policy: "SHARED" })] });
     expect(room.snapshot().world.session.completedInteractions).toContain("meadow-guide");
   });
@@ -190,18 +222,18 @@ describe("authoritative battle room", () => {
     const room = new AuthoritativeBattleRoom("ABC234", encounterBattle, new SeededRandom(3), world);
     room.connect("alice");
     room.connect("bob");
-    room.receive("alice", { type: "moveAvatar", version: 7, requestId: "toward-wild", direction: "left", sequence: 1 });
+    room.receive("alice", { type: "moveAvatar", version: 8, requestId: "toward-wild", direction: "left", sequence: 1 });
 
-    const started = room.receive("alice", { type: "interact", version: 7, requestId: "start-wild" });
+    const started = room.receive("alice", { type: "interact", version: 8, requestId: "start-wild" });
     expect(started.map((entry) => entry.message.type)).toEqual(["ack", "interactionUpdated", "snapshot"]);
     const battleId = room.snapshot().battle?.id;
     expect(room.snapshot()).toMatchObject({ phase: "battle", battle: { state: { teams: { opponent: { members: [{ hp: 1 }] } } } } });
-    expect(room.receive("bob", { type: "moveAvatar", version: 7, requestId: "locked", direction: "up", sequence: 1 })[0]?.message)
+    expect(room.receive("bob", { type: "moveAvatar", version: 8, requestId: "locked", direction: "up", sequence: 1 })[0]?.message)
       .toMatchObject({ type: "error", code: "INVALID_PHASE" });
-    expect(room.receive("bob", { type: "submitAction", version: 7, requestId: "observer-action", battleId: battleId!, turn: 1, action: { kind: "move", moveIndex: 0 } })[0]?.message)
+    expect(room.receive("bob", { type: "submitAction", version: 8, requestId: "observer-action", battleId: battleId!, turn: 1, action: { kind: "move", moveIndex: 0 } })[0]?.message)
       .toMatchObject({ type: "error", code: "INVALID_PHASE" });
 
-    const finished = room.receive("alice", { type: "submitAction", version: 7, requestId: "encounter-action", battleId: battleId!, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const finished = room.receive("alice", { type: "submitAction", version: 8, requestId: "encounter-action", battleId: battleId!, turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(finished.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
     expect(room.snapshot()).toMatchObject({ phase: "waiting", battle: null });
     expect(room.snapshot().world.session.battleResults).toContainEqual({ encounterId: "wild-meadow-1", kind: "wild", winner: "player" });
@@ -211,12 +243,12 @@ describe("authoritative battle room", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(4), syncedWorld);
     room.connect("alice");
     room.connect("bob");
-    room.receive("alice", { type: "interact", version: 7, requestId: "sync-a" });
+    room.receive("alice", { type: "interact", version: 8, requestId: "sync-a" });
     expect(room.snapshot().world.session.syncedParticipants.sync).toEqual(["player"]);
 
     const persisted = room.exportState();
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState), syncedWorld, persisted);
-    restored.receive("bob", { type: "interact", version: 7, requestId: "sync-b" });
+    restored.receive("bob", { type: "interact", version: 8, requestId: "sync-b" });
     expect(restored.snapshot().world.session.flags).toContain("SYNC_DONE");
     expect(restored.snapshot().world.session.completedInteractions).toContain("sync");
   });

@@ -1,9 +1,10 @@
 import type { BattleSide, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
+import type { SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
 
-export const PROTOCOL_VERSION = 7 as const;
-export const MAX_CLIENT_MESSAGE_BYTES = 4_096;
+export const PROTOCOL_VERSION = 8 as const;
+export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
 
@@ -22,6 +23,7 @@ export interface RoomSnapshot {
   readonly players: readonly RoomPlayerSnapshot[];
   readonly battle: { readonly id: string; readonly state: TeamBattleState } | null;
   readonly world: OverworldState;
+  readonly sourceWorld: SourceWorldSnapshot | null;
   readonly movementSequences: Readonly<Record<BattleSide, number>>;
 }
 
@@ -51,6 +53,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number })
   | (RequestedMessage & { readonly type: "interact" })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
+  | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 
 export type ProtocolErrorCode =
@@ -65,6 +68,7 @@ export type ProtocolErrorCode =
   | "REPLACEMENT_ALREADY_SUBMITTED"
   | "STALE_MOVEMENT"
   | "INTERACTION_UNAVAILABLE"
+  | "HOST_ONLY"
   | "INTERNAL_ERROR";
 
 export type ServerMessage =
@@ -105,6 +109,8 @@ export type ServerMessage =
       readonly state: OverworldState;
       readonly events: readonly OverworldEvent[];
     })
+  | (VersionedMessage & { readonly type: "sourceWorldUpdated"; readonly side: BattleSide;
+      readonly sequence: number; readonly revision: number; readonly state: SourceWorldSnapshot })
   | (VersionedMessage & {
       readonly type: "error";
       readonly requestId: string | null;

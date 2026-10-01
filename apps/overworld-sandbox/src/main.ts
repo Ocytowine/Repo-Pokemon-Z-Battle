@@ -7,6 +7,7 @@ import { createPersistentPokemon, loadPlayerAvatarSelection, PLAYER_AVATAR_ACTIV
   type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceWorldHostState, SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
@@ -45,7 +46,7 @@ import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
-const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v7";
+const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v8";
 const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
 const catalog = DEMO_WORLD_CATALOG;
@@ -103,6 +104,8 @@ let networkStateText = "Local";
 let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une partie.";
 let networkServerUrl = "http://127.0.0.1:8787";
 let networkRoomCode = "";
+let networkSourceWorld: SourceWorldSnapshot | null = null;
+let networkSourceWorldApplication = 0;
 type AvatarId = DemoAvatarId;
 
 function activeNetworkPlayerProfile(): NetworkPlayerProfile {
@@ -127,6 +130,30 @@ function persistSourceEventState(): void {
   localStorage.setItem(SOURCE_EVENT_STATE_KEY, JSON.stringify(sourceEventState));
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
+  queueMicrotask(publishCurrentSourceWorld);
+}
+
+function sourceWorldHostState(): SourceWorldHostState | null {
+  if (importedAssets === null) return null;
+  const map = importedAssets.map;
+  return { mapId: map.id, width: map.width, height: map.height,
+    passages: map.collision.masks.map((mask) => Math.max(0, Math.min(15, mask)).toString(16)).join(""),
+    blockedPoints: blockingDefaultEventPoints(sourceMapEvents(), map.id, sourceEventState),
+    host: importedAvatar,
+    story: { switches: sourceEventState.switches, variables: sourceEventState.variables,
+      selfSwitches: sourceEventState.selfSwitches } };
+}
+
+function publishCurrentSourceWorld(): void {
+  const world = sourceWorldHostState();
+  if (world !== null) multiplayer.publishSourceWorld(world);
+}
+
+function renderedSourceEventState(): SourceEventState {
+  const story = networkSourceWorld?.story;
+  if (story === undefined || multiplayer.current?.ticket.side !== "opponent") return sourceEventState;
+  return { ...sourceEventState, switches: story.switches, variables: story.variables,
+    selfSwitches: story.selfSwitches };
 }
 
 function startPendingSourceEncounter(): void {
@@ -578,8 +605,41 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     if (sourceScenes.menuOpen) renderSourceMenu();
   },
   onPlayersChanged: synchronizeNetworkPlayerProfiles,
+  onSourceWorldState: (world, animate) => { void applyNetworkSourceWorld(world, animate); },
   onRender: render,
 });
+
+async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean): Promise<void> {
+  networkSourceWorld = world;
+  const session = multiplayer.current;
+  if (session === null) return;
+  const own = world.avatars[session.ticket.side];
+  const application = ++networkSourceWorldApplication;
+  if (importedAssets?.map.id !== world.mapId) {
+    try {
+      const loaded = await loadSourceWorldAt(world.mapId, own);
+      if (application !== networkSourceWorldApplication || multiplayer.current !== session) return;
+      activateSourceWorld(loaded);
+    } catch (error) {
+      importedNotice = error instanceof Error ? `Carte de l'hôte inaccessible : ${error.message}` : "Carte de l'hôte inaccessible.";
+      render();
+      return;
+    }
+  } else {
+    const before = importedAvatar;
+    importedAvatar = own;
+    if (animate && (before.x !== own.x || before.y !== own.y)) {
+      importedPlayerMotion = createSourceGridMotion(before, own, own.direction, performance.now(),
+        { walkingPattern: importedWalkingPattern });
+      importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
+    }
+  }
+  viewedMapId = SOURCE_MAP_ID;
+  importedNotice = session.ticket.side === "player"
+    ? "Session Coop active : votre monde narratif est partagé."
+    : `Monde de l'hôte rejoint · Map${String(world.mapId).padStart(3, "0")}.`;
+  renderImportedView();
+}
 
 function synchronizeNetworkPlayerProfiles(players: readonly RoomPlayerSnapshot[]): void {
   const application = ++networkProfileApplication;
@@ -606,7 +666,8 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  if (sourceScenes.allows("ambient-motion", sourceSceneActivity())) {
+  if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
+    && multiplayer.current?.ticket.side !== "opponent") {
     const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
     if (contact !== null) {
       beginSourceSequence(contact, `Contact événement ${contact.event.id} · ${contact.event.name}`);
@@ -614,10 +675,15 @@ function animateImportedMap(now: number): void {
   }
   synchronizeSourceFollower();
   const followerPose = sourceFollowerMotion.pose(now);
-  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now),
+  const remoteSide: AvatarId | null = multiplayer.current?.ticket.side === "player" ? "opponent"
+    : multiplayer.current?.ticket.side === "opponent" ? "player" : null;
+  const remotePose = remoteSide === null ? null : networkSourceWorld?.avatars[remoteSide] ?? null;
+  const remoteImage = remoteSide === null ? null : networkAvatarImages[remoteSide] ?? null;
+  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt),
-    sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose });
+    sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
+    remotePose === null || remoteImage === null ? [] : [{ image: remoteImage, pose: remotePose }]);
   if (importedPlayerMotion !== null && pose.complete) {
     importedPlayerMotion = null;
     if (sourceSequences.current === null) finishImportedStep();
@@ -923,6 +989,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   sourceNpcMotions.reset(world.assets.map.id, world.assets.events, performance.now());
   sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
+  queueMicrotask(publishCurrentSourceWorld);
 }
 
 async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -939,6 +1006,7 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
   sourceFollowerMotion.reset(importedAssets.map, importedAvatar);
   void refreshSourceParallelPresentation(importedAssets);
   renderImportedView();
+  publishCurrentSourceWorld();
 }
 
 async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -1060,6 +1128,10 @@ function move(playerId: string, direction: Direction): void {
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
+    if (multiplayer.active && multiplayer.current?.ticket.side === "opponent") {
+      multiplayer.sendMovement("opponent", direction);
+      return;
+    }
     const events = sourceMapEvents();
     const facingAvatar = { ...importedAvatar, direction };
     const eventAhead = playerTouchEventInDirection(events, importedAvatar, direction, importedAssets.map.id, sourceEventState);
@@ -1069,8 +1141,10 @@ function move(playerId: string, direction: Direction): void {
       return;
     }
     const before = importedAvatar;
-    const next = moveImportedAvatar(importedAssets.map, importedAvatar, direction,
-      blockingDefaultEventPoints(events, importedAssets.map.id, sourceEventState));
+    const guest = networkSourceWorld?.avatars.opponent;
+    const occupied = [...blockingDefaultEventPoints(events, importedAssets.map.id, sourceEventState),
+      ...(multiplayer.current?.ticket.side === "player" && guest !== undefined ? [guest] : [])];
+    const next = moveImportedAvatar(importedAssets.map, importedAvatar, direction, occupied);
     importedAvatar = next;
     if (before.x !== next.x || before.y !== next.y) {
       const startedAt = performance.now();
@@ -1083,6 +1157,7 @@ function move(playerId: string, direction: Direction): void {
       importedNotice = `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`;
     }
     renderImportedView();
+    publishCurrentSourceWorld();
     return;
   }
   if (multiplayer.active) {
@@ -1107,6 +1182,11 @@ function interact(playerId: AvatarId): void {
     }
     if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
+    if (multiplayer.current?.ticket.side === "opponent") {
+      importedNotice = "Dans ce premier lot Coop, les événements narratifs sont contrôlés par l'hôte.";
+      renderImportedView();
+      return;
+    }
     const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
       importedAssets.tileset, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
@@ -1144,7 +1224,8 @@ async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode
   if (sourceBattles.active) return;
   networkServerUrl = serverUrl;
   networkRoomCode = roomCode.trim().toUpperCase();
-  await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile());
+  await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile(),
+    kind === "create" ? sourceWorldHostState() : null);
 }
 
 function openPlayerCustomization(): void {
@@ -1166,6 +1247,7 @@ function disconnectMultiplayer(): void {
   networkRoomCode = "";
   networkPlayerProfiles = {};
   networkAvatarImages = {};
+  networkSourceWorld = null;
   events = [];
   setAuthoritativeState(initialState(), false);
   viewedMapId = importedAssets === null ? "meadow" : SOURCE_MAP_ID;

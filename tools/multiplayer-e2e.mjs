@@ -53,7 +53,7 @@ class SocketInbox {
   }
 
   send(message) {
-    this.socket.send(JSON.stringify({ version: 7, ...message }));
+    this.socket.send(JSON.stringify({ version: 8, ...message }));
   }
 
   #take(predicate) {

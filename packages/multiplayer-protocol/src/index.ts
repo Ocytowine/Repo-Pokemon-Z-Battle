@@ -1,6 +1,8 @@
 export { ProtocolValidationError, normalizeRoomCode, parseClientMessage, serializeMessage } from "./validation.js";
 export { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile, NETWORK_PLAYER_PROFILE_VERSION, parseNetworkPlayerProfile,
   type NetworkPlayerProfile } from "./player-profile.js";
+export { parseSourceWorldHostState, sourceWorldSnapshot, type SourceAvatarSnapshot, type SourceStorySnapshot,
+  type SourceWorldHostState, type SourceWorldSnapshot } from "./source-world.js";
 export {
   MAX_CLIENT_MESSAGE_BYTES,
   PROTOCOL_VERSION,

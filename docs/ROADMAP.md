@@ -1154,6 +1154,8 @@ l'adresse du serveur, la creation, le code d'invitation, la jonction, la liste d
 participants et la deconnexion. Ce menu reste accessible avec Echap ou M dans les
 cartes reseau ; quitter rend la carte source et la sauvegarde personnelle intactes.
 Il expose egalement le profil publie et ouvre le laboratoire de personnalisation.
+Le bouton `Retour au jeu` restaure la carte precedente et son onglet Coop, sans
+reinitialiser la progression ni obliger a recreer le profil.
 Cette integration unifie le parcours utilisateur sans pretendre que Prairie et
 Bosquet sont deja la carte narrative de l'hote.
 

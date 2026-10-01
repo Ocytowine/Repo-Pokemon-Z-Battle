@@ -1,6 +1,7 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
-import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, type ClientMessage, type NetworkPlayerProfile,
-  type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
+  type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
+  type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -24,7 +25,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 7;
+  readonly version: 8;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -41,6 +42,7 @@ export interface PersistedRoomState {
   readonly pendingActions: readonly (readonly [BattleSide, TeamBattleAction])[];
   readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
   readonly worldState: OverworldState;
+  readonly sourceWorldState: SourceWorldSnapshot | null;
   readonly movementSequences: readonly (readonly [BattleSide, number])[];
   readonly activeEncounter?: ActiveEncounter | null;
 }
@@ -57,7 +59,13 @@ interface ActiveEncounter extends EncounterContext {
 export interface RoomWorldDefinition {
   readonly catalog: OverworldCatalog;
   readonly initialState: OverworldState;
+  readonly sourceWorld?: SourceWorldHostState | null;
 }
+
+const SOURCE_DIRECTION_BITS = { down: 1, left: 2, right: 4, up: 8 } as const;
+const SOURCE_OPPOSITE = { down: "up", left: "right", right: "left", up: "down" } as const;
+const SOURCE_DELTAS = { down: { x: 0, y: 1 }, left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 }, up: { x: 0, y: -1 } } as const;
 
 export class AuthoritativeBattleRoom {
   readonly #players = new Map<string, RoomPlayer>();
@@ -73,6 +81,7 @@ export class AuthoritativeBattleRoom {
   #battleId: string | null = null;
   #battleState: TeamBattleState | null = null;
   #worldState: OverworldState;
+  #sourceWorldState: SourceWorldSnapshot | null;
   #activeEncounter: ActiveEncounter | null = null;
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
@@ -81,6 +90,8 @@ export class AuthoritativeBattleRoom {
     this.#rng = rng;
     this.#worldCatalog = world.catalog;
     this.#worldState = world.initialState;
+    this.#sourceWorldState = world.sourceWorld === null || world.sourceWorld === undefined
+      ? null : sourceWorldSnapshot(world.sourceWorld);
     if (persisted !== undefined) {
       this.#revision = persisted.revision;
       this.#battleSequence = persisted.battleSequence;
@@ -88,6 +99,7 @@ export class AuthoritativeBattleRoom {
       this.#battleState = persisted.battleState;
       this.#activeEncounter = persisted.activeEncounter ?? null;
       this.#worldState = persisted.worldState;
+      this.#sourceWorldState = persisted.sourceWorldState;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
       }
@@ -104,6 +116,14 @@ export class AuthoritativeBattleRoom {
     const side: BattleSide | undefined = usedSides.has("player") ? (usedSides.has("opponent") ? undefined : "opponent") : "player";
     if (side === undefined) throw new Error("ROOM_FULL");
     this.#players.set(playerId, { playerId, side, ready: false, connected: false, profile, acknowledged: new Map() });
+    if (side === "opponent" && this.#sourceWorldState !== null) {
+      const current = this.#sourceWorldState;
+      const hostState: SourceWorldHostState = { mapId: current.mapId, width: current.width, height: current.height,
+        passages: current.passages, blockedPoints: current.blockedPoints, host: current.avatars.player,
+        story: current.story };
+      this.#sourceWorldState = { ...current,
+        avatars: { ...current.avatars, opponent: this.sourceSpawn(hostState) } };
+    }
     this.#revision += 1;
     return { side, snapshot: this.snapshot(), reconnected: false };
   }
@@ -143,6 +163,7 @@ export class AuthoritativeBattleRoom {
       players,
       battle,
       world: this.#worldState,
+      sourceWorld: this.#sourceWorldState,
       movementSequences: {
         player: this.#movementSequences.get("player") ?? 0,
         opponent: this.#movementSequences.get("opponent") ?? 0,
@@ -152,7 +173,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 7,
+      version: 8,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -164,6 +185,7 @@ export class AuthoritativeBattleRoom {
       pendingActions: [...this.#pendingActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
       worldState: this.#worldState,
+      sourceWorldState: this.#sourceWorldState,
       movementSequences: [...this.#movementSequences.entries()],
       activeEncounter: this.#activeEncounter,
     };
@@ -186,6 +208,7 @@ export class AuthoritativeBattleRoom {
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
     if (message.type === "setProfile") return this.setProfile(player, message.requestId, message.profile);
+    if (message.type === "setSourceWorld") return this.setSourceWorld(player, message.requestId, message.world);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
@@ -194,6 +217,20 @@ export class AuthoritativeBattleRoom {
 
   private setProfile(player: RoomPlayer, requestId: string, profile: NetworkPlayerProfile): readonly RoomDispatch[] {
     player.profile = profile;
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private setSourceWorld(player: RoomPlayer, requestId: string, world: SourceWorldHostState): readonly RoomDispatch[] {
+    if (player.side !== "player") {
+      return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul l'hôte peut publier la carte narrative.")];
+    }
+    const previousGuest = this.#sourceWorldState?.mapId === world.mapId
+      ? this.#sourceWorldState.avatars.opponent : undefined;
+    this.#sourceWorldState = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
@@ -308,6 +345,7 @@ export class AuthoritativeBattleRoom {
     if (message.sequence <= previousSequence) {
       return [this.error(player.playerId, message.requestId, "STALE_MOVEMENT", "Intention de mouvement périmée.")];
     }
+    if (this.#sourceWorldState !== null) return this.moveSourceAvatar(player, message);
     const result = resolveMovement(this.#worldCatalog, this.#worldState, { playerId: player.side, direction: message.direction });
     this.#worldState = result.state;
     this.#movementSequences.set(player.side, message.sequence);
@@ -322,6 +360,49 @@ export class AuthoritativeBattleRoom {
         },
       },
     ];
+  }
+
+  private moveSourceAvatar(player: RoomPlayer,
+    message: Extract<ClientMessage, { readonly type: "moveAvatar" }>): readonly RoomDispatch[] {
+    const world = this.#sourceWorldState;
+    if (world === null) return [];
+    const avatar = world.avatars[player.side];
+    const delta = SOURCE_DELTAS[message.direction];
+    const target = { x: avatar.x + delta.x, y: avatar.y + delta.y };
+    const otherSide: BattleSide = player.side === "player" ? "opponent" : "player";
+    const other = world.avatars[otherSide];
+    const inBounds = target.x >= 0 && target.y >= 0 && target.x < world.width && target.y < world.height;
+    const sourceMask = Number.parseInt(world.passages[avatar.y * world.width + avatar.x] ?? "0", 16);
+    const targetMask = inBounds ? Number.parseInt(world.passages[target.y * world.width + target.x] ?? "0", 16) : 0;
+    const passable = inBounds && (sourceMask & SOURCE_DIRECTION_BITS[message.direction]) !== 0
+      && (targetMask & SOURCE_DIRECTION_BITS[SOURCE_OPPOSITE[message.direction]]) !== 0
+      && !world.blockedPoints.some((point) => point.x === target.x && point.y === target.y)
+      && (other.x !== target.x || other.y !== target.y);
+    const next: SourceAvatarSnapshot = passable ? { ...target, direction: message.direction }
+      : { ...avatar, direction: message.direction };
+    this.#sourceWorldState = { ...world, avatars: { ...world.avatars, [player.side]: next } };
+    this.#movementSequences.set(player.side, message.sequence);
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      { audience: "all", message: { type: "sourceWorldUpdated", version: PROTOCOL_VERSION,
+        side: player.side, sequence: message.sequence, revision: this.#revision, state: this.#sourceWorldState } },
+    ];
+  }
+
+  private sourceSpawn(world: SourceWorldHostState, preferred?: SourceAvatarSnapshot): SourceAvatarSnapshot {
+    const candidates = preferred === undefined ? [] : [preferred];
+    candidates.push(...(["down", "left", "right", "up"] as const).map((direction) => ({
+      x: world.host.x + SOURCE_DELTAS[direction].x, y: world.host.y + SOURCE_DELTAS[direction].y,
+      direction: SOURCE_OPPOSITE[direction],
+    })));
+    for (const candidate of candidates) {
+      if (candidate.x < 0 || candidate.y < 0 || candidate.x >= world.width || candidate.y >= world.height) continue;
+      if (world.blockedPoints.some((point) => point.x === candidate.x && point.y === candidate.y)) continue;
+      const mask = Number.parseInt(world.passages[candidate.y * world.width + candidate.x] ?? "0", 16);
+      if (mask !== 0 && (candidate.x !== world.host.x || candidate.y !== world.host.y)) return candidate;
+    }
+    return world.host;
   }
 
   private interact(player: RoomPlayer, requestId: string): readonly RoomDispatch[] {

@@ -130,7 +130,8 @@ leurs charsets recolorés. Une modification appliquée pendant la connexion est 
 diffusée sans recréer la room.
 Le menu Coop reste accessible une fois connecté : il affiche les deux participants,
 leur présence et le code, puis permet de quitter la session et de revenir à sa
-propre carte source. Le bouton **Personnaliser** ouvre le laboratoire intégré.
+propre carte source. Le bouton **Personnaliser** ouvre le laboratoire intégré et
+**Retour au jeu** ramène directement à l'onglet Coop de la carte précédente.
 
 Ce parcours utilise encore **Prairie** et **Bosquet**, les cartes réseau originales.
 Il valide le transport réel à deux clients ; le raccord au monde source et à la

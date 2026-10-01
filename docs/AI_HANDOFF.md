@@ -564,7 +564,9 @@ raccord ne synchronise pas encore le monde source ni la sauvegarde de l'hote.
 Le parcours de connexion se trouve maintenant dans l'onglet `Coop` du menu en jeu,
 et non dans l'ancien panneau lateral. Il permet de creer, rejoindre, voir le code
 et les participants, ouvrir la personnalisation puis quitter. Le menu reste
-ouvrable sur Prairie/Bosquet ; une deconnexion revient au monde source personnel.
+ouvrable sur Prairie/Bosquet. La personnalisation possede un retour direct vers
+l'onglet Coop de la carte precedente ; une deconnexion revient au monde source
+personnel.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.

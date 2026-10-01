@@ -553,6 +553,12 @@ export interface ImportedFollowerRender {
   readonly pose: ImportedAvatar & { readonly pattern: number };
 }
 
+export interface ImportedRemotePlayerRender {
+  readonly image: HTMLImageElement;
+  readonly pose: ImportedAvatar;
+  readonly pattern?: number;
+}
+
 function sourceAssetUrl(path: string): string {
   return `/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`;
 }
@@ -757,7 +763,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   avatar: ImportedAvatar, playerPattern: number, now: number, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE,
   eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 },
   playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0,
-  follower: ImportedFollowerRender | null = null): void {
+  follower: ImportedFollowerRender | null = null,
+  remotePlayers: readonly ImportedRemotePlayerRender[] = []): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -839,6 +846,12 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     renderables.push({ z: sourceCharacterZ(pose.y, follower.image.naturalHeight / 4), order: order++, draw: () => {
       drawCharacter(context, follower.image, directionNumber(pose.direction), pose.pattern, 255,
         pose.x, pose.y, cameraX, cameraY, true);
+    } });
+  }
+  for (const remote of remotePlayers) {
+    renderables.push({ z: sourceCharacterZ(remote.pose.y, remote.image.naturalHeight / 4), order: order++, draw: () => {
+      drawCharacter(context, remote.image, directionNumber(remote.pose.direction), remote.pattern ?? 0, 255,
+        remote.pose.x, remote.pose.y, cameraX, cameraY, true);
     } });
   }
   renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
