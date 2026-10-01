@@ -1078,9 +1078,12 @@ le profil effectivement transmis au multijoueur avant un raccord explicite.
 - [x] extraire les six profils historiques et auditer leurs contextes graphiques ;
 - [x] definir un `PlayerProfile` cosmetique, strict et versionne ;
 - [x] construire le laboratoire autonome avec apercus overworld, portrait et combat ;
-- [ ] preparer le contrat reseau du profil sans l'activer dans la partie ;
-- [ ] reproduire l'introduction de combat, le lancer et l'apparition du Pokemon ;
-- [ ] raccorder ulterieurement profil, overworld, sauvegarde, reseau et Map001 ;
+- [x] preparer le contrat reseau du profil sans l'activer dans la partie ;
+- [x] reproduire l'introduction de combat, le lancer et l'apparition du Pokemon ;
+- [x] appliquer les trois couleurs de tenue sans recolorer peau ni cheveux ;
+- [x] raccorder explicitement le profil applique a l'overworld et aux combats ;
+- [x] raccorder le profil actif au reseau et aux avatars de la room ;
+- [ ] raccorder ulterieurement le profil actif a Map001 ;
 - [ ] creer de nouveaux corps, coiffures et tenues — explicitement reporte.
 
 Premier jalon implemente le 2026-10-01 : `extract:assets` produit
@@ -1095,17 +1098,97 @@ identifiants controles ; il n'est encore persiste par aucune vue du jeu.
 Deuxieme jalon implemente le 2026-10-01 : `apps/avatar-lab` est une application
 Vite autonome lancee par `corepack pnpm lab:avatar`. Elle charge les six profils
 depuis les catalogues locaux, anime les quatre poses de chaque charset, permet de
-parcourir marche, course, velo, surf et peche, affiche la face du Dresseur et fait
-defiler ses poses de dos. Nom, pronoms, profil source et trois couleurs controlees
+parcourir marche, course, velo, surf et peche, affiche la face du Dresseur et sa
+vue de dos principale. Les fichiers suffixes de dos sont inventories comme
+variantes narratives, et non comme images d'une animation. Nom, pronoms, profil source et trois couleurs controlees
 sont conserves sous la seule cle `pokemon-z-battle.avatar-lab-profile.v1` et peuvent
-etre exportes en JSON. Les couleurs ne sont volontairement pas appliquees aux PNG
-tant que leurs masques semantiques ne sont pas produits ; l'interface le signale.
+etre exportes en JSON. Les couleurs sont maintenant appliquees aux PNG par des
+masques semantiques calcules depuis les trois ethnies historiques d'une meme
+silhouette. Un pixel qui varie entre ces references est protege comme composante
+d'identite ; seuls les groupes bleu, or et rouge restes identiques sont associes
+aux couleurs principale, secondaire et d'accent. Le meme traitement couvre les
+charsets d'actions, la face du Dresseur et son dos de combat, dans l'application
+autonome comme dans l'onglet integre.
+Le remappage conserve le rapport de luminosite de chaque nuance par rapport a sa
+couleur source. Les palettes tres claires, notamment le blanc, gardent donc les
+contours, plis et ombrages sombres au lieu d'aplatir les details du sprite.
 
 Le meme laboratoire est integre a l'Overworld Sandbox dans l'onglet `Personnage`,
 au meme niveau que Monde source, Prairie et Bosquet. Cet onglet masque la scene et
 bloque ses commandes de deplacement sans modifier la partie en cours. Il partage
 uniquement la cle cosmetique du laboratoire : supprimer ou reinitialiser une
 sauvegarde du monde ne supprime donc jamais le personnage edite.
+
+Cinquieme jalon implemente le 2026-10-01 : le laboratoire distingue maintenant le
+brouillon cosmetique du profil actif. Le bouton `Appliquer au joueur` copie le
+brouillon dans `pokemon-z-battle.active-player-profile.v1`, sans toucher a la
+sauvegarde narrative. Le moteur recharge alors les charsets recolores du modele
+choisi, les variantes de pose equivalentes demandees par les routes source et le
+dos du Dresseur utilise par l'introduction de combat. Les alias sont resolus par
+contexte entre les six profils historiques : une commande visant par exemple une
+pose `trcharNNN_2` conserve son intention avec le modele applique. Le profil actif
+est restaure au prochain lancement et n'est pas efface avec la position ou l'etat
+de l'histoire. Le protocole reseau et Map001 restent volontairement hors de ce
+premier raccord explicite.
+
+Sixieme jalon implemente le 2026-10-01 : le nom du profil actif alimente le moteur
+de dialogue source. La balise RPG `\\PN` est remplacee apres selection de la
+traduction francaise, aussi bien dans les textes que dans les choix, et n'est plus
+figee sur `Joueur`. Une session conserve le nom avec lequel elle a commence afin
+que ses branches restent coherentes. Les pronoms attendent encore des textes ou
+une convention d'interpolation explicite ; l'introduction Map001 reste reportee.
+
+Septieme jalon implemente le 2026-10-01 : le protocole v7 publie un
+`NetworkPlayerProfile` valide pour chaque place. La room autoritaire persiste ces
+profils, les diffuse dans ses snapshots et accepte leur mise a jour explicite sans
+transporter equipe ni progression. Le prototype Prairie/Bosquet affiche desormais
+le nom et le charset recolore de chaque participant dans les deux navigateurs. La
+recette HTTP/WebSocket complete valide deux profils distincts, reconnexion,
+interactions, mouvements et combats. Le monde source de l'hote n'est pas encore
+synchronise : il constitue le prochain jalon coop, pas un comportement implicite
+de ce raccord cosmetique.
+
+Huitieme jalon implemente le 2026-10-01 : la creation et la jonction ne passent
+plus par le panneau technique lateral. L'onglet `Coop` du menu en jeu rassemble
+l'adresse du serveur, la creation, le code d'invitation, la jonction, la liste des
+participants et la deconnexion. Ce menu reste accessible avec Echap ou M dans les
+cartes reseau ; quitter rend la carte source et la sauvegarde personnelle intactes.
+Il expose egalement le profil publie et ouvre le laboratoire de personnalisation.
+Cette integration unifie le parcours utilisateur sans pretendre que Prairie et
+Bosquet sont deja la carte narrative de l'hote.
+
+Correction d'interpretation le 2026-10-01 : les `trbackNNN_3`, `_4`, `_5` et `_7`
+correspondent a des variantes narratives ou de tenue. Le moteur source ne les lit
+pas comme une sequence de lancer : il n'anime horizontalement un Dresseur que si
+sa planche est plus large que haute, ce qui n'est pas le cas de ces images
+`160 × 210/220`. Les deux laboratoires conservent maintenant le dos principal fixe.
+Le Dresseur n'a pas d'animation de bras dans le jeu source : son image statique
+glisse hors de l'ecran. La trajectoire, l'ouverture de la Poke Ball et l'apparition
+du Pokemon sont des effets separes.
+
+Troisieme jalon implemente le 2026-10-01 : `NetworkPlayerProfile` definit la seule
+identite cosmetique publiable dans une room. Son schema strict et versionne
+associe un preset visuel aux champs semantiques de `PlayerProfile`, refuse les
+champs inconnus et ne transporte ni chemins d'assets, ni equipe, ni inventaire, ni
+progression narrative. Son activation effective intervient avec le septieme jalon
+et le protocole v7.
+
+Quatrieme jalon implemente le 2026-10-01 : l'entree du Pokemon du joueur reprend
+la mise en scene de `pbSendOut`. Le dos principal du Dresseur reste statique et
+glisse vers la gauche, tandis que `ball00` suit les 20 coordonnees de la courbe
+source avec sa rotation et le decalage vertical de 64 px impose en 384 px de haut.
+Le battler grandit ensuite de 1/8 de sa taille jusqu'a sa position de combat. Les commandes sont masquees pendant
+cette courte introduction et `prefers-reduced-motion` conserve un passage accelere.
+
+Correction visuelle apres validation manuelle : les Dresseurs utilisent leurs
+ancrages centre-bas exacts `(128,384)` et `(384,168)`. Un combat de Dresseur montre
+d'abord son sprite de face resolu par l'identifiant de sa classe, puis le fait
+sortir a droite avec l'apparition de son Pokemon. La phase joueur attend avant de
+faire glisser son dos a gauche ; la Ball ne demarre qu'apres ce mouvement initial
+et conserve `ball00`, comme `pbSendOut` (pas de faux passage a `ball00_open`).
+`IconSprite` affiche le bitmap `ball00.png` complet en 32 x 64 ; il ne s'agit pas
+d'une planche de deux frames 32 x 32. Le rendu web conserve donc son ratio 1:2 au
+lieu de recadrer sa moitie superieure.
 
 ### Comment la couverture s'etend au jeu complet
 

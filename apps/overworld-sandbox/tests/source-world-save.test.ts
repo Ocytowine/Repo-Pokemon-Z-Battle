@@ -33,8 +33,10 @@ describe("source world save", () => {
 
   it("does not remove the independent avatar laboratory profile", () => {
     const values = new Map([[SOURCE_WORLD_SAVE_KEY, "world"],
-      ["pokemon-z-battle.avatar-lab-profile.v1", "avatar"]]);
+      ["pokemon-z-battle.avatar-lab-profile.v1", "avatar"],
+      ["pokemon-z-battle.active-player-profile.v1", "active-avatar"]]);
     clearSourceWorldSave({ removeItem: (key) => { values.delete(key); } });
     expect(values.get("pokemon-z-battle.avatar-lab-profile.v1")).toBe("avatar");
+    expect(values.get("pokemon-z-battle.active-player-profile.v1")).toBe("active-avatar");
   });
 });

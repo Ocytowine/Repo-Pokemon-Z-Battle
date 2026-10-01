@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OverworldNetworkSession, type NetworkSessionCallbacks } from "../src/network-session.js";
+import { createDefaultNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
-  protocolVersion: 6,
+  protocolVersion: 7,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",
@@ -41,6 +42,7 @@ function callbacks(): NetworkSessionCallbacks {
     onEvents: vi.fn(),
     onMapChanged: vi.fn(),
     onConnectionFormChanged: vi.fn(),
+    onPlayersChanged: vi.fn(),
     onRender: vi.fn(),
   };
 }
@@ -65,7 +67,7 @@ describe("overworld network session", () => {
     const handlers = callbacks();
     const session = new OverworldNetworkSession("test-session", handlers);
 
-    await session.createOrJoin("create", "http://127.0.0.1:8787/", "");
+    await session.createOrJoin("create", "http://127.0.0.1:8787/", "", createDefaultNetworkPlayerProfile());
 
     expect(session.active).toBe(true);
     expect(session.current?.ticket).toEqual(ticket);
@@ -89,7 +91,7 @@ describe("overworld network session", () => {
     const handlers = callbacks();
     const session = new OverworldNetworkSession("test-session", handlers);
 
-    session.restore();
+    session.restore(createDefaultNetworkPlayerProfile());
 
     expect(storage.getItem("test-session")).toBeNull();
     expect(handlers.onStatus).toHaveBeenCalledWith("Local", "La session mémorisée était invalide et a été supprimée.", false);

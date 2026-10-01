@@ -8,6 +8,13 @@ const BATTLER_ORIGINS: Record<BattleSide, { readonly centerX: number; readonly g
   opponent: { centerX: 384, groundY: 168 }, // FOEBATTLER_Y (118) + BATTLE_ENEMY_OFFSET (50)
 };
 
+// Constantes du plugin Animated Sprites charge par le jeu source.
+// BitmapWrapperEX agrandit chaque frame avant tout calcul de placement.
+const BATTLER_SCALES: Record<BattleSide, number> = {
+  player: 3, // BACKSPRITE_SCALE
+  opponent: 2, // FRONTSPRITE_SCALE
+};
+
 export interface SourceBattleSpritePlacement {
   readonly left: number;
   readonly top: number;
@@ -15,6 +22,37 @@ export interface SourceBattleSpritePlacement {
   readonly height: number;
   readonly originX: number;
   readonly originY: number;
+}
+
+export interface SourceTrainerSpritePlacement {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export function sourceBattleSpriteScale(side: BattleSide): number {
+  return BATTLER_SCALES[side];
+}
+
+/** Dernier pixel opaque apres l'agrandissement nearest-neighbour de BitmapWrapperEX. */
+export function sourceBattleScaledVisibleBottom(visibleBottom: number, scale: number): number {
+  const safeScale = Math.max(1, scale);
+  return (Math.max(0, visibleBottom) + 1) * safeScale - 1;
+}
+
+const TRAINER_ORIGINS: Record<BattleSide, { readonly centerX: number; readonly bottomY: number }> = {
+  player: { centerX: 128, bottomY: 384 },
+  opponent: { centerX: 384, bottomY: 168 },
+};
+
+/** Placement centre-bas utilisé par pbStartBattle pour les Dresseurs. */
+export function sourceTrainerSpritePlacement(side: BattleSide, width: number, height: number): SourceTrainerSpritePlacement {
+  const origin = TRAINER_ORIGINS[side];
+  const safeWidth = Math.max(1, width);
+  const safeHeight = Math.max(1, height);
+  return { left: origin.centerX - safeWidth / 2, top: origin.bottomY - safeHeight,
+    width: safeWidth, height: safeHeight };
 }
 
 /**

@@ -24,6 +24,8 @@ export interface SourceBattlePresentation {
   readonly startBattle: (state: TeamBattleState, audio: {
     readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null;
+    readonly battleback?: string;
+    readonly opponentTrainer?: { readonly id: number; readonly name: string };
   }) => Promise<void>;
   readonly playTurn: (before: TeamBattleState, events: readonly TeamBattleEvent[]) => Promise<void>;
   readonly endBattle: (winner: BattleSide | null) => Promise<void> | void;
@@ -42,6 +44,7 @@ export interface SourceTrainerBattleAudio {
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
   readonly baseMoney: number;
+  readonly trainerTypeId: number;
 }
 
 function encounterSeed(species: string, level: number): number {
@@ -88,7 +91,7 @@ export class SourceBattleController {
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
       void this.presentation.startBattle(this.battle,
-        { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic });
+        { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic, battleback: resources.battleback });
       this.callbacks.setNotice(`Combat lancé contre ${encounter.species} niveau ${encounter.level}.`);
     } catch (error) {
       this.battle = null;
@@ -113,7 +116,8 @@ export class SourceBattleController {
       this.escapeAttempts = 0;
       this.trainerCompletion = onComplete;
       this.trainerAudio = audio;
-      void this.presentation.startBattle(this.battle, audio);
+      void this.presentation.startBattle(this.battle, { ...audio, battleback: resources.battleback,
+        opponentTrainer: { id: audio.trainerTypeId, name: trainer.name } });
       this.callbacks.setNotice(`Combat de Dresseur lancé contre ${trainer.name}.`);
     } catch (error) {
       this.battle = null;

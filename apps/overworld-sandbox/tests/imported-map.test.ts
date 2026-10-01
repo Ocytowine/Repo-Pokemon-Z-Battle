@@ -100,6 +100,18 @@ describe("imported RPG Maker map", () => {
     expect(dialogueLines(event.pages[0]!, translations)).toEqual(["Bonjour le monde."]);
   });
 
+  it("interpolates the active player name after applying the French translation", () => {
+    const translations = new Map([["Hola, \\PN!", "Bonjour, \\PN !"]]);
+    const event: ImportedMapEvent = { id: 1, name: "NPC", x: 0, y: 0, pages: [{
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 0 },
+      commands: [{ kind: "show-text", text: "Hola, \\PN!", indent: 0, data: { text: "Hola, \\PN!" } }],
+    }] };
+    expect(dialogueLines(event.pages[0]!, translations, { playerName: "Ariane" })).toEqual(["Bonjour, Ariane !"]);
+  });
+
   it("uses the source bottom-left anchor for size(w,h) event zones", () => {
     const event: ImportedMapEvent = { id: 8, name: "sortie size(3,2)", x: 5, y: 4, pages: [{
       condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
@@ -138,9 +150,9 @@ describe("imported RPG Maker map", () => {
       { trainerType: "CRISANTO1", name: "Crisanto", version: 2,
         pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] },
     ]);
-    expect(parseImportedTrainerTypes({ records: [{ internalName: "CRISANTO1", baseMoney: 80,
+    expect(parseImportedTrainerTypes({ records: [{ id: 6, internalName: "CRISANTO1", baseMoney: 80,
       battleBgm: "Rival.ogg", victoryMe: null }] })).toEqual([
-      { internalName: "CRISANTO1", baseMoney: 80, battleBgm: "Rival.ogg", victoryMe: null },
+      { id: 6, internalName: "CRISANTO1", baseMoney: 80, battleBgm: "Rival.ogg", victoryMe: null },
     ]);
   });
 

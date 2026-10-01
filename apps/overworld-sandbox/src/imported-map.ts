@@ -129,6 +129,7 @@ export interface ImportedTrainer {
 }
 
 export interface ImportedTrainerType {
+  readonly id: number;
   readonly internalName: string;
   readonly baseMoney: number;
   readonly battleBgm: string | null;
@@ -244,13 +245,14 @@ export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[
 export function parseImportedTrainerTypes(value: unknown): readonly ImportedTrainerType[] {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de classes de Dresseur est invalide.");
   return value.records.map((entry) => {
-    if (!isRecord(entry) || typeof entry.internalName !== "string" || !Number.isInteger(entry.baseMoney)
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || (entry.id as number) < 0
+      || typeof entry.internalName !== "string" || !Number.isInteger(entry.baseMoney)
       || (entry.baseMoney as number) < 0
       || (entry.battleBgm !== null && typeof entry.battleBgm !== "string")
       || (entry.victoryMe !== null && typeof entry.victoryMe !== "string")) {
       throw new Error("Une classe de Dresseur est invalide.");
     }
-    return { internalName: entry.internalName, baseMoney: entry.baseMoney as number, battleBgm: entry.battleBgm as string | null,
+    return { id: entry.id as number, internalName: entry.internalName, baseMoney: entry.baseMoney as number, battleBgm: entry.battleBgm as string | null,
       victoryMe: entry.victoryMe as string | null };
   });
 }
@@ -334,20 +336,28 @@ export function transferForEvent(map: ImportedMap, activeEvent: ActiveMapEvent):
   return map.transfers.find((transfer) => transfer.eventId === activeEvent.event.id && transfer.pageIndex === activeEvent.pageIndex) ?? null;
 }
 
-function readableDialogueText(text: string): string {
-  return text.replaceAll(/\\c\[\d+\]/gu, "").replaceAll(/\\PN/gu, "Joueur")
-    .replaceAll(/<br\s*\/?>/giu, "\n").replaceAll(/<[^>]+>/gu, "").trim();
+export interface SourceDialogueVariables {
+  readonly playerName: string;
+}
+
+const DEFAULT_DIALOGUE_VARIABLES: SourceDialogueVariables = { playerName: "Joueur" };
+
+function readableDialogueText(text: string, variables: SourceDialogueVariables): string {
+  return text.replaceAll(/\\c\[\d+\]/gu, "").replaceAll(/<br\s*\/?>/giu, "\n")
+    .replaceAll(/<[^>]+>/gu, "").replaceAll(/\\PN/giu, () => variables.playerName).trim();
 }
 
 function dialogueKey(text: string): string {
   return text.replaceAll(/\s+/gu, " ").trim();
 }
 
-export function localizedDialogueText(text: string, translations: ReadonlyMap<string, string> = new Map()): string {
-  return readableDialogueText(translations.get(dialogueKey(text)) ?? text);
+export function localizedDialogueText(text: string, translations: ReadonlyMap<string, string> = new Map(),
+  variables: SourceDialogueVariables = DEFAULT_DIALOGUE_VARIABLES): string {
+  return readableDialogueText(translations.get(dialogueKey(text)) ?? text, variables);
 }
 
-export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap<string, string> = new Map()): string[] {
+export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap<string, string> = new Map(),
+  variables: SourceDialogueVariables = DEFAULT_DIALOGUE_VARIABLES): string[] {
   const lines: string[] = [];
   for (let index = 0; index < page.commands.length;) {
     const command = page.commands[index];
@@ -370,7 +380,7 @@ export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap
       const translated = translations.get(combined);
       if (translated !== undefined) { value = translated; consumed = length; break; }
     }
-    const readable = localizedDialogueText(value);
+    const readable = readableDialogueText(value, variables);
     if (readable !== "") lines.push(readable);
     index += consumed;
   }

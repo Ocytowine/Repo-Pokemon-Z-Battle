@@ -1,4 +1,4 @@
-import { dialogueLines, type ImportedEventPage } from "./imported-map.js";
+import { dialogueLines, type ImportedEventPage, type SourceDialogueVariables } from "./imported-map.js";
 import { resolveEventFlow, type EventFlowResult } from "./source-event-flow.js";
 import type { SourceEventState } from "./source-event-state.js";
 
@@ -8,6 +8,7 @@ export type SourceDialogueSession = Readonly<{
   eventId: number;
   page: ImportedEventPage;
   translations: ReadonlyMap<string, string>;
+  variables: SourceDialogueVariables;
   selections: readonly number[];
   lines: readonly string[];
   index: number;
@@ -27,6 +28,7 @@ interface MutableSourceDialogueSession {
   readonly eventId: number;
   readonly page: ImportedEventPage;
   readonly translations: ReadonlyMap<string, string>;
+  readonly variables: SourceDialogueVariables;
   readonly selections: number[];
   lines: readonly string[];
   index: number;
@@ -45,13 +47,15 @@ export class SourceDialogueController {
   }
 
   public begin(page: ImportedEventPage, mapId: number, eventId: number, label: string,
-    translations: ReadonlyMap<string, string>, state: SourceEventState, playerDirection: number): SourceDialogueUpdate {
+    translations: ReadonlyMap<string, string>, state: SourceEventState, playerDirection: number,
+    variables: SourceDialogueVariables = { playerName: "Joueur" }): SourceDialogueUpdate {
     const session: MutableSourceDialogueSession = {
       label,
       mapId,
       eventId,
       page,
       translations,
+      variables,
       selections: [],
       lines: [],
       index: 0,
@@ -96,7 +100,7 @@ export class SourceDialogueController {
     playerDirection: number): SourceDialogueUpdate {
     session.flow = resolveEventFlow(session.page, session.selections, state, session.mapId, session.eventId,
       { playerDirection });
-    const allLines = dialogueLines(session.flow.page, session.translations);
+    const allLines = dialogueLines(session.flow.page, session.translations, session.variables);
     session.lines = allLines.slice(session.shownLines);
     session.index = 0;
     session.choosing = session.lines.length === 0 && session.flow.pendingChoice !== null;

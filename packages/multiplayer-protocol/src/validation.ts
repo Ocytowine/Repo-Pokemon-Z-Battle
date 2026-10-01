@@ -1,4 +1,5 @@
 import { MAX_CLIENT_MESSAGE_BYTES, PROTOCOL_VERSION, type ClientMessage } from "./types.js";
+import { parseNetworkPlayerProfile } from "./player-profile.js";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
 const ROOM_CODE = /^[A-Z2-9]{6}$/u;
@@ -106,6 +107,15 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("interact mal formé");
       }
       return value as unknown as ClientMessage;
+    case "setProfile":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "profile"]) || !isIdentifier(value.requestId)) {
+        return invalid("setProfile mal formé");
+      }
+      try {
+        return { ...value, profile: parseNetworkPlayerProfile(value.profile) } as unknown as ClientMessage;
+      } catch {
+        return invalid("setProfile mal formé");
+      }
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");
       return value as unknown as ClientMessage;

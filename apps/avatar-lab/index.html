@@ -22,14 +22,14 @@
         <fieldset><legend>Palette de tenue</legend><div class="colors">
           <label>Principale<select id="primary"></select></label><label>Secondaire<select id="secondary"></select></label>
           <label>Accent<select id="accent"></select></label></div><div id="swatches" class="swatches"></div>
-          <p class="note">La palette est sauvegardée, mais ne recolore pas encore les PNG historiques : leurs masques sémantiques restent à produire.</p>
+          <p class="note">La tenue est recolorée dans tous les aperçus. Peau et cheveux restent protégés par comparaison des variantes historiques.</p>
         </fieldset>
-        <div class="actions"><button id="reset" type="button">Réinitialiser ce laboratoire</button><button id="export" class="primary" type="button">Exporter le profil JSON</button></div>
+        <div class="actions"><button id="reset" type="button">Réinitialiser le brouillon</button><button id="apply" class="primary" type="button">Appliquer au joueur</button><button id="export" type="button">Exporter le profil JSON</button></div>
       </aside>
       <section class="previews">
         <article><div class="preview checker"><canvas id="overworld-preview" width="128" height="128"></canvas></div><h3>Overworld</h3><p id="overworld-detail"></p></article>
         <article><div class="preview portrait"><img id="front-preview" alt="Vue de face du Dresseur"></div><h3>Face du Dresseur</h3><p>Portrait utilisé comme référence de combat.</p></article>
-        <article><div class="preview checker"><img id="back-preview" alt="Vue de dos du Dresseur"></div><h3>Dos et poses de combat</h3><p id="back-detail"></p></article>
+        <article><div class="preview checker"><img id="back-preview" alt="Vue de dos du Dresseur"></div><h3>Dos de combat</h3><p id="back-detail"></p></article>
         <article class="audit"><h3>Couverture graphique</h3><div id="audit"></div></article>
       </section>
     </section>

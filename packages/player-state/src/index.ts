@@ -3,6 +3,9 @@ import type { MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-d
 
 export { createDefaultPlayerProfile, parsePlayerProfile, PLAYER_PROFILE_SCHEMA_VERSION,
   type PlayerProfile, type PlayerPronouns } from "./profile.js";
+export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
+  persistPlayerAvatarSelection, PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
+  PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection } from "./avatar-selection.js";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const MAX_PARTY_SIZE = 6;

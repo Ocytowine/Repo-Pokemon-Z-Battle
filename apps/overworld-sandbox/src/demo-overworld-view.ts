@@ -1,5 +1,6 @@
 import type { Direction, GridPoint, OverworldCatalog, OverworldEvent, OverworldState, WorldMap }
   from "@pokemon-z-battle/overworld-engine";
+import type { NetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 
 export type DemoAvatarId = "player" | "opponent";
 
@@ -15,6 +16,8 @@ export interface DemoOverworldViewModel {
   readonly positions: Readonly<Record<DemoAvatarId, DemoRenderPosition>>;
   readonly events: readonly OverworldEvent[];
   readonly networkSide: DemoAvatarId | null;
+  readonly profiles: Readonly<Partial<Record<DemoAvatarId, NetworkPlayerProfile>>>;
+  readonly avatarImages: Readonly<Partial<Record<DemoAvatarId, HTMLImageElement>>>;
 }
 
 export function demoEventText(event: OverworldEvent): string {
@@ -59,15 +62,15 @@ export class DemoOverworldView {
     const legend = document.querySelector<HTMLElement>("#map-legend");
     if (legend !== null) legend.innerHTML = `<span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction`;
     document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) => {
+      const side = controller.dataset.controller as DemoAvatarId | undefined;
+      const label = controller.querySelector<HTMLElement>("strong");
+      if (side !== undefined && label !== null) label.textContent = model.profiles[side]?.profile.displayName
+        ?? model.state.avatars[side]?.name ?? side;
       controller.classList.toggle("disabled", model.networkSide !== null
         && controller.dataset.controller !== model.networkSide);
     });
     const reset = document.querySelector<HTMLButtonElement>("#reset");
     if (reset !== null) { reset.disabled = model.networkSide !== null; reset.textContent = "Réinitialiser le monde"; }
-    const create = document.querySelector<HTMLButtonElement>("#create-room");
-    if (create !== null) create.disabled = model.networkSide !== null;
-    const join = document.querySelector<HTMLButtonElement>("#join-room");
-    if (join !== null) join.disabled = model.networkSide !== null;
     this.renderGuide(model.state);
   }
 
@@ -126,22 +129,32 @@ export class DemoOverworldView {
     this.context.beginPath();
     this.context.ellipse(centerX, centerY + 16, 15, 6, 0, 0, Math.PI * 2);
     this.context.fill();
-    this.context.fillStyle = color;
-    this.context.beginPath();
-    this.context.arc(centerX, centerY - 2, 15, 0, Math.PI * 2);
-    this.context.fill();
-    const offsets: Record<Direction, GridPoint> = {
-      up: { x: 0, y: -8 }, down: { x: 0, y: 8 }, left: { x: -8, y: 0 }, right: { x: 8, y: 0 },
-    };
-    const eye = offsets[avatar.direction];
-    this.context.fillStyle = "#07130e";
-    this.context.beginPath();
-    this.context.arc(centerX + eye.x, centerY - 2 + eye.y, 3, 0, Math.PI * 2);
-    this.context.fill();
+    const image = model.avatarImages[id];
+    if (image === undefined) {
+      this.context.fillStyle = color;
+      this.context.beginPath();
+      this.context.arc(centerX, centerY - 2, 15, 0, Math.PI * 2);
+      this.context.fill();
+      const offsets: Record<Direction, GridPoint> = {
+        up: { x: 0, y: -8 }, down: { x: 0, y: 8 }, left: { x: -8, y: 0 }, right: { x: 8, y: 0 },
+      };
+      const eye = offsets[avatar.direction];
+      this.context.fillStyle = "#07130e";
+      this.context.beginPath();
+      this.context.arc(centerX + eye.x, centerY - 2 + eye.y, 3, 0, Math.PI * 2);
+      this.context.fill();
+    } else {
+      const frameWidth = image.naturalWidth / 4;
+      const frameHeight = image.naturalHeight / 4;
+      const row: Record<Direction, number> = { down: 0, left: 1, right: 2, up: 3 };
+      this.context.drawImage(image, frameWidth, row[avatar.direction] * frameHeight, frameWidth, frameHeight,
+        centerX - frameWidth / 2, centerY + this.tileSize / 2 - frameHeight, frameWidth, frameHeight);
+    }
     this.context.fillStyle = "#f7fff9";
     this.context.font = "700 10px system-ui";
     this.context.textAlign = "center";
-    this.context.fillText(avatar.name, centerX, centerY - 23);
+    const labelY = image === undefined ? centerY - 23 : centerY + this.tileSize / 2 - image.naturalHeight / 4 - 4;
+    this.context.fillText(model.profiles[id]?.profile.displayName ?? avatar.name, centerX, labelY);
   }
 
   private renderProgress(state: OverworldState): void {

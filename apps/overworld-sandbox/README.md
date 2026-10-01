@@ -118,10 +118,23 @@ Lancez d'abord le serveur dans un autre terminal :
 corepack pnpm multiplayer:dev
 ```
 
-Dans une première page, gardez `http://127.0.0.1:8787` et cliquez sur **Créer**.
-Copiez le code affiché dans une seconde page, puis cliquez sur **Rejoindre**.
+Dans la première page, ouvrez le menu en jeu avec `Échap` ou `M`, choisissez
+**Coop**, gardez `http://127.0.0.1:8787` et cliquez sur **Créer une partie**.
+Copiez le code affiché. Dans la seconde page, ouvrez le même menu, saisissez ce
+code puis cliquez sur **Rejoindre**.
 Chaque page ne peut contrôler que l'avatar attribué. Les collisions, occupations
 et transitions sont résolues par le serveur puis diffusées aux deux pages.
+Le nom, le modèle et les couleurs préalablement validés avec **Appliquer au joueur**
+sont publiés dans la room : les deux pages doivent afficher les deux identités et
+leurs charsets recolorés. Une modification appliquée pendant la connexion est aussi
+diffusée sans recréer la room.
+Le menu Coop reste accessible une fois connecté : il affiche les deux participants,
+leur présence et le code, puis permet de quitter la session et de revenir à sa
+propre carte source. Le bouton **Personnaliser** ouvre le laboratoire intégré.
+
+Ce parcours utilise encore **Prairie** et **Bosquet**, les cartes réseau originales.
+Il valide le transport réel à deux clients ; le raccord au monde source et à la
+sauvegarde narrative de l'hôte constitue le jalon suivant.
 
 ## Recette zones et reconnexion
 

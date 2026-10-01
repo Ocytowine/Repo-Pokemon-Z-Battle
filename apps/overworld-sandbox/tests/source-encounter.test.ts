@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
-import { selectSourceBattleAnimation, selectSourceBattleAudio, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
-import { sourceBattleSpritePlacement } from "../src/source-battle-layout.js";
+import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, selectSourceBattleAnimation, selectSourceBattleAudio,
+  sourcePlayerBallKeyframes, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
+import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
+  sourceTrainerSpritePlacement } from "../src/source-battle-layout.js";
 
 const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
   category: "Physical" as const, accuracy: 100, pp: 35, priority: 0, effectChance: 0 };
@@ -24,7 +26,8 @@ describe("source encounter bridge", () => {
     const asset = (path: string) => ({ path, category: "audio", mediaType: "audio" as const, image: null });
     const cry = (pokemonId: number, path: string) => ({ pokemonId, kind: "cry" as const, form: null, shiny: false,
       female: false, back: false, variant: null, path, width: null, height: null, frameCount: null });
-    const assets = { schemaVersion: "1", records: [asset("Audio/BGM/Salvaje.ogg"), asset("Audio/ME/VictoriaSalvaje.ogg")] };
+    const assets = { schemaVersion: "1", records: [asset("Audio/BGM/Salvaje.ogg"), asset("Audio/ME/VictoriaSalvaje.ogg"),
+      asset("Audio/SE/recall.mp3")] };
     const pokemon = { schemaVersion: "1", records: [
       { id: 650, internalName: "CHESPIN", name: "Marisson", assets: { battler: [], icon: [], footprint: [], overworld: [], cry: [cry(650, "Audio/SE/Cries/650Cry.ogg")] } },
       { id: 399, internalName: "BIDOOF", name: "Keunotor", assets: { battler: [], icon: [], footprint: [], overworld: [], cry: [cry(399, "Audio/SE/Cries/399Cry.ogg")] } },
@@ -32,6 +35,7 @@ describe("source encounter bridge", () => {
     expect(selectSourceBattleAudio(assets, pokemon, "CHESPIN", "BIDOOF")).toEqual({
       battleMusic: "Audio/BGM/Salvaje.ogg", victoryMusic: "Audio/ME/VictoriaSalvaje.ogg",
       playerCry: "Audio/SE/Cries/650Cry.ogg", opponentCry: "Audio/SE/Cries/399Cry.ogg",
+      sendOut: "Audio/SE/recall.mp3",
     });
   });
 
@@ -55,6 +59,27 @@ describe("source encounter bridge", () => {
     expect(sourceBattleSpritePlacement("opponent", 96, 96, 89)).toEqual({
       left: 336, top: 79, width: 96, height: 96, originX: 48, originY: 89,
     });
+    expect(sourceTrainerSpritePlacement("player", 160, 220)).toEqual({ left: 48, top: 164, width: 160, height: 220 });
+    expect(sourceTrainerSpritePlacement("opponent", 160, 160)).toEqual({ left: 304, top: 8, width: 160, height: 160 });
+  });
+
+  it("applies the source animated-sprite scales before grounding battlers", () => {
+    expect(sourceBattleSpriteScale("player")).toBe(3);
+    expect(sourceBattleSpriteScale("opponent")).toBe(2);
+    expect(sourceBattleScaledVisibleBottom(43, 3)).toBe(131);
+    expect(sourceBattleSpritePlacement("player", 138, 138, 131)).toEqual({
+      left: 59, top: 189, width: 138, height: 138, originX: 69, originY: 131,
+    });
+  });
+
+  it("keeps the source player send-out curve separate from the static trainer image", () => {
+    expect(SOURCE_PLAYER_BALL_PATH).toHaveLength(20);
+    expect(SOURCE_PLAYER_BALL_PATH[0]).toEqual([0, 146]);
+    expect(SOURCE_PLAYER_BALL_PATH.at(-1)).toEqual([127, 238]);
+    const frames = sourcePlayerBallKeyframes();
+    expect(SOURCE_TRAINER_Y_OFFSET).toBe(64);
+    expect(frames[0]).toMatchObject({ left: "0%", top: `${(210 / 384) * 100}%`, offset: 0 });
+    expect(frames.at(-1)).toMatchObject({ left: `${(127 / 512) * 100}%`, top: `${(302 / 384) * 100}%`, offset: 1 });
   });
 
   it("builds the scripted wild battle and writes its resources back to the persistent party", () => {

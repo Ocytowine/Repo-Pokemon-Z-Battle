@@ -33,6 +33,9 @@ importers:
 
   apps/avatar-lab:
     dependencies:
+      '@pokemon-z-battle/local-assets':
+        specifier: workspace:*
+        version: link:../../packages/local-assets
       '@pokemon-z-battle/player-state':
         specifier: workspace:*
         version: link:../../packages/player-state
@@ -115,6 +118,9 @@ importers:
       '@pokemon-z-battle/overworld-engine':
         specifier: workspace:*
         version: link:../overworld-engine
+      '@pokemon-z-battle/player-state':
+        specifier: workspace:*
+        version: link:../player-state
 
   packages/overworld-engine: {}
 

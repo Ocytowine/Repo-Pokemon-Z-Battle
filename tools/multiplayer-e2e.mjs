@@ -7,8 +7,15 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-async function ticket(path) {
-  const response = await fetch(new URL(path, baseUrl), { method: "POST" });
+function profile(displayName, visualPreset) {
+  return { version: 1, visualPreset, profile: { schemaVersion: 1, displayName, pronouns: "neutral",
+    bodyModel: "legacy-masculine", skinTone: "classic", hairStyle: "legacy", hairColor: "legacy-classic",
+    outfit: "kalos-default", colors: { primary: "navy", secondary: "gold", accent: "red" } } };
+}
+
+async function ticket(path, playerProfile) {
+  const response = await fetch(new URL(path, baseUrl), { method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ profile: playerProfile }) });
   const body = await response.json();
   if (!response.ok) throw new Error(`HTTP ${response.status} sur ${path}: ${JSON.stringify(body)}`);
   assert(typeof body.roomCode === "string", "Ticket sans code de room.");
@@ -46,7 +53,7 @@ class SocketInbox {
   }
 
   send(message) {
-    this.socket.send(JSON.stringify({ version: 6, ...message }));
+    this.socket.send(JSON.stringify({ version: 7, ...message }));
   }
 
   #take(predicate) {
@@ -85,18 +92,28 @@ class SocketInbox {
 const health = await fetch(new URL("/health", baseUrl));
 assert(health.ok, `Worker indisponible sur ${baseUrl.origin}.`);
 
-const firstTicket = await ticket("/api/rooms");
-const secondTicket = await ticket(`/api/rooms/${firstTicket.roomCode}/join`);
+const firstTicket = await ticket("/api/rooms", profile("Ariane", "legacy-0"));
+const secondTicket = await ticket(`/api/rooms/${firstTicket.roomCode}/join`, profile("Bastien", "legacy-3"));
 assert(firstTicket.side === "player", "Le créateur n'a pas reçu la place joueur 1.");
 assert(secondTicket.side === "opponent", "Le second ticket n'a pas reçu la place joueur 2.");
 
 const first = new SocketInbox(firstTicket);
 const second = new SocketInbox(secondTicket);
 await Promise.all([first.opened(), second.opened()]);
-await Promise.all([
+const [firstWelcome, secondWelcome] = await Promise.all([
   first.next((message) => message.type === "welcome", "welcome joueur 1"),
   second.next((message) => message.type === "welcome", "welcome joueur 2"),
 ]);
+assert(firstWelcome.snapshot.players.some((player) => player.profile.profile.displayName === "Ariane"), "Profil hôte absent.");
+assert(secondWelcome.snapshot.players.some((player) => player.profile.profile.displayName === "Bastien"), "Profil invité absent.");
+first.send({ type: "setProfile", requestId: "e2e-profile-update", profile: profile("Ariane 2", "legacy-2") });
+const [firstProfileUpdate, secondProfileUpdate] = await Promise.all([
+  first.next((message) => message.type === "snapshot"
+    && message.snapshot.players.some((player) => player.profile.profile.displayName === "Ariane 2"), "profil hôte actualisé"),
+  second.next((message) => message.type === "snapshot"
+    && message.snapshot.players.some((player) => player.profile.profile.displayName === "Ariane 2"), "profil hôte distant actualisé"),
+]);
+assert(firstProfileUpdate.snapshot.revision === secondProfileUpdate.snapshot.revision, "Les profils diffusés divergent.");
 
 first.send({ type: "interact", requestId: "e2e-interact-personal" });
 const [personalFirst, personalSecond] = await Promise.all([
@@ -213,8 +230,8 @@ assert(replacementTested, "Aucun KO avec remplacement n'a été obtenu pendant l
 
 await Promise.all([reconnected.close(), second.close()]);
 
-const encounterHostTicket = await ticket("/api/rooms");
-const encounterObserverTicket = await ticket(`/api/rooms/${encounterHostTicket.roomCode}/join`);
+const encounterHostTicket = await ticket("/api/rooms", profile("Hôte", "legacy-1"));
+const encounterObserverTicket = await ticket(`/api/rooms/${encounterHostTicket.roomCode}/join`, profile("Observateur", "legacy-4"));
 const encounterHost = new SocketInbox(encounterHostTicket);
 const encounterObserver = new SocketInbox(encounterObserverTicket);
 await Promise.all([encounterHost.opened(), encounterObserver.opened()]);
@@ -259,8 +276,8 @@ const returnedWorld = await encounterHost.next(
 assert(returnedWorld.snapshot.phase === "waiting", "La room n'est pas revenue en exploration.");
 await Promise.all([encounterHost.close(), encounterObserver.close()]);
 
-const coopHostTicket = await ticket("/api/rooms");
-const coopPeerTicket = await ticket(`/api/rooms/${coopHostTicket.roomCode}/join`);
+const coopHostTicket = await ticket("/api/rooms", profile("Hôte", "legacy-2"));
+const coopPeerTicket = await ticket(`/api/rooms/${coopHostTicket.roomCode}/join`, profile("Partenaire", "legacy-5"));
 let coopHost = new SocketInbox(coopHostTicket);
 const coopPeer = new SocketInbox(coopPeerTicket);
 await Promise.all([coopHost.opened(), coopPeer.opened()]);

@@ -31,12 +31,28 @@ export interface SourceMenuViewModel {
   readonly eventState: SourceEventState;
   readonly avatar: ImportedAvatar;
   readonly worldSave: SourceWorldSave | null;
+  readonly coop: SourceMenuCoopModel;
+}
+
+export interface SourceMenuCoopModel {
+  readonly active: boolean;
+  readonly state: string;
+  readonly notice: string;
+  readonly serverUrl: string;
+  readonly roomCode: string;
+  readonly profileName: string;
+  readonly players: readonly { readonly side: "player" | "opponent"; readonly name: string;
+    readonly connected: boolean }[];
 }
 
 export interface SourceMenuViewCallbacks {
   readonly onSave: () => void;
   readonly onDeleteSave: () => void;
   readonly onVolumeChange: (volume: number) => void;
+  readonly onCreateRoom: (serverUrl: string) => void;
+  readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
+  readonly onDisconnectRoom: () => void;
+  readonly onEditProfile: () => void;
 }
 
 export class SourceMenuView {
@@ -58,6 +74,7 @@ export class SourceMenuView {
     if (model.tab === "team") this.renderTeam(content, model);
     else if (model.tab === "bag") this.renderBag(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
+    else if (model.tab === "coop") this.renderCoop(content, model.coop);
     else this.renderOptions(content);
   }
 
@@ -115,6 +132,26 @@ export class SourceMenuView {
       this.callbacks.onVolumeChange(Number(input.value));
       const output = content.querySelector<HTMLOutputElement>("#source-volume-value");
       if (output !== null) output.value = `${input.value}%`;
+    });
+  }
+
+  private renderCoop(content: HTMLElement, coop: SourceMenuCoopModel): void {
+    const players = coop.players.map((player) => `<article class="source-coop-player"><i class="${player.connected ? "online" : ""}"></i><span><strong>${escapeSourceHtml(player.name)}</strong><small>${player.side === "player" ? "HÔTE" : "INVITÉ"}</small></span><em>${player.connected ? "Connecté" : "Absent"}</em></article>`).join("");
+    content.innerHTML = `<div class="source-menu-title"><div><small>AVENTURE PARTAGÉE</small><h3>Coopération</h3></div><span>${escapeSourceHtml(coop.state)}</span></div>
+      <div class="source-coop-profile"><div><small>PROFIL PUBLIÉ</small><strong>${escapeSourceHtml(coop.profileName)}</strong></div><button type="button" id="source-coop-profile">Personnaliser</button></div>
+      ${coop.active
+        ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
+        : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie</button><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
+    content.querySelector<HTMLButtonElement>("#source-coop-profile")?.addEventListener("click", this.callbacks.onEditProfile);
+    content.querySelector<HTMLButtonElement>("#source-coop-disconnect")?.addEventListener("click", this.callbacks.onDisconnectRoom);
+    const server = content.querySelector<HTMLInputElement>("#source-coop-server");
+    const code = content.querySelector<HTMLInputElement>("#source-coop-code");
+    code?.addEventListener("input", () => { code.value = code.value.toUpperCase().replace(/[^A-Z0-9]/gu, ""); });
+    content.querySelector<HTMLButtonElement>("#source-coop-create")?.addEventListener("click", () => {
+      if (server !== null) this.callbacks.onCreateRoom(server.value);
+    });
+    content.querySelector<HTMLButtonElement>("#source-coop-join")?.addEventListener("click", () => {
+      if (server !== null && code !== null) this.callbacks.onJoinRoom(server.value, code.value);
     });
   }
 }

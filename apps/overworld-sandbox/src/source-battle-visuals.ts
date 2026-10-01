@@ -2,7 +2,8 @@ import { buildBattleScenes, loadLocalManifestsFromUrls, selectBattler, selectCry
   type AssetManifest, type BattleAnimationCel, type BattleAnimationRecord, type BattleAnimationsManifest,
   type LocalManifests, type PokemonAssetReference, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import type { BattleMove, BattleSide, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { sourceBattlePercent, sourceBattleSpritePlacement } from "./source-battle-layout.js";
+import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
+  sourceTrainerSpritePlacement } from "./source-battle-layout.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -57,6 +58,23 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, reduced ? 20 : milliseconds));
 }
 
+// Courbe exacte de pbSendOut dans le script source. Le Dresseur reste une image
+// statique ; seule la Ball suit cette trajectoire pendant qu'il sort de l'écran.
+export const SOURCE_PLAYER_BALL_PATH = [
+  [0, 146], [10, 134], [21, 122], [30, 112], [39, 104], [46, 99], [53, 95], [61, 93], [68, 93], [75, 96],
+  [82, 102], [89, 111], [94, 121], [100, 134], [106, 150], [111, 166], [116, 183], [120, 199], [124, 216], [127, 238],
+] as const;
+const SOURCE_BATTLE_VIEWPORT_HEIGHT = 384;
+export const SOURCE_TRAINER_Y_OFFSET = SOURCE_BATTLE_VIEWPORT_HEIGHT - 320;
+
+export function sourcePlayerBallKeyframes(): Keyframe[] {
+  return SOURCE_PLAYER_BALL_PATH.map(([x, y], index) => ({
+    left: sourceBattlePercent(x, "x"), top: sourceBattlePercent(y + SOURCE_TRAINER_Y_OFFSET, "y"),
+    transform: `translate(-50%, -50%) rotate(${(index * 40) % 360}deg)`,
+    offset: index / (SOURCE_PLAYER_BALL_PATH.length - 1),
+  }));
+}
+
 export function transformBattleAnimationPoint(x: number, y: number, reverse: boolean): { readonly x: number; readonly y: number } {
   return reverse ? { x: 512 - x, y: 320 - y } : { x, y };
 }
@@ -76,12 +94,19 @@ export interface SourceBattleAudio {
   readonly victoryMusic: string | null;
   readonly playerCry: string | null;
   readonly opponentCry: string | null;
+  readonly sendOut: string | null;
 }
 
 function availableAudio(manifest: AssetManifest, path: string): string | null {
   const normalized = path.toLocaleLowerCase("en");
   return manifest.records.find((entry) => entry.mediaType === "audio"
     && entry.path.toLocaleLowerCase("en") === normalized)?.path ?? null;
+}
+
+function availableAudioStem(manifest: AssetManifest, stem: string): string | null {
+  const normalized = stem.toLocaleLowerCase("en");
+  return manifest.records.find((entry) => entry.mediaType === "audio"
+    && entry.path.slice(0, entry.path.lastIndexOf(".")).toLocaleLowerCase("en") === normalized)?.path ?? null;
 }
 
 export function selectSourceBattleAudio(assets: AssetManifest, pokemon: PokemonAssetsManifest,
@@ -95,6 +120,7 @@ export function selectSourceBattleAudio(assets: AssetManifest, pokemon: PokemonA
     victoryMusic: availableAudio(assets, `Audio/ME/${victoryMusic}`),
     playerCry: cry(playerSpecies),
     opponentCry: cry(opponentSpecies),
+    sendOut: availableAudioStem(assets, "Audio/SE/recall"),
   };
 }
 
@@ -103,19 +129,31 @@ export class SourceBattleVisuals {
   #loading: Promise<LocalManifests> | null = null;
   #animations: AnimatedCanvas[] = [];
   #renderedSpecies = "";
+  #rendering: Promise<void> | null = null;
   #battleMusic: HTMLAudioElement | null = null;
   #outroMusic: HTMLAudioElement | null = null;
   #oneShots = new Set<HTMLAudioElement>();
   #audioSession = 0;
   #victoryMusicPath: string | null = null;
+  #playerTrainerImage: HTMLImageElement | null = null;
 
-  async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null; readonly victoryMusic?: string | null } = {}): Promise<void> {
+  setPlayerTrainerImage(image: HTMLImageElement | null): void {
+    this.#playerTrainerImage = image;
+  }
+
+  async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
+    readonly victoryMusic?: string | null; readonly battleback?: string;
+    readonly opponentTrainer?: { readonly id: number; readonly name: string } } = {}): Promise<void> {
     this.stopAudio();
     this.#renderedSpecies = "";
     this.resetBattlerTransforms();
     const panel = document.getElementById("encounter-panel");
+    const stage = document.getElementById("source-battle-stage");
     panel?.classList.remove("leaving");
     panel?.classList.add("entering");
+    panel?.classList.add("intro-playing");
+    stage?.classList.add("intro-playing");
+    stage?.classList.toggle("opponent-intro", audio.opponentTrainer !== undefined);
     window.setTimeout(() => panel?.classList.remove("entering"), 700);
     const session = ++this.#audioSession;
     // Le chargement asynchrone des manifestes peut sortir de la fenêtre d'activation
@@ -133,13 +171,18 @@ export class SourceBattleVisuals {
       const selectedAudio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species,
         battleMusic, victoryMusic);
       this.#victoryMusicPath = selectedAudio.victoryMusic;
+      await this.render(state, audio.battleback ?? "snow");
+      if (session !== this.#audioSession) return;
       if (selectedAudio.opponentCry !== null) this.playAudio(selectedAudio.opponentCry, { volume: 0.8, oneShot: true });
-      await delay(420);
-      if (session === this.#audioSession && selectedAudio.playerCry !== null) {
-        this.playAudio(selectedAudio.playerCry, { volume: 0.8, oneShot: true });
-      }
+      if (audio.opponentTrainer !== undefined) await this.playOpponentEntrance(audio.opponentTrainer, opponent.name, session);
+      await this.playPlayerEntrance(player.name, session, selectedAudio.sendOut, selectedAudio.playerCry);
     } catch {
       // Les visuels et le moteur de combat restent utilisables si l'audio local est absent.
+    } finally {
+      if (session === this.#audioSession) {
+        panel?.classList.remove("intro-playing");
+        stage?.classList.remove("intro-playing", "opponent-intro", "revealing-opponent", "revealing-player");
+      }
     }
   }
 
@@ -162,28 +205,36 @@ export class SourceBattleVisuals {
     const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
     if (player === undefined || opponent === undefined) return;
     const key = `${battleback}:${player.species}:${opponent.species}`;
-    if (key === this.#renderedSpecies) return;
-    this.#renderedSpecies = key;
-    try {
-      const manifests = await this.manifests();
-      this.clearSprites();
-      const scenes = buildBattleScenes(manifests.assets);
-      const requestedScene = battleback.toLocaleLowerCase("fr");
-      const scene = scenes.find((candidate) => candidate.id === requestedScene && candidate.complete)
-        ?? scenes.find((candidate) => candidate.complete) ?? scenes[0];
-      this.setImage("source-battle-background", scene?.background?.path ?? null);
-      this.setImage("source-player-base", scene?.playerBase?.path ?? null);
-      this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
-      document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
-      await Promise.all([
-        this.renderBattler("player", player.species, true, manifests),
-        this.renderBattler("opponent", opponent.species, false, manifests),
-      ]);
-    } catch {
-      this.fallback("player", player.name);
-      this.fallback("opponent", opponent.name);
-      this.message("Les graphismes locaux sont indisponibles, le combat reste jouable.");
+    if (key === this.#renderedSpecies) {
+      if (this.#rendering !== null) await this.#rendering;
+      return;
     }
+    this.#renderedSpecies = key;
+    const rendering = (async (): Promise<void> => {
+      try {
+        const manifests = await this.manifests();
+        this.clearSprites();
+        const scenes = buildBattleScenes(manifests.assets);
+        const requestedScene = battleback.toLocaleLowerCase("fr");
+        const scene = scenes.find((candidate) => candidate.id === requestedScene && candidate.complete)
+          ?? scenes.find((candidate) => candidate.complete) ?? scenes[0];
+        this.setImage("source-battle-background", scene?.background?.path ?? null);
+        this.setImage("source-player-base", scene?.playerBase?.path ?? null);
+        this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
+        document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
+        await Promise.all([
+          this.renderBattler("player", player.species, true, manifests),
+          this.renderBattler("opponent", opponent.species, false, manifests),
+        ]);
+      } catch {
+        this.fallback("player", player.name);
+        this.fallback("opponent", opponent.name);
+        this.message("Les graphismes locaux sont indisponibles, le combat reste jouable.");
+      }
+    })();
+    this.#rendering = rendering;
+    await rendering;
+    if (this.#rendering === rendering) this.#rendering = null;
   }
 
   async playTurn(before: TeamBattleState, events: readonly TeamBattleEvent[]): Promise<void> {
@@ -243,6 +294,96 @@ export class SourceBattleVisuals {
     return this.#manifests;
   }
 
+  private async playPlayerEntrance(playerName: string, session: number, sendOutSound: string | null,
+    playerCry: string | null): Promise<void> {
+    const trainer = document.getElementById("source-player-trainer") as HTMLImageElement | null;
+    const ball = document.getElementById("source-player-ball");
+    const stage = document.getElementById("source-battle-stage");
+    const sprite = document.getElementById("source-player-sprite");
+    const flash = document.getElementById("source-sendout-flash");
+    if (trainer === null || ball === null || stage === null || sprite === null || flash === null) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const customTrainer = this.#playerTrainerImage;
+    trainer.src = customTrainer?.src ?? sourceUrl("Graphics/Characters/trback000.png");
+    this.placeTrainer(trainer, "player", customTrainer?.naturalWidth ?? 160, customTrainer?.naturalHeight ?? 220);
+    trainer.hidden = false;
+    ball.hidden = true;
+    this.message(`En avant, ${playerName} !`);
+    await delay(reduced ? 20 : 850);
+    const trainerDuration = reduced ? 20 : 1_100;
+    const trainerAnimation = trainer.animate([
+      { transform: "translateX(0)", opacity: 1 },
+      { transform: "translateX(-208px)", opacity: 1 },
+    ], { duration: trainerDuration, easing: "linear", fill: "forwards" });
+    await delay(reduced ? 0 : 425);
+    ball.hidden = false;
+    const ballAnimation = ball.animate(sourcePlayerBallKeyframes(), {
+      duration: reduced ? 20 : 650, easing: "linear", fill: "forwards",
+    });
+    await Promise.all([trainerAnimation.finished.catch(() => undefined), ballAnimation.finished.catch(() => undefined)]);
+    if (session !== this.#audioSession) return;
+    trainer.hidden = true;
+    trainerAnimation.cancel();
+    const [lastX, lastY] = SOURCE_PLAYER_BALL_PATH.at(-1)!;
+    ball.style.left = sourceBattlePercent(lastX, "x");
+    ball.style.top = sourceBattlePercent(lastY + SOURCE_TRAINER_Y_OFFSET, "y");
+    ball.style.transform = `translate(-50%, -50%) rotate(${((SOURCE_PLAYER_BALL_PATH.length - 1) * 40) % 360}deg)`;
+    ballAnimation.cancel();
+    ball.hidden = true;
+    stage.classList.add("revealing-player");
+    if (sendOutSound !== null) this.playAudio(sendOutSound, { volume: 0.8, oneShot: true });
+    if (playerCry !== null) this.playAudio(playerCry, { volume: 0.8, oneShot: true });
+    const revealAnimation = sprite.animate([
+      { opacity: 0, transform: "scale(.125)", filter: "brightness(3)" },
+      { opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
+    ], { duration: reduced ? 20 : 760, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
+    const flashAnimation = flash.animate([
+      { opacity: 0, offset: 0 }, { opacity: 0, offset: 0.16 },
+      { opacity: 0.92, offset: 0.52 }, { opacity: 0, offset: 1 },
+    ], { duration: reduced ? 20 : 760, easing: "linear" });
+    await Promise.all([revealAnimation.finished.catch(() => undefined), flashAnimation.finished.catch(() => undefined)]);
+    revealAnimation.cancel();
+    flashAnimation.cancel();
+  }
+
+  private async playOpponentEntrance(trainerData: { readonly id: number; readonly name: string }, pokemonName: string,
+    session: number): Promise<void> {
+    const trainer = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
+    const stage = document.getElementById("source-battle-stage");
+    const sprite = document.getElementById("source-opponent-sprite");
+    if (trainer === null || stage === null || sprite === null) return;
+    const path = `Graphics/Characters/trainer${String(trainerData.id).padStart(3, "0")}.png`;
+    trainer.src = sourceUrl(path);
+    try { await trainer.decode(); } catch { stage.classList.remove("opponent-intro"); return; }
+    if (session !== this.#audioSession) return;
+    this.placeTrainer(trainer, "opponent", trainer.naturalWidth, trainer.naturalHeight);
+    trainer.hidden = false;
+    this.message(`${trainerData.name} vous défie !`);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    await delay(reduced ? 20 : 1_150);
+    stage.classList.add("revealing-opponent");
+    this.message(`${trainerData.name} envoie ${pokemonName} !`);
+    const trainerAnimation = trainer.animate([
+      { transform: "translateX(0)", opacity: 1 },
+      { transform: "translateX(208px)", opacity: 1 },
+    ], { duration: reduced ? 20 : 1_100, easing: "linear", fill: "forwards" });
+    const pokemonAnimation = sprite.animate([
+      { opacity: 0, transform: "scale(.125)", filter: "brightness(3)" },
+      { opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
+    ], { duration: reduced ? 20 : 760, delay: reduced ? 0 : 260, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
+    await Promise.all([trainerAnimation.finished.catch(() => undefined), pokemonAnimation.finished.catch(() => undefined)]);
+    trainerAnimation.cancel(); pokemonAnimation.cancel(); trainer.hidden = true;
+    stage.classList.remove("opponent-intro", "revealing-opponent");
+  }
+
+  private placeTrainer(element: HTMLElement, side: BattleSide, width: number, height: number): void {
+    const placement = sourceTrainerSpritePlacement(side, width, height);
+    element.style.left = sourceBattlePercent(placement.left, "x");
+    element.style.top = sourceBattlePercent(placement.top, "y");
+    element.style.width = sourceBattlePercent(placement.width, "x");
+    element.style.height = sourceBattlePercent(placement.height, "y");
+  }
+
   private updateHud(state: TeamBattleState): void {
     for (const side of ["player", "opponent"] as const) {
       const team = state.teams[side];
@@ -278,7 +419,9 @@ export class SourceBattleVisuals {
       this.#animations.push(animation);
       slot.replaceChildren(animation.element);
       slot.classList.remove("sprite-fallback");
-      const placement = sourceBattleSpritePlacement(side, animation.frameWidth, animation.frameHeight, animation.visibleBottom);
+      const scale = sourceBattleSpriteScale(side);
+      const placement = sourceBattleSpritePlacement(side, animation.frameWidth * scale, animation.frameHeight * scale,
+        sourceBattleScaledVisibleBottom(animation.visibleBottom, scale));
       slot.style.left = sourceBattlePercent(placement.left, "x");
       slot.style.top = sourceBattlePercent(placement.top, "y");
       slot.style.width = sourceBattlePercent(placement.width, "x");

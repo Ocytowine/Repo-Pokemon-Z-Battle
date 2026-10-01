@@ -61,4 +61,23 @@ describe("source dialogue controller", () => {
     expect(controller.current).toBeNull();
     expect(controller.cancel()).toBe(false);
   });
+
+  it("keeps the applied player name throughout a dialogue and its choices", () => {
+    const controller = new SourceDialogueController();
+    const state = createSourceEventState();
+    const eventPage = page([
+      command("show-text", 0, { text: "Bonjour \\PN" }),
+      command("show-choices", 0, { choices: ["Je suis \\PN", "Partir"], cancelType: 2 }),
+      command("choice-branch", 0, { choiceIndex: 0 }),
+      command("show-text", 1, { text: "À bientôt, \\PN" }),
+      command("choice-branch", 0, { choiceIndex: 1 }),
+      command("choice-end", 0),
+      command("end", 0),
+    ]);
+
+    controller.begin(eventPage, 3, 7, "Personnage", new Map(), state, 8, { playerName: "Ariane" });
+    expect(controller.current?.lines).toEqual(["Bonjour Ariane"]);
+    controller.advance();
+    expect(controller.current?.variables.playerName).toBe("Ariane");
+  });
 });

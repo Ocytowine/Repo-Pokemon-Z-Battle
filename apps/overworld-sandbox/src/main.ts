@@ -3,7 +3,10 @@ import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedM
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
-import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
+import { createPersistentPokemon, loadPlayerAvatarSelection, PLAYER_AVATAR_ACTIVE_STORAGE_KEY,
+  type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
+import { createNetworkPlayerProfile, type NetworkPlayerProfile, type RoomPlayerSnapshot }
+  from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
@@ -37,17 +40,19 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   type SourceWorldSave } from "./source-world-save.js";
+import { loadSourcePlayerVisuals, sourcePlayerImageFor, type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
-const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v6";
+const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v7";
 const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
 const catalog = DEMO_WORLD_CATALOG;
 
 let state: OverworldState = initialState();
 let viewedMapId = "meadow";
+let avatarLabReturnMapId = viewedMapId;
 let events: OverworldEvent[] = [];
 let importedAssets: ImportedMapAssets | null = null;
 let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
@@ -87,7 +92,22 @@ let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 let sourceFollowerImage: HTMLImageElement | null = null;
 let sourceFollowerAssetPath: string | null = null;
+let activePlayerSelection = loadPlayerAvatarSelection(localStorage, PLAYER_AVATAR_ACTIVE_STORAGE_KEY);
+let sourcePlayerVisuals: SourcePlayerVisuals | null = null;
+let sourcePlayerCharacterName = "player";
+let playerProfileApplication = 0;
+let networkPlayerProfiles: Partial<Record<DemoAvatarId, NetworkPlayerProfile>> = {};
+let networkAvatarImages: Partial<Record<DemoAvatarId, HTMLImageElement>> = {};
+let networkProfileApplication = 0;
+let networkStateText = "Local";
+let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une partie.";
+let networkServerUrl = "http://127.0.0.1:8787";
+let networkRoomCode = "";
 type AvatarId = DemoAvatarId;
+
+function activeNetworkPlayerProfile(): NetworkPlayerProfile {
+  return createNetworkPlayerProfile(activePlayerSelection.avatarId, activePlayerSelection.profile);
+}
 
 function initialState(): OverworldState {
   return createDemoWorldState();
@@ -279,7 +299,7 @@ function beginPendingSourceMapEntryAutorun(): boolean {
 function sourcePlayerRouteActor(): SourceRouteActor {
   return { ...importedAvatar, moveSpeed: 4, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
     directionFix: false, through: false, alwaysOnTop: false, opacity: 255,
-    characterName: "player", characterHue: 0, pattern: 0 };
+    characterName: sourcePlayerCharacterName, characterHue: 0, pattern: 0 };
 }
 
 async function runSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown,
@@ -311,6 +331,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
     }
     let duration = result.waitMs;
     if (playerTarget) {
+      sourcePlayerCharacterName = actor.characterName;
       const playerBefore = importedAvatar;
       importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
       if (result.destination !== null) {
@@ -412,7 +433,8 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
-const avatarLabView = new AvatarLabView(requiredAppElement("embedded-avatar-lab"));
+const avatarLabView = new AvatarLabView(requiredAppElement("embedded-avatar-lab"), applyActivePlayerProfile,
+  closePlayerCustomization);
 void avatarLabView.load().then(() => { if (viewedMapId === AVATAR_LAB_MAP_ID) render(); });
 const drawingContext = canvasElement.getContext("2d");
 if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
@@ -424,8 +446,8 @@ function resolveSourceAnimationTarget(target: number): { x: number; bottom: numb
   const now = performance.now();
   const playerPose = importedPlayerMotion === null ? importedAvatar : sampleSourceGridMotion(importedPlayerMotion, now);
   const camera = importedCameraPosition(canvas, importedAssets.map, playerPose, sourcePresentation.currentCameraOffset());
-  if (target === -1) return { x: playerPose.x * 32 + 16 - camera.x, bottom: playerPose.y * 32 + 32 - camera.y,
-    height: importedAssets.playerImage.naturalHeight / 4 };
+  if (target === -1) { const image = activeSourcePlayerImage(); return { x: playerPose.x * 32 + 16 - camera.x,
+    bottom: playerPose.y * 32 + 32 - camera.y, height: image.naturalHeight / 4 }; }
   const eventId = target === 0 ? sourceSequences.current?.eventId : target;
   if (eventId === undefined) return null;
   const event = importedAssets.events.find((candidate) => candidate.id === eventId);
@@ -450,10 +472,17 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
   onVolumeChange: (volume) => { sourcePresentation.setMasterVolume(volume / 100); },
+  onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
+  onJoinRoom: (serverUrl, roomCode) => { void createOrJoin("join", serverUrl, roomCode); },
+  onDisconnectRoom: disconnectMultiplayer,
+  onEditProfile: openPlayerCustomization,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
 const sourceBattleVisuals = new SourceBattleVisuals();
+void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
+  console.warn(`[player-profile] ${error instanceof Error ? error.message : "profil indisponible"}`);
+});
 const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   getEventState: () => sourceEventState,
   updateEventState: (nextState) => {
@@ -544,13 +573,30 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onEvents: (receivedEvents) => { events.push(...receivedEvents); },
   onMapChanged: (mapId) => { viewedMapId = mapId; },
   onConnectionFormChanged: (serverUrl, roomCode) => {
-    const serverInput = document.querySelector<HTMLInputElement>("#server-url");
-    if (serverInput !== null) serverInput.value = serverUrl;
-    const codeInput = document.querySelector<HTMLInputElement>("#room-code");
-    if (codeInput !== null) codeInput.value = roomCode;
+    networkServerUrl = serverUrl;
+    networkRoomCode = roomCode;
+    if (sourceScenes.menuOpen) renderSourceMenu();
   },
+  onPlayersChanged: synchronizeNetworkPlayerProfiles,
   onRender: render,
 });
+
+function synchronizeNetworkPlayerProfiles(players: readonly RoomPlayerSnapshot[]): void {
+  const application = ++networkProfileApplication;
+  networkPlayerProfiles = Object.fromEntries(players.map((player) => [player.side, player.profile]));
+  networkAvatarImages = {};
+  render();
+  for (const player of players) {
+    void loadSourcePlayerVisuals({ schemaVersion: 1, avatarId: player.profile.visualPreset,
+      profile: player.profile.profile }).then((visuals) => {
+      if (application !== networkProfileApplication) return;
+      networkAvatarImages = { ...networkAvatarImages, [player.side]: visuals.overworld };
+      render();
+    }).catch((error: unknown) => {
+      console.warn(`[network-profile] ${error instanceof Error ? error.message : "avatar distant indisponible"}`);
+    });
+  }
+}
 
 function animateImportedMap(now: number): void {
   if (viewedMapId !== SOURCE_MAP_ID || importedAssets === null) {
@@ -569,7 +615,7 @@ function animateImportedMap(now: number): void {
   synchronizeSourceFollower();
   const followerPose = sourceFollowerMotion.pose(now);
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, sourceEventState, sourceNpcMotions.poses(now),
-    sourcePresentation.currentCameraOffset(), sourcePickupPose ? importedAssets.playerPickupImage : importedAssets.playerImage,
+    sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose });
   if (importedPlayerMotion !== null && pose.complete) {
@@ -580,7 +626,8 @@ function animateImportedMap(now: number): void {
 }
 
 function sourceSceneActivity(): SourceSceneActivity {
-  return { dialogue: sourceDialogues.current !== null, battle: sourceBattles.active,
+  return { dialogue: sourceDialogues.current !== null,
+    battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null,
     transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
@@ -604,8 +651,14 @@ function deleteSourceWorldSave(): void {
 
 function renderSourceMenu(): void {
   if (importedAssets === null) return;
+  const network = multiplayer.current;
   sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets: importedAssets,
-    eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave });
+    eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
+    coop: { active: multiplayer.active, state: networkStateText, notice: networkNotice,
+      serverUrl: networkServerUrl, roomCode: networkRoomCode,
+      profileName: activePlayerSelection.profile.displayName,
+      players: (network?.snapshot?.players ?? []).map((player) => ({ side: player.side,
+        name: player.profile.profile.displayName, connected: player.connected })) } });
 }
 
 function closeSourceShop(): void {
@@ -810,7 +863,7 @@ function chooseSourceOption(index: number): void {
 function beginSourceEvent(page: ImportedEventPage, mapId: number, eventId: number, label: string,
   translations: ReadonlyMap<string, string>): void {
   applySourceDialogueUpdate(sourceDialogues.begin(page, mapId, eventId, label, translations, sourceEventState,
-    sourceDirectionNumber(importedAvatar.direction)));
+    sourceDirectionNumber(importedAvatar.direction), { playerName: activePlayerSelection.profile.displayName }));
 }
 
 function sourceDirectionNumber(direction: Direction): number {
@@ -820,6 +873,25 @@ function sourceDirectionNumber(direction: Direction): number {
     case "right": return 6;
     case "up": return 8;
   }
+}
+
+function activeSourcePlayerImage(): HTMLImageElement {
+  if (importedAssets === null) throw new Error("Carte source absente.");
+  if (sourcePickupPose) return sourcePlayerVisuals?.pickup ?? importedAssets.playerPickupImage;
+  return sourcePlayerImageFor(sourcePlayerVisuals, sourcePlayerCharacterName)
+    ?? sourcePlayerVisuals?.overworld ?? importedAssets.playerImage;
+}
+
+async function applyActivePlayerProfile(selection: PlayerAvatarSelection): Promise<void> {
+  const application = ++playerProfileApplication;
+  const visuals = await loadSourcePlayerVisuals(selection);
+  if (application !== playerProfileApplication) return;
+  activePlayerSelection = selection;
+  sourcePlayerVisuals = visuals;
+  sourceBattleVisuals.setPlayerTrainerImage(visuals.battleBack);
+  multiplayer.updateProfile(activeNetworkPlayerProfile());
+  importedNotice = `Profil de ${selection.profile.displayName} appliqué au monde et aux combats.`;
+  render();
 }
 
 function synchronizeSourceFollower(): void {
@@ -966,9 +1038,10 @@ function render(): void {
     importedAnimationFrame = null;
   }
   demoOverworldView.render({ mapId: viewedMapId, state, positions: renderPositions, events,
-    networkSide: network?.ticket.side ?? null });
+    networkSide: network?.ticket.side ?? null, profiles: networkPlayerProfiles, avatarImages: networkAvatarImages });
   renderSourceDialogue();
   renderEncounter();
+  renderSourceMenu();
 }
 
 function renderEncounter(): void {
@@ -1061,21 +1134,43 @@ function submitEncounterAction(moveIndex: number): void {
   multiplayer.submitEncounterAction(moveIndex);
 }
 
-function setNetworkText(stateText: string, notice: string, active: boolean): void {
-  const stateElement = document.querySelector<HTMLElement>("#network-state");
-  if (stateElement !== null) stateElement.textContent = stateText;
-  const noticeElement = document.querySelector<HTMLElement>("#network-notice");
-  if (noticeElement !== null) noticeElement.textContent = notice;
-  const disconnect = document.querySelector<HTMLButtonElement>("#disconnect");
-  if (disconnect !== null) disconnect.disabled = !active;
+function setNetworkText(stateText: string, notice: string, _active: boolean): void {
+  networkStateText = stateText;
+  networkNotice = notice;
+  if (sourceScenes.menuOpen) renderSourceMenu();
 }
 
-async function createOrJoin(kind: "create" | "join"): Promise<void> {
+async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
   if (sourceBattles.active) return;
-  const serverInput = document.querySelector<HTMLInputElement>("#server-url");
-  const codeInput = document.querySelector<HTMLInputElement>("#room-code");
-  if (serverInput === null || codeInput === null) return;
-  await multiplayer.createOrJoin(kind, serverInput.value, codeInput.value);
+  networkServerUrl = serverUrl;
+  networkRoomCode = roomCode.trim().toUpperCase();
+  await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile());
+}
+
+function openPlayerCustomization(): void {
+  avatarLabReturnMapId = viewedMapId;
+  sourceScenes.closeMenu();
+  viewedMapId = AVATAR_LAB_MAP_ID;
+  render();
+}
+
+function closePlayerCustomization(): void {
+  viewedMapId = avatarLabReturnMapId;
+  sourceScenes.openMenu(sourceSceneActivity());
+  sourceScenes.selectMenuTab("coop");
+  render();
+}
+
+function disconnectMultiplayer(): void {
+  multiplayer.disconnect();
+  networkRoomCode = "";
+  networkPlayerProfiles = {};
+  networkAvatarImages = {};
+  events = [];
+  setAuthoritativeState(initialState(), false);
+  viewedMapId = importedAssets === null ? "meadow" : SOURCE_MAP_ID;
+  sourceScenes.closeMenu();
+  render();
 }
 
 const keys: Readonly<Record<string, readonly [string, Direction]>> = {
@@ -1096,9 +1191,11 @@ window.addEventListener("keydown", (event) => {
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
     if (sourceSequences.current !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
     if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
-    if (viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
+    if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) { event.preventDefault(); toggleSourceMenu(); return; }
   }
-  if (event.code === "KeyM" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
+  if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
+    event.preventDefault(); toggleSourceMenu(); return;
+  }
   if (sourceScenes.menuOpen || sourceShop !== null) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
@@ -1137,23 +1234,11 @@ document.querySelector<HTMLButtonElement>("#open-source-menu")?.addEventListener
 document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
   const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
-  if (tab === undefined || !["team", "bag", "save", "options"].includes(tab)) return;
+  if (tab === undefined || !["team", "bag", "save", "coop", "options"].includes(tab)) return;
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();
 }));
 document.querySelector<HTMLButtonElement>("#starter-test")?.addEventListener("click", () => { void openStarterTest(); });
-document.querySelector<HTMLInputElement>("#room-code")?.addEventListener("input", (event) => {
-  const input = event.currentTarget as HTMLInputElement;
-  input.value = input.value.toUpperCase().replace(/[^A-Z0-9]/gu, "");
-});
-document.querySelector<HTMLButtonElement>("#create-room")?.addEventListener("click", () => { void createOrJoin("create"); });
-document.querySelector<HTMLButtonElement>("#join-room")?.addEventListener("click", () => { void createOrJoin("join"); });
-document.querySelector<HTMLButtonElement>("#disconnect")?.addEventListener("click", () => {
-  multiplayer.disconnect();
-  viewedMapId = "meadow";
-  events = [];
-  setAuthoritativeState(initialState(), false);
-});
 document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", () => {
   if (multiplayer.active) return;
   if (viewedMapId === AVATAR_LAB_MAP_ID) return;
@@ -1198,4 +1283,4 @@ async function initializeSourceWorld(): Promise<void> {
 
 void initializeSourceWorld();
 
-multiplayer.restore();
+multiplayer.restore(activeNetworkPlayerProfile());

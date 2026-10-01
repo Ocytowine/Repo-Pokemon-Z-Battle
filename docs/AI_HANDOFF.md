@@ -487,25 +487,84 @@ genere `player-avatars.json` et `player-avatar-report.json` a partir des declara
 actions overworld, portraits et vues de combat ; le rapport distingue asset natif,
 repli et absence, puis compare les suffixes de variantes entre profils.
 
-Le paquet `player-state` expose un `PlayerProfile` schema 1, mais cet objet ne fait
-partie ni de `SourceEventState`, ni de `SourceWorldSave`, ni du protocole reseau.
-Le futur ecran aura sa propre cle locale et servira uniquement de laboratoire. Ne
-pas brancher implicitement ses choix sur `trchar000`, Map001 ou une partie en cours.
+Le paquet `player-state` expose un `PlayerProfile` schema 1 et une selection
+`PlayerAvatarSelection`, mais ces objets ne font partie ni de `SourceEventState`,
+ni de `SourceWorldSave`, ni du protocole reseau. Leur raccord au jeu est explicite
+et uniquement cosmetique : un brouillon ne modifie jamais le joueur sans action.
 La creation de nouvelles tenues, coiffures ou silhouettes est reportee ; le prochain
 lot attendu est l'ecran autonome sur les six profils extraits.
 
 Ce lot existe maintenant dans `apps/avatar-lab` et se lance avec
 `corepack pnpm lab:avatar` sur `http://127.0.0.1:4174`. Son stockage se limite a
 `pokemon-z-battle.avatar-lab-profile.v1`; le bouton de reinitialisation ne touche
-aucune cle de l'aventure. Les apercus utilisent directement les chemins audites.
-La palette est editee et exportee mais pas encore rendue, afin de ne pas recolorer
-la peau et les cheveux avec un filtre global incorrect.
+aucune cle de l'aventure. `Appliquer au joueur` copie volontairement ce brouillon
+dans `pokemon-z-battle.active-player-profile.v1`. Les apercus utilisent directement
+les chemins audites.
+La palette est editee, exportee et rendue dans tous les apercus. Le module partage
+`local-assets/avatar-palette.ts` compare les trois ethnies d'une meme silhouette :
+les pixels variables sont proteges comme peau, cheveux ou contour antialiase, puis
+les couleurs de tenue bleu, or et rouge sont remappees vers les roles principal,
+secondaire et accent en conservant leurs ombres. Cette generation de masque a
+l'execution couvre overworld, course, velo, surf, peche, face et dos de combat sans
+copier d'asset source dans Git. Si les variantes ne sont pas comparables, le rendu
+reste volontairement inchange plutot que d'appliquer un filtre global dangereux.
+La luminosite est remappee par rapport a la couleur source de chaque role, et non
+par simple decalage vers la cible. Ce point est important pour le blanc et les
+teintes tres claires : les pixels de contour et d'ombrage restent nettement plus
+sombres que les hautes lumieres.
 
 L'Overworld Sandbox expose aussi ce laboratoire via l'onglet `Personnage`.
 `AvatarLabView` partage la meme cle locale avec l'application autonome, masque la
 scene de jeu sans modifier son etat, et ignore les commandes de mouvement tant que
 l'onglet est ouvert. `clearSourceWorldSave` et la reinitialisation narrative ne
-touchent pas cette cle ; un test protege explicitement cette separation.
+touchent aucune des deux cles cosmetiques ; un test protege explicitement cette
+separation. `source-player-profile.ts` charge le profil actif au lancement, remplace
+le charset overworld, traduit les poses historiques equivalentes et fournit le dos
+recolore a `SourceBattleVisuals`. Le nom actif est transmis a chaque session de
+dialogue : `\\PN` est interpole apres la traduction francaise dans les repliques et
+les choix. Les pronoms restent persistes sans interpolation, et leur consommation
+ainsi que l'introduction Map001 attendent toujours le portage correspondant. Le
+profil est publie dans les rooms multijoueur v7 sous sa forme publique
+`NetworkPlayerProfile` ; la sauvegarde narrative et l'equipe en restent exclues.
+
+Ne pas interpreter `battleBackVariants` comme des frames. Les fichiers suffixes
+sont des variantes narratives/de tenue et les planches `trback` historiques sont
+moins larges que hautes, donc statiques selon `PlayerFadeAnimation`. Les vues du
+laboratoire affichent le dos principal sans alternance. L'introduction de combat
+respecte maintenant cette lecture : image statique ancree en `(128,384)` puis
+glissant a gauche, trajectoire source de `ball00` decalee de 64 px vers le bas,
+puis croissance du battler depuis 1/8 de sa taille.
+Il n'existe pas d'animation de bras propre a ces profils dans le jeu source.
+
+Les combats de Dresseurs affichent avant cela l'adversaire de face, ancre en
+`(384,168)`, en resolvant `trainerNNN.png` depuis l'identifiant de classe extrait.
+Il sort a droite pendant l'apparition de son Pokemon. Les temporisations web sont
+volontairement plus lentes que les 40 images/seconde brutes afin que cette
+presentation automatique reste lisible sans attendre une validation de dialogue.
+Attention : `ball00.png` mesure 32 x 64 et `IconSprite` l'affiche integralement.
+Ne pas le traiter comme deux frames carrees ; le conteneur web garde un ratio 1:2.
+
+La sortie du Pokemon joueur est maintenant synchronisee avec la fin de cette
+trajectoire : le lancer dure 650 ms, la Ball disparait au dernier point puis le
+Pokemon apparait sans pause. Le rendu reproduit aussi `PokeballPlayerSendOutAnimation`
+avec le son `Audio/SE/recall`, le cri, la croissance depuis 1/8 et le flash blanc
+du decor. Les battlers passent par les echelles du plugin `BitmapWrapperEX` avant
+l'auto-alignement : `BACKSPRITE_SCALE = 3` cote joueur et
+`FRONTSPRITE_SCALE = 2` cote adverse. Le dernier pixel opaque est recalcule apres
+agrandissement, ce qui conserve les lignes de sol `(128,320)` et `(384,168)`.
+
+Le contrat public est `NetworkPlayerProfile`, dans `multiplayer-protocol`.
+Il associe un `visualPreset` sans chemin de fichier au `PlayerProfile` semantique,
+avec validation stricte des champs. Il exclut volontairement equipe, inventaire et
+progression. Le protocole v7 transmet le profil lors de la creation/jonction,
+l'intention `setProfile` permet de publier une application ulterieure, et la room
+le valide, le persiste et le diffuse dans chaque snapshot. `DemoOverworldView`
+affiche les noms et charsets recolores des deux places sur Prairie/Bosquet. Ce
+raccord ne synchronise pas encore le monde source ni la sauvegarde de l'hote.
+Le parcours de connexion se trouve maintenant dans l'onglet `Coop` du menu en jeu,
+et non dans l'ancien panneau lateral. Il permet de creer, rejoindre, voir le code
+et les participants, ouvrir la personnalisation puis quitter. Le menu reste
+ouvrable sur Prairie/Bosquet ; une deconnexion revient au monde source personnel.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -520,7 +579,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 292 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 305 tests et passe avec le build.
 
 ## Commandes utiles
 

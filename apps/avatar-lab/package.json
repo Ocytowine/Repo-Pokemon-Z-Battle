@@ -9,6 +9,6 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "dependencies": { "@pokemon-z-battle/player-state": "workspace:*" },
+  "dependencies": { "@pokemon-z-battle/local-assets": "workspace:*", "@pokemon-z-battle/player-state": "workspace:*" },
   "devDependencies": { "vite": "8.3.0" }
 }

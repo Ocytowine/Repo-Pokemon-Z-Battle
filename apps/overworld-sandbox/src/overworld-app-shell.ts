@@ -23,6 +23,7 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <button data-source-menu-tab="team"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><span>Équipe</span></button>
               <button data-source-menu-tab="bag"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><span>Sac</span></button>
               <button data-source-menu-tab="save"><span class="source-menu-symbol">S</span><span>Sauvegarde</span></button>
+              <button data-source-menu-tab="coop"><span class="source-menu-symbol">2</span><span>Coop</span></button>
               <button data-source-menu-tab="options"><span class="source-menu-symbol">⚙</span><span>Options</span></button>
             </nav><div id="source-menu-content" class="source-menu-content"></div></div>
             <footer class="source-menu-footer"><span><kbd>Échap</kbd> Fermer</span><span>Les données affichées viennent de la partie en cours</span></footer>
@@ -32,7 +33,11 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <img id="source-battle-background" class="source-battle-background" alt="" hidden><div class="source-stage-wash"></div>
               <img id="source-enemy-base" class="source-battle-base source-enemy-base" alt="" hidden><img id="source-player-base" class="source-battle-base source-player-base" alt="" hidden>
               <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
+              <div id="source-sendout-flash" class="source-sendout-flash" aria-hidden="true"></div>
+              <img id="source-opponent-trainer" class="source-intro-trainer source-opponent-trainer" alt="" hidden>
               <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
+              <img id="source-player-trainer" class="source-intro-trainer source-player-trainer" alt="" hidden>
+              <div id="source-player-ball" class="source-player-ball" aria-hidden="true" hidden></div>
               <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
               <div id="source-move-effects" class="source-animation-layer source-move-effects" aria-hidden="true"></div>
               <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><small id="source-opponent-hp"></small></article>
@@ -46,11 +51,6 @@ export function mountOverworldApp(): HTMLCanvasElement {
         <p id="map-legend" class="legend"><span class="ground"></span>Sol <span class="wall"></span>Collision <span class="door"></span>Transition <span class="interaction"></span>Interaction</p>
       </section>
       <aside>
-        <section class="panel"><div class="log-heading"><div><p class="eyebrow">Phases 7–8</p><h2>Monde en ligne</h2></div><span id="network-state">Local</span></div>
-          <label class="field">Serveur<input id="server-url" value="http://127.0.0.1:8787"></label>
-          <div class="network-row"><button id="create-room">Créer</button><input id="room-code" maxlength="6" placeholder="CODE"><button id="join-room">Rejoindre</button></div>
-          <button id="disconnect" class="reset" disabled>Revenir au test local</button><p id="network-notice" class="network-notice">Lance le Worker pour synchroniser deux navigateurs.</p>
-        </section>
         <section class="panel"><p class="eyebrow">Commandes</p><h2>Déplacements</h2><div class="players">
           <article data-controller="player"><strong>Joueur 1</strong><small>Flèches/ZQSD · Espace</small><div class="pad" data-player="player"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="player">Interagir</button></article>
           <article data-controller="opponent"><strong>Joueur 2</strong><small>I J K L · O</small><div class="pad" data-player="opponent"><button data-direction="up">↑</button><button data-direction="left">←</button><button data-direction="down">↓</button><button data-direction="right">→</button></div><button class="interact-button" data-interact="opponent">Interagir</button></article>

@@ -17,6 +17,7 @@ describe("source dialogue view", () => {
 
   it("keeps choice buttons mounted when an unrelated render repeats", () => {
     let markupWrites = 0;
+    let markup = "";
     const choices = {
       hidden: false,
       dataset: {} as Record<string, string>,
@@ -24,18 +25,20 @@ describe("source dialogue view", () => {
       querySelectorAll: (): readonly HTMLButtonElement[] => [],
     };
     Object.defineProperty(choices, "innerHTML", {
-      set: (): void => { markupWrites += 1; },
+      set: (value: string): void => { markupWrites += 1; markup = value; },
     });
     const passive = { hidden: false, textContent: "" };
     const panel = { hidden: false, querySelector: (selector: string) => selector === ".source-choices" ? choices : passive };
     vi.stubGlobal("document", { querySelector: () => panel });
     try {
       const session = { label: "Starter", lines: [], index: 0, choosing: true, translations: new Map(),
-        flow: { pendingChoice: { choices: ["Oui", "Non"], cancelType: 1 } } } as unknown as SourceDialogueSession;
+        variables: { playerName: "Ariane" },
+        flow: { pendingChoice: { choices: ["Oui, \\PN", "Non"], cancelType: 1 } } } as unknown as SourceDialogueSession;
       const view = new SourceDialogueView(() => undefined);
       view.render(session, true);
       view.render(session, true);
       expect(markupWrites).toBe(1);
+      expect(markup).toContain("Oui, Ariane");
     } finally {
       vi.unstubAllGlobals();
     }

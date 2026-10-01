@@ -101,6 +101,7 @@ export class SourceSequenceEffects {
       battleMusic: trainerType.battleBgm ?? assets.wildBattleBgm,
       victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
       baseMoney: trainerType.baseMoney,
+      trainerTypeId: trainerType.id,
     }, (won) => {
       if (!this.dependencies.isActive(session)) return;
       if (!won) session.cursor = session.plan.steps.length;

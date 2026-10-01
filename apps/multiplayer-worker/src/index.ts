@@ -1,6 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
-import { PROTOCOL_VERSION, ProtocolValidationError, parseClientMessage, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { PROTOCOL_VERSION, ProtocolValidationError, parseClientMessage, parseNetworkPlayerProfile,
+  type NetworkPlayerProfile, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { AuthoritativeBattleRoom, type PersistedRoomState, type RoomDispatch } from "@pokemon-z-battle/room-server-core";
 import { DEMO_WORLD_CATALOG, createDemoWorldState } from "@pokemon-z-battle/overworld-engine";
 import { createDemoBattle } from "./demo-battle.js";
@@ -68,7 +69,7 @@ export class BattleRoom extends DurableObject<Env> {
     await this.#initialized;
     const url = new URL(request.url);
     if (request.method === "POST" && url.pathname === "/create") return this.createRoom(await request.json());
-    if (request.method === "POST" && url.pathname === "/join") return this.joinRoom();
+    if (request.method === "POST" && url.pathname === "/join") return this.joinRoom(await request.json());
     if (request.method === "GET" && url.pathname === "/socket") return this.openSocket(request, url);
     return json({ error: "Route Durable Object inconnue." }, 404);
   }
@@ -101,21 +102,29 @@ export class BattleRoom extends DurableObject<Env> {
 
   private async createRoom(body: unknown): Promise<Response> {
     if (this.#room !== null) return json({ error: "ROOM_EXISTS" }, 409);
-    if (typeof body !== "object" || body === null || !("roomCode" in body) || typeof body.roomCode !== "string") {
+    if (typeof body !== "object" || body === null || !("roomCode" in body) || typeof body.roomCode !== "string"
+      || !("profile" in body)) {
       return json({ error: "INVALID_ROOM" }, 400);
     }
+    let profile: NetworkPlayerProfile;
+    try { profile = parseNetworkPlayerProfile(body.profile); }
+    catch { return json({ error: "INVALID_PROFILE" }, 400); }
     this.#roomCode = body.roomCode;
     const seed = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
     this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed), { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() });
-    const ticket = await this.issueTicket();
+    const ticket = await this.issueTicket(profile);
     await this.persist();
     return json(ticket, 201);
   }
 
-  private async joinRoom(): Promise<Response> {
+  private async joinRoom(body: unknown): Promise<Response> {
     if (this.#room === null) return json({ error: "ROOM_NOT_FOUND" }, 404);
+    if (typeof body !== "object" || body === null || !("profile" in body)) return json({ error: "INVALID_PROFILE" }, 400);
+    let profile: NetworkPlayerProfile;
+    try { profile = parseNetworkPlayerProfile(body.profile); }
+    catch { return json({ error: "INVALID_PROFILE" }, 400); }
     try {
-      const ticket = await this.issueTicket();
+      const ticket = await this.issueTicket(profile);
       await this.persist();
       return json(ticket, 201);
     } catch (error) {
@@ -124,11 +133,11 @@ export class BattleRoom extends DurableObject<Env> {
     }
   }
 
-  private async issueTicket(): Promise<object> {
+  private async issueTicket(profile: NetworkPlayerProfile): Promise<object> {
     if (this.#room === null || this.#roomCode === null) throw new Error("ROOM_NOT_FOUND");
     const playerId = crypto.randomUUID();
     const reconnectToken = randomToken();
-    const connection = this.#room.reserve(playerId);
+    const connection = this.#room.reserve(playerId, profile);
     this.#identities.set(playerId, await sha256(reconnectToken));
     return {
       protocolVersion: PROTOCOL_VERSION,
@@ -208,11 +217,12 @@ export class BattleRoom extends DurableObject<Env> {
   }
 }
 
-async function proxyTicket(stub: DurableObjectStub<BattleRoom>, operation: "create" | "join", roomCode?: string): Promise<Response> {
+async function proxyTicket(stub: DurableObjectStub<BattleRoom>, operation: "create" | "join", profile: unknown,
+  roomCode?: string): Promise<Response> {
   return stub.fetch(`https://room.internal/${operation}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(operation === "create" ? { roomCode } : {}),
+    body: JSON.stringify(operation === "create" ? { roomCode, profile } : { profile }),
   });
 }
 
@@ -231,9 +241,12 @@ export default {
     if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }), origin);
 
     if (request.method === "POST" && url.pathname === "/api/rooms") {
+      let body: unknown;
+      try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
+      const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const roomCode = generateRoomCode(crypto.getRandomValues(new Uint8Array(6)));
-        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", roomCode);
+        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", profile, roomCode);
         if (response.status !== 409) return withCors(response, origin);
       }
       return withCors(json({ error: "ROOM_CODE_EXHAUSTED" }, 503), origin);
@@ -241,7 +254,10 @@ export default {
 
     const joinCode = roomCodeFromPath(url.pathname, "join");
     if (request.method === "POST" && joinCode !== null) {
-      return withCors(await proxyTicket(env.BATTLE_ROOMS.getByName(joinCode), "join"), origin);
+      let body: unknown;
+      try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
+      const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
+      return withCors(await proxyTicket(env.BATTLE_ROOMS.getByName(joinCode), "join", profile), origin);
     }
 
     const socketCode = roomCodeFromPath(url.pathname, "socket");

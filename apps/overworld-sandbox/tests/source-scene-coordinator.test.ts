@@ -20,9 +20,9 @@ describe("source scene coordinator", () => {
 
   it("keeps the selected section between openings", () => {
     const scenes = new SourceSceneCoordinator();
-    scenes.selectMenuTab("bag");
+    scenes.selectMenuTab("coop");
     scenes.openMenu(idle);
-    expect(scenes.menuTab).toBe("bag");
+    expect(scenes.menuTab).toBe("coop");
   });
 
   it.each(["world-input", "scene-change", "start-sequence"] as const)("only allows %s from an idle overworld", (action) => {

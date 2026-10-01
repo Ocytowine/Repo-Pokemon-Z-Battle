@@ -38,10 +38,6 @@ export class SourceOverworldHud {
       reset.disabled = !model.canChangeScene;
       reset.textContent = eventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
     }
-    const create = document.querySelector<HTMLButtonElement>("#create-room");
-    if (create !== null) create.disabled = true;
-    const join = document.querySelector<HTMLButtonElement>("#join-room");
-    if (join !== null) join.disabled = true;
     const guide = document.querySelector<HTMLElement>("#coop-guide");
     if (guide !== null) guide.innerHTML = `<article><span>9.5</span><strong>Choix et conditions</strong><small>Les branches imbriquées suivent la réponse et l'état courant.</small></article><article><span>REPRISE</span><strong>Point de soin</strong><small>L'infirmière mémorise la carte et la position de retour.</small></article><article><span>COMBAT</span><strong>Rencontre source</strong><small>L'équipe persistante affronte le Pokémon sauvage puis récupère ses PV, statuts et PP.</small></article>`;
     const guidePhase = document.querySelector<HTMLElement>("#guide-phase");

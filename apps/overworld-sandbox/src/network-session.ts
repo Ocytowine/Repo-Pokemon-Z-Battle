@@ -1,5 +1,6 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
-import { PROTOCOL_VERSION, normalizeRoomCode, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
+  type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -23,6 +24,7 @@ interface MutableNetworkSession {
   userDisconnected: boolean;
   snapshot: RoomSnapshot | null;
   submittedTurn: number | null;
+  profile: NetworkPlayerProfile;
 }
 
 export interface NetworkSessionView {
@@ -37,6 +39,7 @@ export interface NetworkSessionCallbacks {
   readonly onEvents: (events: readonly OverworldEvent[]) => void;
   readonly onMapChanged: (mapId: string) => void;
   readonly onConnectionFormChanged: (serverUrl: string, roomCode: string) => void;
+  readonly onPlayersChanged: (players: readonly RoomPlayerSnapshot[]) => void;
   readonly onRender: () => void;
 }
 
@@ -60,25 +63,27 @@ export class OverworldNetworkSession {
     return this.activeSession;
   }
 
-  public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string): Promise<void> {
+  public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string,
+    profile: NetworkPlayerProfile): Promise<void> {
     try {
       const serverUrl = normalizeServerUrl(rawServerUrl);
       const path = kind === "create" ? "/api/rooms" : `/api/rooms/${normalizeRoomCode(rawRoomCode)}/join`;
-      const response = await fetch(`${serverUrl}${path}`, { method: "POST" });
+      const response = await fetch(`${serverUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ profile }) });
       const value: unknown = await response.json();
       if (!response.ok) throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
-      this.connect(serverUrl, parseTicket(value));
+      this.connect(serverUrl, parseTicket(value), profile);
     } catch (error) {
       this.setStatus("Erreur", error instanceof Error ? error.message : "Connexion impossible.");
     }
   }
 
-  public restore(): void {
+  public restore(profile: NetworkPlayerProfile): void {
     const storedPayload = sessionStorage.getItem(this.storageKey);
     if (storedPayload === null) return;
     try {
       const stored = parseStoredSession(storedPayload);
-      this.connect(stored.serverUrl, stored.ticket);
+      this.connect(stored.serverUrl, stored.ticket, profile);
     } catch {
       sessionStorage.removeItem(this.storageKey);
       this.setStatus("Local", "La session mémorisée était invalide et a été supprimée.");
@@ -123,6 +128,16 @@ export class OverworldNetworkSession {
     socket.send(JSON.stringify({ type: "interact", version: PROTOCOL_VERSION, requestId: crypto.randomUUID() }));
   }
 
+  public updateProfile(profile: NetworkPlayerProfile): void {
+    const session = this.activeSession;
+    if (session === null) return;
+    session.profile = profile;
+    const socket = session.socket;
+    if (socket === null || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "setProfile", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), profile }));
+  }
+
   public submitEncounterAction(moveIndex: number): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
@@ -141,7 +156,7 @@ export class OverworldNetworkSession {
     this.callbacks.onRender();
   }
 
-  private connect(serverUrl: string, ticket: MultiplayerTicket): void {
+  private connect(serverUrl: string, ticket: MultiplayerTicket, profile: NetworkPlayerProfile): void {
     const previous = this.activeSession;
     if (previous !== null) {
       previous.userDisconnected = true;
@@ -161,6 +176,7 @@ export class OverworldNetworkSession {
       userDisconnected: false,
       snapshot: null,
       submittedTurn: null,
+      profile,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -179,6 +195,7 @@ export class OverworldNetworkSession {
       const own = snapshot.world.avatars[session.ticket.side];
       if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
     }
+    this.callbacks.onPlayersChanged(snapshot.players);
     this.callbacks.onWorldState(snapshot.world, animate);
   }
 
@@ -215,6 +232,7 @@ export class OverworldNetworkSession {
           }
           session.reconnectAttempt = 0;
           this.applySnapshot(message.snapshot, false);
+          this.updateProfile(session.profile);
           this.setStatus(session.ticket.side === "player" ? "Joueur 1" : "Joueur 2", `Room ${session.ticket.roomCode} restaurée. Le serveur contrôle les déplacements.`);
         } else if (message.type === "snapshot") {
           this.applySnapshot(message.snapshot, false);

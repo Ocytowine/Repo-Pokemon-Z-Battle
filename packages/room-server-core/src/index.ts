@@ -1,5 +1,6 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
-import { PROTOCOL_VERSION, type ClientMessage, type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, type ClientMessage, type NetworkPlayerProfile,
+  type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -7,6 +8,7 @@ interface RoomPlayer {
   readonly side: BattleSide;
   ready: boolean;
   connected: boolean;
+  profile: NetworkPlayerProfile;
   readonly acknowledged: Map<string, ServerMessage>;
 }
 
@@ -22,7 +24,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 6;
+  readonly version: 7;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -33,6 +35,7 @@ export interface PersistedRoomState {
     readonly side: BattleSide;
     readonly ready: boolean;
     readonly connected: boolean;
+    readonly profile: NetworkPlayerProfile;
     readonly acknowledged: readonly (readonly [string, ServerMessage])[];
   }[];
   readonly pendingActions: readonly (readonly [BattleSide, TeamBattleAction])[];
@@ -94,13 +97,13 @@ export class AuthoritativeBattleRoom {
     }
   }
 
-  public reserve(playerId: string): RoomConnection {
+  public reserve(playerId: string, profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile()): RoomConnection {
     const existing = this.#players.get(playerId);
     if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true };
     const usedSides = new Set([...this.#players.values()].map((player) => player.side));
     const side: BattleSide | undefined = usedSides.has("player") ? (usedSides.has("opponent") ? undefined : "opponent") : "player";
     if (side === undefined) throw new Error("ROOM_FULL");
-    this.#players.set(playerId, { playerId, side, ready: false, connected: false, acknowledged: new Map() });
+    this.#players.set(playerId, { playerId, side, ready: false, connected: false, profile, acknowledged: new Map() });
     this.#revision += 1;
     return { side, snapshot: this.snapshot(), reconnected: false };
   }
@@ -130,7 +133,7 @@ export class AuthoritativeBattleRoom {
   public snapshot(): RoomSnapshot {
     const players: RoomPlayerSnapshot[] = [...this.#players.values()]
       .sort((left, right) => left.side === "player" ? -1 : right.side === "player" ? 1 : 0)
-      .map(({ playerId, side, ready, connected }) => ({ playerId, side, ready, connected }));
+      .map(({ playerId, side, ready, connected, profile }) => ({ playerId, side, ready, connected, profile }));
     const phase = this.#battleState === null ? "waiting" : this.#battleState.status === "finished" ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null : { id: this.#battleId, state: this.#battleState };
     return {
@@ -149,14 +152,14 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 6,
+      version: 7,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
       battleState: this.#battleState,
       rngState: this.#rng.snapshot(),
-      players: [...this.#players.values()].map(({ playerId, side, ready, connected, acknowledged }) => ({
-        playerId, side, ready, connected, acknowledged: [...acknowledged.entries()].slice(-128),
+      players: [...this.#players.values()].map(({ playerId, side, ready, connected, profile, acknowledged }) => ({
+        playerId, side, ready, connected, profile, acknowledged: [...acknowledged.entries()].slice(-128),
       })),
       pendingActions: [...this.#pendingActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
@@ -182,10 +185,20 @@ export class AuthoritativeBattleRoom {
       ];
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
+    if (message.type === "setProfile") return this.setProfile(player, message.requestId, message.profile);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
     return this.submitAction(player, message);
+  }
+
+  private setProfile(player: RoomPlayer, requestId: string, profile: NetworkPlayerProfile): readonly RoomDispatch[] {
+    player.profile = profile;
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
   }
 
   private setReady(player: RoomPlayer, requestId: string, ready: boolean): readonly RoomDispatch[] {

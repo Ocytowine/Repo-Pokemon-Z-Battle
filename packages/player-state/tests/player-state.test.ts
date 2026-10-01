@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { addPokemonToParty, createDefaultPlayerProfile, createEmptyPlayerParty, createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerParty, parsePlayerProfile, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
+import { addPokemonToParty, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
+  createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerAvatarSelection,
+  parsePlayerParty, parsePlayerProfile, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog,
+  type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
   id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
@@ -21,6 +24,12 @@ describe("player profile", () => {
     expect(() => parsePlayerProfile({ ...profile, displayName: "" })).toThrow("Profil joueur");
     expect(() => parsePlayerProfile({ ...profile, colors: { ...profile.colors, primary: "#ff00ff" } }))
       .toThrow("Profil joueur");
+  });
+
+  it("validates the independently persisted avatar selection", () => {
+    const selection = createDefaultPlayerAvatarSelection();
+    expect(parsePlayerAvatarSelection(selection)).toEqual(selection);
+    expect(() => parsePlayerAvatarSelection({ ...selection, avatarId: "../../trainer" })).toThrow("avatar");
   });
 });
 

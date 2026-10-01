@@ -41,7 +41,7 @@ export class SourceDialogueView {
       }
       return;
     }
-    const labels = pending.choices.map((choice) => localizedDialogueText(choice, session.translations));
+    const labels = pending.choices.map((choice) => localizedDialogueText(choice, session.translations, session.variables));
     const signature = JSON.stringify(labels);
     if (choices.dataset.sourceChoiceSignature === signature) return;
     choices.dataset.sourceChoiceSignature = signature;

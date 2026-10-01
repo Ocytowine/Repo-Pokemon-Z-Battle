@@ -1,4 +1,5 @@
-import { PROTOCOL_VERSION, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
+import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, type NetworkPlayerProfile, type ServerMessage }
+  from "@pokemon-z-battle/multiplayer-protocol";
 
 export interface MultiplayerTicket {
   readonly protocolVersion: typeof PROTOCOL_VERSION;
@@ -74,8 +75,10 @@ export function parseServerMessage(payload: string): ServerMessage {
   return value as unknown as ServerMessage;
 }
 
-export async function requestTicket(serverUrl: string, path: string): Promise<MultiplayerTicket> {
-  const response = await fetch(`${normalizeServerUrl(serverUrl)}${path}`, { method: "POST" });
+export async function requestTicket(serverUrl: string, path: string,
+  profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile()): Promise<MultiplayerTicket> {
+  const response = await fetch(`${normalizeServerUrl(serverUrl)}${path}`, { method: "POST",
+    headers: { "content-type": "application/json" }, body: JSON.stringify({ profile }) });
   const value: unknown = await response.json();
   if (!response.ok) {
     const code = isRecord(value) && typeof value.error === "string" ? value.error : `HTTP_${response.status}`;
