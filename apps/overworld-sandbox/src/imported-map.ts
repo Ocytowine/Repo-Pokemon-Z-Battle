@@ -1,6 +1,7 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { EMPTY_SOURCE_EVENT_STATE, selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
+import type { SourceShopItem } from "./source-economy.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -55,6 +56,7 @@ export interface ImportedTileset {
   readonly autotileNames: readonly string[];
   readonly priorities: readonly number[];
   readonly terrainTags: readonly number[];
+  readonly passages: readonly number[];
 }
 
 interface TilesetFile { readonly records: readonly ImportedTileset[] }
@@ -93,6 +95,7 @@ export interface ImportedMapAssets {
   readonly playerPickupImage: HTMLImageElement;
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
+  readonly items: ReadonlyMap<string, SourceShopItem>;
   readonly battleCatalog: PlayerCreationCatalog;
   readonly trainers: readonly ImportedTrainer[];
   readonly trainerTypes: readonly ImportedTrainerType[];
@@ -124,6 +127,7 @@ export interface ImportedTrainer {
 
 export interface ImportedTrainerType {
   readonly internalName: string;
+  readonly baseMoney: number;
   readonly battleBgm: string | null;
   readonly victoryMe: string | null;
 }
@@ -187,12 +191,13 @@ function parseTilesets(value: unknown): TilesetFile {
   const records = value.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.tilesetName !== "string"
       || !Array.isArray(entry.autotileNames) || !entry.autotileNames.every((name) => typeof name === "string")
+      || !Array.isArray(entry.passages) || !entry.passages.every((passage) => Number.isInteger(passage) && (passage as number) >= 0)
       || !Array.isArray(entry.priorities) || !entry.priorities.every((priority) => Number.isInteger(priority) && (priority as number) >= 0)
       || !Array.isArray(entry.terrainTags) || !entry.terrainTags.every((tag) => Number.isInteger(tag) && (tag as number) >= 0)) {
       throw new Error("Une configuration de tileset est invalide.");
     }
     return { id: entry.id as number, tilesetName: entry.tilesetName, autotileNames: entry.autotileNames as string[],
-      priorities: entry.priorities as number[], terrainTags: entry.terrainTags as number[] };
+      priorities: entry.priorities as number[], terrainTags: entry.terrainTags as number[], passages: entry.passages as number[] };
   });
   return { records };
 }
@@ -236,12 +241,13 @@ export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[
 export function parseImportedTrainerTypes(value: unknown): readonly ImportedTrainerType[] {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de classes de Dresseur est invalide.");
   return value.records.map((entry) => {
-    if (!isRecord(entry) || typeof entry.internalName !== "string"
+    if (!isRecord(entry) || typeof entry.internalName !== "string" || !Number.isInteger(entry.baseMoney)
+      || (entry.baseMoney as number) < 0
       || (entry.battleBgm !== null && typeof entry.battleBgm !== "string")
       || (entry.victoryMe !== null && typeof entry.victoryMe !== "string")) {
       throw new Error("Une classe de Dresseur est invalide.");
     }
-    return { internalName: entry.internalName, battleBgm: entry.battleBgm as string | null,
+    return { internalName: entry.internalName, baseMoney: entry.baseMoney as number, battleBgm: entry.battleBgm as string | null,
       victoryMe: entry.victoryMe as string | null };
   });
 }
@@ -298,6 +304,21 @@ export function activeEventAt(events: readonly ImportedMapEvent[], x: number, y:
 export function eventInFront(events: readonly ImportedMapEvent[], avatar: ImportedAvatar, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
   const delta = DELTAS[avatar.direction];
   return activeEventAt(events, avatar.x + delta.x, avatar.y + delta.y, mapId, state);
+}
+
+export function eventInInteractionRange(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
+  map: ImportedMap, tileset: ImportedTileset, mapId = 0,
+  state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
+  const adjacent = eventInFront(events, avatar, mapId, state);
+  if (adjacent !== null) return adjacent;
+  const delta = DELTAS[avatar.direction];
+  const counterX = avatar.x + delta.x;
+  const counterY = avatar.y + delta.y;
+  if (counterX < 0 || counterY < 0 || counterX >= map.width || counterY >= map.height) return null;
+  const index = counterY * map.width + counterX;
+  const counter = [map.layers.upper[index], map.layers.middle[index], map.layers.lower[index]]
+    .some((tileId) => tileId !== undefined && ((tileset.passages[tileId] ?? 0) & 0x80) !== 0);
+  return counter ? activeEventAt(events, counterX + delta.x, counterY + delta.y, mapId, state) : null;
 }
 
 export function playerTouchEventInDirection(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
@@ -412,7 +433,7 @@ export function parseMapTranslations(value: unknown, mapId: number): ReadonlyMap
   return translations;
 }
 
-function parseItemNames(itemsValue: unknown, localizationValue: unknown): ReadonlyMap<string, string> {
+export function parseImportedItems(itemsValue: unknown, localizationValue: unknown): ReadonlyMap<string, SourceShopItem> {
   if (!isRecord(itemsValue) || !Array.isArray(itemsValue.records) || !isRecord(localizationValue)
     || !isRecord(localizationValue.categories) || !Array.isArray(localizationValue.categories.itemNames)) {
     throw new Error("Le catalogue de noms d'objets est invalide.");
@@ -423,10 +444,16 @@ function parseItemNames(itemsValue: unknown, localizationValue: unknown): Readon
     const id = Number(entry.key);
     if (Number.isInteger(id) && id >= 0 && entry.value !== "") translatedById.set(id, entry.value);
   }
-  const result = new Map<string, string>();
+  const translatedDescriptions = localizedNames(localizationValue, "itemDescriptions");
+  const result = new Map<string, SourceShopItem>();
   for (const entry of itemsValue.records) {
-    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string") continue;
-    result.set(entry.internalName, translatedById.get(entry.id as number) ?? entry.name);
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string"
+      || typeof entry.description !== "string" || !Number.isInteger(entry.pocket) || !Number.isInteger(entry.price)
+      || (entry.price as number) < 0) continue;
+    result.set(entry.internalName, { id: entry.id as number, internalName: entry.internalName,
+      name: translatedById.get(entry.id as number) ?? entry.name,
+      description: translatedDescriptions.get(entry.id as number) ?? entry.description,
+      pocket: entry.pocket as number, price: entry.price as number });
   }
   return result;
 }
@@ -535,7 +562,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const tilesets = parseTilesets(tilesetValue);
   const events = parseMapEvents(eventValue);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
-  const itemNames = parseItemNames(itemsValue, localizationValue);
+  const items = parseImportedItems(itemsValue, localizationValue);
+  const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
   const trainers = parseImportedTrainers(trainersValue);
   const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
@@ -554,7 +582,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
-    mapTranslations, itemNames, battleCatalog,
+    mapTranslations, itemNames, items, battleCatalog,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }

@@ -28,6 +28,11 @@ export function isSourceStarterSelectionPage(page: ImportedEventPage): boolean {
 export function portSourceRubyCommand(source: EventCommand): EventCommand | null {
   if (source.kind !== "ruby-script" || typeof source.data.source !== "string") return null;
   const ruby = source.data.source.trim();
+  const mart = /^pbPokemonMart\(\s*\[([\s\S]*?)\]\s*\)$/u.exec(ruby);
+  if (mart !== null) {
+    const stock = [...mart[1]!.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/gu)].map((match) => match[1]!.toUpperCase());
+    if (stock.length > 0) return command(source, "open-shop", { stock, policy: "PERSONAL" });
+  }
   if (/^\$GameSpeed\s*=\s*0$/u.test(ruby)) return command(source, "runtime-noop", { policy: "PRESENTATION" });
   if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });

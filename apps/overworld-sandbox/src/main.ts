@@ -1,5 +1,5 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type GridPoint, type OverworldEvent, type OverworldState, type WorldMap } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInFront, importedCameraPosition, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadImportedMap, loadImportedMap003, localizedDialogueText, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -12,7 +12,7 @@ import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion }
 import { SourceNpcMotionController, sourceNpcStepDuration } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
   findSourceMapEntryAutorun, isSourceParallelInitialization, type ActiveSourceAutorun } from "./source-autorun.js";
-import { resolveEventFlow } from "./source-event-flow.js";
+import { resolveEventFlow, type PendingEventChoice } from "./source-event-flow.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
 import { isSourceStateCommand } from "./source-command-registry.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
@@ -23,6 +23,9 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   type SourceWorldSave } from "./source-world-save.js";
+import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
+import { SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl,
+  sourcePocketIconUrl } from "./source-bag.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -52,8 +55,11 @@ interface SourceSequenceSession {
   readonly label: string;
   readonly mapId: number;
   readonly eventId: number;
-  readonly plan: SourceScenePlan;
+  plan: SourceScenePlan;
   readonly translations: ReadonlyMap<string, string>;
+  readonly sourcePage?: ImportedEventPage;
+  selections: number[];
+  pendingChoice: PendingEventChoice | null;
   cursor: number;
   advancing: boolean;
   autorunBaseline?: SourceEventState;
@@ -64,6 +70,10 @@ let sourceSequence: SourceSequenceSession | null = null;
 let sourcePickupPose = false;
 let sourcePickupStartedAt: number | null = null;
 let sourcePickupDialogueSequence: SourceSequenceSession | null = null;
+let sourceSequenceChoicePrompt: SourceSequenceSession | null = null;
+let sourceBagPocket = 1;
+interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly stock: readonly SourceShopItem[]; notice: string | null }
+let sourceShop: SourceShopSession | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 type AvatarId = "player" | "opponent";
@@ -165,7 +175,7 @@ function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolea
   if (importedAssets === null || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
   const flow = resolveEventFlow(active.page, [], sourceEventState, importedAssets.map.id, active.event.id,
     { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
-  if (!flow.complete) {
+  if (!flow.complete && flow.pendingChoice === null) {
     importedNotice = `${label} bloqué : ${flow.blockedReason ?? "séquence incomplète"}.`;
     return false;
   }
@@ -176,7 +186,8 @@ function beginSourceSequence(active: ActiveSourceAutorun, label: string): boolea
     return false;
   }
   sourceSequence = { label, mapId: importedAssets.map.id, eventId: active.event.id, plan,
-    translations: importedAssets.mapTranslations, cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
+    translations: importedAssets.mapTranslations, sourcePage: active.page, selections: [], pendingChoice: flow.pendingChoice,
+    cursor: 0, advancing: false, runner: new SourceSequenceRunner() };
   importedNotice = `${label} démarré.`;
   void advanceSourceSequence();
   return true;
@@ -260,6 +271,44 @@ function startSourceMoveRoute(sequence: SourceSequenceSession, target: number, r
   });
 }
 
+function beginSourceSequenceChoice(sequence: SourceSequenceSession, choice: PendingEventChoice): void {
+  const commands: ImportedEventPage["commands"] = [
+    { kind: "show-choices", text: null, indent: 0,
+      data: { choices: choice.choices, cancelType: choice.cancelType } },
+    ...choice.choices.flatMap((label, index) => [
+      { kind: "choice-branch", text: label, indent: 0, data: { choiceIndex: index, text: label } },
+      { kind: "end", text: null, indent: 1, data: {} },
+    ]),
+    { kind: "choice-end", text: null, indent: 0, data: {} },
+  ];
+  sourceSequenceChoicePrompt = sequence;
+  beginSourceEvent({ ...sequence.plan.page, commands }, sequence.mapId, sequence.eventId,
+    sequence.label, sequence.translations);
+  renderImportedView();
+}
+
+function continueSourceSequenceChoice(sequence: SourceSequenceSession, selected: number): boolean {
+  if (sequence.sourcePage === undefined) return false;
+  const selections = [...sequence.selections, selected];
+  const flow = resolveEventFlow(sequence.sourcePage, selections, sourceEventState, sequence.mapId, sequence.eventId,
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction) });
+  if (!flow.complete && flow.pendingChoice === null) {
+    importedNotice = `Séquence interrompue : ${flow.blockedReason ?? "branche incomplète"}.`;
+    sourceSequence = null;
+    return false;
+  }
+  const nextPlan = compileAndReportSourceScene(flow.page, sequence.label);
+  if (!nextPlan.audit.complete || nextPlan.steps.length < sequence.cursor) {
+    importedNotice = "Séquence interrompue : branche de choix incohérente.";
+    sourceSequence = null;
+    return false;
+  }
+  sequence.selections = selections;
+  sequence.pendingChoice = flow.pendingChoice;
+  sequence.plan = nextPlan;
+  return true;
+}
+
 async function advanceSourceSequence(): Promise<void> {
   const sequence = sourceSequence;
   if (sequence === null || sequence.advancing || sourceDialogues.current !== null) return;
@@ -336,6 +385,7 @@ async function advanceSourceSequence(): Promise<void> {
         const started = sourceBattles.startTrainerBattle(trainer, {
           battleMusic: trainerType.battleBgm ?? importedAssets.wildBattleBgm,
           victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
+          baseMoney: trainerType.baseMoney,
         }, (won) => {
           if (sourceSequence !== sequence) return;
           if (!won) sequence.cursor = sequence.plan.steps.length;
@@ -346,6 +396,17 @@ async function advanceSourceSequence(): Promise<void> {
           sourceSequence = null;
           renderImportedView();
         }
+        return;
+      }
+      if (command.kind === "open-shop") {
+        const stockIds = command.data.stock;
+        if (importedAssets === null || !Array.isArray(stockIds) || !stockIds.every((id) => typeof id === "string")) {
+          throw new Error("stock de boutique invalide");
+        }
+        const stock = stockIds.map((id) => importedAssets?.items.get(id)).filter((item): item is SourceShopItem => item !== undefined);
+        if (stock.length === 0) throw new Error("aucun objet du stock n'est disponible");
+        sourceShop = { sequence, stock, notice: null };
+        renderImportedView();
         return;
       }
       if (command.kind === "transfer-player") {
@@ -383,10 +444,17 @@ async function advanceSourceSequence(): Promise<void> {
         await sequence.runner.delay(command.data.frames * 25);
       }
     }
+    if (sourceSequence === sequence && sequence.pendingChoice !== null) {
+      const choice = sequence.pendingChoice;
+      sequence.pendingChoice = null;
+      beginSourceSequenceChoice(sequence, choice);
+      return;
+    }
     if (sourceSequence === sequence) {
       await sequence.runner.waitForMovement();
       const autorunBaseline = sequence.autorunBaseline;
       sourceSequence = null;
+      if (sourceSequenceChoicePrompt === sequence) sourceSequenceChoicePrompt = null;
       importedNotice = "Séquence automatique terminée.";
       renderImportedView();
       sequence.onComplete?.();
@@ -397,6 +465,7 @@ async function advanceSourceSequence(): Promise<void> {
   } catch (error) {
     if (sourceSequence === sequence) {
       sourceSequence = null;
+      if (sourceSequenceChoicePrompt === sequence) sourceSequenceChoicePrompt = null;
       if (sourcePickupDialogueSequence === sequence) sourcePickupDialogueSequence = null;
       sourcePickupPose = false;
       sourcePickupStartedAt = null;
@@ -416,6 +485,7 @@ root.innerHTML = `
     <section class="world-panel">
       <div class="map-heading"><div><p class="eyebrow">Carte observée</p><h2 id="map-name"></h2></div><div class="map-tabs"><button data-map="${SOURCE_MAP_ID}" disabled>Monde source</button><button id="starter-test">Tester les starters</button><button id="open-source-menu">Menu</button><button data-map="meadow">Prairie</button><button data-map="grove">Bosquet</button></div></div>
       <div class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-weather-layer" class="source-weather-layer" data-weather="none" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
+        <section id="source-shop" class="source-shop" hidden aria-label="Boutique Pokémon"></section>
         <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
           <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
           <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
@@ -678,6 +748,12 @@ function deleteSourceWorldSave(): void {
   renderImportedView();
 }
 
+function bindSourceItemIconFallback(root: ParentNode): void {
+  root.querySelectorAll<HTMLImageElement>("[data-source-item-icon]").forEach((image) => {
+    image.addEventListener("error", () => { image.src = sourceItemIconUrl(0); }, { once: true });
+  });
+}
+
 function renderSourceMenu(): void {
   const menu = document.querySelector<HTMLElement>("#source-menu");
   const content = document.querySelector<HTMLElement>("#source-menu-content");
@@ -704,10 +780,23 @@ function renderSourceMenu(): void {
         return `<article class="source-team-card${index === sourceEventState.party.activeIndex ? " active" : ""}"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><div><small>${index === sourceEventState.party.activeIndex ? "EN TÊTE" : escapeMenuText(member.species)}</small><strong>${name} <span>N.${member.level}</span></strong><div class="source-menu-hp"><i style="width:${hp}%"></i></div><em>${member.hp}/${member.stats.maxHp} PV</em><p>${moves}</p></div></article>`;
       }).join("")}</div>`;
   } else if (sourceScenes.menuTab === "bag") {
-    const entries = Object.entries(sourceEventState.inventory);
-    content.innerHTML = `<div class="source-menu-title"><div><small>INVENTAIRE</small><h3>Sac</h3></div><span>${entries.length} type${entries.length > 1 ? "s" : ""}</span></div><div class="source-bag-list">${entries.length === 0
-      ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><strong>Le sac est vide</strong><small>Les objets ramassés apparaîtront ici.</small></div>'
-      : entries.map(([itemId, quantity], index) => `<article><img src="/__pokemon-z/source/Graphics/Icons/bagPocket${index % 8 + 1}.png" alt=""><strong>${escapeMenuText(importedAssets?.itemNames.get(itemId) ?? itemId)}</strong><span>×${quantity}</span></article>`).join("")}</div>`;
+    const counts = sourceBagPocketCounts(sourceEventState.inventory, importedAssets.items);
+    const entries = sourceBagEntries(sourceEventState.inventory, importedAssets.items, sourceBagPocket);
+    const pocket = SOURCE_BAG_POCKETS.find((candidate) => candidate.id === sourceBagPocket) ?? SOURCE_BAG_POCKETS[0]!;
+    const totalTypes = [...counts.values()].reduce((sum, count) => sum + count, 0);
+    content.innerHTML = `<div class="source-menu-title"><div><small>INVENTAIRE · ${escapeMenuText(pocket.name)}</small><h3>Sac</h3></div><span>${sourceEventState.money.toLocaleString("fr-FR")} ₽ · ${totalTypes} type${totalTypes > 1 ? "s" : ""}</span></div>
+      <nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
+        `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === sourceBagPocket ? "active" : ""}" title="${escapeMenuText(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeMenuText(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
+      <div class="source-bag-list">${entries.length === 0
+        ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>Poche vide</strong><small>Aucun objet dans la catégorie ${escapeMenuText(pocket.name)}.</small></div>`
+        : entries.map(({ item, quantity }) => `<article><img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><div><strong>${escapeMenuText(item.name)}</strong><small>${escapeMenuText(item.description)}</small></div><span>×${quantity}</span></article>`).join("")}</div>`;
+    bindSourceItemIconFallback(content);
+    content.querySelectorAll<HTMLButtonElement>("[data-source-pocket]").forEach((button) => button.addEventListener("click", () => {
+      const pocketId = Number(button.dataset.sourcePocket);
+      if (!Number.isInteger(pocketId) || !SOURCE_BAG_POCKETS.some((candidate) => candidate.id === pocketId)) return;
+      sourceBagPocket = pocketId;
+      renderSourceMenu();
+    }));
   } else if (sourceScenes.menuTab === "save") {
     const savedLabel = sourceWorldSave === null ? "Aucune position enregistrée"
       : `Map${String(sourceWorldSave.mapId).padStart(3, "0")} · ${sourceWorldSave.x},${sourceWorldSave.y} · ${new Date(sourceWorldSave.savedAt).toLocaleString("fr-FR")}`;
@@ -725,6 +814,50 @@ function renderSourceMenu(): void {
       if (output !== null) output.value = `${input.value}%`;
     });
   }
+}
+
+function closeSourceShop(): void {
+  const shop = sourceShop;
+  if (shop === null) return;
+  sourceShop = null;
+  importedNotice = "Boutique fermée.";
+  renderImportedView();
+  if (sourceSequence === shop.sequence) void advanceSourceSequence();
+}
+
+function buySourceShopItem(itemId: string): void {
+  const shop = sourceShop;
+  const item = shop?.stock.find((candidate) => candidate.internalName === itemId);
+  if (shop === null || item === undefined) return;
+  const result = purchaseSourceItem(sourceEventState, item, 1);
+  if (!result.ok) {
+    shop.notice = result.reason === "insufficient-funds" ? "Vous n'avez pas assez d'argent."
+      : result.reason === "bag-full" ? "Le sac ne peut pas contenir davantage de cet objet." : "Achat impossible.";
+  } else {
+    sourceEventState = result.state;
+    persistSourceEventState();
+    shop.notice = `${item.name} acheté pour ${result.cost.toLocaleString("fr-FR")} ₽.`;
+    importedNotice = shop.notice;
+  }
+  renderSourceShop();
+}
+
+function renderSourceShop(): void {
+  const panel = document.querySelector<HTMLElement>("#source-shop");
+  if (panel === null) return;
+  panel.hidden = sourceShop === null;
+  if (sourceShop === null) { panel.innerHTML = ""; return; }
+  panel.innerHTML = `<header><div><small>BOUTIQUE POKÉMON</small><strong>Que désirez-vous ?</strong></div><span>${sourceEventState.money.toLocaleString("fr-FR")} ₽</span></header>
+    <div class="source-shop-list">${sourceShop.stock.map((item) => {
+      const owned = sourceEventState.inventory[item.internalName] ?? 0;
+      return `<button type="button" data-shop-item="${escapeMenuText(item.internalName)}"${item.price > sourceEventState.money || owned >= 999 ? " disabled" : ""}>
+        <img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><span><strong>${escapeMenuText(item.name)}</strong><small>${escapeMenuText(item.description)}</small></span><em>${item.price.toLocaleString("fr-FR")} ₽<small>Possédé : ${owned}</small></em></button>`;
+    }).join("")}</div><footer><span>${escapeMenuText(sourceShop.notice ?? "Sélectionnez un objet pour en acheter un exemplaire.")}</span><button type="button" id="close-source-shop">Quitter</button></footer>`;
+  bindSourceItemIconFallback(panel);
+  panel.querySelectorAll<HTMLButtonElement>("[data-shop-item]").forEach((button) => button.addEventListener("click", () => {
+    if (button.dataset.shopItem !== undefined) buySourceShopItem(button.dataset.shopItem);
+  }));
+  panel.querySelector<HTMLButtonElement>("#close-source-shop")?.addEventListener("click", closeSourceShop);
 }
 
 function toggleSourceMenu(): void {
@@ -761,7 +894,7 @@ function renderImportedView(): void {
     const sequenceStatus = sourceSequence === null ? "aucune" : `${sourceSequence.label} · étape ${sourceSequence.cursor}/${sourceSequence.plan.steps.length}`
       + ` · ${sourceSequence.plan.steps[sourceSequence.cursor]?.command.kind ?? "finalisation"}`
       + ` · ${sourceSequence.runner.pendingRoutes} route(s)`;
-    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p><p><strong>Séquence</strong> ${escapeMenuText(sequenceStatus)}</p>${sourceParallelAuditNotice === null ? "" : `<p><strong>Événement parallèle</strong> ${escapeMenuText(sourceParallelAuditNotice)}</p>`}${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${importedAssets.tileset.tilesetName}</p><p><strong>Carte</strong> ${importedAssets.map.width} × ${importedAssets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${party}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Argent</strong> ${sourceEventState.money.toLocaleString("fr-FR")} ₽</p><p><strong>Inventaire</strong> ${inventory}</p><p><strong>Reprise</strong> ${checkpointLabel}</p><p><strong>Séquence</strong> ${escapeMenuText(sequenceStatus)}</p>${sourceParallelAuditNotice === null ? "" : `<p><strong>Événement parallèle</strong> ${escapeMenuText(sourceParallelAuditNotice)}</p>`}${sourceSceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${sourceSceneAuditNotice}</p>`}`;
     progress.querySelector<HTMLButtonElement>("#start-source-encounter")?.addEventListener("click", startPendingSourceEncounter);
   }
   const log = document.querySelector<HTMLElement>("#events"); if (log !== null) log.textContent = importedNotice;
@@ -780,6 +913,7 @@ function renderImportedView(): void {
   renderSourceDialogue();
   renderEncounter();
   renderSourceMenu();
+  renderSourceShop();
 }
 
 function renderSourceDialogue(): void {
@@ -837,6 +971,7 @@ function beginSourceItemPresentation(completed: SourceDialogueSession, gains: re
   sourcePickupStartedAt = performance.now();
   sourceSequence = { label: "Objet obtenu", mapId: completed.mapId, eventId: completed.eventId,
     plan: compileAndReportSourceScene(page, "Obtention d'objet"), translations: new Map(), cursor: 0,
+    selections: [], pendingChoice: null,
     advancing: false, runner: new SourceSequenceRunner(), onComplete: () => {
       sourcePickupPose = false;
       sourcePickupStartedAt = null;
@@ -903,7 +1038,7 @@ function beginPreEncounterMovement(completed: SourceDialogueSession): boolean {
     eventId: completed.eventId,
     plan: compileAndReportSourceScene({ ...completed.flow.page, commands: presentationCommands },
       `${completed.label} · avant-combat`),
-    translations: completed.translations, cursor: 0, advancing: false, runner: new SourceSequenceRunner(),
+    translations: completed.translations, selections: [], pendingChoice: null, cursor: 0, advancing: false, runner: new SourceSequenceRunner(),
     onComplete: () => applyCompletedSourceEvent(completed) };
   importedNotice = "Cinématique avant le combat…";
   void advanceSourceSequence();
@@ -915,7 +1050,16 @@ function finishSourceEvent(completed: SourceDialogueSession): void {
     if (!completed.flow.complete) {
       importedNotice = `Séquence interrompue : ${completed.flow.blockedReason ?? "dialogue incomplet"}.`;
       sourceSequence = null;
+      sourceSequenceChoicePrompt = null;
       return;
+    }
+    if (sourceSequenceChoicePrompt === sourceSequence) {
+      sourceSequenceChoicePrompt = null;
+      const selected = completed.selections[0];
+      if (selected === undefined || !continueSourceSequenceChoice(sourceSequence, selected)) {
+        renderImportedView();
+        return;
+      }
     }
     if (sourcePickupDialogueSequence === sourceSequence) {
       sourcePickupDialogueSequence = null;
@@ -1199,7 +1343,8 @@ function interact(playerId: AvatarId): void {
     }
     if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
-    const target = eventInFront(sourceMapEvents(), importedAvatar, importedAssets.map.id, sourceEventState);
+    const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
+      importedAssets.tileset, importedAssets.map.id, sourceEventState);
     const targetTransfer = target === null ? null : transferForEvent(importedAssets.map, target);
     if (target !== null && targetTransfer !== null && target.page.settings.trigger === 1) {
       void followSourceTransfer(targetTransfer);
@@ -1207,12 +1352,7 @@ function interact(playerId: AvatarId): void {
     }
     if (target !== null && target.page.settings.trigger === 0) {
       const label = `Événement ${target.event.id} · ${target.event.name}`;
-      if (target.page.commands.some((command) => command.kind === "show-choices")) {
-        beginSourceEvent(target.page, importedAssets.map.id, target.event.id, label, importedAssets.mapTranslations);
-        if (sourceDialogues.current !== null) {
-          importedNotice = "Événement source démarré ; les choix déterminent maintenant la branche exécutée.";
-        }
-      } else beginSourceSequence(target, label);
+      beginSourceSequence(target, label);
     } else importedNotice = target === null ? "Aucun événement interactif devant le joueur." : "Cet événement n'est pas déclenché par interaction.";
     renderImportedView();
     return;
@@ -1261,13 +1401,14 @@ function continueHeldSourceMovement(): void {
 
 window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
+    if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
     if (sourceSequence !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
     if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
     if (viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
   }
   if (event.code === "KeyM" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); toggleSourceMenu(); return; }
-  if (sourceScenes.menuOpen) { event.preventDefault(); return; }
+  if (sourceScenes.menuOpen || sourceShop !== null) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }

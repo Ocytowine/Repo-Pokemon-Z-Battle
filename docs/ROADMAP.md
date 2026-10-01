@@ -986,6 +986,45 @@ disponible apres un rechargement de carte, comme dans RPG Maker. L'autorun EV035
 de Map009 compile ainsi ses 5 commandes sans blocage. Les identifiants d'objets
 mixtes sont egalement preserves, ce qui rend l'objet `ACapsula` d'EV040 compatible.
 
+Vingtieme noyau 9.7 implemente le 2026-09-30 : les interactions reconnaissent le
+drapeau de passage `0x80` des comptoirs RPG Maker. Le joueur peut donc parler a un
+evenement situe une case derriere un comptoir, sans assouplir les collisions. Les
+choix sont maintenant integres au lecteur de sequence : celui-ci execute le prefixe,
+attend la reponse, recompile uniquement la branche retenue puis reprend au curseur
+exact. Dialogues, etat, mouvements et effets audiovisuels restent ainsi dans leur
+ordre source.
+
+L'infirmiere de Map010 EV004 constitue le premier parcours valide de cette capacite.
+La branche Oui compile 19 commandes, 3 dialogues et 4 commandes de mouvement sans
+rendu en attente. Elle enregistre le checkpoint, soigne PV, statuts et PP, joue le
+fondu et le jingle, anime l'infirmiere puis affiche son message final. Le refus
+compile 5 commandes et laisse l'equipe intacte. Le soin reste gratuit.
+
+`SourceEventState` possede desormais un portefeuille personnel. Une ancienne
+sauvegarde migre vers les 3 000 ₽ initiaux du jeu source ; la valeur est bornee
+entre 0 et 999 999 ₽. Les commandes natives `change-money` et les conditions
+`gold` sont executees, et le solde apparait discretement dans le panneau moteur et
+l'onglet Sac.
+
+Vingt-et-unieme noyau 9.7 implemente le 2026-09-30 : les appels multilignes
+`pbPokemonMart` exposent leur stock a une boutique legere superposee a l'overworld.
+Nom et description localises, prix, quantite possedee et solde viennent des catalogues
+extraits. Chaque achat unitaire verifie fonds et capacite du sac avant une mise a jour
+atomique persistante ; fermer la boutique reprend exactement la sequence appelante.
+Les deux stocks conditionnels de Map010 EV005 utilisent cette capacite generique.
+
+Les resultats de combat alimentent maintenant le portefeuille. Une victoire de
+Dresseur applique `niveau maximal adverse × baseMoney` ; une defaite applique la
+table source dependante du nombre de badges, plafonnee au solde, et respecte le
+switch 33 `NO_MONEY_LOSS`. Les multiplicateurs lies aux objets tenus ou aux effets
+de combat seront ajoutes lorsque ces mecanismes existeront.
+
+Correction visuelle du Sac : les fiches d'objet de la boutique et de l'inventaire
+chargent desormais leur sprite source `itemNNN.png`, avec `item000.png` en repli.
+Les huit `bagPocketN.png` retrouvent leur role de selecteurs de categorie. Le Sac
+regroupe et trie les objets selon le champ `pocket` extrait, affiche le nombre de
+types par poche et conserve la poche selectionnee pendant la session.
+
 ### Comment la couverture s'etend au jeu complet
 
 Le portage suit deux niveaux complementaires. Le premier est generique : un seul

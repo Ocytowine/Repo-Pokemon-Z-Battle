@@ -39,9 +39,20 @@ describe("source event choice and condition flow", () => {
       command("condition", 0, { kind: "variable", operands: [4, 0, 3, 1] }), command("show-text", 1, { text: "VAR" }), command("condition-end", 0),
       command("condition", 0, { kind: "self-switch", operands: ["A", 0] }), command("show-text", 1, { text: "SELF" }), command("condition-end", 0),
     ]);
-    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, pokedexEnabled: false, checkpoint: null,
+    const state = { switches: { 2: true }, variables: { 4: 5 }, selfSwitches: { "3:9:A": true }, inventory: {}, money: 3000, pokedexEnabled: false, checkpoint: null,
       party: emptyParty, pendingEncounter: null };
     expect(resolveEventFlow(eventPage, [], state, 3, 9).page.commands.map((entry) => entry.text)).toEqual(["ON", "VAR", "SELF"]);
+  });
+
+  it("evaluates native source money conditions", () => {
+    const eventPage = page([
+      command("condition", 0, { kind: "gold", operands: [3000, 0] }),
+      command("show-text", 1, { text: "Assez" }), command("else", 0),
+      command("show-text", 1, { text: "Insuffisant" }), command("condition-end", 0),
+    ]);
+    expect(resolveEventFlow(eventPage, [], createSourceEventState(), 3, 1).page.commands[0]?.text).toBe("Assez");
+    expect(resolveEventFlow(eventPage, [], { ...createSourceEventState(), money: 2999 }, 3, 1)
+      .page.commands[0]?.text).toBe("Insuffisant");
   });
 
   it("selects the source movement branch from the player's direction", () => {
@@ -163,6 +174,17 @@ describe("source event choice and condition flow", () => {
         data: expect.objectContaining({ trainerType: "CRISANTO1", trainerName: "Crisanto", version: 2 }) }),
       expect.objectContaining({ kind: "end" }),
     ]);
+  });
+
+  it("turns a multiline Pokemon Mart call into a shop command", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbPokemonMart([" }),
+      command("ruby-script-continuation", 0, { source: ":POKEBALL,:POTION," }),
+      command("ruby-script-continuation", 0, { source: ":ANTIDOTE])" }),
+    ]), [], createSourceEventState(), 10, 5);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([expect.objectContaining({ kind: "open-shop",
+      data: expect.objectContaining({ stock: ["POKEBALL", "POTION", "ANTIDOTE"] }) })]);
   });
 
   it("stops before an unsupported command without exposing later dialogue", () => {

@@ -340,6 +340,59 @@ preserves. EV039 reste volontairement hors de ce lot : son arbre appelle l'evene
 commun 59 et sa fabrication de hache demandera le support generique des evenements
 communs et des conditions d'inventaire.
 
+Le premier Centre Pokemon accessible depuis Map009 est Map010. Son infirmiere
+EV004 se trouve une case derriere le comptoir : les `passages` du tileset sont
+maintenant charges et le bit `0x80` autorise une interaction a deux cases uniquement
+quand la case intermediaire est un comptoir. Cette regle est generique et ne depend
+ni de la carte ni du nom de l'evenement.
+
+Le lecteur de sequence sait maintenant s'arreter sur un choix. Il execute le
+prefixe resolu, affiche les options, ajoute la selection, recompile la branche puis
+reprend apres le dernier pas deja execute. Cela remplace l'ancien chemin qui
+affichait tous les dialogues d'une branche avant d'appliquer ses effets. Pour la
+branche Oui de l'infirmiere, l'ordre est donc : checkpoint, question, choix,
+annonce, soin, variable, fondu, jingle, animation, message final. Son audit donne
+19 commandes, 3 dialogues, 4 mouvements et aucun rendu en attente ; la branche Non
+donne 5 commandes et 2 dialogues.
+
+L'argent est stocke dans `SourceEventState.money`, avec migration a 3 000 ₽ et
+plafond a 999 999 ₽ selon les constantes du jeu. `change-money` accepte montant
+constant ou variable, et les conditions natives `gold` comparent le solde. Le
+montant est visible dans le panneau moteur et l'onglet Sac.
+
+Le vingt-et-unieme noyau porte l'economie jouable. Les appels Ruby multilignes
+`pbPokemonMart([...])` deviennent une commande `open-shop` declaree dans le
+registre et auditee comme toute transition. La boutique superpose une interface
+legere a l'overworld, affiche nom et description francais, prix, quantite possedee
+et solde, puis reprend la sequence source a sa fermeture. Un achat d'un exemplaire
+est atomique : fonds et limite de 999 objets sont verifies avant de modifier le
+portefeuille et le sac. Le stock de Map010 EV005 est ainsi directement issu des
+donnees de l'evenement ; sa variante conditionnee par le switch 326 est egalement
+prise en charge sans logique propre a la carte.
+
+Une victoire contre un Dresseur verse le niveau maximal de son equipe multiplie
+par `baseMoney` de sa classe, conformement au script source. Une defaite retire le
+niveau maximal de l'equipe du joueur multiplie par `[8,16,24,36,48,60,80,100,120]`
+selon le nombre de badges, sans depasser le solde ; les switches de badges connus
+sont lus et le switch 33 annule la perte. Les bonus Amulette, Encens Veine et Heure
+Chanceuse attendent encore les mecanismes d'objets tenus et d'effets de combat.
+
+Recette manuelle : dans Map010, parler au marchand, acheter une Potion, verifier le
+solde et le Sac, fermer avec le bouton Quitter ou Echap puis rouvrir la boutique.
+Verifier ensuite qu'une victoire contre Crisanto augmente le portefeuille et qu'une
+defaite retire le montant de debut de jeu attendu sans effacer l'inventaire.
+
+Le rendu d'inventaire respecte maintenant les deux familles d'icones du jeu source.
+Une fiche d'objet, dans la boutique comme dans le Sac, utilise son identifiant
+numerique pour charger `Graphics/Icons/itemNNN.png` ; `item000.png` sert de repli si
+un ajout propre au fangame ne possede pas de fichier numerique. Les images
+`bagPocket1.png` a `bagPocket8.png` ne representent plus arbitrairement les objets :
+elles servent d'onglets aux huit poches source (Objets, Medicaments, Poke Balls,
+CT/CS, Ingredients, Mega-Gemmes, objets de combat et objets rares). Le catalogue
+`items.json` fournit l'identifiant et la poche, et le Sac filtre puis trie les objets
+de la poche choisie. Les nombres affiches sur les onglets comptent les types
+d'objets, pas leur quantite totale.
+
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
 
@@ -353,7 +406,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 250 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 262 tests et passe avec le build.
 
 ## Commandes utiles
 

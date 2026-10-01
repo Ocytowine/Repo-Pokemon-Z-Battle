@@ -56,9 +56,9 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 5 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, pokedexEnabled: true, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, checkpoint: null, party: emptyParty, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
   });
 
@@ -73,7 +73,7 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
         wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(() => parseSourceEventState({ switches: { 2: "yes" }, variables: {}, selfSwitches: {} })).toThrow("invalide");
@@ -92,6 +92,18 @@ describe("persistent source event state", () => {
       { kind: "remove-item", text: null, indent: 0, data: { itemId: "KEY", quantity: 1 } },
     ]), 3, 1);
     expect(missing).toMatchObject({ safe: false, appliedCommands: 0, state: createSourceEventState() });
+  });
+
+  it("applies source money changes with the game limits", () => {
+    const result = applySafeStateCommands(createSourceEventState(), page(unconditional, [
+      { kind: "change-money", text: null, indent: 0, data: { parameters: [0, 0, 500] } },
+      { kind: "change-money", text: null, indent: 0, data: { parameters: [1, 0, 200] } },
+    ]), 3, 1);
+    expect(result).toMatchObject({ safe: true, appliedCommands: 2, state: { money: 3300 } });
+    const capped = applySafeStateCommands({ ...createSourceEventState(), money: 999_900 }, page(unconditional, [
+      { kind: "change-money", text: null, indent: 0, data: { parameters: [0, 0, 500] } },
+    ]), 3, 1);
+    expect(capped.state.money).toBe(999_999);
   });
 
   it("stores a validated personal checkpoint from the execution context", () => {

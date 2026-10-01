@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern, eventInFront, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection, selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
+  eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
+  parseImportedItems, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
+  selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
+  type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -112,16 +116,41 @@ describe("imported RPG Maker map", () => {
     expect(playerTouchEventInDirection([event], { x: 6, y: 4, direction: "right" }, "up")?.event.id).toBe(8);
   });
 
+  it("interacts with an event through one source counter tile", () => {
+    const counterMap = map([15, 15, 15]);
+    const counterPassages = Array.from({ length: 385 }, () => 0);
+    counterPassages[384] = 0x80;
+    const tileset: ImportedTileset = { id: 1, tilesetName: "Interior", autotileNames: [],
+      priorities: [], terrainTags: [], passages: counterPassages };
+    const event: ImportedMapEvent = { id: 4, name: "Infirmière", x: 2, y: 0, pages: [{
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "nurse", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 0 }, commands: [],
+    }] };
+    expect(eventInInteractionRange([event], { x: 0, y: 0, direction: "right" }, counterMap, tileset)?.event.id).toBe(4);
+    expect(eventInInteractionRange([event], { x: 0, y: 0, direction: "left" }, counterMap, tileset)).toBeNull();
+  });
+
   it("loads the minimal trainer data needed by scripted battles", () => {
     expect(parseImportedTrainers({ records: [{ trainerType: "CRISANTO1", name: "Crisanto", version: 2,
       pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] }] })).toEqual([
       { trainerType: "CRISANTO1", name: "Crisanto", version: 2,
         pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] },
     ]);
-    expect(parseImportedTrainerTypes({ records: [{ internalName: "CRISANTO1",
+    expect(parseImportedTrainerTypes({ records: [{ internalName: "CRISANTO1", baseMoney: 80,
       battleBgm: "Rival.ogg", victoryMe: null }] })).toEqual([
-      { internalName: "CRISANTO1", battleBgm: "Rival.ogg", victoryMe: null },
+      { internalName: "CRISANTO1", baseMoney: 80, battleBgm: "Rival.ogg", victoryMe: null },
     ]);
+  });
+
+  it("loads localized shop item data", () => {
+    const items = parseImportedItems({ records: [{ id: 10, internalName: "POTION", name: "Poción",
+      description: "Cura.", pocket: 1, price: 300 }] }, { categories: {
+      itemNames: [{ key: "10", value: "Potion" }], itemDescriptions: [{ key: "10", value: "Restaure des PV." }],
+    } });
+    expect(items.get("POTION")).toEqual({ id: 10, internalName: "POTION", name: "Potion",
+      description: "Restaure des PV.", pocket: 1, price: 300 });
   });
 
   it("animates only event pages whose stationary animation is enabled", () => {

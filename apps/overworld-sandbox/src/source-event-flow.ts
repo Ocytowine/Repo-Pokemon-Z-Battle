@@ -60,6 +60,12 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
     return integer(characterId) && characterId === -1 && integer(direction) && context !== undefined
       ? context.playerDirection === direction : null;
   }
+  if (kind === "gold") {
+    const [amount, comparison] = operands;
+    return integer(amount) && amount >= 0 && integer(comparison)
+      ? comparison === 0 ? state.money >= amount : comparison === 1 ? state.money <= amount : null
+      : null;
+  }
   return null;
 }
 

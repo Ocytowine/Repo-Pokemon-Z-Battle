@@ -110,13 +110,15 @@ describe("source battle controller", () => {
     const completed = vi.fn();
     expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
       pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
-    { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg" }, completed)).toBe(true);
+    { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60 }, completed)).toBe(true);
     expect(controller.current?.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 2 });
     expect(visuals.startBattle).toHaveBeenCalledWith(controller.current,
-      { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg" });
+      { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60 });
+    expect(eventState.money).toBe(3000);
     for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
     expect(controller.active).toBe(false);
     expect(completed).toHaveBeenCalledWith(true);
+    expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
   });
 });

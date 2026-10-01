@@ -16,6 +16,7 @@ describe("source command registry", () => {
   it.each([
     ["show-text", "dialogue", "rendered", false],
     ["set-switches", "state", "executed", true],
+    ["change-money", "state", "executed", true],
     ["move-route", "movement", "rendered", false],
     ["screen-tone", "audiovisual", "rendered", false],
     ["scroll-map", "audiovisual", "rendered", false],
@@ -25,6 +26,7 @@ describe("source command registry", () => {
     ["panorama-motion", "audiovisual", "rendered", false],
     ["weather", "audiovisual", "rendered", false],
     ["request-trainer-battle", "transition", "executed", false],
+    ["open-shop", "transition", "rendered", false],
     ["set-pokedex-enabled", "state", "executed", true],
     ["erase-event", "metadata", "absorbed", false],
     ["text-options", "metadata", "rendered", false],
