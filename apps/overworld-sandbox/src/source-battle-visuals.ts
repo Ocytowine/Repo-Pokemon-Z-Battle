@@ -136,9 +136,14 @@ export class SourceBattleVisuals {
   #audioSession = 0;
   #victoryMusicPath: string | null = null;
   #playerTrainerImage: HTMLImageElement | null = null;
+  #opponentTrainerImage: HTMLImageElement | null = null;
 
   setPlayerTrainerImage(image: HTMLImageElement | null): void {
     this.#playerTrainerImage = image;
+  }
+
+  setOpponentTrainerImage(image: HTMLImageElement | null): void {
+    this.#opponentTrainerImage = image;
   }
 
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
@@ -275,6 +280,12 @@ export class SourceBattleVisuals {
       } else if (event.type === "statusApplied") {
         this.message(`${names[event.target]} subit ${event.status}.`);
         await delay(280);
+      } else if (event.type === "pokemonSwitched") {
+        const sprite = document.getElementById(`source-${event.side}-sprite`);
+        this.message(`${event.from} revient. ${event.to}, en avant !`);
+        const animation = sprite?.animate([{ opacity: 1 }, { opacity: 0 }, { opacity: 1 }],
+          { duration: 520, easing: "ease-in-out" });
+        await animation?.finished.catch(() => undefined);
       }
     }
   }
@@ -352,11 +363,13 @@ export class SourceBattleVisuals {
     const stage = document.getElementById("source-battle-stage");
     const sprite = document.getElementById("source-opponent-sprite");
     if (trainer === null || stage === null || sprite === null) return;
+    const customTrainer = this.#opponentTrainerImage;
     const path = `Graphics/Characters/trainer${String(trainerData.id).padStart(3, "0")}.png`;
-    trainer.src = sourceUrl(path);
+    trainer.src = customTrainer?.src ?? sourceUrl(path);
     try { await trainer.decode(); } catch { stage.classList.remove("opponent-intro"); return; }
     if (session !== this.#audioSession) return;
-    this.placeTrainer(trainer, "opponent", trainer.naturalWidth, trainer.naturalHeight);
+    this.placeTrainer(trainer, "opponent", customTrainer?.naturalWidth ?? trainer.naturalWidth,
+      customTrainer?.naturalHeight ?? trainer.naturalHeight);
     trainer.hidden = false;
     this.message(`${trainerData.name} vous défie !`);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

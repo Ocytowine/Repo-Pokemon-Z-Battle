@@ -13,9 +13,9 @@ function profile(displayName, visualPreset) {
     outfit: "kalos-default", colors: { primary: "navy", secondary: "gold", accent: "red" } } };
 }
 
-async function ticket(path, playerProfile) {
+async function ticket(path, playerProfile, sourceWorld) {
   const response = await fetch(new URL(path, baseUrl), { method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ profile: playerProfile }) });
+    body: JSON.stringify({ profile: playerProfile, ...(sourceWorld === undefined ? {} : { sourceWorld }) }) });
   const body = await response.json();
   if (!response.ok) throw new Error(`HTTP ${response.status} sur ${path}: ${JSON.stringify(body)}`);
   assert(typeof body.roomCode === "string", "Ticket sans code de room.");
@@ -338,6 +338,61 @@ const syncCompleted = await coopHost.next(
 assert(syncCompleted.state.session.flags.includes("TWIN_STONE_ACTIVE"), "L'effet SYNCED n'a pas été appliqué.");
 await Promise.all([coopHost.close(), coopPeer.close()]);
 
+const sourceWorld = {
+  mapId: 3, width: 3, height: 3, passages: "fffffffff", blockedPoints: [],
+  host: { x: 1, y: 1, direction: "down" }, follower: null,
+  story: { switches: { "67": true }, variables: {}, selfSwitches: {} },
+};
+const sourceHostTicket = await ticket("/api/rooms", profile("Source Hote", "legacy-0"), sourceWorld);
+const sourceGuestTicket = await ticket(`/api/rooms/${sourceHostTicket.roomCode}/join`,
+  profile("Source Invite", "legacy-5"));
+const sourceHost = new SocketInbox(sourceHostTicket);
+const sourceGuest = new SocketInbox(sourceGuestTicket);
+await Promise.all([sourceHost.opened(), sourceGuest.opened()]);
+const [sourceHostWelcome, sourceGuestWelcome] = await Promise.all([
+  sourceHost.next((message) => message.type === "welcome", "welcome hote monde source"),
+  sourceGuest.next((message) => message.type === "welcome", "welcome invite monde source"),
+]);
+assert(sourceHostWelcome.snapshot.sourceWorld?.presence.opponent === "shared", "L'invite ne rejoint pas la carte source.");
+assert(sourceGuestWelcome.snapshot.players.find((player) => player.side === "player")?.profile.profile.displayName
+  === "Source Hote", "Le profil hote a ete remplace par celui de l'invite.");
+assert(sourceGuestWelcome.snapshot.players.find((player) => player.side === "opponent")?.profile.profile.displayName
+  === "Source Invite", "Le profil invite n'est pas distinct.");
+
+sourceGuest.send({ type: "setSourcePresence", requestId: "source-away", attached: false, avatar: null });
+const [sourceAwayHost, sourceAwayGuest] = await Promise.all([
+  sourceHost.next((message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.presence.opponent === "away",
+    "invite absent chez l'hote"),
+  sourceGuest.next((message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.presence.opponent === "away",
+    "excursion confirmee chez l'invite"),
+]);
+assert(sourceAwayHost.snapshot.revision === sourceAwayGuest.snapshot.revision, "La presence source diverge entre les clients.");
+
+sourceHost.send({ type: "moveAvatar", requestId: "source-host-through-away", direction: "down", sequence: 1 });
+const sourceHostMove = await sourceHost.next(
+  (message) => message.type === "sourceWorldUpdated" && message.side === "player" && message.sequence === 1,
+  "passage de l'hote sur l'ancienne case invite",
+);
+assert(sourceHostMove.state.avatars.player.x === 1 && sourceHostMove.state.avatars.player.y === 2,
+  "L'invite absent bloque encore l'hote.");
+sourceGuest.send({ type: "moveAvatar", requestId: "source-away-move", direction: "left", sequence: 1 });
+await sourceGuest.next(
+  (message) => message.type === "error" && message.requestId === "source-away-move" && message.code === "INVALID_PHASE",
+  "refus d'un mouvement partage pendant l'excursion",
+);
+
+sourceGuest.send({ type: "setSourcePresence", requestId: "source-return", attached: true,
+  avatar: { x: 0, y: 2, direction: "right" } });
+const sourceReturn = await sourceHost.next(
+  (message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.presence.opponent === "shared",
+  "retour invite sur la carte source",
+);
+assert(sourceReturn.snapshot.sourceWorld.avatars.opponent.x === 0
+  && sourceReturn.snapshot.sourceWorld.avatars.opponent.y === 2, "La position de retour invite est incorrecte.");
+assert(sourceReturn.snapshot.players.find((player) => player.side === "player")?.profile.profile.displayName
+  === "Source Hote", "Le retour de l'invite a modifie le profil hote.");
+await Promise.all([sourceHost.close(), sourceGuest.close()]);
+
 process.stdout.write(`${JSON.stringify({
   ok: true,
   roomCode: firstTicket.roomCode,
@@ -359,4 +414,7 @@ process.stdout.write(`${JSON.stringify({
   sharedConflictTested: true,
   syncedReconnectTested: true,
   coopStateRestored: true,
+  sourceGuestExcursionTested: true,
+  sourceGuestReturnTested: true,
+  distinctSourceProfilesTested: true,
 }, null, 2)}\n`);

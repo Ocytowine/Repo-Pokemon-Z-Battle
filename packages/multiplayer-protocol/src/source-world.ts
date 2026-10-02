@@ -9,6 +9,8 @@ export interface SourceFollowerSnapshot extends SourceAvatarSnapshot {
   readonly species: string;
 }
 
+export type SourcePlayerPresence = "shared" | "away";
+
 export interface SourceStorySnapshot {
   readonly switches: Readonly<Record<string, boolean>>;
   readonly variables: Readonly<Record<string, number>>;
@@ -30,6 +32,8 @@ export interface SourceWorldHostState {
 export interface SourceWorldSnapshot extends Omit<SourceWorldHostState, "host" | "follower"> {
   readonly avatars: Readonly<Record<BattleSide, SourceAvatarSnapshot>>;
   readonly followers: Readonly<Partial<Record<BattleSide, SourceFollowerSnapshot>>>;
+  /** Un joueur `away` poursuit sa partie locale et ne collisionne plus avec la carte partagee. */
+  readonly presence: Readonly<Record<BattleSide, SourcePlayerPresence>>;
 }
 
 const DIRECTIONS = new Set<Direction>(["up", "down", "left", "right"]);
@@ -129,5 +133,6 @@ export function sourceWorldSnapshot(hostState: SourceWorldHostState,
   return { mapId: hostState.mapId, width: hostState.width, height: hostState.height,
     passages: hostState.passages, blockedPoints: hostState.blockedPoints, story: hostState.story,
     avatars: { player: hostState.host, opponent: opponent ?? hostState.host },
-    followers: hostState.follower === null ? {} : { player: hostState.follower } };
+    followers: hostState.follower === null ? {} : { player: hostState.follower },
+    presence: { player: "shared", opponent: "shared" } };
 }

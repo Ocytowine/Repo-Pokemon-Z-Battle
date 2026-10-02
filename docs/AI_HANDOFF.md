@@ -620,6 +620,73 @@ sauvegarde restent exclues du protocole. Le suiveur de l'autre place est un obst
 valide a la fois par le client et par la room ; son propre suiveur ne bloque pas le
 joueur qu'il accompagne.
 
+Deuxieme lot Coop du 2026-10-02 : l'invite peut quitter seul la carte narrative de
+l'hote par un transfert source. La room conserve desormais une presence explicite
+`shared`/`away` : pendant une excursion personnelle, l'avatar et son suiveur ne sont
+plus rendus et ne bloquent plus l'hote, tandis que l'invite parcourt ses cartes avec
+sa propre sauvegarde. Revenir par un transfert vers la carte actuellement partagee
+demande au serveur de valider la position d'arrivee avant de rendre l'avatar visible.
+
+Sur la carte partagee, l'invite peut aussi lancer les evenements dont la structure
+contient `heal-party`, ainsi que les transferts. Le choix, les dialogues et les
+effets visuels sont joues localement ; checkpoint, PV, statuts et PP modifient
+uniquement son `SourceEventState`. Les autres evenements restent sous l'autorite
+narrative de l'hote, et aucun autorun ni evenement parallele de l'hote n'est execute
+localement par l'invite. Hors de la carte partagee, le parcours redevient entierement
+personnel, rencontres comprises.
+
+Correction du 2026-10-02 : lorsqu'un evenement personnel de l'invite ouvre un
+dialogue (notamment l'infirmiere), ce dialogue local a priorite visuelle sur la
+scene de l'hote observee. Auparavant, une scene reseau vide masquait le texte local
+alors que le controleur attendait toujours sa validation, laissant `world-input`
+verrouille et donnant l'impression d'un freeze. Une fois le texte ou le choix
+termine, la sequence reprend, applique le soin local puis libere les controles.
+
+La personnalisation active possede maintenant une surcharge en `sessionStorage`.
+Deux onglets de la meme origine peuvent donc publier et conserver des profils
+distincts dans une room ; la copie persistante en `localStorage` reste le profil par
+defaut des futurs onglets. Un test couvre explicitement cette isolation.
+
+Recette manuelle : avec deux onglets, appliquer deux profils differents, creer puis
+rejoindre une room. Depuis l'invite, utiliser une sortie de carte et verifier sa
+disparition chez l'hote, rejoindre un Centre Pokemon, faire soigner une equipe
+blessee, puis revenir sur la carte courante de l'hote. Verifier que l'equipe de
+l'hote et les deux apparences n'ont pas change.
+
+## Combat direct entre joueurs
+
+Jalon du 2026-10-02 : sur la carte source partagee, un joueur place face a l'autre
+peut utiliser l'interaction normale pour lui envoyer un defi. La room verifie la
+presence, la connexion, l'adjacence et l'orientation avant de publier la demande.
+Le destinataire dispose d'un panneau Accepter/Refuser ; l'emetteur peut annuler.
+Les deplacements et les autres interactions sont verrouilles tant que la demande
+est ouverte.
+
+L'acceptation transmet une copie validee de chaque equipe et cree un
+`TeamBattleState` autoritaire. Chaque navigateur ne soumet ensuite que ses propres
+intentions : attaque, changement volontaire ou remplacement apres K.O. Le serveur
+resout les tours avec son RNG, diffuse l'etat canonique et conserve le combat fini
+jusqu'au retour sur la carte. PV, statuts, PP et Pokemon actif du resultat sont
+alors recopies dans la partie locale de chaque joueur ; aucune equipe n'est publiee
+dans le profil cosmetique persistant.
+
+Correction de presentation du meme jalon : un duel reseau passe desormais par le
+meme pipeline visuel que les combats source locaux. `startBattle` joue l'entree des
+deux Dresseurs, le lancer de Ball, les cris et la musique ; chaque `turnResolved`
+est serialise vers `playTurn`, qui rejoue les animations de capacite, impacts,
+statuts et K.O. avant d'afficher l'etat autoritaire suivant. Les changements jouent
+aussi une transition. Pour l'invite, equipes et evenements sont presentes en miroir
+afin que son propre Dresseur et son Pokemon restent du cote joueur. Les images
+`battleBack` et `battleFront` proviennent des deux profils personnalises charges.
+Les boutons sont verrouilles pendant toute animation reseau.
+
+Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
+avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
+l'acceptation et le refus, puis jouer un combat complet depuis les deux onglets,
+avec au moins un changement et un remplacement force. Verifier enfin que les deux
+equipes conservent leurs PV/PP au retour sur la carte et qu'un joueur sans Pokemon
+conscient ne peut ni lancer ni accepter un defi.
+
 ## Strategie de tests
 
 Ne pas creer un gros test propre a chaque cinematique. Privilegier :
@@ -630,7 +697,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 309 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 317 tests et passe avec le build.
 
 ## Commandes utiles
 

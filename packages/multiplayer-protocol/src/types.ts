@@ -1,7 +1,7 @@
-import type { BattleSide, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleSide, BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
-import type { SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
+import type { SourceAvatarSnapshot, SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 
 export const PROTOCOL_VERSION = 8 as const;
@@ -17,12 +17,18 @@ export interface RoomPlayerSnapshot {
   readonly profile: NetworkPlayerProfile;
 }
 
+export interface PlayerDuelChallenge {
+  readonly challenger: BattleSide;
+  readonly challenged: BattleSide;
+}
+
 export interface RoomSnapshot {
   readonly revision: number;
   readonly roomCode: string;
   readonly phase: RoomPhase;
   readonly players: readonly RoomPlayerSnapshot[];
-  readonly battle: { readonly id: string; readonly state: TeamBattleState } | null;
+  readonly battle: { readonly id: string; readonly state: TeamBattleState; readonly duel: boolean } | null;
+  readonly duelChallenge: PlayerDuelChallenge | null;
   readonly world: OverworldState;
   readonly sourceWorld: SourceWorldSnapshot | null;
   readonly sourceScene: SourceSceneSnapshot | null;
@@ -54,8 +60,14 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "requestSnapshot" })
   | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number })
   | (RequestedMessage & { readonly type: "interact" })
+  | (RequestedMessage & { readonly type: "challengePlayer"; readonly team: BattleTeam })
+  | (RequestedMessage & { readonly type: "respondPlayerChallenge"; readonly accept: boolean;
+      readonly team: BattleTeam | null })
+  | (RequestedMessage & { readonly type: "leaveBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
+  | (RequestedMessage & { readonly type: "setSourcePresence"; readonly attached: boolean;
+      readonly avatar: SourceAvatarSnapshot | null })
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });

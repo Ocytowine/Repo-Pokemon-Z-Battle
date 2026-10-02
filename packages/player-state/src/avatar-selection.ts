@@ -3,6 +3,8 @@ import { createDefaultPlayerProfile, parsePlayerProfile, type PlayerProfile } fr
 export const PLAYER_AVATAR_SELECTION_SCHEMA_VERSION = 1 as const;
 export const PLAYER_AVATAR_DRAFT_STORAGE_KEY = "pokemon-z-battle.avatar-lab-profile.v1";
 export const PLAYER_AVATAR_ACTIVE_STORAGE_KEY = "pokemon-z-battle.active-player-profile.v1";
+/** Surcharge propre a l'onglet, utile lorsque deux joueurs partagent la meme origine de navigateur. */
+export const PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY = "pokemon-z-battle.session-player-profile.v1";
 
 export interface PlayerAvatarSelection {
   readonly schemaVersion: typeof PLAYER_AVATAR_SELECTION_SCHEMA_VERSION;
@@ -37,4 +39,20 @@ export function loadPlayerAvatarSelection(storage: { getItem(key: string): strin
 export function persistPlayerAvatarSelection(storage: { setItem(key: string, value: string): void }, key: string,
   selection: PlayerAvatarSelection): void {
   storage.setItem(key, JSON.stringify(parsePlayerAvatarSelection(selection)));
+}
+
+export function loadSessionPlayerAvatarSelection(
+  session: { getItem(key: string): string | null; removeItem(key: string): void },
+  persistent: { getItem(key: string): string | null; removeItem(key: string): void },
+): PlayerAvatarSelection {
+  return loadPlayerAvatarSelection(session, PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
+    loadPlayerAvatarSelection(persistent, PLAYER_AVATAR_ACTIVE_STORAGE_KEY));
+}
+
+export function persistSessionPlayerAvatarSelection(
+  session: { setItem(key: string, value: string): void },
+  persistent: { setItem(key: string, value: string): void }, selection: PlayerAvatarSelection,
+): void {
+  persistPlayerAvatarSelection(persistent, PLAYER_AVATAR_ACTIVE_STORAGE_KEY, selection);
+  persistPlayerAvatarSelection(session, PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY, selection);
 }

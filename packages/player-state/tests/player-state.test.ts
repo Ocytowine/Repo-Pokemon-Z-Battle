@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { addPokemonToParty, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
   createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerAvatarSelection,
-  parsePlayerParty, parsePlayerProfile, playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog,
+  loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerProfile, persistSessionPlayerAvatarSelection,
+  playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
@@ -30,6 +31,27 @@ describe("player profile", () => {
     const selection = createDefaultPlayerAvatarSelection();
     expect(parsePlayerAvatarSelection(selection)).toEqual(selection);
     expect(() => parsePlayerAvatarSelection({ ...selection, avatarId: "../../trainer" })).toThrow("avatar");
+  });
+
+  it("keeps active profiles isolated between tabs sharing persistent storage", () => {
+    const persistentValues = new Map<string, string>();
+    const firstSessionValues = new Map<string, string>();
+    const secondSessionValues = new Map<string, string>();
+    const storage = (values: Map<string, string>) => ({
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    });
+    const first = { ...createDefaultPlayerAvatarSelection(),
+      profile: { ...createDefaultPlayerProfile(), displayName: "Hote" } };
+    const second = { ...createDefaultPlayerAvatarSelection(), avatarId: "legacy-1",
+      profile: { ...createDefaultPlayerProfile(), displayName: "Invite" } };
+
+    persistSessionPlayerAvatarSelection(storage(firstSessionValues), storage(persistentValues), first);
+    persistSessionPlayerAvatarSelection(storage(secondSessionValues), storage(persistentValues), second);
+
+    expect(loadSessionPlayerAvatarSelection(storage(firstSessionValues), storage(persistentValues))).toEqual(first);
+    expect(loadSessionPlayerAvatarSelection(storage(secondSessionValues), storage(persistentValues))).toEqual(second);
   });
 });
 

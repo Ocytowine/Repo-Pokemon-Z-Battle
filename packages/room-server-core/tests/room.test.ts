@@ -62,6 +62,41 @@ function ready(requestId: string) {
 }
 
 describe("authoritative battle room", () => {
+  it("starts a player duel only when facing the other avatar and resolves both players' actions", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const playerTeam = initialBattle().teams.player;
+    const originalOpponentTeam = initialBattle().teams.opponent;
+    const opponentTeam = { ...originalOpponentTeam,
+      members: originalOpponentTeam.members.map((member) => ({ ...member, hp: 1 })) };
+
+    const challenged = room.receive("alice", { type: "challengePlayer", version: 8,
+      requestId: "duel-challenge", team: playerTeam });
+    expect(challenged.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().duelChallenge).toEqual({ challenger: "player", challenged: "opponent" });
+
+    room.receive("bob", { type: "respondPlayerChallenge", version: 8,
+      requestId: "duel-accept", accept: true, team: opponentTeam });
+    const battle = room.snapshot().battle;
+    expect(battle).toMatchObject({ duel: true, state: { status: "active",
+      teams: { player: { members: [{ id: "player" }] }, opponent: { members: [{ id: "opponent" }] } } } });
+    expect(room.snapshot().duelChallenge).toBeNull();
+    expect(battle).not.toBeNull();
+    if (battle === null) return;
+
+    expect(room.receive("alice", { type: "submitAction", version: 8, requestId: "duel-turn-player",
+      battleId: battle.id, turn: 1, action: { kind: "move", moveIndex: 0 } })).toHaveLength(1);
+    const resolved = room.receive("bob", { type: "submitAction", version: 8, requestId: "duel-turn-opponent",
+      battleId: battle.id, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    expect(resolved.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
+    expect(room.snapshot().battle?.state.status).toBe("finished");
+    const left = room.receive("alice", { type: "leaveBattle", version: 8,
+      requestId: "duel-leave", battleId: battle.id });
+    expect(left.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toBeNull();
+  });
+
   it("hosts the source map, validates both movements and reserves story publication for the host", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");
@@ -101,6 +136,29 @@ describe("authoritative battle room", () => {
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
       worldWithSource, persisted);
     expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
+  });
+
+  it("lets the guest leave and safely rejoin the shared source map", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+
+    const away = room.receive("bob", { type: "setSourcePresence", version: 8,
+      requestId: "guest-away", attached: false, avatar: null });
+    expect(away.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().sourceWorld?.presence.opponent).toBe("away");
+    const hostStep = room.receive("alice", { type: "moveAvatar", version: 8,
+      requestId: "host-through-guest", direction: "down", sequence: 1 });
+    expect(hostStep[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { player: { x: 1, y: 2 } } } });
+    expect(room.receive("bob", { type: "moveAvatar", version: 8, requestId: "away-move",
+      direction: "left", sequence: 1 })[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE" });
+
+    const joined = room.receive("bob", { type: "setSourcePresence", version: 8,
+      requestId: "guest-return", attached: true, avatar: { x: 0, y: 2, direction: "right" } });
+    expect(joined.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().sourceWorld).toMatchObject({ presence: { opponent: "shared" },
+      avatars: { opponent: { x: 0, y: 2, direction: "right" } } });
   });
 
   it("publishes and persists a host-only read-only source scene", () => {

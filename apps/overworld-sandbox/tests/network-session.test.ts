@@ -53,6 +53,10 @@ function callbacks(): NetworkSessionCallbacks {
     onPlayersChanged: vi.fn(),
     onSourceWorldState: vi.fn(),
     onSourceSceneState: vi.fn(),
+    onBattleStarted: vi.fn(),
+    onBattleTurnResolved: vi.fn(),
+    onBattleReplacementResolved: vi.fn(),
+    onBattleClosed: vi.fn(),
     onRender: vi.fn(),
   };
 }

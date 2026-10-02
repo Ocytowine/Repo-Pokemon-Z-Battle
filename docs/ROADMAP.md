@@ -1186,6 +1186,18 @@ snapshots identiques au lieu d'etre rechargees, et les suiveurs distants partici
 aux collisions autoritaires. Le rendu distant recoit explicitement son index de
 frame au niveau `pattern`, aussi bien pour le joueur que pour son suiveur.
 
+Douzieme jalon implemente le 2026-10-02 : une presence `shared`/`away` permet a
+l'invite de quitter seul la carte de l'hote par les transferts source. En excursion,
+il poursuit ses cartes, rencontres et interactions avec sa sauvegarde personnelle ;
+son avatar et son suiveur disparaissent des collisions et du rendu de l'hote. Un
+transfert vers la carte actuellement partagee le rattache a une position controlee
+par la room. Sur cette carte, les transferts et les evenements contenant le soin
+generique `heal-party` sont les seules sequences personnelles autorisees : le Centre
+Pokemon restaure ainsi l'equipe et le checkpoint de l'invite sans muter l'histoire
+de l'hote. Les profils actifs utilisent en plus une surcharge propre a l'onglet,
+afin que deux participants testes sur la meme origine gardent des apparences
+distinctes.
+
 Correction d'interpretation le 2026-10-01 : les `trbackNNN_3`, `_4`, `_5` et `_7`
 correspondent a des variantes narratives ou de tenue. Le moteur source ne les lit
 pas comme une sequence de lancer : il n'anime horizontalement un Dresseur que si

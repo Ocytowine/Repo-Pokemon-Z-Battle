@@ -2,6 +2,7 @@ import { MAX_CLIENT_MESSAGE_BYTES, PROTOCOL_VERSION, type ClientMessage } from "
 import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
+import type { BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
 const ROOM_CODE = /^[A-Z2-9]{6}$/u;
@@ -31,6 +32,13 @@ function isSafePositiveInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) > 0;
 }
 
+function isSourceAvatar(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["x", "y", "direction"])
+    && Number.isSafeInteger(value.x) && Number(value.x) >= 0
+    && Number.isSafeInteger(value.y) && Number(value.y) >= 0
+    && ["up", "down", "left", "right"].includes(String(value.direction));
+}
+
 function isBattleAction(value: unknown): boolean {
   const move = isRecord(value)
     && hasExactKeys(value, ["kind", "moveIndex"])
@@ -45,6 +53,71 @@ function isBattleAction(value: unknown): boolean {
     && Number(value.teamIndex) >= 0
     && Number(value.teamIndex) <= 5;
   return move || switching;
+}
+
+const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
+const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
+const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020",
+  "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
+const BATTLE_ABILITIES = new Set(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW",
+  "PUREPOWER", "QUICKFEET", "SHIELDDUST", "SIMPLE", "STATIC", "TORRENT"]);
+const HELD_ITEMS = new Set(["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"]);
+
+function boundedString(value: unknown, max = 64): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= max;
+}
+
+function safeInteger(value: unknown, minimum: number, maximum: number): value is number {
+  return Number.isSafeInteger(value) && Number(value) >= minimum && Number(value) <= maximum;
+}
+
+function isMajorStatus(value: unknown): boolean {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.kind !== "string") return false;
+  if (value.kind === "sleep") return hasExactKeys(value, ["kind", "turnsRemaining"])
+    && safeInteger(value.turnsRemaining, 0, 10);
+  if (value.kind === "poison") return hasExactKeys(value, ["kind", "toxicCounter"])
+    && (value.toxicCounter === null || safeInteger(value.toxicCounter, 0, 20));
+  return ["burn", "paralysis", "frozen", "caduco", "hemorrhage"].includes(value.kind)
+    && hasExactKeys(value, ["kind"]);
+}
+
+function isBattleTeam(value: unknown): value is BattleTeam {
+  if (!isRecord(value) || !hasExactKeys(value, ["activeIndex", "members"])
+    || !Array.isArray(value.members) || value.members.length < 1 || value.members.length > 6
+    || !safeInteger(value.activeIndex, 0, value.members.length - 1)) return false;
+  const valid = value.members.every((member) => {
+    if (!isRecord(member) || !hasExactKeys(member,
+      ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"])
+      || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
+      || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
+      || member.types.length > 2 || !member.types.every((type) => boundedString(type))
+      || !isRecord(member.stats) || !isRecord(member.stages)
+      || !Array.isArray(member.moves) || member.moves.length < 1 || member.moves.length > 4) return false;
+    const stats = member.stats;
+    const stages = member.stages;
+    if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
+      || !hasExactKeys(stages, BATTLE_STAGES) || !BATTLE_STAGES.every((stat) => safeInteger(stages[stat], -6, 6))
+      || !safeInteger(member.hp, 0, Number(stats.maxHp)) || !isMajorStatus(member.majorStatus)
+      || member.ability !== null && !BATTLE_ABILITIES.has(String(member.ability))
+      || member.heldItem !== null && !HELD_ITEMS.has(String(member.heldItem))
+    ) return false;
+    return member.moves.every((slot) => {
+      if (!isRecord(slot) || !hasExactKeys(slot, ["move", "pp"]) || !isRecord(slot.move)) return false;
+      const move = slot.move;
+      return ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance"]
+        .every((key) => key in move)
+        && Object.keys(move).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags"].includes(key))
+        && safeInteger(move.id, 0, 999_999) && boundedString(move.internalName) && boundedString(move.name, 128)
+        && MOVE_FUNCTIONS.has(String(move.functionCode)) && safeInteger(move.power, 0, 999)
+        && boundedString(move.type) && ["Physical", "Special", "Status"].includes(String(move.category))
+        && safeInteger(move.accuracy, 0, 100) && safeInteger(move.pp, 1, 99)
+        && safeInteger(move.priority, -10, 10) && safeInteger(move.effectChance, 0, 100)
+        && (move.flags === undefined || typeof move.flags === "string")
+        && safeInteger(slot.pp, 0, Number(move.pp));
+    });
+  });
+  return valid && Number((value.members[value.activeIndex] as Record<string, unknown>).hp) > 0;
 }
 
 function invalid(reason: string): never {
@@ -131,6 +204,29 @@ export function parseClientMessage(payload: string): ClientMessage {
       if (!hasExactKeys(value, ["type", "version", "requestId", "species"]) || !isIdentifier(value.requestId)
         || value.species !== null && (typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species))) {
         return invalid("setSourceFollower mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "challengePlayer":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "team"]) || !isIdentifier(value.requestId)
+        || !isBattleTeam(value.team)) return invalid("challengePlayer mal forme");
+      return value as unknown as ClientMessage;
+    case "respondPlayerChallenge":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "accept", "team"])
+        || !isIdentifier(value.requestId) || typeof value.accept !== "boolean"
+        || value.accept && !isBattleTeam(value.team) || !value.accept && value.team !== null) {
+        return invalid("respondPlayerChallenge mal forme");
+      }
+      return value as unknown as ClientMessage;
+    case "leaveBattle":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) return invalid("leaveBattle mal forme");
+      return value as unknown as ClientMessage;
+    case "setSourcePresence":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "attached", "avatar"])
+        || !isIdentifier(value.requestId) || typeof value.attached !== "boolean"
+        || value.attached && !isSourceAvatar(value.avatar)
+        || !value.attached && value.avatar !== null) {
+        return invalid("setSourcePresence mal forme");
       }
       return value as unknown as ClientMessage;
     case "setSourceScene":

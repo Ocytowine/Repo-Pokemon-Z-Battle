@@ -1,5 +1,7 @@
-import { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePlayerProfile, persistPlayerAvatarSelection,
-  PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY, type PlayerAvatarSelection,
+import { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, loadSessionPlayerAvatarSelection,
+  parsePlayerProfile, persistPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
+  PLAYER_AVATAR_DRAFT_STORAGE_KEY,
+  type PlayerAvatarSelection,
   type PlayerProfile } from "@pokemon-z-battle/player-state";
 import { AVATAR_PALETTE_COLORS, loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
 
@@ -18,8 +20,9 @@ type StoredLabState = PlayerAvatarSelection;
 
 function sourceUrl(path: string): string { return `/__pokemon-z/source/${path.split("/").map(encodeURIComponent).join("/")}`; }
 function freshState(): StoredLabState { return createDefaultPlayerAvatarSelection(); }
-function loadState(storage: Pick<Storage, "getItem" | "removeItem">, key = AVATAR_LAB_STORAGE_KEY): StoredLabState {
-  return loadPlayerAvatarSelection(storage, key);
+function loadState(storage: Pick<Storage, "getItem" | "removeItem">, key = AVATAR_LAB_STORAGE_KEY,
+  fallback = freshState()): StoredLabState {
+  return loadPlayerAvatarSelection(storage, key, fallback);
 }
 
 export class AvatarLabView {
@@ -27,7 +30,7 @@ export class AvatarLabView {
   private report: AuditReport | null = null;
   private loadError: string | null = null;
   private state = loadState(localStorage);
-  private activeState = loadState(localStorage, PLAYER_AVATAR_ACTIVE_STORAGE_KEY);
+  private activeState = loadSessionPlayerAvatarSelection(sessionStorage, localStorage);
   private overworldAnimationSession = 0;
 
   public constructor(private readonly root: HTMLElement,
@@ -91,7 +94,8 @@ export class AvatarLabView {
     const apply = this.root.querySelector<HTMLButtonElement>(".embedded-avatar-apply");
     if (apply !== null) { apply.disabled = JSON.stringify(this.state) === JSON.stringify(this.activeState);
       apply.addEventListener("click", () => { apply.disabled = true; apply.textContent = "Application…";
-        persistPlayerAvatarSelection(localStorage, PLAYER_AVATAR_ACTIVE_STORAGE_KEY, this.state); this.activeState = this.state;
+        persistSessionPlayerAvatarSelection(sessionStorage, localStorage, this.state);
+        this.activeState = this.state;
         void Promise.resolve(this.onApply(this.state)).then(() => { apply.textContent = "Profil appliqué"; })
           .catch(() => { apply.disabled = false; apply.textContent = "Réessayer"; }); }); }
     this.root.querySelector<HTMLButtonElement>(".embedded-avatar-return")?.addEventListener("click", this.onClose);

@@ -13,6 +13,13 @@ import {
   type ClientMessage,
 } from "../src/index.js";
 import { createDefaultPlayerProfile } from "@pokemon-z-battle/player-state";
+import { MINIMAL_MOVE_CATALOG } from "@pokemon-z-battle/battle-engine";
+
+const duelTeam = { activeIndex: 0, members: [{ id: "p1", species: "EEVEE", name: "Eevee", level: 10,
+  types: ["NORMAL"], stats: { maxHp: 30, attack: 20, defense: 20, specialAttack: 20, specialDefense: 20, speed: 20 },
+  stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
+  hp: 30, majorStatus: null, ability: null, heldItem: null,
+  moves: [{ move: MINIMAL_MOVE_CATALOG.TACKLE, pp: MINIMAL_MOVE_CATALOG.TACKLE.pp }] }] };
 
 describe("multiplayer protocol", () => {
   it("defines a strict public cosmetic profile without gameplay state", () => {
@@ -67,6 +74,24 @@ describe("multiplayer protocol", () => {
       .toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
     expect(() => parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f1","species":"../secret"}'))
       .toThrow("setSourceFollower mal formé");
+  });
+
+  it("validates player challenges and never accepts a fainted active Pokémon", () => {
+    const challenge = { type: "challengePlayer", version: 8, requestId: "duel-1", team: duelTeam };
+    expect(parseClientMessage(JSON.stringify(challenge))).toMatchObject({ type: "challengePlayer", team: { activeIndex: 0 } });
+    expect(parseClientMessage(JSON.stringify({ type: "respondPlayerChallenge", version: 8,
+      requestId: "duel-2", accept: true, team: duelTeam }))).toMatchObject({ type: "respondPlayerChallenge", accept: true });
+    expect(() => parseClientMessage(JSON.stringify({ ...challenge,
+      team: { ...duelTeam, members: [{ ...duelTeam.members[0], hp: 0 }] } }))).toThrow("challengePlayer mal forme");
+  });
+
+  it("validates source-map presence changes", () => {
+    expect(parseClientMessage('{"type":"setSourcePresence","version":8,"requestId":"p1","attached":false,"avatar":null}'))
+      .toMatchObject({ type: "setSourcePresence", attached: false });
+    expect(parseClientMessage('{"type":"setSourcePresence","version":8,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"}}'))
+      .toMatchObject({ type: "setSourcePresence", attached: true, avatar: { x: 1, y: 2 } });
+    expect(() => parseClientMessage('{"type":"setSourcePresence","version":8,"requestId":"p3","attached":true,"avatar":null}'))
+      .toThrow("setSourcePresence mal forme");
   });
 
   it("validates a cosmetic profile update without gameplay data", () => {
