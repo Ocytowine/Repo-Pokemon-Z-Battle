@@ -7,6 +7,7 @@ import { DEMO_WORLD_CATALOG, createDemoWorldState, createOverworldState, type Ov
 const world = { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() } as const;
 const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff",
   blockedPoints: [{ x: 2, y: 1 }], host: { x: 1, y: 1, direction: "down" as const },
+  follower: { species: "FENNEKIN", x: 0, y: 1, direction: "right" as const },
   story: { switches: { "67": true }, variables: {}, selfSwitches: {} } };
 const worldWithSource = { ...world, sourceWorld } as const;
 
@@ -72,9 +73,21 @@ describe("authoritative battle room", () => {
       direction: "right", sequence: 1 });
     expect(blocked[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
       state: { avatars: { player: { x: 1, y: 1, direction: "right" } } } });
+    const guestFollower = room.receive("bob", { type: "setSourceFollower", version: 8,
+      requestId: "source-guest-follower", species: "CHESPIN" });
+    expect(guestFollower.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     room.receive("bob", { type: "moveAvatar", version: 8, requestId: "source-guest-1",
       direction: "left", sequence: 1 });
     expect(room.snapshot().sourceWorld?.avatars.opponent).toMatchObject({ x: 0, y: 2, direction: "left" });
+    expect(room.snapshot().sourceWorld?.followers.opponent).toMatchObject({ species: "CHESPIN", x: 1, y: 2 });
+    const blockedByGuestFollower = room.receive("alice", { type: "moveAvatar", version: 8,
+      requestId: "source-host-follower-collision", direction: "down", sequence: 2 });
+    expect(blockedByGuestFollower[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { player: { x: 1, y: 1, direction: "down" } } } });
+    room.receive("alice", { type: "moveAvatar", version: 8, requestId: "source-host-2",
+      direction: "left", sequence: 3 });
+    expect(room.snapshot().sourceWorld).toMatchObject({ avatars: { player: { x: 0, y: 1 } },
+      followers: { player: { species: "FENNEKIN", x: 1, y: 1 } } });
 
     const forbidden = room.receive("bob", { type: "setSourceWorld", version: 8,
       requestId: "source-guest-map", world: sourceWorld });
@@ -82,6 +95,7 @@ describe("authoritative battle room", () => {
     const changed = { ...sourceWorld, mapId: 7, host: { x: 0, y: 0, direction: "right" as const } };
     room.receive("alice", { type: "setSourceWorld", version: 8, requestId: "source-host-map", world: changed });
     expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, avatars: { player: { x: 0, y: 0 } } });
+    expect(room.snapshot().sourceWorld?.followers.opponent?.species).toBe("CHESPIN");
 
     const persisted = room.exportState();
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),

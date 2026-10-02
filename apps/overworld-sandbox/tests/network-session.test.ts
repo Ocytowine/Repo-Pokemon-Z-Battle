@@ -27,10 +27,18 @@ class FakeWebSocket {
   public readonly sent: string[] = [];
   public readonly closed: Array<{ code?: number; reason?: string }> = [];
   public readyState = FakeWebSocket.OPEN;
+  private readonly listeners = new Map<string, Array<(event: { readonly data: string }) => void>>();
 
   public constructor(public readonly url: string) {}
 
-  public addEventListener(): void {}
+  public addEventListener(type: string, listener: (event: { readonly data: string }) => void): void {
+    const entries = this.listeners.get(type) ?? [];
+    entries.push(listener);
+    this.listeners.set(type, entries);
+  }
+  public emitMessage(message: unknown): void {
+    for (const listener of this.listeners.get("message") ?? []) listener({ data: JSON.stringify(message) });
+  }
   public send(payload: string): void { this.sent.push(payload); }
   public close(code?: number, reason?: string): void { this.closed.push({ code, reason }); }
 }
@@ -77,12 +85,27 @@ describe("overworld network session", () => {
     expect(handlers.onConnectionFormChanged).toHaveBeenCalledWith("http://127.0.0.1:8787", "ABC234");
     expect(sockets[0]?.url).toContain("ws://127.0.0.1:8787/api/rooms/ABC234/socket");
 
-    session.sendMovement("player", "up");
+    expect(session.sendMovement("player", "up")).toBe(true);
+    expect(session.sendMovement("player", "right")).toBe(false);
     expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toMatchObject({ type: "moveAvatar", direction: "up", sequence: 1 });
+    const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff", blockedPoints: [],
+      story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
+      avatars: { player: { x: 1, y: 1, direction: "up" }, opponent: { x: 1, y: 2, direction: "left" } } } as const;
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 8, side: "opponent", sequence: 1,
+      revision: 1, state: sourceWorld });
+    expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, false);
+    expect(session.sendMovement("player", "right")).toBe(false);
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 8, side: "player", sequence: 1,
+      revision: 2, state: sourceWorld });
+    expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, true);
     session.publishSourceScene({ mapId: 3, sequenceActive: true,
       dialogue: { label: "Crisanto", text: "Attention !", choices: [] }, actors: [], presentation: null });
     expect(JSON.parse(sockets[0]?.sent[1] ?? "{}")).toMatchObject({ type: "setSourceScene",
       scene: { mapId: 3, sequenceActive: true } });
+    session.publishSourceFollower("FENNEKIN");
+    session.publishSourceFollower("FENNEKIN");
+    expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
+    expect(sockets[0]?.sent).toHaveLength(3);
 
     session.disconnect();
     expect(session.active).toBe(false);

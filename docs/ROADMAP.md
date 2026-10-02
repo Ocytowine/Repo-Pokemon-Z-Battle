@@ -1173,6 +1173,19 @@ selectionner une branche ou appliquer un effet d'etat. La room persiste ce derni
 etat visuel pour la reconnexion. Le prochain lot Coop pourra raccorder l'observation
 des combats source sans donner le controle narratif a l'invite.
 
+Onzieme jalon implemente le 2026-10-02 : l'hote et l'invite soumettent desormais
+leurs pas de carte source au meme serveur autoritaire. Chaque resultat est diffuse
+immediatement. Le client predit un seul pas local en attendant sa confirmation,
+puis interpole les autres avatars depuis leur pose affichee courante sans annuler
+une animation sur un snapshot secondaire. Cela supprime les saccades, rollbacks et
+teleportations apres une marche continue. Les deux places publient egalement
+l'espece de leur suiveur actif sans exposer leur equipe ; la room positionne et
+deplace chaque suiveur sur la case liberee, puis les clients chargent son sprite
+local et l'animent separement. Les apparences reseau sont conservees entre deux
+snapshots identiques au lieu d'etre rechargees, et les suiveurs distants participent
+aux collisions autoritaires. Le rendu distant recoit explicitement son index de
+frame au niveau `pattern`, aussi bien pour le joueur que pour son suiveur.
+
 Correction d'interpretation le 2026-10-01 : les `trbackNNN_3`, `_4`, `_5` et `_7`
 correspondent a des variantes narratives ou de tenue. Le moteur source ne les lit
 pas comme une sequence de lancer : il n'anime horizontalement un Dresseur que si

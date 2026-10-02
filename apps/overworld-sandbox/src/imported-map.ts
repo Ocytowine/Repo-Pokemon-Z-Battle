@@ -556,7 +556,7 @@ export interface ImportedFollowerRender {
 export interface ImportedRemotePlayerRender {
   readonly image: HTMLImageElement;
   readonly pose: ImportedAvatar;
-  readonly pattern?: number;
+  readonly pattern: number;
 }
 
 function sourceAssetUrl(path: string): string {
@@ -850,7 +850,7 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   }
   for (const remote of remotePlayers) {
     renderables.push({ z: sourceCharacterZ(remote.pose.y, remote.image.naturalHeight / 4), order: order++, draw: () => {
-      drawCharacter(context, remote.image, directionNumber(remote.pose.direction), remote.pattern ?? 0, 255,
+      drawCharacter(context, remote.image, directionNumber(remote.pose.direction), remote.pattern, 255,
         remote.pose.x, remote.pose.y, cameraX, cameraY, true);
     } });
   }

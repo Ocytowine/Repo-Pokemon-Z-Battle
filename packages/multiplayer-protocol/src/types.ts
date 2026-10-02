@@ -56,6 +56,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "interact" })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
+  | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 

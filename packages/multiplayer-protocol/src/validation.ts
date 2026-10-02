@@ -127,6 +127,12 @@ export function parseClientMessage(payload: string): ClientMessage {
       } catch {
         return invalid("setSourceWorld mal formé");
       }
+    case "setSourceFollower":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "species"]) || !isIdentifier(value.requestId)
+        || value.species !== null && (typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species))) {
+        return invalid("setSourceFollower mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "setSourceScene":
       if (!hasExactKeys(value, ["type", "version", "requestId", "scene"]) || !isIdentifier(value.requestId)) {
         return invalid("setSourceScene mal forme");

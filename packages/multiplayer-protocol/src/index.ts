@@ -1,7 +1,7 @@
 export { ProtocolValidationError, normalizeRoomCode, parseClientMessage, serializeMessage } from "./validation.js";
 export { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile, NETWORK_PLAYER_PROFILE_VERSION, parseNetworkPlayerProfile,
   type NetworkPlayerProfile } from "./player-profile.js";
-export { parseSourceWorldHostState, sourceWorldSnapshot, type SourceAvatarSnapshot, type SourceStorySnapshot,
+export { parseSourceWorldHostState, sourceWorldSnapshot, type SourceAvatarSnapshot, type SourceFollowerSnapshot, type SourceStorySnapshot,
   type SourceWorldHostState, type SourceWorldSnapshot } from "./source-world.js";
 export { parseSourceSceneSnapshot, type SourceSceneActorSnapshot, type SourceSceneDialogueSnapshot,
   type SourceScenePresentationCue, type SourceSceneSnapshot } from "./source-scene.js";

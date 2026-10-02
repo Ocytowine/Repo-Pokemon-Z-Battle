@@ -25,6 +25,7 @@ function loadState(storage: Pick<Storage, "getItem" | "removeItem">, key = AVATA
 export class AvatarLabView {
   private catalog: AvatarCatalog | null = null;
   private report: AuditReport | null = null;
+  private loadError: string | null = null;
   private state = loadState(localStorage);
   private activeState = loadState(localStorage, PLAYER_AVATAR_ACTIVE_STORAGE_KEY);
   private overworldAnimationSession = 0;
@@ -34,10 +35,18 @@ export class AvatarLabView {
     private readonly onClose: () => void = () => undefined) {}
 
   public async load(): Promise<void> {
-    const responses = await Promise.all([fetch("/__pokemon-z/data/player-avatars.json"), fetch("/__pokemon-z/data/player-avatar-report.json")]);
-    if (responses.some((response) => !response.ok)) throw new Error("Catalogue des personnages indisponible.");
-    [this.catalog, this.report] = await Promise.all([responses[0]!.json() as Promise<AvatarCatalog>, responses[1]!.json() as Promise<AuditReport>]);
-    if (!this.catalog.records.some((record) => record.id === this.state.avatarId)) this.state = freshState();
+    try {
+      const responses = await Promise.all([fetch("/__pokemon-z/data/player-avatars.json"), fetch("/__pokemon-z/data/player-avatar-report.json")]);
+      if (responses.some((response) => !response.ok)) throw new Error("Catalogue des personnages indisponible. Relancez corepack pnpm prepare:local.");
+      [this.catalog, this.report] = await Promise.all([responses[0]!.json() as Promise<AvatarCatalog>, responses[1]!.json() as Promise<AuditReport>]);
+      if (!this.catalog.records.some((record) => record.id === this.state.avatarId)) this.state = freshState();
+      this.loadError = null;
+    } catch (error) {
+      this.catalog = null;
+      this.report = null;
+      this.loadError = error instanceof Error ? error.message : "Catalogue des personnages indisponible.";
+      throw error;
+    }
   }
 
   public show(): void { this.root.hidden = false; this.render(); }
@@ -51,7 +60,10 @@ export class AvatarLabView {
   private render(): void {
     if (this.root.hidden) return;
     const record = this.catalog?.records.find((candidate) => candidate.id === this.state.avatarId);
-    if (record === undefined) { this.root.textContent = "Chargement du catalogue des personnages…"; return; }
+    if (record === undefined) {
+      this.renderUnavailable();
+      return;
+    }
     const colorOptions = Object.keys(AVATAR_PALETTE_COLORS).map((id) => `<option value="${id}">${id}</option>`).join("");
     this.root.innerHTML = `<div class="embedded-avatar-editor"><label>Nom<input data-avatar-name maxlength="12"></label>
       <label>Pronoms<select data-avatar-pronouns><option value="masculine">Masculins</option><option value="feminine">Féminins</option><option value="neutral">Neutres</option></select></label>
@@ -94,6 +106,20 @@ export class AvatarLabView {
     const audit = this.report?.profiles.find((candidate) => candidate.id === record.id);
     this.root.querySelector<HTMLElement>("[data-avatar-audit]")!.textContent = audit === undefined ? ""
       : `Replis : ${audit.fallbacks.join(", ") || "aucun"} · variantes narratives de dos absentes : ${audit.missingBattleBackVariants.join(", ") || "aucune"}`;
+  }
+
+  private renderUnavailable(): void {
+    this.root.innerHTML = `<div class="embedded-avatar-editor"><h3>Personnalisation indisponible</h3><p data-avatar-load-status></p>
+      <div class="embedded-avatar-actions"><button type="button" class="embedded-avatar-return">Retour au jeu</button>
+      <button type="button" class="embedded-avatar-retry">Réessayer</button></div></div>`;
+    const status = this.root.querySelector<HTMLElement>("[data-avatar-load-status]");
+    if (status !== null) status.textContent = this.loadError ?? "Chargement du catalogue des personnages…";
+    this.root.querySelector<HTMLButtonElement>(".embedded-avatar-return")?.addEventListener("click", this.onClose);
+    this.root.querySelector<HTMLButtonElement>(".embedded-avatar-retry")?.addEventListener("click", () => {
+      this.loadError = null;
+      this.render();
+      void this.load().then(() => this.render()).catch(() => this.render());
+    });
   }
 
   private async drawOverworld(record: AvatarRecord, contextName: string): Promise<void> {

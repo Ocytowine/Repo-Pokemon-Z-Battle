@@ -63,6 +63,10 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage('{"type":"interact","version":8,"requestId":"i1","interactionId":"secret"}')).toThrow("interact mal formé");
     expect(() => parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"teleport","sequence":3}')).toThrow("moveAvatar mal formé");
     expect(() => parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
+    expect(parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f1","species":"FENNEKIN"}'))
+      .toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
+    expect(() => parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f1","species":"../secret"}'))
+      .toThrow("setSourceFollower mal formé");
   });
 
   it("validates a cosmetic profile update without gameplay data", () => {
@@ -75,7 +79,9 @@ describe("multiplayer protocol", () => {
 
   it("validates a compact source-world topology and rejects computed avatars", () => {
     const world = { mapId: 3, width: 2, height: 2, passages: "ffff", blockedPoints: [{ x: 1, y: 1 }],
-      host: { x: 0, y: 0, direction: "down" }, story: { switches: { "67": true }, variables: { "20": 3 },
+      host: { x: 0, y: 0, direction: "down" },
+      follower: { species: "FENNEKIN", x: 0, y: 1, direction: "up" },
+      story: { switches: { "67": true }, variables: { "20": 3 },
         selfSwitches: { "3:7:A": true } } } as const;
     expect(parseSourceWorldHostState(world)).toEqual(world);
     const message: ClientMessage = { type: "setSourceWorld", version: 8, requestId: "source-1", world };

@@ -77,6 +77,10 @@ export class SourceFollowerMotionController {
     return sampled;
   }
 
+  public positionSnapshot(): ImportedAvatar | null {
+    return this.position === null ? null : { ...this.position };
+  }
+
   public clear(): void {
     this.mapId = null;
     this.position = null;

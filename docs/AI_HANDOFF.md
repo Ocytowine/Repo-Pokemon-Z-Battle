@@ -498,6 +498,10 @@ Ce lot existe maintenant dans `apps/avatar-lab` et se lance avec
 aucune cle de l'aventure. `Appliquer au joueur` copie volontairement ce brouillon
 dans `pokemon-z-battle.active-player-profile.v1`. Les apercus utilisent directement
 les chemins audites.
+Les manifestes `player-avatars.json` et `player-avatar-report.json` doivent exister
+dans `.pokemon-z/data` ; `corepack pnpm prepare:local` les regenere. Leur absence
+n'enferme plus l'ecran integre sur « Chargement » : une erreur actionnable permet
+de revenir au jeu ou de reessayer apres extraction.
 La palette est editee, exportee et rendue dans tous les apercus. Le module partage
 `local-assets/avatar-palette.ts` compare les trois ethnies d'une meme silhouette :
 les pixels variables sont proteges comme peau, cheveux ou contour antialiase, puis
@@ -591,6 +595,30 @@ declencher une scene comprenant dialogue et route imposee. Verifier que l'invite
 voit les memes textes, effets et mouvements, que ses choix ne sont pas cliquables,
 que ses deplacements sont bloques pendant la scene puis rendus a sa fin. Tester
 enfin une reconnexion pendant un dialogue.
+
+Correction Coop du 2026-10-02 : les deux places envoient maintenant chaque pas de
+carte source par `moveAvatar`. Le serveur valide le pas puis le diffuse aussitot ;
+le client local predit immediatement un seul pas puis le rapproche de la reponse
+autoritaire sans rejouer le mouvement confirme. Un second pas n'est emis qu'apres
+cette confirmation, ce qui evite les boucles de correction et les rollbacks. Le
+client distant interpole depuis sa position actuellement affichee, et une mise a
+jour sans mouvement ne peut plus annuler son animation en cours. Maintenir une
+direction montre donc la marche case par case sans attendre l'arret du joueur.
+Une mise a jour provoquee par l'autre place ne reconcilie jamais le pas local en
+attente : elle ne peut donc plus ramener provisoirement l'hote en arriere. Les
+profils visuels sont caches par signature et ne sont plus vides/recharges sur les
+snapshots narratifs, ce qui supprimait auparavant les avatars pendant la marche.
+La frame de marche distante est transmise au renderer dans son champ `pattern` de
+premier niveau et reste visible pendant toute l'interpolation ; ne pas la ranger
+uniquement dans `pose`, car `ImportedRemotePlayerRender` l'ignorerait.
+
+Chaque place publie aussi uniquement l'espece de son Pokemon suiveur actif. La room
+choisit sa position initiale, le deplace sur la case liberee apres chaque pas et
+persiste cet etat visuel. L'autre navigateur charge le sprite local correspondant
+et interpole le suiveur independamment du joueur. L'equipe, ses statistiques et la
+sauvegarde restent exclues du protocole. Le suiveur de l'autre place est un obstacle
+valide a la fois par le client et par la room ; son propre suiveur ne bloque pas le
+joueur qu'il accompagne.
 
 ## Strategie de tests
 

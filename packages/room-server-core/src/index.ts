@@ -1,7 +1,7 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
-  type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -101,7 +101,8 @@ export class AuthoritativeBattleRoom {
       this.#battleState = persisted.battleState;
       this.#activeEncounter = persisted.activeEncounter ?? null;
       this.#worldState = persisted.worldState;
-      this.#sourceWorldState = persisted.sourceWorldState;
+      this.#sourceWorldState = persisted.sourceWorldState === null ? null
+        : { ...persisted.sourceWorldState, followers: persisted.sourceWorldState.followers ?? {} };
       this.#sourceSceneState = persisted.sourceSceneState ?? null;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
@@ -123,7 +124,7 @@ export class AuthoritativeBattleRoom {
       const current = this.#sourceWorldState;
       const hostState: SourceWorldHostState = { mapId: current.mapId, width: current.width, height: current.height,
         passages: current.passages, blockedPoints: current.blockedPoints, host: current.avatars.player,
-        story: current.story };
+        follower: current.followers.player ?? null, story: current.story };
       this.#sourceWorldState = { ...current,
         avatars: { ...current.avatars, opponent: this.sourceSpawn(hostState) } };
     }
@@ -214,6 +215,7 @@ export class AuthoritativeBattleRoom {
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
     if (message.type === "setProfile") return this.setProfile(player, message.requestId, message.profile);
     if (message.type === "setSourceWorld") return this.setSourceWorld(player, message.requestId, message.world);
+    if (message.type === "setSourceFollower") return this.setSourceFollower(player, message.requestId, message.species);
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
@@ -236,8 +238,28 @@ export class AuthoritativeBattleRoom {
     }
     const sameMap = this.#sourceWorldState?.mapId === world.mapId;
     const previousGuest = sameMap ? this.#sourceWorldState?.avatars.opponent : undefined;
-    this.#sourceWorldState = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
+    const nextWorld = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
+    const previousGuestFollower = this.#sourceWorldState?.followers.opponent;
+    this.#sourceWorldState = previousGuestFollower === undefined ? nextWorld : { ...nextWorld,
+      followers: { ...nextWorld.followers, opponent: sameMap ? previousGuestFollower
+        : this.sourceFollowerSpawn(nextWorld, "opponent", previousGuestFollower.species) } };
     if (!sameMap) this.#sourceSceneState = null;
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private setSourceFollower(player: RoomPlayer, requestId: string, species: string | null): readonly RoomDispatch[] {
+    const world = this.#sourceWorldState;
+    if (world === null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune carte narrative partagee.")];
+    }
+    const followers: Partial<Record<BattleSide, SourceFollowerSnapshot>> = { ...world.followers };
+    if (species === null) delete followers[player.side];
+    else followers[player.side] = this.sourceFollowerSpawn(world, player.side, species);
+    this.#sourceWorldState = { ...world, followers };
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
@@ -394,16 +416,26 @@ export class AuthoritativeBattleRoom {
     const target = { x: avatar.x + delta.x, y: avatar.y + delta.y };
     const otherSide: BattleSide = player.side === "player" ? "opponent" : "player";
     const other = world.avatars[otherSide];
+    const otherFollower = world.followers[otherSide];
     const inBounds = target.x >= 0 && target.y >= 0 && target.x < world.width && target.y < world.height;
     const sourceMask = Number.parseInt(world.passages[avatar.y * world.width + avatar.x] ?? "0", 16);
     const targetMask = inBounds ? Number.parseInt(world.passages[target.y * world.width + target.x] ?? "0", 16) : 0;
     const passable = inBounds && (sourceMask & SOURCE_DIRECTION_BITS[message.direction]) !== 0
       && (targetMask & SOURCE_DIRECTION_BITS[SOURCE_OPPOSITE[message.direction]]) !== 0
       && !world.blockedPoints.some((point) => point.x === target.x && point.y === target.y)
-      && (other.x !== target.x || other.y !== target.y);
+      && (other.x !== target.x || other.y !== target.y)
+      && (otherFollower === undefined || otherFollower.x !== target.x || otherFollower.y !== target.y);
     const next: SourceAvatarSnapshot = passable ? { ...target, direction: message.direction }
       : { ...avatar, direction: message.direction };
-    this.#sourceWorldState = { ...world, avatars: { ...world.avatars, [player.side]: next } };
+    const currentFollower = world.followers[player.side];
+    let nextFollower: SourceFollowerSnapshot | undefined = currentFollower;
+    if (passable && currentFollower !== undefined) {
+      const followerDirection = avatar.x < currentFollower.x ? "left" : avatar.x > currentFollower.x ? "right"
+        : avatar.y < currentFollower.y ? "up" : avatar.y > currentFollower.y ? "down" : message.direction;
+      nextFollower = { ...currentFollower, x: avatar.x, y: avatar.y, direction: followerDirection };
+    }
+    this.#sourceWorldState = { ...world, avatars: { ...world.avatars, [player.side]: next },
+      followers: nextFollower === undefined ? world.followers : { ...world.followers, [player.side]: nextFollower } };
     this.#movementSequences.set(player.side, message.sequence);
     this.#revision += 1;
     return [
@@ -426,6 +458,21 @@ export class AuthoritativeBattleRoom {
       if (mask !== 0 && (candidate.x !== world.host.x || candidate.y !== world.host.y)) return candidate;
     }
     return world.host;
+  }
+
+  private sourceFollowerSpawn(world: SourceWorldSnapshot, side: BattleSide, species: string): SourceFollowerSnapshot {
+    const avatar = world.avatars[side];
+    const preferredDirection = SOURCE_OPPOSITE[avatar.direction];
+    const directions = [preferredDirection, "left", "right", "up", "down"] as const;
+    for (const direction of directions) {
+      const delta = SOURCE_DELTAS[direction];
+      const x = avatar.x + delta.x;
+      const y = avatar.y + delta.y;
+      if (x < 0 || y < 0 || x >= world.width || y >= world.height) continue;
+      const mask = Number.parseInt(world.passages[y * world.width + x] ?? "0", 16);
+      if (mask !== 0) return { species, x, y, direction: avatar.direction };
+    }
+    return { species, ...avatar };
   }
 
   private interact(player: RoomPlayer, requestId: string): readonly RoomDispatch[] {

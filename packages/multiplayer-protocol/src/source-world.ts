@@ -5,6 +5,10 @@ export interface SourceAvatarSnapshot extends GridPoint {
   readonly direction: Direction;
 }
 
+export interface SourceFollowerSnapshot extends SourceAvatarSnapshot {
+  readonly species: string;
+}
+
 export interface SourceStorySnapshot {
   readonly switches: Readonly<Record<string, boolean>>;
   readonly variables: Readonly<Record<string, number>>;
@@ -19,11 +23,13 @@ export interface SourceWorldHostState {
   readonly passages: string;
   readonly blockedPoints: readonly GridPoint[];
   readonly host: SourceAvatarSnapshot;
+  readonly follower: SourceFollowerSnapshot | null;
   readonly story: SourceStorySnapshot;
 }
 
-export interface SourceWorldSnapshot extends Omit<SourceWorldHostState, "host"> {
+export interface SourceWorldSnapshot extends Omit<SourceWorldHostState, "host" | "follower"> {
   readonly avatars: Readonly<Record<BattleSide, SourceAvatarSnapshot>>;
+  readonly followers: Readonly<Partial<Record<BattleSide, SourceFollowerSnapshot>>>;
 }
 
 const DIRECTIONS = new Set<Direction>(["up", "down", "left", "right"]);
@@ -62,6 +68,17 @@ function parseAvatar(value: unknown, width: number, height: number): SourceAvata
   return { x: value.x, y: value.y, direction: value.direction as Direction };
 }
 
+function parseFollower(value: unknown, width: number, height: number): SourceFollowerSnapshot | null {
+  if (value === null || value === undefined) return null;
+  if (!isRecord(value) || !exactKeys(value, ["x", "y", "direction", "species"])
+    || !integer(value.x, 0, width - 1) || !integer(value.y, 0, height - 1)
+    || typeof value.direction !== "string" || !DIRECTIONS.has(value.direction as Direction)
+    || typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species)) {
+    throw new Error("Pokemon suiveur de carte source invalide.");
+  }
+  return { x: value.x, y: value.y, direction: value.direction as Direction, species: value.species };
+}
+
 function parseBooleanRecord(value: unknown): Readonly<Record<string, boolean>> {
   if (!isRecord(value) || Object.keys(value).length > 16_384
     || Object.entries(value).some(([key, entry]) => !/^\d+(?::\d+:[A-D])?$/u.test(key) || typeof entry !== "boolean")) {
@@ -87,8 +104,10 @@ function parseStory(value: unknown): SourceStorySnapshot {
 }
 
 export function parseSourceWorldHostState(value: unknown): SourceWorldHostState {
-  if (!isRecord(value) || !exactKeys(value,
-    ["mapId", "width", "height", "passages", "blockedPoints", "host", "story"])
+  if (!isRecord(value) || !["mapId", "width", "height", "passages", "blockedPoints", "host", "story"]
+    .every((key) => key in value) || Object.keys(value).some((key) => ![
+      "mapId", "width", "height", "passages", "blockedPoints", "host", "follower", "story",
+    ].includes(key))
     || !integer(value.mapId, 1, 999_999) || !integer(value.width, 1, MAX_MAP_DIMENSION)
     || !integer(value.height, 1, MAX_MAP_DIMENSION)) throw new Error("Monde source invalide.");
   const cellCount = value.width * value.height;
@@ -101,12 +120,14 @@ export function parseSourceWorldHostState(value: unknown): SourceWorldHostState 
   }
   return { mapId: value.mapId, width: value.width, height: value.height, passages: value.passages,
     blockedPoints: value.blockedPoints.map((point) => parsePoint(point, value.width as number, value.height as number)),
-    host: parseAvatar(value.host, value.width, value.height), story: parseStory(value.story) };
+    host: parseAvatar(value.host, value.width, value.height),
+    follower: parseFollower(value.follower, value.width, value.height), story: parseStory(value.story) };
 }
 
 export function sourceWorldSnapshot(hostState: SourceWorldHostState,
   opponent?: SourceAvatarSnapshot): SourceWorldSnapshot {
   return { mapId: hostState.mapId, width: hostState.width, height: hostState.height,
     passages: hostState.passages, blockedPoints: hostState.blockedPoints, story: hostState.story,
-    avatars: { player: hostState.host, opponent: opponent ?? hostState.host } };
+    avatars: { player: hostState.host, opponent: opponent ?? hostState.host },
+    followers: hostState.follower === null ? {} : { player: hostState.follower } };
 }

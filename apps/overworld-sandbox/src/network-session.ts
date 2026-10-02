@@ -18,6 +18,7 @@ interface MutableNetworkSession {
   readonly ticket: MultiplayerTicket;
   socket: WebSocket | null;
   sequence: number;
+  pendingMovementSequence: number | null;
   revision: number;
   lastSentAt: number;
   reconnectAttempt: number;
@@ -26,6 +27,7 @@ interface MutableNetworkSession {
   snapshot: RoomSnapshot | null;
   submittedTurn: number | null;
   profile: NetworkPlayerProfile;
+  sourceFollowerSpecies: string | null | undefined;
 }
 
 export interface NetworkSessionView {
@@ -41,7 +43,7 @@ export interface NetworkSessionCallbacks {
   readonly onMapChanged: (mapId: string) => void;
   readonly onConnectionFormChanged: (serverUrl: string, roomCode: string) => void;
   readonly onPlayersChanged: (players: readonly RoomPlayerSnapshot[]) => void;
-  readonly onSourceWorldState: (state: SourceWorldSnapshot, animate: boolean) => void;
+  readonly onSourceWorldState: (state: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean) => void;
   readonly onSourceSceneState: (state: SourceSceneSnapshot) => void;
   readonly onRender: () => void;
 }
@@ -105,15 +107,17 @@ export class OverworldNetworkSession {
     this.setStatus("Local", "Lance le Worker pour synchroniser deux navigateurs.");
   }
 
-  public sendMovement(playerId: string, direction: Direction): void {
+  public sendMovement(playerId: string, direction: Direction): boolean {
     const session = this.activeSession;
-    if (session === null || session.snapshot?.battle !== null && session.snapshot !== null) return;
+    if (session === null || session.snapshot?.battle !== null && session.snapshot !== null) return false;
     const socket = session.socket;
-    if (playerId !== session.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN) return;
+    if (playerId !== session.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN
+      || session.pendingMovementSequence !== null) return false;
     const now = performance.now();
-    if (now - session.lastSentAt < 120) return;
+    if (now - session.lastSentAt < 120) return false;
     session.lastSentAt = now;
     session.sequence += 1;
+    session.pendingMovementSequence = session.sequence;
     socket.send(JSON.stringify({
       type: "moveAvatar",
       version: PROTOCOL_VERSION,
@@ -121,6 +125,7 @@ export class OverworldNetworkSession {
       direction,
       sequence: session.sequence,
     }));
+    return true;
   }
 
   public sendInteraction(playerId: "player" | "opponent"): void {
@@ -159,6 +164,16 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), scene }));
   }
 
+  public publishSourceFollower(species: string | null): void {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    if (session === null || session.sourceFollowerSpecies === species || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return;
+    session.sourceFollowerSpecies = species;
+    socket.send(JSON.stringify({ type: "setSourceFollower", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), species }));
+  }
+
   public submitEncounterAction(moveIndex: number): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
@@ -190,6 +205,7 @@ export class OverworldNetworkSession {
       ticket,
       socket: null,
       sequence: 0,
+      pendingMovementSequence: null,
       revision: 0,
       lastSentAt: 0,
       reconnectAttempt: 0,
@@ -198,6 +214,7 @@ export class OverworldNetworkSession {
       snapshot: null,
       submittedTurn: null,
       profile,
+      sourceFollowerSpecies: undefined,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -209,12 +226,19 @@ export class OverworldNetworkSession {
     const session = this.activeSession;
     if (session !== null && snapshot.revision < session.revision) return;
     if (session !== null) {
+      const pendingMovementSequence = session.pendingMovementSequence;
+      const ownMovementSequence = snapshot.movementSequences[session.ticket.side];
+      const applyOwnAvatar = pendingMovementSequence === null || ownMovementSequence >= pendingMovementSequence;
       session.revision = snapshot.revision;
-      session.sequence = Math.max(session.sequence, snapshot.movementSequences[session.ticket.side]);
+      session.sequence = Math.max(session.sequence, ownMovementSequence);
+      if (session.pendingMovementSequence !== null
+        && ownMovementSequence >= session.pendingMovementSequence) {
+        session.pendingMovementSequence = null;
+      }
       session.snapshot = snapshot;
       if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) session.submittedTurn = null;
       const own = snapshot.world.avatars[session.ticket.side];
-      if (snapshot.sourceWorld !== null) this.callbacks.onSourceWorldState(snapshot.sourceWorld, animate);
+      if (snapshot.sourceWorld !== null) this.callbacks.onSourceWorldState(snapshot.sourceWorld, animate, applyOwnAvatar);
       else if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
       if (snapshot.sourceScene !== null) this.callbacks.onSourceSceneState(snapshot.sourceScene);
     }
@@ -262,7 +286,12 @@ export class OverworldNetworkSession {
         } else if (message.type === "worldUpdated") {
           if (message.revision < session.revision) return;
           session.revision = message.revision;
-          if (message.side === session.ticket.side) session.sequence = Math.max(session.sequence, message.sequence);
+          if (message.side === session.ticket.side) {
+            session.sequence = Math.max(session.sequence, message.sequence);
+            if (session.pendingMovementSequence !== null && message.sequence >= session.pendingMovementSequence) {
+              session.pendingMovementSequence = null;
+            }
+          }
           this.callbacks.onEvents(message.events);
           const own = message.state.avatars[session.ticket.side];
           if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
@@ -275,10 +304,15 @@ export class OverworldNetworkSession {
         } else if (message.type === "sourceWorldUpdated") {
           if (message.revision < session.revision) return;
           session.revision = message.revision;
-          if (message.side === session.ticket.side) session.sequence = Math.max(session.sequence, message.sequence);
+          if (message.side === session.ticket.side) {
+            session.sequence = Math.max(session.sequence, message.sequence);
+            if (session.pendingMovementSequence !== null && message.sequence >= session.pendingMovementSequence) {
+              session.pendingMovementSequence = null;
+            }
+          }
           if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceWorld: message.state,
             revision: message.revision };
-          this.callbacks.onSourceWorldState(message.state, true);
+          this.callbacks.onSourceWorldState(message.state, true, message.side === session.ticket.side);
         } else if (message.type === "sourceSceneUpdated") {
           if (message.revision < session.revision) return;
           session.revision = message.revision;
@@ -300,6 +334,7 @@ export class OverworldNetworkSession {
           this.callbacks.onRender();
         } else if (message.type === "error") {
           session.submittedTurn = null;
+          session.pendingMovementSequence = null;
           this.setStatus("Erreur", `${message.code} · ${message.message}`);
         }
       } catch (error) {
