@@ -1,7 +1,7 @@
 import type { BattleSide, BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
-import type { SourceAvatarSnapshot, SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
+import type { SourceAvatarSnapshot, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 
 export const PROTOCOL_VERSION = 8 as const;
@@ -58,7 +58,8 @@ export type ClientMessage =
       readonly teamIndex: number;
     })
   | (RequestedMessage & { readonly type: "requestSnapshot" })
-  | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number })
+  | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number;
+      readonly mode?: SourceMovementMode; readonly waterfall?: boolean })
   | (RequestedMessage & { readonly type: "interact" })
   | (RequestedMessage & { readonly type: "challengePlayer"; readonly team: BattleTeam })
   | (RequestedMessage & { readonly type: "respondPlayerChallenge"; readonly accept: boolean;

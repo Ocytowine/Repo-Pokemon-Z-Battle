@@ -70,6 +70,39 @@ Etat : termine pour les primitives de mouvement actuellement extraites.
 Les effets audiovisuels ne font pas partie de ce jalon de mouvement ; ils sont
 inventories automatiquement par l'audit de scene decrit plus bas.
 
+### 2 bis. Modes de deplacement du joueur — premier lot fonctionnel
+
+Jalon du 2026-10-02 : le solo et la Coop utilisent maintenant le meme resolveur
+pur `resolveSourceMovement`. Il couvre marche, sprint, Chevroum, saut de corniche,
+entree et sortie de Surf, glissade sur glace, Cascade et les transitions de
+plongee. Le serveur de room reapplique ce resolveur aux intentions de l'hote et de
+l'invite ; mode et action sont inclus dans les snapshots afin de conserver le bon
+sprite, la vitesse et l'animation apres une confirmation ou une reconnexion. Les
+escalades Chevroum existantes restent pilotees par les routes source, mais
+`pbMountBike` et `pbDismountBike` changent desormais le contexte visuel du joueur.
+
+Les conditions de progression portees depuis le jeu source sont : chaussures de
+course pour le sprint ; un objet `BICYCLE*` pour la monture ; `BICYCLE` pour les
+parois Chevroum ; cinq badges et `SURFMONTURA` pour Surf ; sept badges et une
+capacite `DIVE` dans l'equipe pour Plongee ; huit badges et `WATERFALL` pour
+Cascade. `$PokemonGlobal.runningShoes` et les tests Ruby de quantite du Sac sont
+convertis en commandes declaratives et audites. Les metadonnees `Outdoor`,
+`Bicycle`, `BicycleAlways` et `DiveMap` sont extraites generiquement des 507 cartes.
+
+Le menu en jeu possede un onglet `Deplacements`. Son interrupteur
+`Deplacements de test` debloque localement toutes les capacites des le debut, sans
+ajouter de badge, objet, CS ou interrupteur a la progression. Il est persiste dans
+une cle locale distincte et vaut independamment pour chaque joueur Coop. Le mode
+courant est enregistre avec la position ; les anciennes sauvegardes migrent vers
+`walk`. Le serveur valide la topologie et le terrain, mais les prerequis personnels
+restent pour ce premier lot controles par le client, car inventaire et equipe ne
+sont volontairement pas publies dans la room.
+
+Recette manuelle : ouvrir `Menu > Deplacements`, activer le mode test, verifier le
+sprint avec Maj et Chevroum ; tester une corniche, une plaque de glace et une rive.
+Sur une eau profonde associee a `DiveMap`, utiliser Plonger puis Remonter. Refaire
+les pas avec deux navigateurs et verifier le sprite et la trajectoire distante.
+
 ### 3. Gestionnaire de scenes — en cours
 
 Etat : parcours overworld/combat integre ; politique des controles centralisee.
@@ -725,7 +758,11 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 318 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 329 tests et passe avec le build.
+La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
+la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
+et l'attente du retour ignore les anciens snapshots `shared` encore en file en
+exigeant une revision posterieure a celle de l'excursion.
 
 ## Commandes utiles
 
@@ -747,6 +784,18 @@ Un `GET /` retourne normalement 404 sur ce Worker : seules ses routes d'API et W
 sont attendues.
 
 ## Points de vigilance
+
+- Toute nouvelle fonctionnalite doit etre pensee dans le meme lot pour le solo et
+  la Coop, conformement a `AGENTS.md` et `docs/COOP_ARCHITECTURE.md`. Definir avant
+  le code son autorite, son domaine d'etat, sa persistance, son audience et son
+  contrat de replication. Le solo utilise un adaptateur local du meme noyau ; ne
+  pas maintenir une seconde implementation reseau.
+- Pour les futurs modes de deplacement, partager mode, vitesse, collisions,
+  animation, transitions et rendu distant. Tester solo, hote, invite et reconnexion
+  avant de declarer le lot termine.
+- Les scenes Coop doivent distinguer narration partagee, service personnel et
+  ambiance partagee a partir des commandes de la sequence. Un soin lance par un
+  joueur ne doit jamais diffuser tout son dialogue et son animation aux autres.
 
 - Les fichiers source utilisent parfois des textes espagnols ; les traductions
   doivent venir du catalogue de localisation extrait.

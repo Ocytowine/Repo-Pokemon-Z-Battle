@@ -345,7 +345,7 @@ const sourceWorld = {
 };
 const sourceHostTicket = await ticket("/api/rooms", profile("Source Hote", "legacy-0"), sourceWorld);
 const sourceGuestTicket = await ticket(`/api/rooms/${sourceHostTicket.roomCode}/join`,
-  profile("Source Invite", "legacy-5"));
+  profile("Invite Z", "legacy-5"));
 const sourceHost = new SocketInbox(sourceHostTicket);
 const sourceGuest = new SocketInbox(sourceGuestTicket);
 await Promise.all([sourceHost.opened(), sourceGuest.opened()]);
@@ -357,7 +357,7 @@ assert(sourceHostWelcome.snapshot.sourceWorld?.presence.opponent === "shared", "
 assert(sourceGuestWelcome.snapshot.players.find((player) => player.side === "player")?.profile.profile.displayName
   === "Source Hote", "Le profil hote a ete remplace par celui de l'invite.");
 assert(sourceGuestWelcome.snapshot.players.find((player) => player.side === "opponent")?.profile.profile.displayName
-  === "Source Invite", "Le profil invite n'est pas distinct.");
+  === "Invite Z", "Le profil invite n'est pas distinct.");
 
 sourceGuest.send({ type: "setSourcePresence", requestId: "source-away", attached: false, avatar: null });
 const [sourceAwayHost, sourceAwayGuest] = await Promise.all([
@@ -384,7 +384,9 @@ await sourceGuest.next(
 sourceGuest.send({ type: "setSourcePresence", requestId: "source-return", attached: true,
   avatar: { x: 0, y: 2, direction: "right" } });
 const sourceReturn = await sourceHost.next(
-  (message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.presence.opponent === "shared",
+  (message) => message.type === "snapshot"
+    && message.snapshot.revision > sourceAwayHost.snapshot.revision
+    && message.snapshot?.sourceWorld?.presence.opponent === "shared",
   "retour invite sur la carte source",
 );
 assert(sourceReturn.snapshot.sourceWorld.avatars.opponent.x === 0

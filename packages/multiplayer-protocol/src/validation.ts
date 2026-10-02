@@ -170,9 +170,12 @@ export function parseClientMessage(payload: string): ClientMessage {
       }
       return value as unknown as ClientMessage;
     case "moveAvatar":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "direction", "sequence"])
+      if (!["type", "version", "requestId", "direction", "sequence"].every((key) => key in value)
+        || Object.keys(value).some((key) => !["type", "version", "requestId", "direction", "sequence", "mode", "waterfall"].includes(key))
         || !isIdentifier(value.requestId)
         || !["up", "down", "left", "right"].includes(String(value.direction))
+        || value.mode !== undefined && !["walk", "run", "mount", "surf", "dive"].includes(String(value.mode))
+        || value.waterfall !== undefined && typeof value.waterfall !== "boolean"
         || !isSafePositiveInteger(value.sequence)) {
         return invalid("moveAvatar mal formé");
       }

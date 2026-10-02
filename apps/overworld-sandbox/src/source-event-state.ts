@@ -9,6 +9,7 @@ export interface SourceEventState {
   readonly selfSwitches: Readonly<Record<string, boolean>>;
   readonly inventory: Readonly<Record<string, number>>;
   readonly money: number;
+  readonly runningShoes: boolean;
   readonly pokedexEnabled: boolean;
   readonly followerEnabled: boolean;
   readonly checkpoint: SourceCheckpoint | null;
@@ -48,7 +49,7 @@ export interface StateCommandResult {
 }
 
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
-  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, pokedexEnabled: false, followerEnabled: false, checkpoint: null,
+  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   pendingEncounter: null,
   wildEncounterSteps: 0,
@@ -56,7 +57,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, pokedexEnabled: false, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), pendingEncounter: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), pendingEncounter: null,
     wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 };
 }
 
@@ -125,6 +126,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   let selfSwitches = { ...state.selfSwitches };
   let inventory = { ...state.inventory };
   let money = state.money;
+  let runningShoes = state.runningShoes;
   let pokedexEnabled = state.pokedexEnabled;
   let followerEnabled = state.followerEnabled;
   let checkpoint = state.checkpoint;
@@ -157,7 +159,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState });
       if (ids === null || operand === null) return { state, appliedCommands: 0, safe: false, reason: "opérande de variable non prise en charge" };
       for (const id of ids) {
@@ -189,6 +191,11 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       const next = command.kind === "grant-item" ? current + quantity : current - quantity;
       if (!Number.isSafeInteger(next)) return { state, appliedCommands: 0, safe: false, reason: "quantité d'objet invalide" };
       if (next === 0) delete inventory[itemId]; else inventory[itemId] = next;
+    } else if (command.kind === "set-running-shoes") {
+      if (typeof command.data.value !== "boolean") {
+        return { state, appliedCommands: 0, safe: false, reason: "parametre de chaussures de course invalide" };
+      }
+      runningShoes = command.data.value;
     } else if (command.kind === "set-pokedex-enabled") {
       if (typeof command.data.value !== "boolean") {
         return { state, appliedCommands: 0, safe: false, reason: "parametre de Pokedex invalide" };
@@ -226,7 +233,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     }
     appliedCommands += 1;
   }
-  return { state: { switches, variables, selfSwitches, inventory, money, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+  return { state: { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState }, appliedCommands, safe: true, reason: null };
 }
 
@@ -252,6 +259,7 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const selfSwitches = booleanDictionary(value.selfSwitches);
   const inventory = value.inventory === undefined ? {} : numberDictionary(value.inventory);
   const money = value.money === undefined ? SOURCE_INITIAL_MONEY : value.money;
+  const runningShoes = value.runningShoes === undefined ? false : value.runningShoes;
   const pokedexEnabled = value.pokedexEnabled === undefined ? false : value.pokedexEnabled;
   const followerValue = value.followerEnabled;
   const checkpointValue = value.checkpoint;
@@ -278,12 +286,12 @@ export function parseSourceEventState(value: unknown): SourceEventState {
         escapable: encounterValue.escapable === true } : undefined;
   const wildEncounterSteps = value.wildEncounterSteps === undefined ? 0 : value.wildEncounterSteps;
   const wildEncounterRngState = value.wildEncounterRngState === undefined ? 0x9e37_79b9 : value.wildEncounterRngState;
-  if (switches === null || variables === null || selfSwitches === null || inventory === null || typeof pokedexEnabled !== "boolean"
+  if (switches === null || variables === null || selfSwitches === null || inventory === null || typeof runningShoes !== "boolean" || typeof pokedexEnabled !== "boolean"
     || typeof followerEnabled !== "boolean"
     || !finiteInteger(money) || money < 0 || money > SOURCE_MAX_MONEY
     || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff) throw new Error("État source invalide.");
-  return { switches, variables, selfSwitches, inventory, money, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
     wildEncounterSteps, wildEncounterRngState };
 }

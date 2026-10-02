@@ -7,6 +7,7 @@ import { applySafeStateCommands, type SourceEventState } from "./source-event-st
 import { sourceItemGains, type SourceItemGain } from "./source-item-presentation.js";
 import type { ImportedAvatar, ImportedEventPage, ImportedMapAssets, ImportedTransfer } from "./imported-map.js";
 import type { SourceSequenceCommandResult, SourceSequenceSession } from "./source-sequence-controller.js";
+import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 
 type SourceCommand = ImportedEventPage["commands"][number];
 
@@ -18,7 +19,8 @@ export function sourceSequenceCommandFamily(command: SourceCommand): SourceSeque
   if (command.kind === "request-trainer-battle") return "trainer-battle";
   if (command.kind === "open-shop") return "shop";
   if (command.kind === "transfer-player") return "transfer";
-  if (command.kind === "move-route" || command.kind === "wait-for-movement") return "movement";
+  if (command.kind === "move-route" || command.kind === "wait-for-movement"
+    || command.kind === "set-movement-mode") return "movement";
   return "presentation";
 }
 
@@ -35,6 +37,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openShop: (session: SourceSequenceSession, stock: readonly SourceShopItem[]) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
+  readonly setMovementMode: (mode: SourceMovementMode) => void;
   readonly present: (command: SourceCommand, delay: (milliseconds: number) => Promise<void>) => Promise<boolean>;
   readonly isActive: (session: SourceSequenceSession) => boolean;
   readonly resume: () => void;
@@ -135,6 +138,12 @@ export class SourceSequenceEffects {
       this.dependencies.startMoveRoute(session, command.data.target, command.data.route);
     } else if (command.kind === "wait-for-movement") {
       await session.runner.waitForMovement();
+    } else if (command.kind === "set-movement-mode") {
+      const mode = command.data.mode;
+      if (mode !== "walk" && mode !== "mount") {
+        return this.abort(session, "Séquence interrompue : mode de déplacement invalide.");
+      }
+      this.dependencies.setMovementMode(mode);
     }
     return "continue";
   }

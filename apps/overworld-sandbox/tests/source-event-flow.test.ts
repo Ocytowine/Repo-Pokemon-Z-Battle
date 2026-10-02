@@ -14,6 +14,27 @@ const page = (commands: readonly Command[]): ImportedEventPage => ({ condition,
     through: false, alwaysOnTop: false, trigger: 0 }, commands });
 
 describe("source event choice and condition flow", () => {
+  it("ports source traversal scripts and lets the isolated test override satisfy movement-item branches", () => {
+    const eventPage = page([
+      command("condition", 0, { kind: "ruby-script",
+        script: "$PokemonBag.pbQuantity(PBItems::BICYCLE)>0" }),
+      command("ruby-script", 1, { source: "Kernel.pbMountBike" }),
+      command("else", 0), command("show-text", 1, { text: "Objet requis" }), command("condition-end", 0),
+      command("ruby-script", 0, { source: "$PokemonGlobal.runningShoes=true" }),
+      command("ruby-script", 0, { source: "Kernel.pbDismountBike" }),
+    ]);
+    const locked = resolveEventFlow(eventPage, [], createSourceEventState(), 14, 1,
+      { playerDirection: 2, movementTestUnlocks: false });
+    expect(locked.page.commands.map((entry) => entry.kind)).toEqual([
+      "show-text", "set-running-shoes", "set-movement-mode",
+    ]);
+    const testUnlocked = resolveEventFlow(eventPage, [], createSourceEventState(), 14, 1,
+      { playerDirection: 2, movementTestUnlocks: true });
+    expect(testUnlocked.page.commands.map((entry) => entry.kind)).toEqual([
+      "set-movement-mode", "set-running-shoes", "set-movement-mode",
+    ]);
+  });
+
   it("pauses on a choice then projects only the selected nested branch", () => {
     const eventPage = page([
       command("show-text", 0, { text: "Question" }), command("show-choices", 0, { choices: ["Oui", "Non"], cancelType: 2 }),

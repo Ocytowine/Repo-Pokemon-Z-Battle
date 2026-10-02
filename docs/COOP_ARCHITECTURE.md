@@ -89,3 +89,45 @@ etre `PERSONAL` pour chaque participant et les objectifs de session restent
 Une zone coop dediee pourra etre integree plus tard directement dans la carte du
 monde. Elle est explicitement hors perimetre actuel et ne remplacera pas la coop
 dans l'histoire principale.
+
+## Regle de conception commune solo et Coop
+
+Une mecanique jouable ne doit pas posseder une implementation solo puis une seconde
+implementation reseau ajoutee plus tard. Son etat et ses transitions appartiennent
+a un noyau commun. En solo, un adaptateur local joue le role de l'autorite ; en
+Coop, les memes intentions passent par la room et le resultat autoritaire est
+replique.
+
+Chaque conception doit identifier avant le code : autorite, proprietaire de l'etat,
+persistance, audience visuelle et donnees de reconnexion. La matrice de validation
+minimale contient solo, hote, invite, rendu distant et reconnexion. Cette regle
+s'applique en particulier aux modes de deplacement : le mode courant, la vitesse,
+les collisions, le contexte de sprite, les transferts et la representation distante
+forment un seul contrat partage.
+
+Les sequences d'evenements recoivent aussi une audience semantique :
+
+- `NARRATIVE_SHARED` pour l'histoire et les mutations du monde de l'hote ;
+- `PERSONAL_SERVICE` pour le soin, les boutiques, le PC et les autres fonctions
+  propres au joueur qui les utilise ;
+- `AMBIENT_SHARED` pour les effets visibles sans progression personnelle.
+
+La classification repose sur les commandes et leurs effets, pas sur un identifiant
+de carte ou d'evenement. Une sequence mixte ou inconnue reste narrative par prudence
+et doit apparaitre dans l'audit jusqu'a l'ajout d'une regle generique.
+
+## Application aux deplacements source
+
+`resolveSourceMovement` est le noyau commun au mode local et a la room. Une
+intention transporte direction, mode demande et demande de Cascade ; le resultat
+porte position, direction, mode et action visuelle. Les masques de passage et les
+terrain tags compacts sont identiques dans les deux adaptateurs. La room reste
+autoritaire pour les collisions, les occupations et la position finale, puis
+replique le mode et l'action pour le rendu distant et la reconnexion.
+
+Les capacites appartiennent au `PLAYER_STATE` : chaussures, badges, Sac et
+capacites de l'equipe ne sont pas partages. Chaque client calcule donc ses propres
+autorisations avant d'envoyer une intention. L'interrupteur de test est lui aussi
+strictement local et ne modifie aucun de ces prerequis. Une validation serveur des
+droits de traversal exigera plus tard une preuve de capacites de session bornee,
+jamais la publication brute de l'inventaire ou de l'equipe.

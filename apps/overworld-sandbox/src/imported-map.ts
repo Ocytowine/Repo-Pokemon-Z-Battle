@@ -106,6 +106,15 @@ export interface ImportedMapAssets {
   readonly battleback: string | null;
   readonly wildBattleBgm: string | null;
   readonly wildVictoryMe: string | null;
+  readonly mapMetadata: ImportedMapMetadata;
+}
+
+export interface ImportedMapMetadata {
+  readonly outdoor: boolean | null;
+  readonly bicycle: boolean | null;
+  readonly bicycleAlways: boolean;
+  readonly diveMap: number | null;
+  readonly surfaceMap: number | null;
 }
 
 export interface ImportedEncounterSlot {
@@ -258,12 +267,21 @@ export function parseImportedTrainerTypes(value: unknown): readonly ImportedTrai
 }
 
 function parseBattlePresentation(value: unknown, mapId: number): { readonly battleback: string | null;
-  readonly wildBattleBgm: string | null; readonly wildVictoryMe: string | null } {
+  readonly wildBattleBgm: string | null; readonly wildVictoryMe: string | null;
+  readonly mapMetadata: ImportedMapMetadata } {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Les métadonnées de combat sont invalides.");
   const entry = value.records.find((candidate) => isRecord(candidate) && candidate.mapId === mapId);
+  const surface = value.records.find((candidate) => isRecord(candidate) && candidate.diveMap === mapId);
   return { battleback: isRecord(entry) && typeof entry.battleback === "string" ? entry.battleback : null,
     wildBattleBgm: isRecord(entry) && typeof entry.wildBattleBgm === "string" ? entry.wildBattleBgm : null,
-    wildVictoryMe: isRecord(entry) && typeof entry.wildVictoryMe === "string" ? entry.wildVictoryMe : null };
+    wildVictoryMe: isRecord(entry) && typeof entry.wildVictoryMe === "string" ? entry.wildVictoryMe : null,
+    mapMetadata: {
+      outdoor: isRecord(entry) && typeof entry.outdoor === "boolean" ? entry.outdoor : null,
+      bicycle: isRecord(entry) && typeof entry.bicycle === "boolean" ? entry.bicycle : null,
+      bicycleAlways: isRecord(entry) && entry.bicycleAlways === true,
+      diveMap: isRecord(entry) && Number.isSafeInteger(entry.diveMap) ? entry.diveMap as number : null,
+      surfaceMap: isRecord(surface) && Number.isSafeInteger(surface.mapId) ? surface.mapId as number : null,
+    } };
 }
 
 export function selectDefaultEventPage(event: ImportedMapEvent): ImportedEventPage | null {
@@ -557,6 +575,7 @@ export interface ImportedRemotePlayerRender {
   readonly image: HTMLImageElement;
   readonly pose: ImportedAvatar;
   readonly pattern: number;
+  readonly renderOffsetY?: number;
 }
 
 function sourceAssetUrl(path: string): string {
@@ -851,7 +870,7 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   for (const remote of remotePlayers) {
     renderables.push({ z: sourceCharacterZ(remote.pose.y, remote.image.naturalHeight / 4), order: order++, draw: () => {
       drawCharacter(context, remote.image, directionNumber(remote.pose.direction), remote.pattern, 255,
-        remote.pose.x, remote.pose.y, cameraX, cameraY, true);
+        remote.pose.x, remote.pose.y, cameraX, cameraY, true, remote.renderOffsetY ?? 0);
     } });
   }
   renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {

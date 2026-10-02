@@ -28,6 +28,8 @@ describe("source command registry", () => {
     ["request-trainer-battle", "transition", "executed", false],
     ["open-shop", "transition", "rendered", false],
     ["set-pokedex-enabled", "state", "executed", true],
+    ["set-running-shoes", "state", "executed", true],
+    ["set-movement-mode", "movement", "executed", false],
     ["erase-event", "metadata", "absorbed", false],
     ["text-options", "metadata", "rendered", false],
     ["move-route-continuation", "movement", "absorbed", false],

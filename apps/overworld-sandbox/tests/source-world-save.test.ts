@@ -6,7 +6,10 @@ describe("source world save", () => {
   it("creates and parses a versioned map position", () => {
     const save = createSourceWorldSave(3, 15, 16, "down", 1234);
     expect(parseSourceWorldSave(save)).toEqual({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
-      direction: "down", savedAt: 1234 });
+      direction: "down", movementMode: "walk", savedAt: 1234 });
+    expect(parseSourceWorldSave({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
+      direction: "down", savedAt: 1234 }).movementMode).toBe("walk");
+    expect(createSourceWorldSave(3, 15, 16, "down", 1234, "surf").movementMode).toBe("surf");
   });
 
   it.each([
@@ -14,6 +17,7 @@ describe("source world save", () => {
     { schemaVersion: 1, mapId: 0, x: 1, y: 1, direction: "down", savedAt: 1 },
     { schemaVersion: 1, mapId: 3, x: -1, y: 1, direction: "down", savedAt: 1 },
     { schemaVersion: 1, mapId: 3, x: 1, y: 1, direction: "diagonal", savedAt: 1 },
+    { schemaVersion: 1, mapId: 3, x: 1, y: 1, direction: "down", movementMode: "flight", savedAt: 1 },
   ])("rejects an invalid position %#", (value) => {
     expect(() => parseSourceWorldSave(value)).toThrow("Sauvegarde de position invalide");
   });

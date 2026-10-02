@@ -5,6 +5,9 @@ import type { SourceEventState } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
 import type { SourceWorldSave } from "./source-world-save.js";
+import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
+import { sourceMovementCapabilityLabel, type SourceMovementCapability,
+  type SourceMovementUnlocks } from "./source-player-movement.js";
 
 const SOURCE_VOLUME_KEY = "pokemon-z-battle.options.volume.v1";
 
@@ -32,6 +35,14 @@ export interface SourceMenuViewModel {
   readonly avatar: ImportedAvatar;
   readonly worldSave: SourceWorldSave | null;
   readonly coop: SourceMenuCoopModel;
+  readonly movement: SourceMenuMovementModel;
+}
+
+export interface SourceMenuMovementModel {
+  readonly mode: SourceMovementMode;
+  readonly unlocks: SourceMovementUnlocks;
+  readonly canDiveHere: boolean;
+  readonly canSurfaceHere: boolean;
 }
 
 export interface SourceMenuCoopModel {
@@ -53,6 +64,9 @@ export interface SourceMenuViewCallbacks {
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
   readonly onDisconnectRoom: () => void;
   readonly onEditProfile: () => void;
+  readonly onMovementMode: (mode: "walk" | "mount") => void;
+  readonly onMovementTestOverride: (enabled: boolean) => void;
+  readonly onDive: () => void;
 }
 
 export class SourceMenuView {
@@ -73,6 +87,7 @@ export class SourceMenuView {
     });
     if (model.tab === "team") this.renderTeam(content, model);
     else if (model.tab === "bag") this.renderBag(content, model);
+    else if (model.tab === "movement") this.renderMovement(content, model.movement);
     else if (model.tab === "save") this.renderSave(content, model);
     else if (model.tab === "coop") this.renderCoop(content, model.coop);
     else this.renderOptions(content);
@@ -133,6 +148,24 @@ export class SourceMenuView {
       const output = content.querySelector<HTMLOutputElement>("#source-volume-value");
       if (output !== null) output.value = `${input.value}%`;
     });
+  }
+
+  private renderMovement(content: HTMLElement, movement: SourceMenuMovementModel): void {
+    const capabilities = (["sprint", "mount", "climb", "surf", "dive", "waterfall"] as const)
+      .map((capability: SourceMovementCapability) => `<li class="${movement.unlocks[capability] ? "ready" : "locked"}"><i></i><span><strong>${sourceMovementCapabilityLabel(capability)}</strong><small>${movement.unlocks[capability] ? "Disponible" : "Encore verrouillé par la progression"}</small></span></li>`).join("");
+    const diveLabel = movement.canSurfaceHere ? "Remonter à la surface" : "Plonger";
+    content.innerHTML = `<div class="source-menu-title"><div><small>EXPLORATION</small><h3>Déplacements</h3></div><span>${escapeSourceHtml(movement.mode.toUpperCase())}</span></div>
+      <div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div>
+      <label class="source-movement-test"><span><strong>Déplacements de test</strong><small>Autorise localement toutes les capacités dès le début, sans donner d'objet, de badge ou de capacité à la sauvegarde.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label>
+      <ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf s'active avec Espace/Entrée face à l'eau. Les corniches, la glace, les cascades et les parois Chevroum se déclenchent depuis le terrain ou leurs événements source.</p>`;
+    content.querySelectorAll<HTMLButtonElement>("[data-movement-mode]").forEach((button) => button.addEventListener("click", () => {
+      const mode = button.dataset.movementMode;
+      if (mode === "walk" || mode === "mount") this.callbacks.onMovementMode(mode);
+    }));
+    content.querySelector<HTMLInputElement>("#source-movement-test")?.addEventListener("change", (event) => {
+      this.callbacks.onMovementTestOverride((event.currentTarget as HTMLInputElement).checked);
+    });
+    content.querySelector<HTMLButtonElement>("#source-movement-dive")?.addEventListener("click", this.callbacks.onDive);
   }
 
   private renderCoop(content: HTMLElement, coop: SourceMenuCoopModel): void {

@@ -19,7 +19,10 @@ export interface EventFlowResult {
   readonly consumedChoices: number;
 }
 
-export interface EventFlowContext { readonly playerDirection: number }
+export interface EventFlowContext {
+  readonly playerDirection: number;
+  readonly movementTestUnlocks?: boolean;
+}
 
 function integer(value: unknown): value is number {
   return Number.isInteger(value);
@@ -29,7 +32,19 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
   context?: EventFlowContext): boolean | null {
   const kind = command.data.kind;
   const operands = command.data.operands;
-  if (typeof kind !== "string" || !Array.isArray(operands)) return null;
+  if (typeof kind !== "string") return null;
+  if (kind === "ruby-script" && typeof command.data.script === "string") {
+    const quantity = /^\$PokemonBag\.pbQuantity\(PBItems::([A-Za-z][A-Za-z0-9_]*)\)\s*>\s*0$/u
+      .exec(command.data.script.trim());
+    if (quantity !== null) {
+      const item = quantity[1]?.toUpperCase();
+      if (item === undefined) return null;
+      const movementItem = item === "SURFMONTURA" || /^BICYCLE\d*$/u.test(item);
+      return (state.inventory[item] ?? 0) > 0 || movementItem && context?.movementTestUnlocks === true;
+    }
+    return null;
+  }
+  if (!Array.isArray(operands)) return null;
   if (kind === "switch") {
     const [id, expected] = operands;
     return integer(id) && integer(expected) ? (state.switches[String(id)] === true) === (expected === 0) : null;

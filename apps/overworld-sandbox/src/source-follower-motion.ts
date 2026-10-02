@@ -71,7 +71,7 @@ export class SourceFollowerMotionController {
 
   public pose(now: number): SourceGridPose | null {
     if (this.position === null) return null;
-    if (this.motion === null) return { ...this.position, pattern: 0, complete: true };
+    if (this.motion === null) return { ...this.position, pattern: 0, renderOffsetY: 0, complete: true };
     const sampled = sampleSourceGridMotion(this.motion, now);
     if (sampled.complete) this.motion = null;
     return sampled;

@@ -610,7 +610,7 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
     session.snapshot = {
       ...snapshot,
       phase: message.state.status === "finished" ? "finished" : "battle",
-      battle: { id: message.battleId, state: message.state },
+      battle: { id: message.battleId, state: message.state, duel: snapshot.battle.duel },
     };
     session.submittedTurn = null;
     networkResults.push({ state: displayBattleState(message.state), events: message.events, trace: [] });
@@ -627,7 +627,8 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
   if (message.type === "replacementResolved") {
     const snapshot = session.snapshot;
     if (snapshot === null || snapshot.battle === null || snapshot.battle.id !== message.battleId) return;
-    session.snapshot = { ...snapshot, battle: { id: message.battleId, state: message.state } };
+    session.snapshot = { ...snapshot,
+      battle: { id: message.battleId, state: message.state, duel: snapshot.battle.duel } };
     session.submittedTurn = null;
     networkResults.push({ state: displayBattleState(message.state), events: message.events, trace: [] });
     await playEvents(message.events);

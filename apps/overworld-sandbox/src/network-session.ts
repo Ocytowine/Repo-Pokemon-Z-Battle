@@ -1,6 +1,7 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
-  type RoomSnapshot, type SourceAvatarSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
+  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
@@ -114,14 +115,15 @@ export class OverworldNetworkSession {
     this.setStatus("Local", "Lance le Worker pour synchroniser deux navigateurs.");
   }
 
-  public sendMovement(playerId: string, direction: Direction): boolean {
+  public sendMovement(playerId: string, direction: Direction,
+    intent: Omit<SourceMovementIntent, "direction"> = {}): boolean {
     const session = this.activeSession;
     if (session === null || session.snapshot?.battle !== null && session.snapshot !== null) return false;
     const socket = session.socket;
     if (playerId !== session.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN
       || session.pendingMovementSequence !== null) return false;
     const now = performance.now();
-    if (now - session.lastSentAt < 120) return false;
+    if (now - session.lastSentAt < 70) return false;
     session.lastSentAt = now;
     session.sequence += 1;
     session.pendingMovementSequence = session.sequence;
@@ -131,6 +133,7 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(),
       direction,
       sequence: session.sequence,
+      ...intent,
     }));
     return true;
   }

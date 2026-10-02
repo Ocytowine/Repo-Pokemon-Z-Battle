@@ -1,5 +1,5 @@
 import { createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type BattleTeam, type BattlerState, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
-import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
+import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
   type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
@@ -71,7 +71,6 @@ export interface RoomWorldDefinition {
   readonly sourceWorld?: SourceWorldHostState | null;
 }
 
-const SOURCE_DIRECTION_BITS = { down: 1, left: 2, right: 4, up: 8 } as const;
 const SOURCE_OPPOSITE = { down: "up", left: "right", right: "left", up: "down" } as const;
 const SOURCE_DELTAS = { down: { x: 0, y: 1 }, left: { x: -1, y: 0 },
   right: { x: 1, y: 0 }, up: { x: 0, y: -1 } } as const;
@@ -477,24 +476,17 @@ export class AuthoritativeBattleRoom {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le joueur est en excursion personnelle.")];
     }
     const avatar = world.avatars[player.side];
-    const delta = SOURCE_DELTAS[message.direction];
-    const target = { x: avatar.x + delta.x, y: avatar.y + delta.y };
     const otherSide: BattleSide = player.side === "player" ? "opponent" : "player";
     const other = world.presence[otherSide] === "shared" ? world.avatars[otherSide] : undefined;
     const otherFollower = world.presence[otherSide] === "shared" ? world.followers[otherSide] : undefined;
-    const inBounds = target.x >= 0 && target.y >= 0 && target.x < world.width && target.y < world.height;
-    const sourceMask = Number.parseInt(world.passages[avatar.y * world.width + avatar.x] ?? "0", 16);
-    const targetMask = inBounds ? Number.parseInt(world.passages[target.y * world.width + target.x] ?? "0", 16) : 0;
-    const passable = inBounds && (sourceMask & SOURCE_DIRECTION_BITS[message.direction]) !== 0
-      && (targetMask & SOURCE_DIRECTION_BITS[SOURCE_OPPOSITE[message.direction]]) !== 0
-      && !world.blockedPoints.some((point) => point.x === target.x && point.y === target.y)
-      && (other === undefined || other.x !== target.x || other.y !== target.y)
-      && (otherFollower === undefined || otherFollower.x !== target.x || otherFollower.y !== target.y);
-    const next: SourceAvatarSnapshot = passable ? { ...target, direction: message.direction }
-      : { ...avatar, direction: message.direction };
+    const resolution = resolveSourceMovement(world, avatar, { direction: message.direction,
+      ...(message.mode === undefined ? {} : { mode: message.mode }),
+      ...(message.waterfall === undefined ? {} : { waterfall: message.waterfall }) },
+    [...(other === undefined ? [] : [other]), ...(otherFollower === undefined ? [] : [otherFollower])]);
+    const next: SourceAvatarSnapshot = resolution.avatar;
     const currentFollower = world.followers[player.side];
     let nextFollower: SourceFollowerSnapshot | undefined = currentFollower;
-    if (passable && currentFollower !== undefined) {
+    if (resolution.moved && currentFollower !== undefined) {
       const followerDirection = avatar.x < currentFollower.x ? "left" : avatar.x > currentFollower.x ? "right"
         : avatar.y < currentFollower.y ? "up" : avatar.y > currentFollower.y ? "down" : message.direction;
       nextFollower = { ...currentFollower, x: avatar.x, y: avatar.y, direction: followerDirection };

@@ -23,6 +23,7 @@ export function mountOverworldApp(): HTMLCanvasElement {
             <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
               <button data-source-menu-tab="team"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><span>Équipe</span></button>
               <button data-source-menu-tab="bag"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><span>Sac</span></button>
+              <button data-source-menu-tab="movement"><span class="source-menu-symbol">↟</span><span>Déplacements</span></button>
               <button data-source-menu-tab="save"><span class="source-menu-symbol">S</span><span>Sauvegarde</span></button>
               <button data-source-menu-tab="coop"><span class="source-menu-symbol">2</span><span>Coop</span></button>
               <button data-source-menu-tab="options"><span class="source-menu-symbol">⚙</span><span>Options</span></button>

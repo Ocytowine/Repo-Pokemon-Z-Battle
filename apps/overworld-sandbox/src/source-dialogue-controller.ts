@@ -48,7 +48,7 @@ export class SourceDialogueController {
 
   public begin(page: ImportedEventPage, mapId: number, eventId: number, label: string,
     translations: ReadonlyMap<string, string>, state: SourceEventState, playerDirection: number,
-    variables: SourceDialogueVariables = { playerName: "Joueur" }): SourceDialogueUpdate {
+    variables: SourceDialogueVariables = { playerName: "Joueur" }, movementTestUnlocks = false): SourceDialogueUpdate {
     const session: MutableSourceDialogueSession = {
       label,
       mapId,
@@ -60,11 +60,11 @@ export class SourceDialogueController {
       lines: [],
       index: 0,
       shownLines: 0,
-      flow: resolveEventFlow(page, [], state, mapId, eventId, { playerDirection }),
+      flow: resolveEventFlow(page, [], state, mapId, eventId, { playerDirection, movementTestUnlocks }),
       choosing: false,
     };
     this.activeSession = session;
-    return this.refresh(session, state, playerDirection);
+    return this.refresh(session, state, playerDirection, movementTestUnlocks);
   }
 
   public advance(): SourceDialogueUpdate {
@@ -81,13 +81,14 @@ export class SourceDialogueController {
     return session.choosing ? { changed: true, completed: null } : this.finish(session);
   }
 
-  public choose(index: number, state: SourceEventState, playerDirection: number): SourceDialogueUpdate {
+  public choose(index: number, state: SourceEventState, playerDirection: number,
+    movementTestUnlocks = false): SourceDialogueUpdate {
     const session = this.activeSession;
     if (session === null || !session.choosing) return UNCHANGED;
     const pending = session.flow.pendingChoice;
     if (pending === null || index < 0 || index >= pending.choices.length) return UNCHANGED;
     session.selections.push(index);
-    return this.refresh(session, state, playerDirection);
+    return this.refresh(session, state, playerDirection, movementTestUnlocks);
   }
 
   public cancel(): boolean {
@@ -97,9 +98,9 @@ export class SourceDialogueController {
   }
 
   private refresh(session: MutableSourceDialogueSession, state: SourceEventState,
-    playerDirection: number): SourceDialogueUpdate {
+    playerDirection: number, movementTestUnlocks: boolean): SourceDialogueUpdate {
     session.flow = resolveEventFlow(session.page, session.selections, state, session.mapId, session.eventId,
-      { playerDirection });
+      { playerDirection, movementTestUnlocks });
     const allLines = dialogueLines(session.flow.page, session.translations, session.variables);
     session.lines = allLines.slice(session.shownLines);
     session.index = 0;

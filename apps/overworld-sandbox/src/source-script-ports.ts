@@ -40,6 +40,16 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^\$Trainer\.pokedex\s*=\s*true$/u.test(ruby)) {
     return command(source, "set-pokedex-enabled", { value: true, policy: "PERSONAL" });
   }
+  const booleanMatch = /^\$PokemonGlobal\.runningShoes\s*=\s*(true|false)$/u.exec(ruby);
+  if (booleanMatch !== null) {
+    return command(source, "set-running-shoes", { value: booleanMatch[1] === "true", policy: "PERSONAL" });
+  }
+  if (/^(?:Kernel\.)?pbMountBike$/u.test(ruby)) {
+    return command(source, "set-movement-mode", { mode: "mount", policy: "SHARED_PRESENTATION" });
+  }
+  if (/^(?:Kernel\.)?pbDismountBike$/u.test(ruby)) {
+    return command(source, "set-movement-mode", { mode: "walk", policy: "SHARED_PRESENTATION" });
+  }
   if (/^\$PokemonTemp\.dependentEvents\.(?:remove_sprite\s*\(\s*true\s*\)|refresh_sprite)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "FOLLOWER_PRESENTATION" });
   }

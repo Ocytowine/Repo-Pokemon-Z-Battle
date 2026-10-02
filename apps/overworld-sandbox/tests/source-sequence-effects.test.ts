@@ -17,6 +17,7 @@ describe("source sequence effect families", () => {
   it("routes movement separately and leaves audiovisual commands to presentation", () => {
     expect(sourceSequenceCommandFamily(command("move-route"))).toBe("movement");
     expect(sourceSequenceCommandFamily(command("wait-for-movement"))).toBe("movement");
+    expect(sourceSequenceCommandFamily(command("set-movement-mode"))).toBe("movement");
     expect(sourceSequenceCommandFamily(command("play-sound"))).toBe("presentation");
   });
 });

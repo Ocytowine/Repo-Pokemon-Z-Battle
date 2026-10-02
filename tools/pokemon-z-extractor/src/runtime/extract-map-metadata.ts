@@ -6,6 +6,14 @@ export interface MapBattleMetadata {
   readonly battleback: string | null;
   readonly wildBattleBgm: string | null;
   readonly wildVictoryMe: string | null;
+  readonly outdoor: boolean | null;
+  readonly bicycle: boolean | null;
+  readonly bicycleAlways: boolean;
+  readonly diveMap: number | null;
+}
+
+function optionalBoolean(value: string | undefined): boolean | null {
+  return value === "true" ? true : value === "false" ? false : null;
 }
 
 export function parseMapBattleMetadata(text: string): readonly MapBattleMetadata[] {
@@ -13,8 +21,12 @@ export function parseMapBattleMetadata(text: string): readonly MapBattleMetadata
   let current: { mapId: number; values: Record<string, string> } | null = null;
   const flush = (): void => {
     if (current === null) return;
+    const diveMap = Number(current.values.DiveMap);
     records.push({ mapId: current.mapId, battleback: current.values.BattleBack ?? null,
-      wildBattleBgm: current.values.WildBattleBGM ?? null, wildVictoryMe: current.values.WildVictoryME ?? null });
+      wildBattleBgm: current.values.WildBattleBGM ?? null, wildVictoryMe: current.values.WildVictoryME ?? null,
+      outdoor: optionalBoolean(current.values.Outdoor), bicycle: optionalBoolean(current.values.Bicycle),
+      bicycleAlways: optionalBoolean(current.values.BicycleAlways) === true,
+      diveMap: Number.isSafeInteger(diveMap) && diveMap > 0 ? diveMap : null });
   };
   for (const rawLine of text.replace(/^\uFEFF/u, "").split(/\r?\n/u)) {
     const line = rawLine.trim();

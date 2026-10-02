@@ -1,4 +1,5 @@
 import type { Direction } from "@pokemon-z-battle/overworld-engine";
+import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 
 export const SOURCE_WORLD_SAVE_KEY = "pokemon-z-battle.source-world-save.v1";
 export const SOURCE_WORLD_SAVE_SCHEMA_VERSION = 1 as const;
@@ -9,6 +10,7 @@ export interface SourceWorldSave {
   readonly x: number;
   readonly y: number;
   readonly direction: Direction;
+  readonly movementMode: SourceMovementMode;
   readonly savedAt: number;
 }
 
@@ -21,8 +23,8 @@ function integer(value: unknown, minimum: number, maximum = Number.MAX_SAFE_INTE
 }
 
 export function createSourceWorldSave(mapId: number, x: number, y: number, direction: Direction,
-  savedAt = Date.now()): SourceWorldSave {
-  const value = { schemaVersion: SOURCE_WORLD_SAVE_SCHEMA_VERSION, mapId, x, y, direction, savedAt };
+  savedAt = Date.now(), movementMode: SourceMovementMode = "walk"): SourceWorldSave {
+  const value = { schemaVersion: SOURCE_WORLD_SAVE_SCHEMA_VERSION, mapId, x, y, direction, movementMode, savedAt };
   return parseSourceWorldSave(value);
 }
 
@@ -31,8 +33,12 @@ export function parseSourceWorldSave(value: unknown): SourceWorldSave {
     || !integer(value.mapId, 1, 999) || !integer(value.x, 0) || !integer(value.y, 0)
     || !["up", "down", "left", "right"].includes(String(value.direction))
     || !integer(value.savedAt, 1)) throw new Error("Sauvegarde de position invalide.");
+  const movementMode = value.movementMode === undefined ? "walk" : String(value.movementMode);
+  if (!["walk", "run", "mount", "surf", "dive"].includes(movementMode)) {
+    throw new Error("Sauvegarde de position invalide.");
+  }
   return { schemaVersion: SOURCE_WORLD_SAVE_SCHEMA_VERSION, mapId: value.mapId, x: value.x, y: value.y,
-    direction: value.direction as Direction, savedAt: value.savedAt };
+    direction: value.direction as Direction, movementMode: movementMode as SourceMovementMode, savedAt: value.savedAt };
 }
 
 export function loadSourceWorldSave(storage: Pick<Storage, "getItem" | "removeItem">): SourceWorldSave | null {

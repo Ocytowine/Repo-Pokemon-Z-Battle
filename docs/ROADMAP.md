@@ -1251,9 +1251,32 @@ de debug ou variantes jamais utilisees par le parcours final.
 
 L'import du monde ne sera jamais une bascule unique. Chaque lot de cartes devra avoir un taux de commandes supportees mesurable et des tests de parcours.
 
+### Modes de deplacement partages — premier lot implemente le 2026-10-02
+
+- [x] utiliser un resolveur commun pour le solo, l'hote et l'invite ;
+- [x] porter marche, sprint, monture, corniches, Surf, glace, Cascade et Plongee ;
+- [x] extraire les permissions de monture et les liens surface/profondeur ;
+- [x] convertir les chaussures de course et les appels de monture source ;
+- [x] synchroniser mode, action, vitesse, sprite et reconnexion en Coop ;
+- [x] ajouter dans le menu un deblocage de test local, sans mutation narrative ;
+- [x] conserver le mode dans la sauvegarde de position avec migration `walk` ;
+- [ ] valider manuellement chaque terrain sur ses cartes source representatives ;
+- [ ] remplacer, si necessaire pour une exploitation publique, la confiance dans
+  les prerequis client par une preuve serveur minimale de capacites de session.
+
+Les parois Chevroum du fangame sont des routes d'evenement, et non un terrain
+universel : elles utilisent donc le lecteur generique de routes avec un changement
+de contexte `mount`. Les deblocages normaux restent issus des badges, objets et
+capacites personnels ; le bouton de test n'ecrit aucune de ces valeurs.
+
 ## Regles transversales
 
 - aucun fichier source du fangame dans Git ;
+- toute nouvelle mecanique doit partager son noyau entre solo et Coop dans le meme
+  lot : autorite, domaine d'etat, persistance, audience et replication sont definis
+  avant le code, puis testes en solo, comme hote, comme invite et apres reconnexion ;
+- un report multijoueur doit etre demande explicitement et laisser des maintenant
+  un contrat de donnees ainsi qu'une dette documentee ;
 - aucune modification du dossier source ;
 - TypeScript strict et aucune donnee importante en `any` ;
 - schemas versionnes et provenance obligatoire ;
