@@ -89,6 +89,26 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
   });
 
+  it("publishes and persists a host-only read-only source scene", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const scene = { mapId: 3, sequenceActive: true,
+      dialogue: { label: "Crisanto", text: "Attention !", choices: [] },
+      actors: [{ eventId: 4, x: 1, y: 0, direction: "up" as const }], presentation: null };
+    const forbidden = room.receive("bob", { type: "setSourceScene", version: 8,
+      requestId: "guest-scene", scene });
+    expect(forbidden[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
+    const published = room.receive("alice", { type: "setSourceScene", version: 8,
+      requestId: "host-scene", scene });
+    expect(published.map((entry) => entry.message.type)).toEqual(["ack", "sourceSceneUpdated"]);
+    expect(room.snapshot().sourceScene).toEqual(scene);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().sourceScene).toEqual(scene);
+  });
+
   it("publishes, updates and persists each player's cosmetic profile", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);
     const base = createDefaultNetworkPlayerProfile().profile;

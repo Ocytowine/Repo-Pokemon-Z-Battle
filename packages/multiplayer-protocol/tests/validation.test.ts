@@ -7,6 +7,7 @@ import {
   normalizeRoomCode,
   parseClientMessage,
   parseNetworkPlayerProfile,
+  parseSourceSceneSnapshot,
   parseSourceWorldHostState,
   serializeMessage,
   type ClientMessage,
@@ -82,6 +83,18 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage(JSON.stringify({ ...message, world: { ...world, avatars: {} } })))
       .toThrow("setSourceWorld mal formé");
     expect(() => parseSourceWorldHostState({ ...world, passages: "fff" })).toThrow("Passages");
+  });
+
+  it("validates a read-only source scene without accepting arbitrary presentation commands", () => {
+    const scene = { mapId: 3, sequenceActive: true,
+      dialogue: { label: "Crisanto", text: "Regarde !", choices: [] },
+      actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255 }],
+      presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
+    expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
+    const message: ClientMessage = { type: "setSourceScene", version: 8, requestId: "scene-1", scene };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseSourceSceneSnapshot({ ...scene,
+      presentation: { id: 2, kind: "execute-ruby", data: {} } })).toThrow("Commande visuelle");
   });
 
   it("rejects malformed and oversized payloads", () => {

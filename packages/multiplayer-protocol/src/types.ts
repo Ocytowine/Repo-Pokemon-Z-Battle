@@ -2,6 +2,7 @@ import type { BattleSide, TeamBattleAction, TeamBattleEvent, TeamBattleState } f
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
 import type { SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
+import type { SourceSceneSnapshot } from "./source-scene.js";
 
 export const PROTOCOL_VERSION = 8 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
@@ -24,6 +25,7 @@ export interface RoomSnapshot {
   readonly battle: { readonly id: string; readonly state: TeamBattleState } | null;
   readonly world: OverworldState;
   readonly sourceWorld: SourceWorldSnapshot | null;
+  readonly sourceScene: SourceSceneSnapshot | null;
   readonly movementSequences: Readonly<Record<BattleSide, number>>;
 }
 
@@ -54,6 +56,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "interact" })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
+  | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 
 export type ProtocolErrorCode =
@@ -111,6 +114,8 @@ export type ServerMessage =
     })
   | (VersionedMessage & { readonly type: "sourceWorldUpdated"; readonly side: BattleSide;
       readonly sequence: number; readonly revision: number; readonly state: SourceWorldSnapshot })
+  | (VersionedMessage & { readonly type: "sourceSceneUpdated"; readonly revision: number;
+      readonly state: SourceSceneSnapshot })
   | (VersionedMessage & {
       readonly type: "error";
       readonly requestId: string | null;

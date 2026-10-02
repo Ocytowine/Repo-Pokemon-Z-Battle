@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage } from "../src/multiplayer-client.js";
+import { PROTOCOL_VERSION } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
-  protocolVersion: 7,
+  protocolVersion: PROTOCOL_VERSION,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",

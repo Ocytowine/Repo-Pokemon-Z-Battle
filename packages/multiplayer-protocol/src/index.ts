@@ -3,6 +3,8 @@ export { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile, NETWORK_
   type NetworkPlayerProfile } from "./player-profile.js";
 export { parseSourceWorldHostState, sourceWorldSnapshot, type SourceAvatarSnapshot, type SourceStorySnapshot,
   type SourceWorldHostState, type SourceWorldSnapshot } from "./source-world.js";
+export { parseSourceSceneSnapshot, type SourceSceneActorSnapshot, type SourceSceneDialogueSnapshot,
+  type SourceScenePresentationCue, type SourceSceneSnapshot } from "./source-scene.js";
 export {
   MAX_CLIENT_MESSAGE_BYTES,
   PROTOCOL_VERSION,

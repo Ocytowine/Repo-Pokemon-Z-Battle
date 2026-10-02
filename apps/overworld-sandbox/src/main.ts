@@ -1,5 +1,5 @@
 import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, localizedDialogueText, moveImportedAvatar, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -8,6 +8,8 @@ import { createPersistentPokemon, loadPlayerAvatarSelection, PLAYER_AVATAR_ACTIV
 import { createNetworkPlayerProfile, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldHostState, SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
+  from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
@@ -28,7 +30,7 @@ import { SourceFollowerMotionController } from "./source-follower-motion.js";
 import { AVATAR_LAB_MAP_ID, AvatarLabView } from "./avatar-lab-view.js";
 import { isSourceStateCommand, sourceCommandCapability } from "./source-command-registry.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
-import { SourceScenePresentation } from "./source-scene-presentation.js";
+import { SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView, sourceMenuVolume } from "./source-menu-view.js";
 import { DemoOverworldView, type DemoAvatarId } from "./demo-overworld-view.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
@@ -105,7 +107,13 @@ let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une
 let networkServerUrl = "http://127.0.0.1:8787";
 let networkRoomCode = "";
 let networkSourceWorld: SourceWorldSnapshot | null = null;
+let networkSourceScene: SourceSceneSnapshot | null = null;
+let networkRemoteSourceMotion: SourceGridMotion | null = null;
 let networkSourceWorldApplication = 0;
+let sourcePresentationCue: SourceScenePresentationCue | null = null;
+let sourcePresentationCueId = 0;
+let lastPublishedSourceScene = "";
+let lastAppliedPresentationCueId = 0;
 type AvatarId = DemoAvatarId;
 
 function activeNetworkPlayerProfile(): NetworkPlayerProfile {
@@ -147,6 +155,44 @@ function sourceWorldHostState(): SourceWorldHostState | null {
 function publishCurrentSourceWorld(): void {
   const world = sourceWorldHostState();
   if (world !== null) multiplayer.publishSourceWorld(world);
+}
+
+function sourceActorDirection(direction: number): Direction {
+  if (direction === 4) return "left";
+  if (direction === 6) return "right";
+  if (direction === 8) return "up";
+  return "down";
+}
+
+function currentSourceScene(): SourceSceneSnapshot | null {
+  if (importedAssets === null) return null;
+  const dialogue = sourceDialogues.current;
+  const pendingChoice = dialogue?.choosing ? dialogue.flow.pendingChoice : null;
+  const poses = sourceNpcMotions.poses(performance.now());
+  const actors: SourceSceneActorSnapshot[] = sourceMapEvents().flatMap((event) => {
+    const pose = poses.get(event.id);
+    if (pose === undefined) return [];
+    return [{ eventId: event.id, x: event.x, y: event.y, direction: sourceActorDirection(pose.direction),
+      ...(pose.pattern === undefined ? {} : { pattern: pose.pattern }),
+      ...(pose.characterName === undefined ? {} : { characterName: pose.characterName }),
+      ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }) }];
+  });
+  return { mapId: importedAssets.map.id, sequenceActive: sourceSequences.current !== null,
+    dialogue: dialogue === null ? null : { label: dialogue.label,
+      text: dialogue.choosing ? null : dialogue.lines[dialogue.index] ?? "",
+      choices: pendingChoice === null ? [] : pendingChoice.choices.map((choice) =>
+        localizedDialogueText(choice, dialogue.translations, dialogue.variables)) },
+    actors, presentation: sourcePresentationCue };
+}
+
+function publishCurrentSourceScene(): void {
+  if (multiplayer.current?.ticket.side !== "player") return;
+  const scene = currentSourceScene();
+  if (scene === null) return;
+  const signature = JSON.stringify(scene);
+  if (signature === lastPublishedSourceScene) return;
+  lastPublishedSourceScene = signature;
+  multiplayer.publishSourceScene(scene);
 }
 
 function renderedSourceEventState(): SourceEventState {
@@ -264,7 +310,7 @@ async function runSourceParallelCycle(task: SourceParallelTask): Promise<"repeat
       && command.data.parameters[0] === 0
       ? { ...command, data: { ...command.data, parameters: [task.eventId, ...command.data.parameters.slice(1)] } }
       : command;
-    if (await sourcePresentation.execute(presentationCommand, (milliseconds) => runner.delay(milliseconds))) continue;
+    if (await presentSourceCommand(presentationCommand, (milliseconds) => runner.delay(milliseconds))) continue;
     if (command.kind === "wait" && typeof command.data.frames === "number" && command.data.frames > 0) {
       await runner.delay(command.data.frames * 25);
       continue;
@@ -354,7 +400,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       persistSourceEventState();
     }
     if (result.sound !== null) {
-      await sourcePresentation.execute({ kind: "play-sound", data: { audio: result.sound } }, async () => undefined);
+      await presentSourceCommand({ kind: "play-sound", data: { audio: result.sound } }, async () => undefined);
     }
     let duration = result.waitMs;
     if (playerTarget) {
@@ -372,6 +418,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
     } else duration = Math.max(duration,
       sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now()));
     renderImportedView();
+    if (playerTarget) publishCurrentSourceWorld();
     if (duration > 0) await sequence.runner.delay(duration);
     if (result.complete) return;
   }
@@ -475,6 +522,13 @@ function resolveSourceAnimationTarget(target: number): { x: number; bottom: numb
   const camera = importedCameraPosition(canvas, importedAssets.map, playerPose, sourcePresentation.currentCameraOffset());
   if (target === -1) { const image = activeSourcePlayerImage(); return { x: playerPose.x * 32 + 16 - camera.x,
     bottom: playerPose.y * 32 + 32 - camera.y, height: image.naturalHeight / 4 }; }
+  if (target === -2) {
+    const remote = networkSourceWorld?.avatars.player;
+    const image = networkAvatarImages.player;
+    if (remote === undefined || image === undefined) return null;
+    return { x: remote.x * 32 + 16 - camera.x, bottom: remote.y * 32 + 32 - camera.y,
+      height: image.naturalHeight / 4 };
+  }
   const eventId = target === 0 ? sourceSequences.current?.eventId : target;
   if (eventId === undefined) return null;
   const event = importedAssets.events.find((candidate) => candidate.id === eventId);
@@ -495,6 +549,24 @@ const sourcePresentation = new SourceScenePresentation({
   flash: requiredAppElement("source-flash-layer"), animations: requiredAppElement("source-map-animation-layer"),
   dialogue: requiredAppElement("source-dialogue"),
 }, sourceMenuVolume(localStorage) / 100, { resolveAnimationTarget: resolveSourceAnimationTarget });
+
+async function presentSourceCommand(command: SourcePresentationCommand,
+  delay: (milliseconds: number) => Promise<void>): Promise<boolean> {
+  const capability = sourceCommandCapability(command.kind);
+  if (capability?.support === "rendered"
+    && (capability.family === "audiovisual" || command.kind === "text-options")) {
+    sourcePresentationCueId += 1;
+    const parameters = command.kind === "show-animation" && Array.isArray(command.data.parameters)
+      ? command.data.parameters : null;
+    const target = parameters?.[0];
+    const networkData = parameters === null ? command.data : { ...command.data,
+      parameters: [target === 0 ? sourceSequences.current?.eventId ?? 0 : target === -1 ? -2 : target,
+        ...parameters.slice(1)] };
+    sourcePresentationCue = { id: sourcePresentationCueId, kind: command.kind, data: networkData };
+    publishCurrentSourceScene();
+  }
+  return sourcePresentation.execute(command, delay);
+}
 const sourceMenuView = new SourceMenuView(localStorage, {
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
@@ -550,7 +622,7 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   transferPlayer: executeSourceSequenceTransfer,
   startMoveRoute: startSourceMoveRoute,
-  present: (command, delay) => sourcePresentation.execute(command, delay),
+  present: presentSourceCommand,
   isActive: (sequence) => sourceSequences.isActive(sequence),
   resume: () => { void advanceSourceSequence(); },
 });
@@ -606,14 +678,36 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   },
   onPlayersChanged: synchronizeNetworkPlayerProfiles,
   onSourceWorldState: (world, animate) => { void applyNetworkSourceWorld(world, animate); },
+  onSourceSceneState: applyNetworkSourceScene,
   onRender: render,
 });
 
+function applyNetworkSourceScene(scene: SourceSceneSnapshot): void {
+  networkSourceScene = scene;
+  sourcePresentationCueId = Math.max(sourcePresentationCueId, scene.presentation?.id ?? 0);
+  if (multiplayer.current?.ticket.side !== "opponent" || importedAssets?.map.id !== scene.mapId) return;
+  sourceNpcMotions.applyNetworkActors(scene.actors, performance.now());
+  const cue = scene.presentation;
+  if (cue !== null && cue.id > lastAppliedPresentationCueId) {
+    lastAppliedPresentationCueId = cue.id;
+    void sourcePresentation.execute({ kind: cue.kind, data: cue.data }, async () => undefined);
+  }
+  renderImportedView();
+}
+
 async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean): Promise<void> {
+  const previousWorld = networkSourceWorld;
   networkSourceWorld = world;
   const session = multiplayer.current;
   if (session === null) return;
   const own = world.avatars[session.ticket.side];
+  const remoteSide: AvatarId = session.ticket.side === "player" ? "opponent" : "player";
+  const previousRemote = previousWorld?.mapId === world.mapId ? previousWorld.avatars[remoteSide] : undefined;
+  const remote = world.avatars[remoteSide];
+  networkRemoteSourceMotion = previousRemote !== undefined
+    && (previousRemote.x !== remote.x || previousRemote.y !== remote.y)
+    ? createSourceGridMotion(previousRemote, remote, remote.direction, performance.now(),
+      { walkingPattern: importedWalkingPattern }) : null;
   const application = ++networkSourceWorldApplication;
   if (importedAssets?.map.id !== world.mapId) {
     try {
@@ -639,6 +733,7 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     ? "Session Coop active : votre monde narratif est partagé."
     : `Monde de l'hôte rejoint · Map${String(world.mapId).padStart(3, "0")}.`;
   renderImportedView();
+  if (networkSourceScene?.mapId === world.mapId) applyNetworkSourceScene(networkSourceScene);
 }
 
 function synchronizeNetworkPlayerProfiles(players: readonly RoomPlayerSnapshot[]): void {
@@ -677,7 +772,8 @@ function animateImportedMap(now: number): void {
   const followerPose = sourceFollowerMotion.pose(now);
   const remoteSide: AvatarId | null = multiplayer.current?.ticket.side === "player" ? "opponent"
     : multiplayer.current?.ticket.side === "opponent" ? "player" : null;
-  const remotePose = remoteSide === null ? null : networkSourceWorld?.avatars[remoteSide] ?? null;
+  const remotePose = remoteSide === null ? null : networkRemoteSourceMotion === null
+    ? networkSourceWorld?.avatars[remoteSide] ?? null : sampleSourceGridMotion(networkRemoteSourceMotion, now);
   const remoteImage = remoteSide === null ? null : networkAvatarImages[remoteSide] ?? null;
   drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
@@ -688,13 +784,19 @@ function animateImportedMap(now: number): void {
     importedPlayerMotion = null;
     if (sourceSequences.current === null) finishImportedStep();
   }
+  if (networkRemoteSourceMotion !== null && sampleSourceGridMotion(networkRemoteSourceMotion, now).complete) {
+    networkRemoteSourceMotion = null;
+  }
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
 
 function sourceSceneActivity(): SourceSceneActivity {
+  const observedScene = networkSourceScene;
+  const observedSequence = multiplayer.current?.ticket.side === "opponent"
+    && observedScene !== null && observedScene.mapId === importedAssets?.map.id && observedScene.sequenceActive;
   return { dialogue: sourceDialogues.current !== null,
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null,
-    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null,
+    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null || observedSequence,
     movement: importedPlayerMotion !== null };
 }
 
@@ -782,10 +884,13 @@ function renderImportedView(): void {
   renderEncounter();
   renderSourceMenu();
   renderSourceShop();
+  publishCurrentSourceScene();
 }
 
 function renderSourceDialogue(): void {
-  sourceDialogueView.render(sourceDialogues.current, viewedMapId === SOURCE_MAP_ID);
+  const observed = multiplayer.current?.ticket.side === "opponent" && networkSourceScene?.mapId === importedAssets?.map.id;
+  if (observed) sourceDialogueView.renderReadonly(networkSourceScene?.dialogue ?? null, viewedMapId === SOURCE_MAP_ID);
+  else sourceDialogueView.render(sourceDialogues.current, viewedMapId === SOURCE_MAP_ID);
 }
 
 function finishAppliedSourceEvent(completed: SourceDialogueSession, encounterQueued: boolean): void {
@@ -832,7 +937,7 @@ function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: r
   sourcePickupStartedAt = performance.now();
   sourcePickupDialogueSequence = sequence;
   importedNotice = gains.map(sourceItemGainMessage).join(" ");
-  void sourcePresentation.execute({ kind: "play-sound",
+  void presentSourceCommand({ kind: "play-sound",
     data: { audio: { name: "ItemGet", volume: 100, pitch: 100 } } }, async () => undefined);
   beginSourceEvent({ ...sequence.plan.page, commands }, sequence.mapId, sequence.eventId,
     "Objet obtenu", sequence.translations);
@@ -1222,6 +1327,9 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
 
 async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
   if (sourceBattles.active) return;
+  lastPublishedSourceScene = "";
+  lastAppliedPresentationCueId = 0;
+  networkSourceScene = null;
   networkServerUrl = serverUrl;
   networkRoomCode = roomCode.trim().toUpperCase();
   await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile(),
@@ -1248,6 +1356,10 @@ function disconnectMultiplayer(): void {
   networkPlayerProfiles = {};
   networkAvatarImages = {};
   networkSourceWorld = null;
+  networkSourceScene = null;
+  networkRemoteSourceMotion = null;
+  lastPublishedSourceScene = "";
+  lastAppliedPresentationCueId = 0;
   events = [];
   setAuthoritativeState(initialState(), false);
   viewedMapId = importedAssets === null ? "meadow" : SOURCE_MAP_ID;
@@ -1275,6 +1387,9 @@ window.addEventListener("keydown", (event) => {
     if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
     if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) { event.preventDefault(); toggleSourceMenu(); return; }
   }
+  const target = event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLSelectElement || target instanceof HTMLElement && target.isContentEditable) return;
   if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
     event.preventDefault(); toggleSourceMenu(); return;
   }

@@ -44,6 +44,7 @@ function callbacks(): NetworkSessionCallbacks {
     onConnectionFormChanged: vi.fn(),
     onPlayersChanged: vi.fn(),
     onSourceWorldState: vi.fn(),
+    onSourceSceneState: vi.fn(),
     onRender: vi.fn(),
   };
 }
@@ -78,6 +79,10 @@ describe("overworld network session", () => {
 
     session.sendMovement("player", "up");
     expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toMatchObject({ type: "moveAvatar", direction: "up", sequence: 1 });
+    session.publishSourceScene({ mapId: 3, sequenceActive: true,
+      dialogue: { label: "Crisanto", text: "Attention !", choices: [] }, actors: [], presentation: null });
+    expect(JSON.parse(sockets[0]?.sent[1] ?? "{}")).toMatchObject({ type: "setSourceScene",
+      scene: { mapId: 3, sequenceActive: true } });
 
     session.disconnect();
     expect(session.active).toBe(false);

@@ -1,6 +1,7 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -41,6 +42,7 @@ export interface NetworkSessionCallbacks {
   readonly onConnectionFormChanged: (serverUrl: string, roomCode: string) => void;
   readonly onPlayersChanged: (players: readonly RoomPlayerSnapshot[]) => void;
   readonly onSourceWorldState: (state: SourceWorldSnapshot, animate: boolean) => void;
+  readonly onSourceSceneState: (state: SourceSceneSnapshot) => void;
   readonly onRender: () => void;
 }
 
@@ -148,6 +150,15 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), world }));
   }
 
+  public publishSourceScene(scene: SourceSceneSnapshot): void {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    if (session === null || session.ticket.side !== "player" || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "setSourceScene", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), scene }));
+  }
+
   public submitEncounterAction(moveIndex: number): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
@@ -205,6 +216,7 @@ export class OverworldNetworkSession {
       const own = snapshot.world.avatars[session.ticket.side];
       if (snapshot.sourceWorld !== null) this.callbacks.onSourceWorldState(snapshot.sourceWorld, animate);
       else if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
+      if (snapshot.sourceScene !== null) this.callbacks.onSourceSceneState(snapshot.sourceScene);
     }
     this.callbacks.onPlayersChanged(snapshot.players);
     this.callbacks.onWorldState(snapshot.world, animate);
@@ -267,6 +279,12 @@ export class OverworldNetworkSession {
           if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceWorld: message.state,
             revision: message.revision };
           this.callbacks.onSourceWorldState(message.state, true);
+        } else if (message.type === "sourceSceneUpdated") {
+          if (message.revision < session.revision) return;
+          session.revision = message.revision;
+          if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceScene: message.state,
+            revision: message.revision };
+          this.callbacks.onSourceSceneState(message.state);
         } else if (message.type === "turnResolved") {
           const snapshot = session.snapshot;
           if (snapshot?.battle?.id !== message.battleId) return;

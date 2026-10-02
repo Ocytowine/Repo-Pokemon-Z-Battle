@@ -1,5 +1,6 @@
 import { localizedDialogueText } from "./imported-map.js";
 import type { SourceDialogueSession } from "./source-dialogue-controller.js";
+import type { SourceSceneDialogueSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { escapeSourceHtml } from "./source-menu-view.js";
 
 export function sourceDialogueHint(session: Pick<SourceDialogueSession, "choosing" | "index" | "lines">): string {
@@ -27,6 +28,26 @@ export class SourceDialogueView {
     this.renderChoices(panel, session);
     const hint = panel.querySelector<HTMLElement>("small");
     if (hint !== null) hint.textContent = sourceDialogueHint(session);
+  }
+
+  public renderReadonly(dialogue: SourceSceneDialogueSnapshot | null, visible: boolean): void {
+    const panel = document.querySelector<HTMLElement>("#source-dialogue");
+    if (panel === null) return;
+    panel.hidden = dialogue === null || !visible;
+    if (dialogue === null || !visible) return;
+    const label = panel.querySelector<HTMLElement>("strong");
+    if (label !== null) label.textContent = dialogue.label;
+    const text = panel.querySelector<HTMLElement>("p");
+    if (text !== null) { text.hidden = dialogue.text === null; text.textContent = dialogue.text ?? ""; }
+    const choices = panel.querySelector<HTMLElement>(".source-choices");
+    if (choices !== null) {
+      delete choices.dataset.sourceChoiceSignature;
+      choices.hidden = dialogue.choices.length === 0;
+      choices.innerHTML = dialogue.choices.map((choice, index) =>
+        `<div class="source-readonly-choice"><span>${index + 1}</span>${escapeSourceHtml(choice)}</div>`).join("");
+    }
+    const hint = panel.querySelector<HTMLElement>("small");
+    if (hint !== null) hint.textContent = "L'hote controle cette scene";
   }
 
   private renderChoices(panel: HTMLElement, session: SourceDialogueSession): void {

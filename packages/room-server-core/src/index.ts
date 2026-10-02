@@ -1,7 +1,7 @@
 import { replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
-  type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -43,6 +43,7 @@ export interface PersistedRoomState {
   readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
   readonly worldState: OverworldState;
   readonly sourceWorldState: SourceWorldSnapshot | null;
+  readonly sourceSceneState: SourceSceneSnapshot | null;
   readonly movementSequences: readonly (readonly [BattleSide, number])[];
   readonly activeEncounter?: ActiveEncounter | null;
 }
@@ -82,6 +83,7 @@ export class AuthoritativeBattleRoom {
   #battleState: TeamBattleState | null = null;
   #worldState: OverworldState;
   #sourceWorldState: SourceWorldSnapshot | null;
+  #sourceSceneState: SourceSceneSnapshot | null = null;
   #activeEncounter: ActiveEncounter | null = null;
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
@@ -100,6 +102,7 @@ export class AuthoritativeBattleRoom {
       this.#activeEncounter = persisted.activeEncounter ?? null;
       this.#worldState = persisted.worldState;
       this.#sourceWorldState = persisted.sourceWorldState;
+      this.#sourceSceneState = persisted.sourceSceneState ?? null;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
       }
@@ -164,6 +167,7 @@ export class AuthoritativeBattleRoom {
       battle,
       world: this.#worldState,
       sourceWorld: this.#sourceWorldState,
+      sourceScene: this.#sourceSceneState,
       movementSequences: {
         player: this.#movementSequences.get("player") ?? 0,
         opponent: this.#movementSequences.get("opponent") ?? 0,
@@ -186,6 +190,7 @@ export class AuthoritativeBattleRoom {
       pendingReplacements: [...this.#pendingReplacements.entries()],
       worldState: this.#worldState,
       sourceWorldState: this.#sourceWorldState,
+      sourceSceneState: this.#sourceSceneState,
       movementSequences: [...this.#movementSequences.entries()],
       activeEncounter: this.#activeEncounter,
     };
@@ -209,6 +214,7 @@ export class AuthoritativeBattleRoom {
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
     if (message.type === "setProfile") return this.setProfile(player, message.requestId, message.profile);
     if (message.type === "setSourceWorld") return this.setSourceWorld(player, message.requestId, message.world);
+    if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
@@ -228,13 +234,30 @@ export class AuthoritativeBattleRoom {
     if (player.side !== "player") {
       return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul l'hôte peut publier la carte narrative.")];
     }
-    const previousGuest = this.#sourceWorldState?.mapId === world.mapId
-      ? this.#sourceWorldState.avatars.opponent : undefined;
+    const sameMap = this.#sourceWorldState?.mapId === world.mapId;
+    const previousGuest = sameMap ? this.#sourceWorldState?.avatars.opponent : undefined;
     this.#sourceWorldState = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
+    if (!sameMap) this.#sourceSceneState = null;
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
       { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private setSourceScene(player: RoomPlayer, requestId: string, scene: SourceSceneSnapshot): readonly RoomDispatch[] {
+    if (player.side !== "player") {
+      return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul l'hote peut publier la cinematique narrative.")];
+    }
+    if (this.#sourceWorldState === null || scene.mapId !== this.#sourceWorldState.mapId) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "La cinematique ne correspond pas a la carte partagee.")];
+    }
+    this.#sourceSceneState = scene;
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "sourceSceneUpdated", version: PROTOCOL_VERSION,
+        revision: this.#revision, state: scene } },
     ];
   }
 

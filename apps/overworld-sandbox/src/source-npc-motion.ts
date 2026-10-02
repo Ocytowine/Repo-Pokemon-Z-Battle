@@ -4,6 +4,7 @@ import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type Impor
 import { selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { executeSourceMoveRouteStep, type SourceRouteActor } from "./source-move-route.js";
+import type { SourceSceneActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 
 interface NpcRuntime {
   x: number;
@@ -225,6 +226,27 @@ export class SourceNpcMotionController {
       { duration, walkingPattern: runtime.walkingPattern });
     runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     return duration;
+  }
+
+  public applyNetworkActors(actors: readonly SourceSceneActorSnapshot[], now: number): void {
+    for (const actor of actors) {
+      const runtime = this.runtimes.get(actor.eventId);
+      if (runtime === undefined) continue;
+      const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
+      const moved = before.x !== actor.x || before.y !== actor.y;
+      runtime.x = actor.x;
+      runtime.y = actor.y;
+      runtime.direction = actor.direction;
+      if (actor.characterName === undefined) delete runtime.characterName;
+      else runtime.characterName = actor.characterName;
+      if (actor.opacity === undefined) delete runtime.opacity;
+      else runtime.opacity = actor.opacity;
+      if (actor.pattern === undefined) delete runtime.pattern;
+      else runtime.pattern = actor.pattern;
+      runtime.motion = moved ? createSourceGridMotion(before, actor, actor.direction, now,
+        { duration: sourceNpcStepDuration(3), walkingPattern: runtime.walkingPattern }) : null;
+      if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
+    }
   }
 
   public poses(now: number): ReadonlyMap<number, ImportedEventPose> {

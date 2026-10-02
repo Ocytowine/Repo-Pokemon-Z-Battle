@@ -1,6 +1,7 @@
 import { MAX_CLIENT_MESSAGE_BYTES, PROTOCOL_VERSION, type ClientMessage } from "./types.js";
 import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldHostState } from "./source-world.js";
+import { parseSourceSceneSnapshot } from "./source-scene.js";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
 const ROOM_CODE = /^[A-Z2-9]{6}$/u;
@@ -125,6 +126,15 @@ export function parseClientMessage(payload: string): ClientMessage {
         return { ...value, world: parseSourceWorldHostState(value.world) } as unknown as ClientMessage;
       } catch {
         return invalid("setSourceWorld mal formé");
+      }
+    case "setSourceScene":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "scene"]) || !isIdentifier(value.requestId)) {
+        return invalid("setSourceScene mal forme");
+      }
+      try {
+        return { ...value, scene: parseSourceSceneSnapshot(value.scene) } as unknown as ClientMessage;
+      } catch {
+        return invalid("setSourceScene mal forme");
       }
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");

@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-01.
+Derniere mise a jour : 2026-10-02.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -18,10 +18,8 @@ structure de la commande source permet une detection generique.
 
 ## Etat Git au moment de cette note
 
-Le dernier commit connu est `1b4b9d0 FIX : Histoire bloqué`. Le worktree contient
-le decoupage stabilise de l'orchestrateur overworld et le noyau 9.7 qui raccorde
-les routes autonomes personnalisees, le contact initie par un evenement, les
-ambiances BGS, l'ordonnanceur des pages paralleles et le Pokemon suiveur.
+Le dernier commit connu est `9abd598 AJOUT : Co-op local en cours`. Le worktree
+contient le premier lot de synchronisation narrative visuelle decrit plus bas.
 
 Le porteur du projet prefere effectuer lui-meme les commits apres validation
 manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
@@ -556,11 +554,12 @@ agrandissement, ce qui conserve les lignes de sol `(128,320)` et `(384,168)`.
 Le contrat public est `NetworkPlayerProfile`, dans `multiplayer-protocol`.
 Il associe un `visualPreset` sans chemin de fichier au `PlayerProfile` semantique,
 avec validation stricte des champs. Il exclut volontairement equipe, inventaire et
-progression. Le protocole v7 transmet le profil lors de la creation/jonction,
+progression. Le protocole v8 transmet le profil lors de la creation/jonction,
 l'intention `setProfile` permet de publier une application ulterieure, et la room
 le valide, le persiste et le diffuse dans chaque snapshot. `DemoOverworldView`
-affiche les noms et charsets recolores des deux places sur Prairie/Bosquet. Ce
-raccord ne synchronise pas encore le monde source ni la sauvegarde de l'hote.
+affiche les noms et charsets recolores des deux places sur Prairie/Bosquet. Le
+monde source de l'hote est maintenant partage avec sa topologie compacte, son etat
+narratif visible et les deux avatars. Sa sauvegarde personnelle reste exclue.
 Le parcours de connexion se trouve maintenant dans l'onglet `Coop` du menu en jeu,
 et non dans l'ancien panneau lateral. Il permet de creer, rejoindre, voir le code
 et les participants, ouvrir la personnalisation puis quitter. Le menu reste
@@ -570,6 +569,28 @@ personnel.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
+
+## Observation narrative en Coop
+
+Premier lot implemente le 2026-10-02 : l'hote publie un `SourceSceneSnapshot`
+distinct de la progression. Il contient la boite de dialogue courante, les choix
+affiches, l'etat actif de la sequence, les poses des PNJ et la derniere commande
+audiovisuelle rendue. La room valide, persiste et diffuse cet etat ; seul l'hote
+peut le modifier.
+
+L'invite affiche les dialogues et choix en lecture seule, anime les destinations
+des routes de PNJ et du personnage distant, et rejoue les commandes de presentation
+(tonalite, images, animations, camera, musique et sons). Ses controles de monde
+sont bloques pendant une sequence observee. Il ne peut ni avancer un texte, ni
+choisir une branche, ni appliquer un switch, une variable, un objet ou une autre
+mutation narrative. Les combats source restent hors de ce lot.
+
+Recette manuelle : lancer le Worker et deux Overworld Sandbox, creer la room depuis
+une carte source avec le premier navigateur, la rejoindre avec le second, puis
+declencher une scene comprenant dialogue et route imposee. Verifier que l'invite
+voit les memes textes, effets et mouvements, que ses choix ne sont pas cliquables,
+que ses deplacements sont bloques pendant la scene puis rendus a sa fin. Tester
+enfin une reconnexion pendant un dialogue.
 
 ## Strategie de tests
 
@@ -581,7 +602,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 305 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 309 tests et passe avec le build.
 
 ## Commandes utiles
 
@@ -610,7 +631,8 @@ sont attendues.
   sprites standards. Ne pas imposer une taille globale sans verifier le charset.
 - Les donnees `.pokemon-z` existent localement mais pas dans la CI GitHub. Les tests
   versionnes doivent employer de petits fixtures structurels.
-- `main.ts` contient encore 1 084 lignes, mais ses vues, sa navigation et son cycle
+- `main.ts` contient environ 1 470 lignes apres les raccords de profil et de Coop,
+  mais ses vues, sa navigation et son cycle
   narratif sont separes. Le decoupage est volontairement arrete a ce jalon ; eviter
   une refonte monolithique ou des extractions sans besoin fonctionnel.
 - Apres une modification de progression, une ancienne sauvegarde locale peut masquer

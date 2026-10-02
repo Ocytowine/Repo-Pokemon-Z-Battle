@@ -1159,6 +1159,20 @@ reinitialiser la progression ni obliger a recreer le profil.
 Cette integration unifie le parcours utilisateur sans pretendre que Prairie et
 Bosquet sont deja la carte narrative de l'hote.
 
+Neuvieme jalon implemente le 2026-10-01 : le protocole v8 transporte la topologie
+compacte de la carte source, les switches et variables visibles et les deux avatars.
+La room valide les collisions des deux joueurs et reserve la publication du monde
+narratif a l'hote. L'invite charge localement la meme carte sans recevoir equipe,
+inventaire ni sauvegarde personnelle.
+
+Dixieme jalon implemente le 2026-10-02 : un `SourceSceneSnapshot` host-only separe
+la presentation narrative de la progression. Dialogues, choix affiches, routes de
+PNJ et commandes audiovisuelles sont diffuses a l'invite en lecture seule. Celui-ci
+observe la scene et ses mouvements interpoles sans pouvoir avancer le texte,
+selectionner une branche ou appliquer un effet d'etat. La room persiste ce dernier
+etat visuel pour la reconnexion. Le prochain lot Coop pourra raccorder l'observation
+des combats source sans donner le controle narratif a l'invite.
+
 Correction d'interpretation le 2026-10-01 : les `trbackNNN_3`, `_4`, `_5` et `_7`
 correspondent a des variantes narratives ou de tenue. Le moteur source ne les lit
 pas comme une sequence de lancer : il n'anime horizontalement un Dresseur que si
