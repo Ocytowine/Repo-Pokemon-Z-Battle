@@ -25,6 +25,30 @@ describe("shared source movement resolver", () => {
       avatar: { x: 1, y: 2, direction: "down", mode: "surf", action: "surf-transition" } });
   });
 
+  it("keeps regular Surf movement separate from embark and disembark jumps", () => {
+    expect(resolveSourceMovement(world("000070070"),
+      { x: 1, y: 1, direction: "down", mode: "surf" },
+      { direction: "down", mode: "surf" })).toEqual({ moved: true,
+      avatar: { x: 1, y: 2, direction: "down", mode: "surf", action: "step" } });
+  });
+
+  it("leaves Surf by validating the shore instead of the water-tile exit mask", () => {
+    const shore = { ...world("000070000"), passages: "ffff0ff8f" };
+    expect(resolveSourceMovement(shore,
+      { x: 1, y: 1, direction: "down", mode: "surf" },
+      { direction: "down", mode: "surf" })).toEqual({ moved: true,
+      avatar: { x: 1, y: 2, direction: "down", mode: "walk", action: "surf-transition" } });
+  });
+
+  it("uses the source-facing passage for ledges without requiring an outgoing ledge passage", () => {
+    const oneWayLedge = { ...world("000010000"), passages: "0100800f0" };
+    expect(resolveSourceMovement(oneWayLedge, { x: 1, y: 0, direction: "down" },
+      { direction: "down" })).toMatchObject({ moved: true,
+      avatar: { x: 1, y: 2, action: "ledge-jump" } });
+    expect(resolveSourceMovement({ ...oneWayLedge, passages: "0200800f0" },
+      { x: 1, y: 0, direction: "down" }, { direction: "down" }).moved).toBe(false);
+  });
+
   it("respects occupied cells for solo and cooperative callers", () => {
     expect(resolveSourceMovement(world(), { x: 1, y: 1, direction: "down" }, { direction: "right" },
       [{ x: 2, y: 1 }]).moved).toBe(false);

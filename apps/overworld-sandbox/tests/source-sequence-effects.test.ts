@@ -7,10 +7,11 @@ function command(kind: string): ImportedEventPage["commands"][number] {
 }
 
 describe("source sequence effect families", () => {
-  it("routes state, battle, shop and transfer commands", () => {
+  it("routes state, battle, shop, ranch and transfer commands", () => {
     expect(sourceSequenceCommandFamily(command("set-switches"))).toBe("state");
     expect(sourceSequenceCommandFamily(command("request-trainer-battle"))).toBe("trainer-battle");
     expect(sourceSequenceCommandFamily(command("open-shop"))).toBe("shop");
+    expect(sourceSequenceCommandFamily(command("open-ranch"))).toBe("ranch");
     expect(sourceSequenceCommandFamily(command("transfer-player"))).toBe("transfer");
   });
 

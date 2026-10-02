@@ -10,6 +10,7 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection } from "./avatar-selection.js";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
+export const PLAYER_POKEMON_STORAGE_SCHEMA_VERSION = 1 as const;
 export const MAX_PARTY_SIZE = 6;
 
 export interface PersistentMoveSlot {
@@ -38,6 +39,16 @@ export interface PlayerPartyState {
   readonly members: readonly PersistentPokemon[];
 }
 
+export interface PlayerPokemonStorageState {
+  readonly schemaVersion: typeof PLAYER_POKEMON_STORAGE_SCHEMA_VERSION;
+  readonly members: readonly PersistentPokemon[];
+}
+
+export interface PlayerPokemonCollectionState {
+  readonly party: PlayerPartyState;
+  readonly storage: PlayerPokemonStorageState;
+}
+
 export interface PlayerBattleCatalog {
   readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types">[];
   readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
@@ -45,7 +56,8 @@ export interface PlayerBattleCatalog {
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
-  readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience">[];
+  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience">
+    & { readonly id?: number })[];
 }
 
 export interface ExperienceResult {
@@ -106,6 +118,10 @@ export function createEmptyPlayerParty(): PlayerPartyState {
   return { schemaVersion: PLAYER_PARTY_SCHEMA_VERSION, activeIndex: null, members: [] };
 }
 
+export function createEmptyPlayerPokemonStorage(): PlayerPokemonStorageState {
+  return { schemaVersion: PLAYER_POKEMON_STORAGE_SCHEMA_VERSION, members: [] };
+}
+
 export function parsePlayerParty(value: unknown): PlayerPartyState {
   if (!isRecord(value) || value.schemaVersion !== PLAYER_PARTY_SCHEMA_VERSION || !Array.isArray(value.members)
     || value.members.length > MAX_PARTY_SIZE) throw new Error("Sauvegarde d'équipe invalide.");
@@ -116,6 +132,52 @@ export function parsePlayerParty(value: unknown): PlayerPartyState {
     throw new Error("Pokémon actif invalide.");
   }
   return { schemaVersion: PLAYER_PARTY_SCHEMA_VERSION, activeIndex: activeIndex as number | null, members };
+}
+
+export function parsePlayerPokemonStorage(value: unknown): PlayerPokemonStorageState {
+  if (!isRecord(value) || value.schemaVersion !== PLAYER_POKEMON_STORAGE_SCHEMA_VERSION || !Array.isArray(value.members)) {
+    throw new Error("Stockage Pokémon invalide.");
+  }
+  const members = value.members.map(parsePokemon);
+  if (new Set(members.map((member) => member.id)).size !== members.length) {
+    throw new Error("Identifiants de Pokémon stockés dupliqués.");
+  }
+  return { schemaVersion: PLAYER_POKEMON_STORAGE_SCHEMA_VERSION, members };
+}
+
+export function addPokemonToStorage(storage: PlayerPokemonStorageState,
+  pokemon: PersistentPokemon): PlayerPokemonStorageState {
+  if (storage.members.some((member) => member.id === pokemon.id)) {
+    throw new Error(`Identifiant de Pokémon déjà stocké : ${pokemon.id}.`);
+  }
+  return { ...storage, members: [...storage.members, pokemon] };
+}
+
+/** Moves one personal Pokemon without duplicating it between the party and storage. */
+export function transferPokemonToStorage(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  pokemonId: string): PlayerPokemonCollectionState {
+  if (party.members.length <= 1) throw new Error("L'équipe doit conserver au moins un Pokémon.");
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) throw new Error("Pokémon absent de l'équipe.");
+  if (storage.members.some((pokemon) => pokemon.id === pokemonId)) throw new Error("Pokémon déjà présent dans le Ranch.");
+  const pokemon = party.members[index]!;
+  const members = party.members.filter((_, memberIndex) => memberIndex !== index);
+  const activeIndex = party.activeIndex === null ? 0
+    : index < party.activeIndex ? party.activeIndex - 1
+      : index === party.activeIndex ? Math.min(index, members.length - 1) : party.activeIndex;
+  return { party: { ...party, activeIndex, members }, storage: { ...storage, members: [...storage.members, pokemon] } };
+}
+
+/** Withdraws one personal Pokemon while enforcing the canonical six-member limit. */
+export function transferPokemonToParty(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  pokemonId: string): PlayerPokemonCollectionState {
+  if (party.members.length >= MAX_PARTY_SIZE) throw new Error("L'équipe contient déjà six Pokémon.");
+  const index = storage.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) throw new Error("Pokémon absent du Ranch.");
+  if (party.members.some((pokemon) => pokemon.id === pokemonId)) throw new Error("Pokémon déjà présent dans l'équipe.");
+  const pokemon = storage.members[index]!;
+  return { party: { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] },
+    storage: { ...storage, members: storage.members.filter((_, memberIndex) => memberIndex !== index) } };
 }
 
 export function healPlayerParty(party: PlayerPartyState): PlayerPartyState {

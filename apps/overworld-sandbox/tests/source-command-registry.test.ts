@@ -27,6 +27,7 @@ describe("source command registry", () => {
     ["weather", "audiovisual", "rendered", false],
     ["request-trainer-battle", "transition", "executed", false],
     ["open-shop", "transition", "rendered", false],
+    ["open-ranch", "transition", "rendered", false],
     ["set-pokedex-enabled", "state", "executed", true],
     ["set-running-shoes", "state", "executed", true],
     ["set-movement-mode", "movement", "executed", false],

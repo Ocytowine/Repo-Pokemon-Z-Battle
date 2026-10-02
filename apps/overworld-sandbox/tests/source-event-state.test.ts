@@ -10,6 +10,7 @@ function page(condition: ImportedEventPage["condition"], commands: ImportedEvent
 
 const unconditional = { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null } as const;
 const emptyParty = { schemaVersion: 1 as const, activeIndex: null, members: [] } as const;
+const emptyRanch = { schemaVersion: 1 as const, members: [] } as const;
 
 describe("persistent source event state", () => {
   it("selects the last page whose switch, variable and scoped self-switch conditions are met", () => {
@@ -58,9 +59,9 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 7 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
       wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
   });
 
@@ -75,7 +76,7 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, pendingEncounter: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
         wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, followerEnabled: true }).followerEnabled).toBe(true);
@@ -155,5 +156,20 @@ describe("persistent source event state", () => {
       pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true }, escapable: false },
       party: { activeIndex: 0, members: [{ species: "CHESPIN", level: 5 }] } } });
     expect(completePendingEncounter(result.state)).toMatchObject({ switches: { 65: true }, pendingEncounter: null });
+  });
+
+  it("sends a newly obtained Pokemon to the personal Ranch when the party is full", () => {
+    const member = (id: string) => ({ id, species: "PIKACHU", nickname: null, level: 5, experience: 0,
+      stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 }, hp: 20,
+      majorStatus: null, ability: null, heldItem: null,
+      moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] });
+    const state = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
+      members: Array.from({ length: 6 }, (_, index) => member(`team-${index}`)) } };
+    const result = applySafeStateCommands(state, page(unconditional, [
+      { kind: "add-pokemon", text: null, indent: 0, data: { species: "EEVEE", level: 5 } },
+    ]), 3, 1, { checkpoint: { mapId: 3, x: 1, y: 1, direction: "down" },
+      createPokemon: (species, level) => ({ ...member("stored"), species, level }) });
+    expect(result).toMatchObject({ safe: true, state: { party: { members: [{}, {}, {}, {}, {}, {}] },
+      ranch: { members: [{ id: "stored", species: "EEVEE" }] } } });
   });
 });

@@ -199,6 +199,19 @@ function passageAllows(world: Pick<SourceWorldHostState, "width" | "height" | "p
     && (targetMask & SOURCE_DIRECTION_BITS[SOURCE_OPPOSITE[direction]]) !== 0;
 }
 
+function targetAllowsEntry(world: Pick<SourceWorldHostState, "width" | "height" | "passages">,
+  target: GridPoint, direction: Direction): boolean {
+  if (target.x < 0 || target.y < 0 || target.x >= world.width || target.y >= world.height) return false;
+  const targetMask = Number.parseInt(world.passages[target.y * world.width + target.x] ?? "0", 16);
+  return (targetMask & SOURCE_DIRECTION_BITS[SOURCE_OPPOSITE[direction]]) !== 0;
+}
+
+function jumpLandingAllows(world: Pick<SourceWorldHostState, "width" | "height" | "passages">,
+  point: GridPoint): boolean {
+  const mask = Number.parseInt(world.passages[point.y * world.width + point.x] ?? "0", 16);
+  return mask !== 0;
+}
+
 /** Noyau autoritaire partagé par le solo, l'hôte et l'invité. */
 export function resolveSourceMovement(world: Pick<SourceWorldHostState,
   "width" | "height" | "passages" | "terrain" | "blockedPoints">,
@@ -218,7 +231,7 @@ avatar: SourceAvatarSnapshot, intent: SourceMovementIntent, occupied: readonly G
     if (landing.x >= 0 && landing.y >= 0 && landing.x < world.width && landing.y < world.height
       && !blocked(adjacent) && !blocked(landing)
       && passageAllows(world, avatar, adjacent, intent.direction)
-      && passageAllows(world, adjacent, landing, intent.direction)) {
+      && jumpLandingAllows(world, landing)) {
       return { moved: true, avatar: { ...landing, direction: intent.direction,
         mode: requestedMode === "run" ? "run" : currentMode, action: "ledge-jump" } };
     }
@@ -226,11 +239,14 @@ avatar: SourceAvatarSnapshot, intent: SourceMovementIntent, occupied: readonly G
 
   const wantsWaterfall = currentMode === "surf" && intent.waterfall === true
     && adjacentTerrain === 8 && (intent.direction === "up" || intent.direction === "down");
-  const enteringWater = requestedMode === "surf" && SURFABLE_TERRAIN.has(adjacentTerrain);
+  const enteringWater = currentMode !== "surf" && requestedMode === "surf" && SURFABLE_TERRAIN.has(adjacentTerrain);
   const leavingWater = currentMode === "surf" && SURFABLE_TERRAIN.has(currentTerrain)
     && !SURFABLE_TERRAIN.has(adjacentTerrain);
   const waterPassage = wantsWaterfall || enteringWater || currentMode === "surf" && SURFABLE_TERRAIN.has(adjacentTerrain);
-  const passable = !blocked(adjacent) && (waterPassage || passageAllows(world, avatar, adjacent, intent.direction));
+  // En débarquant, la collision de la rive compte, pas le masque directionnel de la tuile d'eau.
+  const passage = leavingWater ? targetAllowsEntry(world, adjacent, intent.direction)
+    : waterPassage || passageAllows(world, avatar, adjacent, intent.direction);
+  const passable = !blocked(adjacent) && passage;
   const mountForbidden = requestedMode === "mount" && (adjacentTerrain === 10 || adjacentTerrain === 12);
   if (!passable || mountForbidden || requestedMode !== "surf" && currentMode !== "surf" && SURFABLE_TERRAIN.has(adjacentTerrain)) {
     return { moved: false, avatar: { ...avatar, direction: intent.direction, action: "idle" } };

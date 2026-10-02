@@ -1,4 +1,5 @@
 import type { BattleSide, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { escapeSourceHtml } from "./source-menu-view.js";
 
 export interface SourceBattleOverlayModel {
@@ -81,7 +82,7 @@ export class SourceBattleOverlay {
     actions.innerHTML = active.moves.map((slot, index) => {
       const disabled = slot.pp <= 0 || model.animating
         || submitted;
-      return `<button data-encounter-move="${index}" ${disabled ? "disabled" : ""}>${escapeSourceHtml(slot.move.name)}<small>${slot.pp} PP</small></button>`;
+      return `<button data-encounter-move="${index}" ${disabled ? "disabled" : ""}><span class="source-move-name"><img src="${pokemonTypeIconUrl(slot.move.type)}" alt="">${escapeSourceHtml(slot.move.name)}</span><small>${slot.pp} PP · ${escapeSourceHtml(slot.move.type)}</small></button>`;
     }).join("") + (!model.local ? choices.map(({ member, index }) =>
       `<button data-encounter-switch="${index}" ${submitted || model.animating ? "disabled" : ""}>Changer : ${escapeSourceHtml(member.name)}<small>${member.hp}/${member.stats.maxHp} PV</small></button>`).join("") : "")
       + (model.local && model.escapable

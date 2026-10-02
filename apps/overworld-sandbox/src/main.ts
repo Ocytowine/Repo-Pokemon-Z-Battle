@@ -1,10 +1,11 @@
-import { DEMO_WORLD_CATALOG, createDemoWorldState, resolveInteraction, resolveMovement, type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
+import type { Direction } from "@pokemon-z-battle/overworld-engine";
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
-  playerPartyToBattleTeam, storeBattleTeam, type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
+  playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
+  type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
@@ -33,15 +34,15 @@ import { isSourceStateCommand, sourceCommandCapability } from "./source-command-
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
 import { SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView, sourceMenuVolume } from "./source-menu-view.js";
-import { DemoOverworldView, type DemoAvatarId } from "./demo-overworld-view.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
+import { SourceRanchView } from "./source-ranch-view.js";
 import { networkBattleEventsForViewer, networkBattleForViewer, oppositeBattleSide }
   from "./network-battle-presentation.js";
-import { loadInitialSourceWorld, loadSourceCheckpoint, loadSourceTransfer, loadSourceWorldAt,
+import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
   sourceDirection, type LoadedSourceWorld } from "./source-world-navigation.js";
 import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
@@ -54,19 +55,15 @@ import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionT
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
-  sourceMovementUnlocks, sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
+  sourceMovementUnlocks, sourceMovementVisualMode, sourceMovementVisualOffset, sourceMovementVisualPattern,
+  sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import "./style.css";
 
-const TILE_SIZE = 48;
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v8";
 const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
-const catalog = DEMO_WORLD_CATALOG;
-
-let state: OverworldState = initialState();
-let viewedMapId = "meadow";
+let viewedMapId = SOURCE_MAP_ID;
 let avatarLabReturnMapId = viewedMapId;
-let events: OverworldEvent[] = [];
 let importedAssets: ImportedMapAssets | null = null;
 let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
 let sourceMovementMode: SourceMovementMode = "walk";
@@ -107,6 +104,7 @@ let sourcePickupDialogueSequence: SourceSequenceSession | null = null;
 let sourceSequenceChoicePrompt: SourceSequenceSession | null = null;
 interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly stock: readonly SourceShopItem[]; notice: string | null }
 let sourceShop: SourceShopSession | null = null;
+let sourceRanchSequence: SourceSequenceSession | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 let sourceFollowerImage: HTMLImageElement | null = null;
@@ -115,11 +113,11 @@ let activePlayerSelection = loadSessionPlayerAvatarSelection(sessionStorage, loc
 let sourcePlayerVisuals: SourcePlayerVisuals | null = null;
 let sourcePlayerCharacterName = "player";
 let playerProfileApplication = 0;
-let networkPlayerProfiles: Partial<Record<DemoAvatarId, NetworkPlayerProfile>> = {};
-let networkAvatarImages: Partial<Record<DemoAvatarId, HTMLImageElement>> = {};
-let networkPlayerVisuals: Partial<Record<DemoAvatarId, SourcePlayerVisuals>> = {};
-let networkProfileSignatures: Partial<Record<DemoAvatarId, string>> = {};
-let networkProfileApplications: Partial<Record<DemoAvatarId, number>> = {};
+let networkPlayerProfiles: Partial<Record<AvatarId, NetworkPlayerProfile>> = {};
+let networkAvatarImages: Partial<Record<AvatarId, HTMLImageElement>> = {};
+let networkPlayerVisuals: Partial<Record<AvatarId, SourcePlayerVisuals>> = {};
+let networkProfileSignatures: Partial<Record<AvatarId, string>> = {};
+let networkProfileApplications: Partial<Record<AvatarId, number>> = {};
 let networkStateText = "Local";
 let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une partie.";
 let networkServerUrl = "http://127.0.0.1:8787";
@@ -139,14 +137,10 @@ let networkSourceWorldApplication = 0;
 let sourcePresentationCue: SourceScenePresentationCue | null = null;
 let sourcePresentationCueId = 0;
 let lastPublishedSourceScene = "";
-type AvatarId = DemoAvatarId;
+type AvatarId = "player" | "opponent";
 
 function activeNetworkPlayerProfile(): NetworkPlayerProfile {
   return createNetworkPlayerProfile(activePlayerSelection.avatarId, activePlayerSelection.profile);
-}
-
-function initialState(): OverworldState {
-  return createDemoWorldState();
 }
 
 function loadSourceEventState(): SourceEventState {
@@ -607,7 +601,6 @@ const drawingContext = canvasElement.getContext("2d");
 if (drawingContext === null) throw new Error("Canvas 2D is unavailable.");
 const canvas: HTMLCanvasElement = canvasElement;
 const context: CanvasRenderingContext2D = drawingContext;
-const demoOverworldView = new DemoOverworldView(canvas, context, catalog, TILE_SIZE);
 function resolveSourceAnimationTarget(target: number): { x: number; bottom: number; height: number } | null {
   if (importedAssets === null) return null;
   const now = performance.now();
@@ -673,6 +666,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDive: requestSourceDive,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
+const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon);
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
 const sourceBattleVisuals = new SourceBattleVisuals();
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
@@ -716,6 +710,11 @@ sourceSequenceEffects = new SourceSequenceEffects({
     sourceShop = { sequence, stock, notice: null };
     renderImportedView();
   },
+  openRanch: (sequence) => {
+    sourceRanchSequence = sequence;
+    heldMovementKeys.clear();
+    renderImportedView();
+  },
   transferPlayer: executeSourceSequenceTransfer,
   startMoveRoute: startSourceMoveRoute,
   setMovementMode: applySourceSequenceMovementMode,
@@ -745,42 +744,11 @@ const sourcePlayerDuelView = new SourcePlayerDuelView({
   },
   onRefuse: () => { multiplayer.respondPlayerChallenge(false, null); },
 });
-const renderPositions: Record<AvatarId, { mapId: string; x: number; y: number }> = {
-  player: { ...state.avatars.player! },
-  opponent: { ...state.avatars.opponent! },
-};
-let animationFrame: number | null = null;
-
-function setAuthoritativeState(next: OverworldState, animate: boolean): void {
-  const starts = {
-    player: { ...renderPositions.player },
-    opponent: { ...renderPositions.opponent },
-  };
-  state = next;
-  if (animationFrame !== null) cancelAnimationFrame(animationFrame);
-  const startedAt = performance.now();
-  const frame = (now: number): void => {
-    const progress = animate ? Math.min(1, (now - startedAt) / 110) : 1;
-    for (const id of ["player", "opponent"] as const) {
-      const target = state.avatars[id];
-      if (target === undefined) continue;
-      const start = starts[id];
-      renderPositions[id] = start.mapId === target.mapId
-        ? { mapId: target.mapId, x: start.x + (target.x - start.x) * progress, y: start.y + (target.y - start.y) * progress }
-        : { mapId: target.mapId, x: target.x, y: target.y };
-    }
-    render();
-    if (progress < 1) animationFrame = requestAnimationFrame(frame);
-    else animationFrame = null;
-  };
-  animationFrame = requestAnimationFrame(frame);
-}
-
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onStatus: setNetworkText,
-  onWorldState: setAuthoritativeState,
-  onEvents: (receivedEvents) => { events.push(...receivedEvents); },
-  onMapChanged: (mapId) => { viewedMapId = mapId; },
+  onWorldState: () => undefined,
+  onEvents: () => undefined,
+  onMapChanged: () => undefined,
   onConnectionFormChanged: (serverUrl, roomCode) => {
     networkServerUrl = serverUrl;
     networkRoomCode = roomCode;
@@ -999,6 +967,9 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
+  const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction);
+  const playerPattern = sourceMovementVisualPattern(localVisualMode, pose.pattern, now,
+    importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
     const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
@@ -1018,8 +989,9 @@ function animateImportedMap(now: number): void {
     ? networkSourceWorld?.avatars[remoteSide] ?? null
     : { ...sampledRemotePose, pattern: sampledRemotePose.complete ? 0 : remoteMotion?.walkingPattern ?? 0 };
   const remoteMode = remoteSide === null ? "walk" : networkSourceWorld?.avatars[remoteSide].mode ?? "walk";
+  const remoteVisualMode = sourceMovementVisualMode(remoteMode, remoteMotion?.action ?? "idle");
   const remoteImage = remoteSide === null ? null
-    : sourcePlayerImageForMovement(networkPlayerVisuals[remoteSide] ?? null, remoteMode)
+    : sourcePlayerImageForMovement(networkPlayerVisuals[remoteSide] ?? null, remoteVisualMode)
       ?? networkAvatarImages[remoteSide] ?? null;
   const remoteFollower = remoteSide === null || !remotePresent ? null : networkSourceWorld?.followers?.[remoteSide] ?? null;
   const remoteFollowerPose = remoteFollower === null ? null : networkRemoteFollowerMotion === null
@@ -1029,13 +1001,16 @@ function animateImportedMap(now: number): void {
       : [{ image: networkRemoteFollowerImage, pose: remoteFollowerPose,
         pattern: "pattern" in remoteFollowerPose ? remoteFollowerPose.pattern : 0 }]),
     ...(remotePose === null || remoteImage === null ? []
-      : [{ image: remoteImage, pose: remotePose, pattern: "pattern" in remotePose ? remotePose.pattern : 0,
-        renderOffsetY: "renderOffsetY" in remotePose ? remotePose.renderOffsetY : 0 }]),
+      : [{ image: remoteImage, pose: remotePose,
+        pattern: sourceMovementVisualPattern(remoteVisualMode,
+          "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null),
+        renderOffsetY: ("renderOffsetY" in remotePose ? remotePose.renderOffsetY : 0)
+          + sourceMovementVisualOffset(remoteVisualMode, now) }]),
   ];
-  drawImportedMap(context, canvas, importedAssets, pose, pose.pattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
+  drawImportedMap(context, canvas, importedAssets, pose, playerPattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
-      + ("renderOffsetY" in pose ? pose.renderOffsetY : 0),
+      + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
     remoteCharacters);
   if (importedPlayerMotion !== null && pose.complete) {
@@ -1193,6 +1168,36 @@ function renderSourceShop(): void {
   sourceShopView.render(sourceShop, sourceEventState);
 }
 
+function closeSourceRanch(): void {
+  const sequence = sourceRanchSequence;
+  if (sequence === null) return;
+  sourceRanchSequence = null;
+  importedNotice = "Ranch Pokémon fermé.";
+  renderImportedView();
+  if (sourceSequences.isActive(sequence)) void advanceSourceSequence();
+}
+
+function renderSourceRanch(): void {
+  if (importedAssets === null) return;
+  sourceRanchView.render({ open: sourceRanchSequence !== null, party: sourceEventState.party,
+    ranch: sourceEventState.ranch, catalog: importedAssets.battleCatalog });
+}
+
+function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ranch"): void {
+  try {
+    const result = destination === "team"
+      ? transferPokemonToParty(sourceEventState.party, sourceEventState.ranch, pokemonId)
+      : transferPokemonToStorage(sourceEventState.party, sourceEventState.ranch, pokemonId);
+    sourceEventState = { ...sourceEventState, party: result.party, ranch: result.storage };
+    persistSourceEventState();
+    importedNotice = destination === "team" ? "Pokémon ajouté à l'équipe." : "Pokémon déposé au Ranch.";
+    renderSourceRanch();
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Transfert du Pokémon impossible.";
+    renderSourceRanch();
+  }
+}
+
 function toggleSourceMenu(): void {
   if (sourceScenes.menuOpen) sourceScenes.closeMenu();
   else if (!sourceScenes.openMenu(sourceSceneActivity())) return;
@@ -1203,7 +1208,6 @@ function toggleSourceMenu(): void {
 function renderImportedView(): void {
   const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
-  renderStarterTestButton();
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
   const activeSequence = sourceSequences.current;
   const sequenceStatus = activeSequence === null ? "aucune"
@@ -1212,12 +1216,12 @@ function renderImportedView(): void {
       + ` · ${activeSequence.runner.pendingRoutes} route(s)`;
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice,
-    parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
-    canChangeScene: sourceScenes.allows("scene-change", sourceSceneActivity()) });
+    parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice });
   renderSourceDialogue();
   renderEncounter();
   renderSourceMenu();
   renderSourceShop();
+  renderSourceRanch();
   publishCurrentSourceScene();
 }
 
@@ -1229,10 +1233,6 @@ function finishAppliedSourceEvent(completed: SourceDialogueSession, encounterQue
   if (encounterQueued) {
     startPendingSourceEncounter();
     return;
-  }
-  const menuButton = document.querySelector<HTMLButtonElement>("#open-source-menu"); if (menuButton !== null) {
-    menuButton.disabled = !sourceScenes.menuOpen && !sourceScenes.allows("scene-change", sourceSceneActivity());
-    menuButton.textContent = sourceScenes.menuOpen ? "Fermer le menu" : "Menu";
   }
   const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
   if (transfer !== null) void followSourceTransfer(transfer);
@@ -1384,7 +1384,8 @@ function activeSourcePlayerImage(): HTMLImageElement {
   if (importedAssets === null) throw new Error("Carte source absente.");
   if (sourcePickupPose) return sourcePlayerVisuals?.pickup ?? importedAssets.playerPickupImage;
   if (sourcePlayerCharacterName === "player") {
-    return sourcePlayerImageForMovement(sourcePlayerVisuals, sourceMovementMode) ?? importedAssets.playerImage;
+    return sourcePlayerImageForMovement(sourcePlayerVisuals,
+      sourceMovementVisualMode(sourceMovementMode, sourceMovementAction)) ?? importedAssets.playerImage;
   }
   return sourcePlayerImageFor(sourcePlayerVisuals, sourcePlayerCharacterName)
     ?? sourcePlayerVisuals?.overworld ?? importedAssets.playerImage;
@@ -1501,79 +1502,16 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   if (sourceSequences.current === null) queueMicrotask(beginPendingSourceMapEntryAutorun);
 }
 
-async function resetSourceWorld(): Promise<void> {
-  if (!sourceScenes.allows("scene-change", sourceSceneActivity())) return;
-  sourceTransitionInProgress = true;
-  sourceDialogues.cancel();
-  const checkpoint = sourceEventState.checkpoint;
-  importedNotice = checkpoint === null ? "Retour à Bourg Canvas…" : `Retour au point de reprise Map${String(checkpoint.mapId).padStart(3, "0")}…`;
-  renderImportedView();
-  try {
-    const world = await loadSourceCheckpoint(checkpoint);
-    activateSourceWorld(world);
-    sourceMovementMode = "walk";
-    sourceMovementAction = "idle";
-    importedNotice = checkpoint === null ? "Position de test restaurée en 28,15, face à un événement dialogué."
-      : `Point de reprise restauré dans ${world.assets.map.name}, en ${world.avatar.x},${world.avatar.y}.`;
-  } catch (error) {
-    importedNotice = error instanceof Error ? error.message : "Réinitialisation impossible.";
-  } finally {
-    sourceTransitionInProgress = false;
-    renderImportedView();
-  }
-}
-
-async function openStarterTest(): Promise<void> {
-  if (!sourceScenes.allows("scene-change", sourceSceneActivity()) || multiplayer.active) return;
-  if (sourceEventState.party.members.length > 0) {
-    importedNotice = "Un starter a déjà été choisi : les autres socles restent verrouillés.";
-    render();
-    return;
-  }
-  sourceTransitionInProgress = true;
-  sourceDialogues.cancel();
-  importedNotice = "Chargement de la salle de sélection des starters…";
-  try {
-    sourceEventState = { ...sourceEventState, switches: { ...sourceEventState.switches, 238: true } };
-    persistSourceEventState();
-    const world = await loadSourceWorldAt(2, { x: 52, y: 22, direction: "up" });
-    activateSourceWorld(world);
-    sourceMovementMode = "walk";
-    sourceMovementAction = "idle";
-    viewedMapId = SOURCE_MAP_ID;
-    importedNotice = "Test starter Kalos prêt : Chespin se trouve juste devant vous ; Feunnec et Grenousse sont sur les socles voisins.";
-  } catch (error) {
-    importedNotice = error instanceof Error ? `Salle des starters inaccessible : ${error.message}` : "Salle des starters inaccessible.";
-  } finally {
-    sourceTransitionInProgress = false;
-    render();
-  }
-}
-
-function renderStarterTestButton(): void {
-  const button = document.querySelector<HTMLButtonElement>("#starter-test");
-  if (button === null) return;
-  const starterChosen = sourceEventState.party.members.length > 0;
-  button.disabled = starterChosen;
-  button.title = starterChosen ? "Un starter a déjà été choisi dans cette sauvegarde." : "";
-}
-
 function render(): void {
-  renderStarterTestButton();
   const avatarLabVisible = viewedMapId === AVATAR_LAB_MAP_ID;
   requiredAppElement("world-stage").hidden = avatarLabVisible;
-  requiredAppElement("map-legend").hidden = avatarLabVisible;
-  document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) =>
-    button.classList.toggle("active", button.dataset.map === viewedMapId));
   if (avatarLabVisible) {
     if (importedAnimationFrame !== null) { cancelAnimationFrame(importedAnimationFrame); importedAnimationFrame = null; }
-    const title = document.querySelector<HTMLElement>("#map-name"); if (title !== null) title.textContent = "Personnage de test";
     avatarLabView.show();
     return;
   }
   avatarLabView.hide();
-  const network = multiplayer.current;
-  if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
+  if (importedAssets !== null) {
     renderImportedView();
     return;
   }
@@ -1581,8 +1519,6 @@ function render(): void {
     cancelAnimationFrame(importedAnimationFrame);
     importedAnimationFrame = null;
   }
-  demoOverworldView.render({ mapId: viewedMapId, state, positions: renderPositions, events,
-    networkSide: network?.ticket.side ?? null, profiles: networkPlayerProfiles, avatarImages: networkAvatarImages });
   renderSourceDialogue();
   renderEncounter();
   renderSourceMenu();
@@ -1639,7 +1575,7 @@ function remotePlayerAhead(): boolean {
   return importedAvatar.x + delta.x === remote.x && importedAvatar.y + delta.y === remote.y;
 }
 
-function move(playerId: string, direction: Direction): void {
+function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
   if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
@@ -1658,7 +1594,7 @@ function move(playerId: string, direction: Direction): void {
     }
     const before = importedAvatar;
     const unlocks = sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride);
-    const requestedMode = sourceModeForInput(sourceMovementMode, sourceSprintHeld, unlocks);
+    const requestedMode = requestedModeOverride ?? sourceModeForInput(sourceMovementMode, sourceSprintHeld, unlocks);
     const facing = sourceFacingPoint(importedAvatar.x, importedAvatar.y, direction);
     const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
     const waterfall = sourceMovementMode === "surf" && unlocks.waterfall
@@ -1695,14 +1631,6 @@ function move(playerId: string, direction: Direction): void {
     if (networkSide === null) publishCurrentSourceWorld();
     return;
   }
-  if (multiplayer.active) {
-    multiplayer.sendMovement(playerId, direction);
-    return;
-  }
-  const result = resolveMovement(catalog, state, { playerId, direction });
-  events.push(...result.events);
-  const avatar = result.state.avatars[playerId]; if (avatar !== undefined) viewedMapId = avatar.mapId;
-  setAuthoritativeState(result.state, true);
 }
 
 function interact(playerId: AvatarId): void {
@@ -1746,13 +1674,6 @@ function interact(playerId: AvatarId): void {
     renderImportedView();
     return;
   }
-  if (multiplayer.active) {
-    multiplayer.sendInteraction(playerId);
-    return;
-  }
-  const result = resolveInteraction(catalog, state, { playerId, hostPlayerId: "player" });
-  events.push(...result.events);
-  setAuthoritativeState(result.state, false);
 }
 
 function trySourceTraversalInteraction(): boolean {
@@ -1780,9 +1701,7 @@ function trySourceTraversalInteraction(): boolean {
   const facing = sourceFacingPoint(importedAvatar.x, importedAvatar.y, importedAvatar.direction);
   const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
   if (sourceMovementMode !== "surf" && unlocks.surf && isSourceSurfableTerrain(facingTerrain)) {
-    sourceMovementMode = "surf";
-    sourceMovementAction = "surf-transition";
-    move("player", importedAvatar.direction);
+    move("player", importedAvatar.direction, "surf");
     return true;
   }
   return false;
@@ -1834,17 +1753,14 @@ function disconnectMultiplayer(): void {
   networkRemoteFollowerImage = null;
   networkRemoteFollowerAssetPath = null;
   lastPublishedSourceScene = "";
-  events = [];
-  setAuthoritativeState(initialState(), false);
-  viewedMapId = importedAssets === null ? "meadow" : SOURCE_MAP_ID;
+  viewedMapId = SOURCE_MAP_ID;
   sourceScenes.closeMenu();
   render();
 }
 
-const keys: Readonly<Record<string, readonly [string, Direction]>> = {
+const keys: Readonly<Record<string, readonly ["player", Direction]>> = {
   ArrowUp: ["player", "up"], ArrowDown: ["player", "down"], ArrowLeft: ["player", "left"], ArrowRight: ["player", "right"],
   KeyW: ["player", "up"], KeyZ: ["player", "up"], KeyS: ["player", "down"], KeyA: ["player", "left"], KeyQ: ["player", "left"], KeyD: ["player", "right"],
-  KeyI: ["opponent", "up"], KeyK: ["opponent", "down"], KeyJ: ["opponent", "left"], KeyL: ["opponent", "right"],
 };
 
 function continueHeldSourceMovement(): void {
@@ -1856,6 +1772,7 @@ function continueHeldSourceMovement(): void {
 window.addEventListener("keydown", (event) => {
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = true;
   if (event.code === "Escape") {
+    if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
     if (sourceSequences.current !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
@@ -1868,13 +1785,12 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
     event.preventDefault(); toggleSourceMenu(); return;
   }
-  if (sourceScenes.menuOpen || sourceShop !== null) { event.preventDefault(); return; }
+  if (sourceScenes.menuOpen || sourceShop !== null || sourceRanchSequence !== null) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }
   if (event.code === "Enter" && viewedMapId === SOURCE_MAP_ID) { event.preventDefault(); interact("player"); return; }
   if (event.code === "Space") { event.preventDefault(); interact("player"); return; }
-  if (event.code === "KeyO") { event.preventDefault(); interact("opponent"); return; }
   const command = keys[event.code];
   if (command === undefined) return;
   event.preventDefault();
@@ -1889,23 +1805,6 @@ window.addEventListener("keyup", (event) => {
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = false;
 });
 window.addEventListener("blur", () => { heldMovementKeys.clear(); sourceSprintHeld = false; });
-document.querySelectorAll<HTMLButtonElement>(".pad button").forEach((button) => button.addEventListener("click", () => {
-  const playerId = button.closest<HTMLElement>("[data-player]")?.dataset.player;
-  const direction = button.dataset.direction as Direction | undefined;
-  if (playerId !== undefined && direction !== undefined) move(playerId, direction);
-}));
-document.querySelectorAll<HTMLButtonElement>("[data-interact]").forEach((button) => button.addEventListener("click", () => {
-  const playerId = button.dataset.interact;
-  if (playerId === "player" || playerId === "opponent") interact(playerId);
-}));
-document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) => button.addEventListener("click", () => {
-  const mapId = button.dataset.map;
-  if (mapId === undefined || !sourceScenes.allows("scene-change", sourceSceneActivity())
-    || (mapId === SOURCE_MAP_ID && (importedAssets === null || multiplayer.active))) return;
-  viewedMapId = mapId;
-  render();
-}));
-document.querySelector<HTMLButtonElement>("#open-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
   const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
@@ -1913,17 +1812,12 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();
 }));
-document.querySelector<HTMLButtonElement>("#starter-test")?.addEventListener("click", () => { void openStarterTest(); });
-document.querySelector<HTMLButtonElement>("#reset")?.addEventListener("click", () => {
-  if (multiplayer.active) return;
-  if (viewedMapId === AVATAR_LAB_MAP_ID) return;
-  if (viewedMapId === SOURCE_MAP_ID) {
-    void resetSourceWorld();
-    return;
-  }
-  viewedMapId = "meadow";
-  events = [];
-  setAuthoritativeState(initialState(), false);
+document.querySelector<HTMLButtonElement>("#toggle-engine-panel")?.addEventListener("click", (event) => {
+  const button = event.currentTarget as HTMLButtonElement;
+  const panel = requiredAppElement<HTMLElement>("engine-panel");
+  panel.hidden = !panel.hidden;
+  button.setAttribute("aria-expanded", String(!panel.hidden));
+  button.textContent = panel.hidden ? "Afficher le moteur" : "Masquer le moteur";
 });
 render();
 
@@ -1943,16 +1837,12 @@ async function initializeSourceWorld(): Promise<void> {
     } else if (world.saveStatus === "default") {
       importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
     }
-    const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
-    if (sourceButton !== null) sourceButton.disabled = false;
     if (!multiplayer.active) {
       viewedMapId = SOURCE_MAP_ID;
       render();
     }
   } catch (error) {
     importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
-    const sourceButton = document.querySelector<HTMLButtonElement>(`[data-map="${SOURCE_MAP_ID}"]`);
-    if (sourceButton !== null) sourceButton.title = `${importedNotice} Relancez pnpm prepare:local.`;
     setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
   }
 }

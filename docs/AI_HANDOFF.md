@@ -103,6 +103,28 @@ sprint avec Maj et Chevroum ; tester une corniche, une plaque de glace et une ri
 Sur une eau profonde associee a `DiveMap`, utiliser Plonger puis Remonter. Refaire
 les pas avec deux navigateurs et verifier le sprite et la trajectoire distante.
 
+Correction apres la premiere validation manuelle : `enteringWater` ne s'applique
+qu'au passage terre vers eau. Un joueur deja en Surf utilise maintenant l'action
+`step`, sans arc de saut repete. Le sprite `*_surf_offset` reprend l'ancrage vertical
+de 16 px, ses quatre images tournent toutes les 15 frames source et les deux
+dernieres ajoutent le flottement de 2 px, y compris a l'arret et pour le joueur
+distant. La sortie conserve le sprite Surf jusqu'a la fin du saut. Le sprite de
+Plongee natif `*_dive_offset` est egalement selectionne.
+
+Correction de transition du 2026-10-02 : l'interaction d'embarquement transmet
+maintenant une intention `surf` sans modifier le mode courant avant le passage
+dans le resolveur. L'action `surf-transition`, et donc son arc visible, est ainsi
+produite en solo comme par la room. Le debarquement valide l'entree sur la rive
+sans exiger un bit de sortie sur la tuile d'eau ; ce masque source bloquait la
+sortie de Surf sur des rives pourtant franchissables.
+
+Chevroum parcourt une case en 115 ms au lieu de 92 ms et anime ses quatre images
+pendant un deplacement continu. Les corniches suivent exactement les deux controles
+utiles du Ruby : le passage dans la direction regardee jusqu'a la tuile `Ledge`,
+puis une case d'atterrissage non totalement bloquee. L'ancien controle d'un passage
+sortant de la corniche etait trop strict et supprimait certains sauts lateraux ou
+verticaux. Ces regles restent dans le resolveur commun solo/room.
+
 ### 3. Gestionnaire de scenes — en cours
 
 Etat : parcours overworld/combat integre ; politique des controles centralisee.
@@ -402,8 +424,54 @@ en `59,34`. Elle est maintenant entierement resolue : 238 commandes apres fusion
 des continuations Ruby, 36 dialogues, 110 commandes de mouvement et aucun rendu en
 attente. L'obtention du Pokedex est conservee dans `SourceEventState.pokedexEnabled`
 et migre les anciennes sauvegardes vers `false`, mais aucun nouvel ecran n'est
-affiche. Le porteur souhaite revoir plus tard les interfaces lourdes du Pokedex,
-du ranch et de la carte.
+affiche. Le porteur souhaite revoir plus tard les interfaces lourdes du Pokedex
+et de la carte. Le premier ecran du ranch est decrit ci-dessous.
+
+### Ranch Pokemon et presentation partagee
+
+Premier lot implemente le 2026-10-02 : les 60 appels source `pbPokeCenterPC`
+reconnus dans les evenements sont portes generiquement vers `open-ranch`, declare
+dans le registre et audite comme transition rendue. La sequence est mise en pause
+pendant l'ecran puis reprend a sa fermeture. Il n'existe aucun traitement lie a un
+numero de carte ou d'evenement.
+
+Le stockage `SourceEventState.ranch` est personnel, persistant et distinct de
+l'equipe de six. Il n'est jamais publie dans le snapshot narratif de l'hote. Les
+anciennes sauvegardes migrent vers un stockage vide ; un Pokemon obtenu quand
+l'equipe est pleine rejoint automatiquement ce stockage. L'hote et l'invite
+ouvrent chacun leur propre Ranch et seul le joueur concerne voit l'interface.
+
+`source-pokemon-collection.ts` produit le modele commun equipe/Ranch : identite,
+numero, types, niveau, emplacement, sprite, puissance actuelle et potentiel.
+`source-pokemon-card-view.ts` rend la meme carte dans l'onglet Equipe et le Ranch ;
+ce contrat doit aussi servir aux futures selections en combat et a la fiche de
+statistiques. La puissance actuelle est la somme des six statistiques calculees
+au niveau courant. Le potentiel est le total des six statistiques de base de
+l'espece ; ce ne sont donc ni des IV ni une prediction arbitraire du niveau 100.
+
+Le Ranch cumule recherche par nom/numero, deux filtres de type, bornes de numero,
+minimum de puissance actuelle et minimum de potentiel. Le tri peut utiliser le
+numero, le nom, le niveau ou l'une des deux puissances. Les icones classiques sont
+lues dans `Graphics/Icons/iconNNN.png` et leur premiere pose est recadree sans
+copie dans Git. Les 18 icones de types et leur repli `unknown` sont en revanche
+des assets versionnes communs dans `packages/game-assets`. Elles ont ete copiees
+du projet local KantoTeam a la demande du porteur, puis renommees avec des
+identifiants stables. `pokemonTypeIconUrl` est le registre unique utilise par les
+cartes partagees de l'equipe et du Ranch, les boutons de capacites du combat integre
+et les badges du sandbox de combat. Les futures fiches doivent reutiliser ce meme
+registre.
+
+Deuxieme lot Ranch implemente le 2026-10-02 : un Pokemon selectionne peut etre
+depose au Ranch ou retire vers la fin de l'equipe. Les fonctions pures
+`transferPokemonToStorage` et `transferPokemonToParty` portent la mutation commune,
+recalculent l'index actif sans changer l'identite ni les ressources du Pokemon,
+conservent au moins un membre et limitent l'equipe a six. L'operation est persistee
+dans le meme etat personnel pour le solo, l'hote et l'invite ; elle n'est pas
+publiee dans la room et seul le joueur concerne voit sa collection.
+
+Dette explicite : la capture en combat et la fiche detaillee (IV/EV, nature,
+talent, capacites et historique) restent a porter. L'ecran n'injecte toujours
+aucune donnee de demonstration dans la sauvegarde.
 
 L'autorun d'entree EV035 est egalement complet. `weather` gere effacement, pluie,
 orage et neige dans une couche CSS legere ; `erase-event` est absorbe par le cycle
@@ -474,13 +542,15 @@ leurs echappements HTML, le volume persistant, la poche selectionnee et les liai
 DOM vivent dans `source-menu-view.ts`. Les mutations metier restent explicites dans
 l'orchestrateur : sauvegarde, suppression, achat et reprise de sequence.
 
-La presentation de l'ancien prototype coop local est egalement isolee dans
-`demo-overworld-view.ts`. Le dessin de ses cartes et avatars, son journal, son etat
-de session et son guide ne sont donc plus melanges au parcours Pokemon source.
-Le grand gabarit DOM vit maintenant dans `overworld-app-shell.ts`, qui centralise
-aussi la resolution stricte des elements requis. Le panneau de diagnostic du monde
-source, ses controles et ses libelles sont rendus par `source-overworld-hud.ts` ;
-les donnees issues des catalogues y sont echappees avant insertion HTML.
+Le prototype visuel Prairie/Bosquet et `demo-overworld-view.ts` ont ete retires de
+l'application le 2026-10-02. Les fixtures generiques homonymes restent uniquement
+dans le noyau et la room pour leurs regressions de protocole ; elles ne sont plus
+des cartes, des controles ou des destinations accessibles dans l'UI. Le grand
+gabarit DOM vit dans `overworld-app-shell.ts`, qui ne presente plus que la scene de
+jeu et le diagnostic `Moteur / Evenements`, repliable par un bouton. Le panneau de
+diagnostic du monde source et ses libelles sont rendus par
+`source-overworld-hud.ts` ; les donnees issues des catalogues y sont echappees
+avant insertion HTML.
 
 `source-dialogue-view.ts` porte maintenant la boite de dialogue, les choix, les
 indications de progression et leurs liaisons DOM. `source-battle-overlay.ts` rend
@@ -593,16 +663,14 @@ Il associe un `visualPreset` sans chemin de fichier au `PlayerProfile` semantiqu
 avec validation stricte des champs. Il exclut volontairement equipe, inventaire et
 progression. Le protocole v8 transmet le profil lors de la creation/jonction,
 l'intention `setProfile` permet de publier une application ulterieure, et la room
-le valide, le persiste et le diffuse dans chaque snapshot. `DemoOverworldView`
-affiche les noms et charsets recolores des deux places sur Prairie/Bosquet. Le
-monde source de l'hote est maintenant partage avec sa topologie compacte, son etat
+le valide, le persiste et le diffuse dans chaque snapshot. Le monde source de
+l'hote est maintenant partage avec sa topologie compacte, son etat
 narratif visible et les deux avatars. Sa sauvegarde personnelle reste exclue.
 Le parcours de connexion se trouve maintenant dans l'onglet `Coop` du menu en jeu,
-et non dans l'ancien panneau lateral. Il permet de creer, rejoindre, voir le code
-et les participants, ouvrir la personnalisation puis quitter. Le menu reste
-ouvrable sur Prairie/Bosquet. La personnalisation possede un retour direct vers
-l'onglet Coop de la carte precedente ; une deconnexion revient au monde source
-personnel.
+et non dans une commande externe. Il permet de creer, rejoindre, voir le code et
+les participants, ouvrir la personnalisation puis quitter. La personnalisation
+possede un retour direct vers l'onglet Coop ; une deconnexion revient au monde
+source personnel.
 
 Une commande implementee doit passer de `accepted` a `rendered` ou `executed`. Elle
 disparait alors automatiquement de la liste `rendu en attente`.
@@ -758,7 +826,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 329 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 342 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

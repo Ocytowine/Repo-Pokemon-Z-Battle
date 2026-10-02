@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { addPokemonToParty, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
+import { addPokemonToParty, addPokemonToStorage, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
+  createEmptyPlayerPokemonStorage,
   createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerAvatarSelection,
-  loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerProfile, persistSessionPlayerAvatarSelection,
-  playerPartyToBattleTeam, storeBattleTeam, type PlayerBattleCatalog,
+  loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
+  playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
@@ -66,6 +67,31 @@ describe("persistent player party", () => {
     expect(() => parsePlayerParty({ ...party, activeIndex: 2 })).toThrow("actif");
     expect(() => parsePlayerParty({ ...party, members: [party.members[0], party.members[0]] })).toThrow("dupliqués");
     expect(() => parsePlayerParty({ ...party, members: [{ ...party.members[0], hp: 40 }] })).toThrow("PV");
+  });
+
+  it("keeps an unbounded validated Ranch separate from the six-member party", () => {
+    const storage = addPokemonToStorage(createEmptyPlayerPokemonStorage(), party.members[0]!);
+    expect(parsePlayerPokemonStorage(storage)).toEqual(storage);
+    expect(() => addPokemonToStorage(storage, party.members[0]!)).toThrow("déjà stocké");
+  });
+
+  it("transfers Pokemon between party and Ranch while preserving a valid active member", () => {
+    const second = { ...party.members[0]!, id: "second" };
+    const deposited = transferPokemonToStorage({ ...party, activeIndex: 1, members: [party.members[0]!, second] },
+      createEmptyPlayerPokemonStorage(), "second");
+    expect(deposited.party).toMatchObject({ activeIndex: 0, members: [{ id: "starter" }] });
+    expect(deposited.storage.members).toMatchObject([{ id: "second" }]);
+    const withdrawn = transferPokemonToParty(deposited.party, deposited.storage, "second");
+    expect(withdrawn.party).toMatchObject({ activeIndex: 0, members: [{ id: "starter" }, { id: "second" }] });
+    expect(withdrawn.storage.members).toEqual([]);
+  });
+
+  it("keeps at least one party member and enforces the six-member limit", () => {
+    expect(() => transferPokemonToStorage(party, createEmptyPlayerPokemonStorage(), "starter")).toThrow("au moins un");
+    const fullParty = { ...party, members: Array.from({ length: 6 }, (_, index) => ({
+      ...party.members[0]!, id: `pokemon-${index}` })), activeIndex: 0 };
+    const storage = { ...createEmptyPlayerPokemonStorage(), members: [{ ...party.members[0]!, id: "stored" }] };
+    expect(() => transferPokemonToParty(fullParty, storage, "stored")).toThrow("six Pokémon");
   });
 
   it("heals HP, status and PP immutably", () => {

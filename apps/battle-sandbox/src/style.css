@@ -117,6 +117,8 @@ button, .file-button { cursor: pointer; font-weight: 800; text-align: center; }
 .fighter h2 { margin: 0 0 7px; font-size: clamp(24px, 3vw, 35px); letter-spacing: -.04em; }
 .level { align-self: start; color: #aebbd0; font-size: 12px; font-weight: 800; }
 .types { display: flex; gap: 5px; }
+.types .type { display: inline-flex; gap: 4px; align-items: center; }
+.types .type img { width: 17px; height: 17px; object-fit: contain; }
 .type { padding: 3px 7px; border-radius: 6px; color: #dfe9f8; background: #73819a35; font-size: 9px; font-weight: 900; letter-spacing: .08em; }
 .type-grass { background: #4fbf7330; color: #8af0a7; }.type-water { background: #4593dc30; color: #8ec8ff; }.type-fire { background: #e26d4930; color: #ffad8e; }.type-normal { background: #9a9a8830; color: #dedec7; }.type-electric { background: #e6c43c30; color: #ffe780; }.type-poison { background: #ad66ca30; color: #dda1f5; }
 .health { margin-top: 27px; }

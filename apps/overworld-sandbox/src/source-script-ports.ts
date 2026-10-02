@@ -54,6 +54,7 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
     return command(source, "runtime-noop", { policy: "FOLLOWER_PRESENTATION" });
   }
   if (/^(?:Kernel\.)?pbSetPokemonCenter$/u.test(ruby)) return command(source, "set-checkpoint", { policy: "PERSONAL" });
+  if (/^(?:Kernel\.)?pbPokeCenterPC$/u.test(ruby)) return command(source, "open-ranch", { policy: "PERSONAL" });
   let match = /^pbAddPokemon\(:([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "add-pokemon", { species: match[1], level: Number(match[2]), policy: "PERSONAL" });
   match = /^pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);

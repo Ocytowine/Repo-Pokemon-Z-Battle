@@ -8,6 +8,8 @@ import type { SourceWorldSave } from "./source-world-save.js";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
+import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
+import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
 
 const SOURCE_VOLUME_KEY = "pokemon-z-battle.options.volume.v1";
 
@@ -94,19 +96,13 @@ export class SourceMenuView {
   }
 
   private renderTeam(content: HTMLElement, model: SourceMenuViewModel): void {
-    const speciesName = (species: string): string => model.assets.battleCatalog.pokemon
-      .find((entry) => entry.internalName === species)?.name ?? species;
-    const moveName = (move: string): string => model.assets.battleCatalog.moves
-      .find((entry) => entry.internalName === move)?.name ?? move;
     const members = model.eventState.party.members;
+    const entries = createSourcePokemonCollection(model.eventState.party, model.eventState.ranch,
+      model.assets.battleCatalog).filter((entry) => entry.location === "team");
     content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${members.length === 0
       ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Équipe vide</strong><small>Choisissez votre premier Pokémon pour commencer.</small></div>'
-      : members.map((member, index) => {
-        const name = escapeSourceHtml(member.nickname ?? speciesName(member.species));
-        const hp = Math.round(member.hp / member.stats.maxHp * 100);
-        const moves = member.moves.map((move) => escapeSourceHtml(moveName(move.internalName))).join(" · ");
-        return `<article class="source-team-card${index === model.eventState.party.activeIndex ? " active" : ""}"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><div><small>${index === model.eventState.party.activeIndex ? "EN TÊTE" : escapeSourceHtml(member.species)}</small><strong>${name} <span>N.${member.level}</span></strong><div class="source-menu-hp"><i style="width:${hp}%"></i></div><em>${member.hp}/${member.stats.maxHp} PV</em><p>${moves}</p></div></article>`;
-      }).join("")}</div>`;
+      : entries.map((entry) => sourcePokemonCardHtml(entry, { active: entry.teamIndex === model.eventState.party.activeIndex,
+        interactive: false })).join("")}</div>`;
   }
 
   private renderBag(content: HTMLElement, model: SourceMenuViewModel): void {

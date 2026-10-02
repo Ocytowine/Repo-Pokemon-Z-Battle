@@ -26,6 +26,10 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess(page(["show-choices", "recover-all"]))).toBe("personal");
     expect(guestSourceEventAccess(page(["screen-tone", "transfer-player"]))).toBe("transfer");
     expect(guestSourceEventAccess(page(["show-text", "set-switches"]))).toBe("blocked");
+    const ranch = page(["ruby-script"]);
+    expect(guestSourceEventAccess({ ...ranch, commands: [
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },
+    ] })).toBe("personal");
   });
 
   it("rejoins the shared instance when the host reaches the guest's map", () => {
@@ -41,5 +45,6 @@ describe("guest source event policy", () => {
     expect(synchronized).toMatchObject({ switches: { "10": true }, variables: { "2": 7 },
       selfSwitches: { "4:2:A": true } });
     expect(synchronized.party).toBe(local.party);
+    expect(synchronized.ranch).toBe(local.ranch);
   });
 });

@@ -528,7 +528,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localiza
       if (!isRecord(move) || !Number.isInteger(move.level) || typeof move.move !== "string") throw new Error("Une capacité de niveau est invalide.");
       return { level: move.level as number, move: move.move };
     });
-    return { internalName: entry.internalName, name: pokemonNames.get(entry.id as number) ?? entry.name, types: entry.types as string[],
+    return { id: entry.id as number, internalName: entry.internalName, name: pokemonNames.get(entry.id as number) ?? entry.name, types: entry.types as string[],
       baseStats: { hp: stat("hp"), attack: stat("attack"), defense: stat("defense"), speed: stat("speed"),
         specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
       abilities: entry.abilities as string[], levelUpMoves, growthRate: entry.growthRate, baseExperience: entry.baseExperience as number };

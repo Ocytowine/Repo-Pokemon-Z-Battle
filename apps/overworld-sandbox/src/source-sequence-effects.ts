@@ -11,13 +11,14 @@ import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol"
 
 type SourceCommand = ImportedEventPage["commands"][number];
 
-export type SourceSequenceCommandFamily = "state" | "trainer-battle" | "shop" | "transfer"
+export type SourceSequenceCommandFamily = "state" | "trainer-battle" | "shop" | "ranch" | "transfer"
   | "movement" | "presentation";
 
 export function sourceSequenceCommandFamily(command: SourceCommand): SourceSequenceCommandFamily {
   if (isSourceStateCommand(command.kind)) return "state";
   if (command.kind === "request-trainer-battle") return "trainer-battle";
   if (command.kind === "open-shop") return "shop";
+  if (command.kind === "open-ranch") return "ranch";
   if (command.kind === "transfer-player") return "transfer";
   if (command.kind === "move-route" || command.kind === "wait-for-movement"
     || command.kind === "set-movement-mode") return "movement";
@@ -35,6 +36,7 @@ export interface SourceSequenceEffectDependencies {
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
   readonly openShop: (session: SourceSequenceSession, stock: readonly SourceShopItem[]) => void;
+  readonly openRanch: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
   readonly setMovementMode: (mode: SourceMovementMode) => void;
@@ -51,6 +53,7 @@ export class SourceSequenceEffects {
       case "state": return this.applyState(session, command);
       case "trainer-battle": return this.startTrainerBattle(session, command);
       case "shop": return this.openShop(session, command);
+      case "ranch": return this.openRanch(session);
       case "transfer": return this.transfer(session, command);
       case "movement": return this.move(session, command);
       case "presentation": return this.present(session, command);
@@ -123,6 +126,11 @@ export class SourceSequenceEffects {
     const stock = stockIds.map((id) => assets.items.get(id)).filter((item): item is SourceShopItem => item !== undefined);
     if (stock.length === 0) throw new Error("aucun objet du stock n'est disponible");
     this.dependencies.openShop(session, stock);
+    return "pause";
+  }
+
+  private openRanch(session: SourceSequenceSession): SourceSequenceCommandResult {
+    this.dependencies.openRanch(session);
     return "pause";
   }
 

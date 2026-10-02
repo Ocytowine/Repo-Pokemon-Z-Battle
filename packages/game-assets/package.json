@@ -1,0 +1,13 @@
+{
+  "name": "@pokemon-z-battle/game-assets",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Versioned visual assets shared by Pokemon Z-Battle applications.",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  }
+}

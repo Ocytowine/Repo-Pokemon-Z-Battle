@@ -99,6 +99,6 @@ export function sourcePlayerImageForMovement(visuals: SourcePlayerVisuals | null
   mode: "walk" | "run" | "mount" | "surf" | "dive"): HTMLImageElement | null {
   if (visuals === null) return null;
   const alias = mode === "run" ? "boy_run" : mode === "mount" ? "boy_bike"
-    : mode === "surf" ? "boy_surf_offset" : mode === "dive" ? "trchar000" : "player";
+    : mode === "surf" ? "boy_surf_offset" : mode === "dive" ? "boy_dive_offset" : "player";
   return visuals.bySourceName.get(alias) ?? visuals.overworld;
 }

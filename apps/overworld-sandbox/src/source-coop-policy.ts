@@ -1,6 +1,7 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import type { SourceStorySnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import { portSourceRubyCommand } from "./source-script-ports.js";
 
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
 export type SourceInteractionTarget = "event" | "player" | null;
@@ -32,7 +33,9 @@ export function sourceStateWithHostStory(local: SourceEventState, story: SourceS
  * narratives restent sous l'autorite de l'hote.
  */
 export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEventAccess {
-  if (page.commands.some((command) => command.kind === "transfer-player")) return "transfer";
-  if (page.commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all")) return "personal";
+  const commands = page.commands.map((command) => portSourceRubyCommand(command) ?? command);
+  if (commands.some((command) => command.kind === "transfer-player")) return "transfer";
+  if (commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all"
+    || command.kind === "open-shop" || command.kind === "open-ranch")) return "personal";
   return "blocked";
 }

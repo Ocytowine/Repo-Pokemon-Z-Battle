@@ -94,9 +94,27 @@ export function sourceMovementDuration(mode: SourceMovementMode, action: string)
   if (action === "ledge-jump" || action === "surf-transition") return 260;
   if (action === "ice-slide") return 85;
   if (action === "waterfall" || action === "climb") return 180;
-  if (mode === "mount") return 92;
+  if (mode === "mount") return 115;
   if (mode === "run" || mode === "surf" || mode === "dive") return 105;
   return 125;
+}
+
+export function sourceMovementVisualMode(mode: SourceMovementMode, action: string): SourceMovementMode {
+  return action === "surf-transition" ? "surf" : mode;
+}
+
+export function sourceMovementVisualPattern(mode: SourceMovementMode, basePattern: number, now: number,
+  moving: boolean): number {
+  if (mode === "surf" || mode === "dive") return Math.floor(Math.max(0, now) / 375) % 4;
+  if (mode === "mount" && moving) return Math.floor(Math.max(0, now) / 100) % 4;
+  return basePattern;
+}
+
+export function sourceMovementVisualOffset(mode: SourceMovementMode, now: number): number {
+  const vehicleAnchor = mode === "surf" || mode === "dive" ? 16 : 0;
+  if (mode !== "surf" && mode !== "dive") return vehicleAnchor;
+  const frame = Math.floor(Math.max(0, now) / 375) % 4;
+  return vehicleAnchor + (frame >= 2 ? 2 : 0);
 }
 
 export function sourceModeForInput(current: SourceMovementMode, sprintHeld: boolean,

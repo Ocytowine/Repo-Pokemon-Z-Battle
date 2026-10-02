@@ -1,5 +1,4 @@
-import { SOURCE_MAP_ID, selectEventPage, type ImportedAvatar, type ImportedMapAssets }
-  from "./imported-map.js";
+import { selectEventPage, type ImportedAvatar, type ImportedMapAssets } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
 
@@ -12,38 +11,18 @@ export interface SourceOverworldHudModel {
   readonly notice: string;
   readonly parallelAuditNotice: string | null;
   readonly sceneAuditNotice: string | null;
-  readonly canChangeScene: boolean;
 }
 
 export class SourceOverworldHud {
   public constructor(private readonly onStartPendingEncounter: () => void) {}
 
   public render(model: SourceOverworldHudModel): void {
-    const { assets, avatar, eventState } = model;
-    const name = document.querySelector<HTMLElement>("#map-name");
-    if (name !== null) name.textContent = `${assets.map.name} · Map${String(assets.map.id).padStart(3, "0")}`;
+    const { avatar } = model;
     const tick = document.querySelector<HTMLElement>("#tick");
     if (tick !== null) tick.textContent = `${avatar.x},${avatar.y}`;
     this.renderProgress(model);
     const log = document.querySelector<HTMLElement>("#events");
     if (log !== null) log.textContent = model.notice;
-    const legend = document.querySelector<HTMLElement>("#map-legend");
-    if (legend !== null) legend.innerHTML = `<span class="source"></span>Graphismes locaux originaux <span class="door"></span>Origine d'un transfert`;
-    document.querySelectorAll<HTMLButtonElement>("[data-map]").forEach((button) =>
-      button.classList.toggle("active", button.dataset.map === SOURCE_MAP_ID));
-    document.querySelectorAll<HTMLElement>("[data-controller]").forEach((controller) =>
-      controller.classList.toggle("disabled", controller.dataset.controller === "opponent"));
-    const reset = document.querySelector<HTMLButtonElement>("#reset");
-    if (reset !== null) {
-      reset.disabled = !model.canChangeScene;
-      reset.textContent = eventState.checkpoint === null ? "Réinitialiser la position" : "Revenir au point de reprise";
-    }
-    const guide = document.querySelector<HTMLElement>("#coop-guide");
-    if (guide !== null) guide.innerHTML = `<article><span>9.5</span><strong>Choix et conditions</strong><small>Les branches imbriquées suivent la réponse et l'état courant.</small></article><article><span>REPRISE</span><strong>Point de soin</strong><small>L'infirmière mémorise la carte et la position de retour.</small></article><article><span>COMBAT</span><strong>Rencontre source</strong><small>L'équipe persistante affronte le Pokémon sauvage puis récupère ses PV, statuts et PP.</small></article>`;
-    const guidePhase = document.querySelector<HTMLElement>("#guide-phase");
-    if (guidePhase !== null) guidePhase.textContent = "Phase 9.5";
-    const guideTitle = document.querySelector<HTMLElement>("#guide-title");
-    if (guideTitle !== null) guideTitle.textContent = "État des événements";
   }
 
   private renderProgress(model: SourceOverworldHudModel): void {

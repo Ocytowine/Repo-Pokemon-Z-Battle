@@ -1,5 +1,7 @@
 import type { ImportedEventPage, ImportedMapEvent } from "./imported-map.js";
-import { addPokemonToParty, createEmptyPlayerParty, healPlayerParty, parsePlayerParty, type PersistentPokemon, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+import { addPokemonToParty, addPokemonToStorage, createEmptyPlayerParty, createEmptyPlayerPokemonStorage,
+  healPlayerParty, parsePlayerParty, parsePlayerPokemonStorage, type PersistentPokemon, type PlayerPartyState,
+  type PlayerPokemonStorageState } from "@pokemon-z-battle/player-state";
 import { isSourceStarterSelectionPage } from "./source-script-ports.js";
 import { isKnownSourceCommand, isSourceStateCommand } from "./source-command-registry.js";
 
@@ -14,6 +16,7 @@ export interface SourceEventState {
   readonly followerEnabled: boolean;
   readonly checkpoint: SourceCheckpoint | null;
   readonly party: PlayerPartyState;
+  readonly ranch: PlayerPokemonStorageState;
   readonly pendingEncounter: SourceEncounter | null;
   readonly wildEncounterSteps: number;
   readonly wildEncounterRngState: number;
@@ -51,13 +54,14 @@ export interface StateCommandResult {
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
+  ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
   pendingEncounter: null,
   wildEncounterSteps: 0,
   wildEncounterRngState: 0x9e37_79b9,
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), pendingEncounter: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
     wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9 };
 }
 
@@ -131,6 +135,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   let followerEnabled = state.followerEnabled;
   let checkpoint = state.checkpoint;
   let party = state.party;
+  let ranch = state.ranch;
   let pendingEncounter = state.pendingEncounter;
   let encounterQueued = false;
   let appliedCommands = 0;
@@ -159,7 +164,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState });
       if (ids === null || operand === null) return { state, appliedCommands: 0, safe: false, reason: "opérande de variable non prise en charge" };
       for (const id of ids) {
@@ -218,7 +223,9 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
         return { state, appliedCommands: 0, safe: false, reason: "catalogue de création Pokémon absent" };
       }
       try {
-        party = addPokemonToParty(party, context.createPokemon(species, level));
+        const pokemon = context.createPokemon(species, level);
+        if (party.members.length < 6) party = addPokemonToParty(party, pokemon);
+        else ranch = addPokemonToStorage(ranch, pokemon);
       } catch (error) {
         return { state, appliedCommands: 0, safe: false, reason: error instanceof Error ? error.message : "ajout du Pokémon impossible" };
       }
@@ -233,7 +240,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     }
     appliedCommands += 1;
   }
-  return { state: { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+  return { state: { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState }, appliedCommands, safe: true, reason: null };
 }
 
@@ -269,11 +276,15 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       ? { mapId: checkpointValue.mapId, x: checkpointValue.x, y: checkpointValue.y,
         direction: checkpointValue.direction as SourceCheckpoint["direction"] } : undefined;
   let party: PlayerPartyState;
+  let ranch: PlayerPokemonStorageState;
   try {
     party = value.party === undefined ? createEmptyPlayerParty() : parsePlayerParty(value.party);
+    ranch = value.ranch === undefined ? createEmptyPlayerPokemonStorage() : parsePlayerPokemonStorage(value.ranch);
   } catch {
-    throw new Error("Équipe persistante invalide.");
+    throw new Error("Collection Pokémon persistante invalide.");
   }
+  const collectionIds = [...party.members, ...ranch.members].map((pokemon) => pokemon.id);
+  if (new Set(collectionIds).size !== collectionIds.length) throw new Error("Collection Pokémon dupliquée.");
   const followerEnabled = followerValue === undefined ? party.members.length > 0 : followerValue;
   const encounterValue = value.pendingEncounter;
   const pendingEncounter = encounterValue === undefined || encounterValue === null ? null
@@ -292,6 +303,6 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff) throw new Error("État source invalide.");
-  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, pendingEncounter,
+  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
     wildEncounterSteps, wildEncounterRngState };
 }

@@ -975,10 +975,22 @@ le parcours complet reste a valider manuellement avant de cocher le jalon global
 Dix-neuvieme noyau 9.7 implemente le 2026-09-30 : la grande scene d'arrivee de
 Map009 peut maintenant etre lue jusqu'au bout. L'appel Ruby qui active le Pokedex
 devient un etat personnel persistant, sans imposer encore d'ecran Pokedex. Le choix
-de son interface, comme ceux du ranch et de la carte, est reporte a une refonte
+de son interface, comme celui de la carte, est reporte a une refonte
 graphique ulterieure. Le plan resolu d'EV011 compte 238 commandes, 36 dialogues et
 110 commandes de mouvement ; ses acteurs, sprites et effets sont complets et son
 audit ne signale aucun rendu en attente.
+
+Premier lot Ranch implemente le 2026-10-02 : `pbPokeCenterPC` ouvre maintenant une
+collection personnelle persistante pour l'hote comme pour l'invite. L'ecran reunit
+equipe et stockage, affiche les icones source et combine recherche, deux types,
+bornes de numero, puissance actuelle et potentiel avant un tri par numero, nom,
+niveau ou puissance. La carte Pokemon et son modele sont partages avec l'onglet
+Equipe et prepares pour les selections de combat. Les icones de types ont ensuite
+ete centralisees dans le paquet versionne `game-assets` afin d'etre reutilisees
+par toutes les interfaces. Le deuxieme lot raccorde les transferts persistants
+equipe/Ranch : il conserve au moins un Pokemon dans l'equipe, respecte la limite
+de six et reste strictement personnel en solo comme pour chaque place Coop.
+Restent a porter la capture et la fiche de statistiques detaillee.
 
 La commande native `weather` restitue l'effacement, la pluie, l'orage et la neige
 dans une couche legere superposee a la carte. `erase-event` est absorbe comme
@@ -1159,6 +1171,15 @@ reinitialiser la progression ni obliger a recreer le profil.
 Cette integration unifie le parcours utilisateur sans pretendre que Prairie et
 Bosquet sont deja la carte narrative de l'hote.
 
+Nettoyage UI du 2026-10-02 : Prairie et Bosquet ne sont plus exposes par
+l'application, leur vue de demonstration et leurs controles tactiles ont ete
+retires. Le sandbox demarre directement sur le monde source. Son chrome externe se
+limite au canvas et au diagnostic `Moteur / Evenements`, qu'un bouton permet de
+masquer ; personnalisation, sauvegarde, equipe, Sac, deplacements et Coop restent
+accessibles depuis le menu du jeu. Les fixtures Prairie/Bosquet du noyau et de la
+room sont temporairement conservees comme banc de regression du protocole, sans
+route utilisateur.
+
 Neuvieme jalon implemente le 2026-10-01 : le protocole v8 transporte la topologie
 compacte de la carte source, les switches et variables visibles et les deux avatars.
 La room valide les collisions des deux joueurs et reserve la publication du monde
@@ -1268,6 +1289,19 @@ Les parois Chevroum du fangame sont des routes d'evenement, et non un terrain
 universel : elles utilisent donc le lecteur generique de routes avec un changement
 de contexte `mount`. Les deblocages normaux restent issus des badges, objets et
 capacites personnels ; le bouton de test n'ecrit aucune de ces valeurs.
+
+Correction visuelle du 2026-10-02 : l'arc Surf est limite a l'embarquement et au
+debarquement ; la navigation courante utilise le cycle aquatique source et son
+flottement. Chevroum est ralenti et anime ses quatre poses. Les sauts de corniche
+n'exigent plus une direction de sortie sur la tuile Ledge, condition absente du
+Ruby et trop restrictive pour certaines orientations. Le test manuel multi-cartes
+reste ouvert pour les ajustements fins de vitesse.
+
+Correction de transition du 2026-10-02 : l'embarquement conserve le mode terrestre
+jusqu'a la resolution de l'intention Surf afin de produire l'arc d'entree. La sortie
+ignore le masque directionnel de la tuile d'eau et valide uniquement l'entree sur
+la rive, ce qui evite de rester bloque sur une berge franchissable. Le meme
+resolveur couvre le solo, l'hote et l'invite.
 
 ## Regles transversales
 

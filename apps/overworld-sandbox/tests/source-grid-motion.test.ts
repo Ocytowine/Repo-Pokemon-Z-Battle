@@ -26,5 +26,10 @@ describe("source grid motion", () => {
       { duration: 200, action: "ledge-jump" });
     expect(sampleSourceGridMotion(motion, 1_100).renderOffsetY).toBeLessThan(-10);
     expect(sampleSourceGridMotion(motion, 1_200).renderOffsetY).toBe(0);
+
+    const surf = createSourceGridMotion({ x: 4, y: 3 }, { x: 4, y: 4 }, "down", 1_000,
+      { duration: 200, action: "surf-transition" });
+    expect(sampleSourceGridMotion(surf, 1_100).renderOffsetY).toBeLessThan(-10);
+    expect(sampleSourceGridMotion(surf, 1_200).renderOffsetY).toBe(0);
   });
 });

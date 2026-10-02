@@ -1,4 +1,5 @@
 import { MINIMAL_MOVE_CATALOG, SeededRandom, activeBattlers, replaceFaintedPokemon, resolveTeamTurn, type BattleAbility, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type HeldItem, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { createHttpDirectoryHandle, loadLocalManifests, loadLocalManifestsFromUrls, type LocalManifests } from "@pokemon-z-battle/local-assets";
 import { PROTOCOL_VERSION, normalizeRoomCode, serializeMessage, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
 import { buildWebSocketUrl, normalizeServerUrl, parseMultiplayerTicket, parseServerMessage, requestTicket, type MultiplayerTicket, type StoredMultiplayerSession } from "./multiplayer-client.js";
@@ -217,7 +218,7 @@ for (const preset of POKEMON_PRESETS) {
 }
 
 function typeBadge(type: string): string {
-  return `<span class="type type-${type.toLowerCase()}">${type}</span>`;
+  return `<span class="type type-${type.toLowerCase()}"><img src="${pokemonTypeIconUrl(type)}" alt="">${type}</span>`;
 }
 for (const select of [ui.playerAbility, ui.opponentAbility]) {
   select.append(option("", "Aucun talent"), ...SANDBOX_ABILITIES.map((ability) => option(ability, ability)));

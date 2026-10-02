@@ -131,6 +131,15 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["add-pokemon", "set-follower", "request-encounter"]);
   });
 
+  it("ports every source Pokemon Center PC to the personal Ranch", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbPokeCenterPC" }),
+    ]), [], createSourceEventState(), 5, 12);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([expect.objectContaining({ kind: "open-ranch",
+      data: expect.objectContaining({ policy: "PERSONAL" }) })]);
+  });
+
   it("ports the source panorama motion without evaluating Ruby", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "pbPanoramaMove(4,4)" }),
