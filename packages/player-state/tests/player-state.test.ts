@@ -3,7 +3,7 @@ import { addPokemonToParty, addPokemonToStorage, createDefaultPlayerAvatarSelect
   createEmptyPlayerPokemonStorage,
   createPersistentPokemon, experienceAtLevel, grantPokemonExperience, healPlayerParty, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
-  playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
+  movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
@@ -92,6 +92,13 @@ describe("persistent player party", () => {
       ...party.members[0]!, id: `pokemon-${index}` })), activeIndex: 0 };
     const storage = { ...createEmptyPlayerPokemonStorage(), members: [{ ...party.members[0]!, id: "stored" }] };
     expect(() => transferPokemonToParty(fullParty, storage, "stored")).toThrow("six Pokémon");
+  });
+
+  it("moves a selected Pokemon to the party lead without changing its identity", () => {
+    const second = { ...party.members[0]!, id: "second", nickname: "Second" };
+    const result = movePokemonToPartyFront({ ...party, activeIndex: 0, members: [party.members[0]!, second] }, "second");
+    expect(result).toMatchObject({ activeIndex: 0, members: [{ id: "second", nickname: "Second" }, { id: "starter" }] });
+    expect(() => movePokemonToPartyFront(party, "missing")).toThrow("absent de l'équipe");
   });
 
   it("heals HP, status and PP immutably", () => {

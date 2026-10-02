@@ -97,6 +97,9 @@ export class SourceBattleController {
       this.battle = null;
       this.rng = null;
       this.encounterCompletion = null;
+      if (encounter.escapable === true) {
+        this.callbacks.updateEventState({ ...eventState, pendingEncounter: null, wildEncounterSteps: 0 });
+      }
       this.callbacks.setNotice(error instanceof Error ? `Combat impossible : ${error.message}` : "Combat source impossible.");
       this.callbacks.render();
       return false;

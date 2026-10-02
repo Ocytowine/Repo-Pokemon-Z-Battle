@@ -4,7 +4,7 @@ import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
-  playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
+  movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
   type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
@@ -250,12 +250,23 @@ function guestCanRunSourceEvent(active: ActiveSourceAutorun): boolean {
   return !isNetworkGuest() || guestSourceEventAccess(active.page) !== "blocked";
 }
 
-function startPendingSourceEncounter(): void {
-  sourceBattles.startPendingEncounter();
+function startPendingSourceEncounter(): boolean {
+  return sourceBattles.startPendingEncounter();
+}
+
+function resumePendingWildEncounter(): boolean {
+  const pending = sourceEventState.pendingEncounter;
+  if (pending === null) return false;
+  if (startPendingSourceEncounter()) return true;
+  if (pending.escapable !== true) return false;
+  sourceEventState = { ...sourceEventState, pendingEncounter: null, wildEncounterSteps: 0 };
+  persistSourceEventState();
+  return true;
 }
 
 function checkSourceWildEncounter(): boolean {
-  if (importedAssets === null || sourceEventState.party.members.length === 0 || sourceEventState.pendingEncounter !== null) return false;
+  if (importedAssets === null || sourceEventState.party.members.length === 0) return false;
+  if (sourceEventState.pendingEncounter !== null) return resumePendingWildEncounter();
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
   const terrain = terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
   const roll = rollLandEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng);
@@ -265,7 +276,7 @@ function checkSourceWildEncounter(): boolean {
   if (roll.encounter === null) return false;
   const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === roll.encounter?.species);
   importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
-  startPendingSourceEncounter();
+  resumePendingWildEncounter();
   return true;
 }
 
@@ -664,9 +675,10 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onMovementMode: selectSourceMovementMode,
   onMovementTestOverride: setSourceMovementTestOverride,
   onDive: requestSourceDive,
+  onPokemonLead: setSourcePartyLead,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
-const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon);
+const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead);
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
 const sourceBattleVisuals = new SourceBattleVisuals();
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
@@ -1196,6 +1208,20 @@ function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ra
     importedNotice = error instanceof Error ? error.message : "Transfert du Pokémon impossible.";
     renderSourceRanch();
   }
+}
+
+function setSourcePartyLead(pokemonId: string): void {
+  try {
+    sourceEventState = { ...sourceEventState, party: movePokemonToPartyFront(sourceEventState.party, pokemonId) };
+    persistSourceEventState();
+    const lead = sourceEventState.party.members[0];
+    const species = importedAssets?.battleCatalog.pokemon.find((candidate) => candidate.internalName === lead?.species);
+    importedNotice = lead === undefined ? "Équipe inchangée."
+      : `${lead.nickname ?? species?.name ?? lead.species} prend la tête de l'équipe.`;
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Changement de position impossible.";
+  }
+  renderImportedView();
 }
 
 function toggleSourceMenu(): void {

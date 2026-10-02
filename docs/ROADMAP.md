@@ -992,6 +992,23 @@ equipe/Ranch : il conserve au moins un Pokemon dans l'equipe, respecte la limite
 de six et reste strictement personnel en solo comme pour chaque place Coop.
 Restent a porter la capture et la fiche de statistiques detaillee.
 
+Troisieme lot UI de collection implemente le 2026-10-02 : les cartes communes de
+l'equipe et du Ranch remplacent les scores de puissance visibles par les PV et les
+quatre capacites typees. Un menu radial contextuel expose les familles d'actions
+du jeu source ; placement en tete et transferts sont fonctionnels, tandis que la
+fiche detaillee, les objets, marques, liberation et actions de combat restent
+explicitement desactivees jusqu'a leurs lots respectifs. Les mutations actives
+utilisent le noyau personnel persistant commun au solo, a l'hote et a l'invite,
+sans publier la collection privee dans la room.
+
+Correctif de boucle sauvage implemente le 2026-10-02 : un `pendingEncounter`
+personnel n'inhibe plus indefiniment les rencontres apres la suppression du bouton
+HUD historique. Le pas suivant reprend automatiquement une rencontre valide ; une
+creation aleatoire invalide est purgee et rearme le compteur, tandis qu'une
+rencontre scriptée reste protegee pour ne pas contourner l'histoire. Le contrat est
+commun au solo, a l'hote et aux excursions personnelles de l'invite ; le monde
+partage continue volontairement de laisser l'autorite des rencontres a l'hote.
+
 La commande native `weather` restitue l'effacement, la pluie, l'orage et la neige
 dans une couche legere superposee a la carte. `erase-event` est absorbe comme
 effacement temporaire : l'autorun ne reboucle pas pendant la visite et redevient

@@ -4,6 +4,14 @@ import type { PersistentPokemon, PlayerCreationCatalog, PlayerPartyState,
 export type SourcePokemonLocation = "team" | "ranch";
 export type SourcePokemonSort = "number" | "name" | "current-power" | "potential-power" | "level";
 
+export interface SourcePokemonMoveSummary {
+  readonly internalName: string;
+  readonly name: string;
+  readonly type: string;
+  readonly pp: number;
+  readonly maxPp: number;
+}
+
 export interface SourcePokemonCollectionEntry {
   readonly pokemon: PersistentPokemon;
   readonly location: SourcePokemonLocation;
@@ -15,6 +23,7 @@ export interface SourcePokemonCollectionEntry {
   readonly currentPower: number;
   readonly potentialPower: number;
   readonly iconUrl: string;
+  readonly moves: readonly SourcePokemonMoveSummary[];
 }
 
 export interface SourcePokemonFilters {
@@ -49,6 +58,7 @@ export function sourcePokemonIconUrl(number: number): string {
 export function createSourcePokemonCollection(party: PlayerPartyState, ranch: PlayerPokemonStorageState,
   catalog: PlayerCreationCatalog): readonly SourcePokemonCollectionEntry[] {
   const definitions = new Map(catalog.pokemon.map((definition) => [definition.internalName, definition]));
+  const moves = new Map(catalog.moves.map((move) => [move.internalName, move]));
   const entry = (pokemon: PersistentPokemon, location: SourcePokemonLocation,
     teamIndex: number | null): SourcePokemonCollectionEntry | null => {
     const definition = definitions.get(pokemon.species);
@@ -57,7 +67,11 @@ export function createSourcePokemonCollection(party: PlayerPartyState, ranch: Pl
     return { pokemon, location, teamIndex, number, speciesName: definition.name,
       displayName: pokemon.nickname ?? definition.name, types: [...definition.types],
       currentPower: statTotal(pokemon.stats), potentialPower: baseStatTotal(definition.baseStats),
-      iconUrl: sourcePokemonIconUrl(number) };
+      iconUrl: sourcePokemonIconUrl(number), moves: pokemon.moves.map((slot) => {
+        const definition = moves.get(slot.internalName);
+        return { internalName: slot.internalName, name: definition?.name ?? slot.internalName,
+          type: definition?.type ?? "UNKNOWN", pp: slot.pp, maxPp: slot.maxPp };
+      }) };
   };
   return [
     ...party.members.map((pokemon, index) => entry(pokemon, "team", index)),

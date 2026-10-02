@@ -332,6 +332,18 @@ dernieres commandes. Le catalogue local `map-animations.json`, absent d'une
 ancienne extraction, peut etre regenere seul par `extract:runtime` sans recopier
 les assets.
 
+Correction des rencontres aleatoires du 2026-10-02 : la suppression de l'ancien
+bouton HUD de reprise avait revele qu'une rencontre personnelle encore presente
+dans `pendingEncounter` bloquait tous les tirages suivants. Chaque pas reprend
+maintenant automatiquement cette rencontre avant de lancer un nouveau tirage. Si
+la creation d'un combat aleatoire echoue, son attente est purgee et le compteur
+est rearme ; une rencontre scriptée invalide reste au contraire en attente afin
+de ne pas avancer silencieusement une sequence narrative. Cet etat demeure
+personnel et persistant : il fonctionne en solo, pour l'hote et pendant une
+excursion personnelle de l'invite, sans etre replique dans le monde narratif de
+l'hote. Dans le monde partage, l'invite ne tire toujours pas de rencontre locale,
+conformement a la politique Coop existante.
+
 `set-follower` active maintenant un drapeau personnel persistant. Le Pokemon a
 l'index actif de l'equipe utilise son sprite par defaut lu dans
 `pokemon-assets.json`. `SourceFollowerMotionController` le place sur une case
@@ -468,6 +480,28 @@ recalculent l'index actif sans changer l'identite ni les ressources du Pokemon,
 conservent au moins un membre et limitent l'equipe a six. L'operation est persistee
 dans le meme etat personnel pour le solo, l'hote et l'invite ; elle n'est pas
 publiee dans la room et seul le joueur concerne voit sa collection.
+
+Troisieme lot de presentation implemente le 2026-10-02 : la carte partagee ne
+montre plus les scores de puissance actuelle et potentielle, qui restent cependant
+disponibles pour les filtres et tris du Ranch. Elle montre maintenant les PV et
+quatre emplacements de capacites, avec le nom localise et l'icone de type de chaque
+attaque. Le modele de collection resout ces capacites une seule fois depuis le
+catalogue et reste commun a l'equipe, au Ranch et aux futures selections de combat.
+
+Un clic ouvre `source-pokemon-actions.ts`, menu radial dont le contrat varie entre
+equipe, Ranch et combat. `Placer en tete`, `Deposer` et `Retirer` sont raccordes au
+noyau personnel persistant ; le placement en tete reordonne reellement l'equipe et
+selectionne son premier membre. `Details`, gestion d'objet, marquage, liberation et
+changement en combat sont deja classes mais restent visiblement indisponibles tant
+que leur mecanique ou leur ecran n'existe pas. Les choix observes dans les scripts
+source sont Donnees/Deplacer/Objet pour l'equipe et
+Deplacer/Donnees/Deposer-Retirer/Objet/Marquer/Relacher pour le PC.
+
+Autorite Coop : ces mutations appartiennent au joueur concerne, sont conservees
+dans son `SourceEventState` et ne produisent aucune intention ni replication dans
+la room narrative. Le meme noyau est utilise en solo, par l'hote et par l'invite ;
+le menu n'est presente qu'au proprietaire de la collection. Le contrat `battle`
+est prepare mais son raccord attend la future selection d'equipe en combat.
 
 Dette explicite : la capture en combat et la fiche detaillee (IV/EV, nature,
 talent, capacites et historique) restent a porter. L'ecran n'injecte toujours

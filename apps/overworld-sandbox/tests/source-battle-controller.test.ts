@@ -98,6 +98,42 @@ describe("source battle controller", () => {
     expect(callbacks.render).not.toHaveBeenCalled();
   });
 
+  it("discards an invalid random encounter so later encounter rolls are not blocked", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "MISSING", level: 2, victorySwitches: {}, escapable: true }, wildEncounterSteps: 12 };
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, battleback: "grass", battleMusic: null, victoryMusic: null }),
+      setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(presentation(), callbacks);
+
+    expect(controller.startPendingEncounter()).toBe(false);
+
+    expect(eventState.pendingEncounter).toBeNull();
+    expect(eventState.wildEncounterSteps).toBe(0);
+    expect(callbacks.setNotice).toHaveBeenCalledWith(expect.stringContaining("Combat impossible"));
+  });
+
+  it("keeps an invalid scripted encounter pending for the source sequence", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "MISSING", level: 2, victorySwitches: {}, escapable: false } };
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, battleback: "town", battleMusic: null, victoryMusic: null }),
+      setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(presentation(), callbacks);
+
+    expect(controller.startPendingEncounter()).toBe(false);
+
+    expect(eventState.pendingEncounter).toMatchObject({ species: "MISSING", escapable: false });
+  });
+
   it("reports a scripted wild battle victory so its source sequence can resume", async () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
     let eventState: SourceEventState = { ...createSourceEventState(), party,

@@ -3,6 +3,7 @@ import type { PlayerCreationCatalog, PlayerPartyState, PlayerPokemonStorageState
 import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePokemonTypeLabel,
   sourcePokemonTypes, type SourcePokemonFilters, type SourcePokemonSort } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
+import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
 
 export interface SourceRanchViewModel {
   readonly open: boolean;
@@ -20,7 +21,8 @@ export class SourceRanchView {
   private selectedPokemonId: string | null = null;
 
   public constructor(private readonly onClose: () => void,
-    private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void) {}
+    private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void,
+    private readonly onLead: (pokemonId: string) => void) {}
 
   public render(model: SourceRanchViewModel): void {
     const root = document.querySelector<HTMLElement>("#source-ranch");
@@ -34,6 +36,10 @@ export class SourceRanchView {
       this.selectedPokemonId = null;
     }
     const selected = collection.find((entry) => entry.pokemon.id === this.selectedPokemonId) ?? null;
+    const activePokemonId = model.party.activeIndex === null ? null : model.party.members[model.party.activeIndex]?.id ?? null;
+    const wheel = selected === null ? "" : sourcePokemonActionWheelHtml(selected,
+      sourcePokemonActions("ranch", selected, { partySize: model.party.members.length,
+        partyFull: model.party.members.length >= 6, activePokemonId }));
     root.innerHTML = `<header class="source-ranch-header"><div><small>PC DE LÉO</small><strong>Ranch Pokémon</strong><span>${collection.length} Pokémon capturé${collection.length > 1 ? "s" : ""}</span></div><button id="close-source-ranch" type="button" aria-label="Fermer le Ranch">×</button></header>
       <form class="source-ranch-filters" id="source-ranch-filters">
         <label class="source-ranch-search"><span>Nom ou numéro</span><input name="query" type="search" value="${escapeAttribute(this.filters.query)}" placeholder="Ex. Pikachu ou 25"></label>
@@ -50,7 +56,7 @@ export class SourceRanchView {
       <div class="source-pokemon-grid">${filtered.length === 0
         ? '<div class="source-ranch-empty"><strong>Aucun Pokémon correspondant</strong><small>Élargissez un ou plusieurs filtres.</small></div>'
         : filtered.map((entry) => sourcePokemonCardHtml(entry, { selected: entry.pokemon.id === this.selectedPokemonId })).join("")}</div>
-      <footer class="source-ranch-footer">${transferFooter(selected, model.party)}</footer>`;
+      <footer class="source-ranch-footer">${actionFooter(selected)}</footer>${wheel}`;
     root.querySelector<HTMLButtonElement>("#close-source-ranch")?.addEventListener("click", this.onClose);
     root.querySelector<HTMLButtonElement>("#reset-source-ranch-filters")?.addEventListener("click", () => {
       this.filters = { query: "", firstType: null, secondType: null, minimumNumber: null, maximumNumber: null,
@@ -71,26 +77,29 @@ export class SourceRanchView {
       this.selectedPokemonId = button.dataset.pokemonId ?? null;
       this.render(model);
     }));
-    root.querySelector<HTMLButtonElement>("[data-ranch-transfer]")?.addEventListener("click", (event) => {
-      const button = event.currentTarget as HTMLButtonElement;
-      const pokemonId = button.dataset.pokemonId;
-      const destination = button.dataset.ranchTransfer;
-      if (pokemonId !== undefined && (destination === "team" || destination === "ranch")) {
-        this.onTransfer(pokemonId, destination);
-      }
+    root.querySelector<HTMLButtonElement>("[data-pokemon-wheel-close]")?.addEventListener("click", () => {
+      this.selectedPokemonId = null;
+      this.render(model);
+    });
+    root.querySelector<HTMLElement>("[data-pokemon-wheel-dismiss]")?.addEventListener("click", (event) => {
+      if (event.target !== event.currentTarget) return;
+      this.selectedPokemonId = null;
+      this.render(model);
+    });
+    root.querySelectorAll<HTMLButtonElement>("[data-pokemon-action]").forEach((button) => {
+      button.addEventListener("click", () => {
+        if (selected === null) return;
+        if (button.dataset.pokemonAction === "deposit") this.onTransfer(selected.pokemon.id, "ranch");
+        else if (button.dataset.pokemonAction === "withdraw") this.onTransfer(selected.pokemon.id, "team");
+        else if (button.dataset.pokemonAction === "make-lead") this.onLead(selected.pokemon.id);
+      });
     });
   }
 }
 
-function transferFooter(selected: ReturnType<typeof createSourcePokemonCollection>[number] | null,
-  party: PlayerPartyState): string {
-  if (selected === null) return "<span>Sélectionnez un Pokémon pour le déplacer ou préparer sa future fiche détaillée.</span>";
-  const toRanch = selected.location === "team";
-  const disabled = toRanch ? party.members.length <= 1 : party.members.length >= 6;
-  const reason = disabled
-    ? toRanch ? "L'équipe doit conserver au moins un Pokémon." : "L'équipe contient déjà six Pokémon."
-    : toRanch ? "Le Pokémon conservera son état actuel au Ranch." : "Le Pokémon rejoindra la fin de l'équipe.";
-  return `<span><strong>${escapeAttribute(selected.displayName)}</strong> · ${reason}</span><button type="button" data-ranch-transfer="${toRanch ? "ranch" : "team"}" data-pokemon-id="${escapeAttribute(selected.pokemon.id)}"${disabled ? " disabled" : ""}>${toRanch ? "Déposer au Ranch" : "Ajouter à l'équipe"}</button>`;
+function actionFooter(selected: ReturnType<typeof createSourcePokemonCollection>[number] | null): string {
+  if (selected === null) return "<span>Sélectionnez une carte pour ouvrir ses actions.</span>";
+  return `<span><strong>${escapeAttribute(selected.displayName)}</strong> · choisissez une action autour du Pokémon.</span>`;
 }
 
 function escapeAttribute(value: string): string {

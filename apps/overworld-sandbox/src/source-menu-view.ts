@@ -10,6 +10,7 @@ import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
+import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
 
 const SOURCE_VOLUME_KEY = "pokemon-z-battle.options.volume.v1";
 
@@ -69,10 +70,12 @@ export interface SourceMenuViewCallbacks {
   readonly onMovementMode: (mode: "walk" | "mount") => void;
   readonly onMovementTestOverride: (enabled: boolean) => void;
   readonly onDive: () => void;
+  readonly onPokemonLead: (pokemonId: string) => void;
 }
 
 export class SourceMenuView {
   private selectedPocket = 1;
+  private selectedTeamPokemonId: string | null = null;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -99,10 +102,36 @@ export class SourceMenuView {
     const members = model.eventState.party.members;
     const entries = createSourcePokemonCollection(model.eventState.party, model.eventState.ranch,
       model.assets.battleCatalog).filter((entry) => entry.location === "team");
+    if (this.selectedTeamPokemonId !== null && !entries.some((entry) => entry.pokemon.id === this.selectedTeamPokemonId)) {
+      this.selectedTeamPokemonId = null;
+    }
+    const selected = entries.find((entry) => entry.pokemon.id === this.selectedTeamPokemonId) ?? null;
+    const activePokemonId = model.eventState.party.activeIndex === null ? null
+      : model.eventState.party.members[model.eventState.party.activeIndex]?.id ?? null;
+    const wheel = selected === null ? "" : sourcePokemonActionWheelHtml(selected,
+      sourcePokemonActions("team", selected, { partySize: members.length, partyFull: members.length >= 6, activePokemonId }));
     content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${members.length === 0
       ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Équipe vide</strong><small>Choisissez votre premier Pokémon pour commencer.</small></div>'
       : entries.map((entry) => sourcePokemonCardHtml(entry, { active: entry.teamIndex === model.eventState.party.activeIndex,
-        interactive: false })).join("")}</div>`;
+        selected: entry.pokemon.id === this.selectedTeamPokemonId })).join("")}</div>${wheel}`;
+    content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this.selectedTeamPokemonId = button.dataset.pokemonId ?? null;
+        this.renderTeam(content, model);
+      });
+    });
+    content.querySelector<HTMLButtonElement>("[data-pokemon-wheel-close]")?.addEventListener("click", () => {
+      this.selectedTeamPokemonId = null;
+      this.renderTeam(content, model);
+    });
+    content.querySelector<HTMLElement>("[data-pokemon-wheel-dismiss]")?.addEventListener("click", (event) => {
+      if (event.target !== event.currentTarget) return;
+      this.selectedTeamPokemonId = null;
+      this.renderTeam(content, model);
+    });
+    content.querySelector<HTMLButtonElement>('[data-pokemon-action="make-lead"]')?.addEventListener("click", () => {
+      if (selected !== null) this.callbacks.onPokemonLead(selected.pokemon.id);
+    });
   }
 
   private renderBag(content: HTMLElement, model: SourceMenuViewModel): void {

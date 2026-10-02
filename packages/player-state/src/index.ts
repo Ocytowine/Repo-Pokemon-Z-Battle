@@ -180,6 +180,15 @@ export function transferPokemonToParty(party: PlayerPartyState, storage: PlayerP
     storage: { ...storage, members: storage.members.filter((_, memberIndex) => memberIndex !== index) } };
 }
 
+/** Places one personal Pokemon at the head of the party and makes it the active member. */
+export function movePokemonToPartyFront(party: PlayerPartyState, pokemonId: string): PlayerPartyState {
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) throw new Error("Pokémon absent de l'équipe.");
+  const pokemon = party.members[index]!;
+  return { ...party, activeIndex: 0,
+    members: index === 0 ? [...party.members] : [pokemon, ...party.members.filter((_, memberIndex) => memberIndex !== index)] };
+}
+
 export function healPlayerParty(party: PlayerPartyState): PlayerPartyState {
   return { ...party, members: party.members.map((member) => ({ ...member, hp: member.stats.maxHp, majorStatus: null,
     moves: member.moves.map((slot) => ({ ...slot, pp: slot.maxPp })) })) };
