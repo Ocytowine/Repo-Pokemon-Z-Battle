@@ -129,7 +129,8 @@ describe("authoritative battle room", () => {
     expect(forbidden[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
     const changed = { ...sourceWorld, mapId: 7, host: { x: 0, y: 0, direction: "right" as const } };
     room.receive("alice", { type: "setSourceWorld", version: 8, requestId: "source-host-map", world: changed });
-    expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, avatars: { player: { x: 0, y: 0 } } });
+    expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, presence: { opponent: "away" },
+      avatars: { player: { x: 0, y: 0 } } });
     expect(room.snapshot().sourceWorld?.followers.opponent?.species).toBe("CHESPIN");
 
     const persisted = room.exportState();

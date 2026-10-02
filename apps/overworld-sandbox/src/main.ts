@@ -48,7 +48,8 @@ import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persi
   type SourceWorldSave } from "./source-world-save.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceStateWithHostStory } from "./source-coop-policy.js";
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
+  from "./source-coop-policy.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -118,7 +119,6 @@ let networkBattleAnimating = false;
 let networkBattlePresentation = Promise.resolve();
 let networkSourceWorld: SourceWorldSnapshot | null = null;
 let guestSourceExcursion = false;
-let networkSourceScene: SourceSceneSnapshot | null = null;
 let networkRemoteSourceMotion: SourceGridMotion | null = null;
 let networkRemoteWalkingPattern: 1 | 3 = 1;
 let networkRemoteFollowerMotion: SourceGridMotion | null = null;
@@ -759,7 +759,7 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onSourceWorldState: (world, animate, applyOwnAvatar) => {
     void applyNetworkSourceWorld(world, animate, applyOwnAvatar);
   },
-  onSourceSceneState: applyNetworkSourceScene,
+  onSourceSceneState: () => undefined,
   onBattleStarted: beginNetworkBattlePresentation,
   onBattleTurnResolved: presentNetworkBattleTurn,
   onBattleReplacementResolved: presentNetworkBattleTurn,
@@ -781,8 +781,8 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     const opponentName = networkPlayerProfiles[opponentSide]?.profile.displayName ?? "L'autre Dresseur";
     await sourceBattleVisuals.startBattle(networkBattleForViewer(state, side), {
       battleback: importedAssets?.battleback ?? "snow",
-      battleMusic: importedAssets?.wildBattleBgm,
-      victoryMusic: importedAssets?.wildVictoryMe,
+      battleMusic: importedAssets?.wildBattleBgm ?? null,
+      victoryMusic: importedAssets?.wildVictoryMe ?? null,
       opponentTrainer: { id: 0, name: opponentName },
     });
     if (networkPresentedBattle?.id === battleId) {
@@ -830,11 +830,6 @@ function closeNetworkBattlePresentation(battleId: string): void {
   sourceBattleVisuals.setPlayerTrainerImage(sourcePlayerVisuals?.battleBack ?? null);
   void sourceBattleVisuals.endBattle(null);
   render();
-}
-
-function applyNetworkSourceScene(scene: SourceSceneSnapshot): void {
-  networkSourceScene = scene;
-  sourcePresentationCueId = Math.max(sourcePresentationCueId, scene.presentation?.id ?? 0);
 }
 
 async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean): Promise<void> {
@@ -909,7 +904,6 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     ? "Session Coop active : votre monde narratif est partagé."
     : `Monde de l'hôte rejoint · Map${String(world.mapId).padStart(3, "0")}.`;
   renderImportedView();
-  if (networkSourceScene?.mapId === world.mapId) applyNetworkSourceScene(networkSourceScene);
 }
 
 function synchronizeNetworkRemoteFollowerAsset(world: SourceWorldSnapshot, remoteSide: AvatarId): void {
@@ -1572,15 +1566,17 @@ function interact(playerId: AvatarId): void {
     }
     if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
-    if (multiplayer.active && !guestSourceExcursion && remotePlayerAhead()) {
+    const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
+      importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
+    const interactionTarget = sourceInteractionTarget(target !== null,
+      multiplayer.active && !guestSourceExcursion && remotePlayerAhead());
+    if (interactionTarget === "player") {
       const team = currentPlayerDuelTeam();
       if (team === null) importedNotice = "Aucun Pokémon en état de combattre.";
       else multiplayer.challengePlayer(team);
       renderImportedView();
       return;
     }
-    const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
-      importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
     if (target !== null && !guestCanRunSourceEvent(target)) {
       importedNotice = "Cet événement narratif reste contrôlé par l'hôte.";
       renderImportedView();
@@ -1616,7 +1612,6 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
 async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
   if (sourceBattles.active) return;
   lastPublishedSourceScene = "";
-  networkSourceScene = null;
   networkServerUrl = serverUrl;
   networkRoomCode = roomCode.trim().toUpperCase();
   await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile(),
@@ -1649,7 +1644,6 @@ function disconnectMultiplayer(): void {
   networkProfileApplications = {};
   networkSourceWorld = null;
   guestSourceExcursion = false;
-  networkSourceScene = null;
   networkRemoteSourceMotion = null;
   networkRemoteFollowerMotion = null;
   networkRemoteFollowerImage = null;

@@ -269,7 +269,9 @@ export class AuthoritativeBattleRoom {
     const previousGuest = sameMap ? this.#sourceWorldState?.avatars.opponent : undefined;
     const nextWorld = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
     const previousGuestFollower = this.#sourceWorldState?.followers.opponent;
-    const guestPresence = this.#sourceWorldState?.presence.opponent ?? "shared";
+    // Un changement de carte de l'hote ne deplace jamais l'invite. Celui-ci reste
+    // sur sa carte locale jusqu'a ce que les deux mapId coincident de nouveau.
+    const guestPresence = sameMap ? this.#sourceWorldState?.presence.opponent ?? "shared" : "away";
     const withPresence = { ...nextWorld, presence: { ...nextWorld.presence, opponent: guestPresence } };
     this.#sourceWorldState = previousGuestFollower === undefined ? withPresence : { ...withPresence,
       followers: { ...withPresence.followers, opponent: sameMap ? previousGuestFollower

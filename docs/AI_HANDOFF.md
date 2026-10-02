@@ -658,6 +658,18 @@ l'instance partagee ; la room conserve sa position si elle est libre ou choisit
 une case voisine valide. Les deux avatars, suiveurs et collisions sont alors de
 nouveau communs.
 
+Un changement de `mapId` publie par l'hote marque maintenant toujours l'invite
+`away` au lieu de reconstruire son avatar sur la nouvelle carte. Son client garde
+donc sa carte et sa position courantes. Le callback des `SourceSceneSnapshot` est
+deliberement debranche cote Overworld : aucun texte, choix, mouvement de PNJ ou
+effet de presentation appartenant a l'hote ne doit atteindre l'affichage invite.
+
+Correction d'interaction du 2026-10-02 : sur une carte partagee, un evenement de
+carte vise a priorite sur le defi entre joueurs. Un invite place devant l'hote,
+notamment sur la case d'un comptoir, ne masque donc plus l'infirmiere ou un autre
+PNJ situe dans la portee d'interaction. Le defi 1 contre 1 reste propose lorsqu'il
+n'existe aucun evenement interactif dans cette direction.
+
 La personnalisation active possede maintenant une surcharge en `sessionStorage`.
 Deux onglets de la meme origine peuvent donc publier et conserver des profils
 distincts dans une room ; la copie persistante en `localStorage` reste le profil par

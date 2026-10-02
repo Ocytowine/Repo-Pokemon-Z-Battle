@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceStateWithHostStory } from "../src/source-coop-policy.js";
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
+  from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
@@ -13,6 +14,13 @@ function page(kinds: readonly string[]): ImportedEventPage {
 }
 
 describe("guest source event policy", () => {
+  it("keeps map interactions ahead of player challenges", () => {
+    expect(sourceInteractionTarget(true, true)).toBe("event");
+    expect(sourceInteractionTarget(true, false)).toBe("event");
+    expect(sourceInteractionTarget(false, true)).toBe("player");
+    expect(sourceInteractionTarget(false, false)).toBeNull();
+  });
+
   it("allows generic healing and transfers without opening unrelated host story events", () => {
     expect(guestSourceEventAccess(page(["show-text", "heal-party"]))).toBe("personal");
     expect(guestSourceEventAccess(page(["show-choices", "recover-all"]))).toBe("personal");
