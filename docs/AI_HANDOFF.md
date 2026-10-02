@@ -507,6 +507,56 @@ Dette explicite : la capture en combat et la fiche detaillee (IV/EV, nature,
 talent, capacites et historique) restent a porter. L'ecran n'injecte toujours
 aucune donnee de demonstration dans la sauvegarde.
 
+Le plan complet de la fiche, l'inventaire controle dans Pokemon Z V2.12 FR et
+l'ordre des briques sont consignes dans `docs/POKEMON_DETAILS_PLAN.md`. Toute
+sous-etape doit commencer par le controle source decrit dans ce document. La
+premiere brique porte le modele persistant versionne et la migration des anciennes
+sauvegardes, sans changer les statistiques visibles avant le calculateur commun.
+
+Premier increment de cette brique implemente le 2026-10-03 : chaque
+`PersistentPokemon` possede maintenant un bloc `metadata` versionne. Les anciennes
+sauvegardes le reconstruisent deterministement (identifiant personnel, IV, EV
+nuls et nature) sans reroll au rechargement ; les informations impossibles a
+retrouver restent `null` ou `unknown`. Les bornes 31 par IV, 252 par EV et 510 au
+total ainsi que l'ordre des 25 natures ont ete verifies directement dans les
+scripts extraits de Z. Cette donnee personnelle reste preservee par les operations
+Equipe/Ranch et n'est pas ajoutee aux snapshots de room. Les calculs historiques
+de statistiques ne la consomment pas encore, afin de ne pas modifier le combat
+avant le calculateur partage. Le menu Ranch ne propose plus `Placer en tete`,
+action reservee au contexte Equipe.
+
+Etape d'identite et de fabrique implementee le 2026-10-03 :
+`PlayerAvatarSelection` passe au schema 2 et possede une identite Dresseur privee
+32 bits, persistee des le premier chargement meme si l'aventure est ensuite
+effacee. Les selections schema 1 sont migrees et reecrites une fois ; les profils
+de deux onglets conservent leurs identites propres. `NetworkPlayerProfile` reste
+strictement cosmetique et ne transmet pas cet identifiant prive.
+
+`createPersistentPokemon` accepte desormais un contexte commun proprietaire/origine.
+Les ajouts de Pokemon issus des sequences normales, des dialogues termines et des
+evenements paralleles lui transmettent le profil actif, la carte, la date et la
+Poke Ball standard. Le catalogue runtime expose maintenant `genderRate` et
+`happiness`. Genre, bonheur initial, DO, ID public et shiny sont ainsi determines
+une fois a la creation selon les regles controlees dans Z ; la formule shiny de
+cette version utilise bien le seuil 100. La projection
+`publicPokemonIdentity` omet trainerId, IV, EV et historique. Elle est preparee
+pour les echanges/combats Coop mais n'est pas encore publiee dans la room.
+
+Calculateur de statistiques implemente le 2026-10-03 :
+`calculatePokemonStats` est le noyau pur unique IV/EV/nature et suit exactement
+l'ordre et les troncatures de `PokeBattle_Pokemon#calcStats`. Il couvre egalement
+le cas special d'un PV de base egal a 1. Creation et montee de niveau utilisent ce
+noyau ; `playerPartyToBattleTeam` continue de consommer les statistiques
+persistantes, donc aucune seconde formule n'existe dans le pont de combat.
+
+A l'activation d'une carte source, `recalculatePlayerPokemonCollection` migre les
+statistiques historiques de l'equipe et du Ranch avec le catalogue complet puis
+persiste le resultat. Le deficit de PV est conserve, un K.O. reste un K.O. et la
+migration ne peut pas mettre K.O. un Pokemon auparavant vivant. Cette operation
+est personnelle et identique pour le solo, l'hote et l'invite ; elle n'ajoute rien
+au snapshot narratif. Les filtres de puissance du Ranch refleteront donc les
+statistiques exactes apres le premier chargement suivant cette version.
+
 L'autorun d'entree EV035 est egalement complet. `weather` gere effacement, pluie,
 orage et neige dans une couche CSS legere ; `erase-event` est absorbe par le cycle
 de visite de carte, qui ne lance deja l'autorun qu'une fois par chargement. EV040

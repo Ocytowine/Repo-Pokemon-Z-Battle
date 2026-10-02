@@ -5,7 +5,8 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
+  recalculatePlayerPokemonCollection,
+  type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
@@ -141,6 +142,14 @@ type AvatarId = "player" | "opponent";
 
 function activeNetworkPlayerProfile(): NetworkPlayerProfile {
   return createNetworkPlayerProfile(activePlayerSelection.avatarId, activePlayerSelection.profile);
+}
+
+function activePokemonCreationContext(mapId: number): PokemonCreationContext {
+  return {
+    owner: { trainerId: activePlayerSelection.trainerIdentity.trainerId,
+      name: activePlayerSelection.profile.displayName, pronouns: activePlayerSelection.profile.pronouns },
+    origin: { method: "encounter", mapId, receivedAt: new Date().toISOString(), ball: "POKEBALL" },
+  };
 }
 
 function loadSourceEventState(): SourceEventState {
@@ -375,7 +384,8 @@ async function runSourceParallelCycle(task: SourceParallelTask): Promise<"repeat
       const result = applySafeStateCommands(sourceEventState, { ...plan.page, commands: [command] }, task.mapId,
         task.eventId, { checkpoint: { mapId: task.mapId, x: importedAvatar.x, y: importedAvatar.y,
           direction: importedAvatar.direction }, createPokemon: (species, level) =>
-          createPersistentPokemon(crypto.randomUUID(), species, level, assets.battleCatalog) });
+          createPersistentPokemon(crypto.randomUUID(), species, level, assets.battleCatalog,
+            activePokemonCreationContext(task.mapId)) });
       if (!result.safe) throw new Error(result.reason ?? `commande ${command.kind} invalide`);
       sourceEventState = result.state;
       persistSourceEventState();
@@ -710,6 +720,7 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   getAssets: () => importedAssets,
   getAvatar: () => importedAvatar,
+  getPokemonCreationContext: activePokemonCreationContext,
   abort: (sequence, notice) => {
     importedNotice = notice;
     sourceSequences.clear(sequence);
@@ -1308,7 +1319,8 @@ function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
     { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
       createPokemon: (species, level) => {
         if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
-        return createPersistentPokemon(crypto.randomUUID(), species, level, importedAssets.battleCatalog);
+        return createPersistentPokemon(crypto.randomUUID(), species, level, importedAssets.battleCatalog,
+          activePokemonCreationContext(completed.mapId));
       } });
   if (!result.safe) {
     importedNotice = `Dialogue terminé ; état inchangé (${result.reason ?? "commande non prise en charge"}).`;
@@ -1452,6 +1464,12 @@ function synchronizeSourceFollower(): void {
 
 function activateSourceWorld(world: LoadedSourceWorld): void {
   importedAssets = world.assets;
+  const reconciled = recalculatePlayerPokemonCollection(sourceEventState.party, sourceEventState.ranch,
+    world.assets.battleCatalog);
+  if (reconciled.party !== sourceEventState.party || reconciled.storage !== sourceEventState.ranch) {
+    sourceEventState = { ...sourceEventState, party: reconciled.party, ranch: reconciled.storage };
+    persistSourceEventState();
+  }
   importedAvatar = world.avatar;
   importedPlayerMotion = null;
   heldMovementKeys.clear();

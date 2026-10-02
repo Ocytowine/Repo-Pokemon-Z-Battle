@@ -1,17 +1,80 @@
 import type { BattleAbility, BattleMove, BattleStats, BattleTeam, BattlerState, HeldItem, MajorStatusState } from "@pokemon-z-battle/battle-engine";
 import type { MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
+import type { PlayerPronouns } from "./profile.js";
 
 export { createDefaultPlayerProfile, parsePlayerProfile, PLAYER_PROFILE_SCHEMA_VERSION,
   type PlayerProfile, type PlayerPronouns } from "./profile.js";
 export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, persistPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
+  createPlayerTrainerIdentity, parsePlayerTrainerIdentity, PLAYER_TRAINER_IDENTITY_SCHEMA_VERSION,
   PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
-  PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection } from "./avatar-selection.js";
+  PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const PLAYER_POKEMON_STORAGE_SCHEMA_VERSION = 1 as const;
+export const PERSISTENT_POKEMON_METADATA_SCHEMA_VERSION = 1 as const;
 export const MAX_PARTY_SIZE = 6;
+
+export const POKEMON_NATURES = ["HARDY", "LONELY", "BRAVE", "ADAMANT", "NAUGHTY",
+  "BOLD", "DOCILE", "RELAXED", "IMPISH", "LAX", "TIMID", "HASTY", "SERIOUS",
+  "JOLLY", "NAIVE", "MODEST", "MILD", "QUIET", "BASHFUL", "RASH", "CALM",
+  "GENTLE", "SASSY", "CAREFUL", "QUIRKY"] as const;
+
+export type PokemonNature = typeof POKEMON_NATURES[number];
+export type PokemonGender = "male" | "female" | "genderless";
+export type PokemonObtainMethod = "encounter" | "egg" | "trade" | "gift" | "fateful" | "unknown";
+
+export interface PokemonTrainingValues {
+  readonly hp: number;
+  readonly attack: number;
+  readonly defense: number;
+  readonly specialAttack: number;
+  readonly specialDefense: number;
+  readonly speed: number;
+}
+
+export interface PersistentPokemonOwner {
+  readonly trainerId: number | null;
+  readonly publicId: number | null;
+  readonly name: string | null;
+  readonly pronouns: PlayerPronouns | null;
+}
+
+export interface PersistentPokemonOrigin {
+  readonly method: PokemonObtainMethod;
+  readonly mapId: number | null;
+  readonly level: number;
+  readonly receivedAt: string | null;
+  readonly hatchedMapId: number | null;
+  readonly hatchedAt: string | null;
+  readonly ball: string | null;
+}
+
+export interface PersistentPokemonPokerus {
+  readonly strain: number;
+  readonly daysRemaining: number;
+  readonly cured: boolean;
+}
+
+/** Source-compatible personal data. Null means that a legacy save cannot honestly reconstruct the value yet. */
+export interface PersistentPokemonMetadata {
+  readonly schemaVersion: typeof PERSISTENT_POKEMON_METADATA_SCHEMA_VERSION;
+  readonly personalId: number;
+  readonly ivs: PokemonTrainingValues;
+  readonly evs: PokemonTrainingValues;
+  readonly nature: PokemonNature;
+  readonly gender: PokemonGender | null;
+  readonly happiness: number | null;
+  readonly shiny: boolean;
+  readonly form: number;
+  readonly owner: PersistentPokemonOwner;
+  readonly origin: PersistentPokemonOrigin;
+  readonly markings: number;
+  readonly ribbons: readonly string[];
+  readonly pokerus: PersistentPokemonPokerus | null;
+  readonly eggSteps: number;
+}
 
 export interface PersistentMoveSlot {
   readonly internalName: string;
@@ -31,6 +94,22 @@ export interface PersistentPokemon {
   readonly ability: string | null;
   readonly heldItem: string | null;
   readonly moves: readonly PersistentMoveSlot[];
+  readonly metadata: PersistentPokemonMetadata;
+}
+
+/** Safe identity projection for future trade/Coop presentation; never includes private Trainer ID, IV or EV. */
+export interface PublicPokemonIdentity {
+  readonly species: string;
+  readonly nickname: string | null;
+  readonly level: number;
+  readonly gender: PokemonGender | null;
+  readonly shiny: boolean;
+  readonly form: number;
+  readonly originalTrainer: {
+    readonly publicId: number | null;
+    readonly name: string | null;
+    readonly pronouns: PlayerPronouns | null;
+  };
 }
 
 export interface PlayerPartyState {
@@ -56,8 +135,22 @@ export interface PlayerBattleCatalog {
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
-  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience">
+  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
     & { readonly id?: number })[];
+}
+
+export interface PokemonCreationContext {
+  readonly owner?: {
+    readonly trainerId: number;
+    readonly name: string;
+    readonly pronouns: PlayerPronouns;
+  };
+  readonly origin?: {
+    readonly method: PokemonObtainMethod;
+    readonly mapId: number | null;
+    readonly receivedAt: string;
+    readonly ball: string | null;
+  };
 }
 
 export interface ExperienceResult {
@@ -96,6 +189,122 @@ function parseStatus(value: unknown): MajorStatusState | null {
   throw new Error("Statut majeur invalide.");
 }
 
+function stableUint32(value: string): number {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return hash >>> 0;
+}
+
+function generatedTrainingValues(id: string, species: string): PokemonTrainingValues {
+  const value = (stat: keyof PokemonTrainingValues) => stableUint32(`pokemon-z:${id}:${species}:${stat}`) % 32;
+  return { hp: value("hp"), attack: value("attack"), defense: value("defense"),
+    specialAttack: value("specialAttack"), specialDefense: value("specialDefense"), speed: value("speed") };
+}
+
+/** Deterministic legacy fallback: loading the same old save never rerolls personal data. */
+export function createPersistentPokemonMetadata(id: string, species: string, level: number): PersistentPokemonMetadata {
+  const personalId = stableUint32(`pokemon-z:${id}:${species}:personal-id`);
+  return {
+    schemaVersion: PERSISTENT_POKEMON_METADATA_SCHEMA_VERSION,
+    personalId,
+    ivs: generatedTrainingValues(id, species),
+    evs: { hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 },
+    nature: POKEMON_NATURES[personalId % POKEMON_NATURES.length]!,
+    gender: null,
+    happiness: null,
+    shiny: false,
+    form: 0,
+    owner: { trainerId: null, publicId: null, name: null, pronouns: null },
+    origin: { method: "unknown", mapId: null, level, receivedAt: null, hatchedMapId: null, hatchedAt: null, ball: null },
+    markings: 0,
+    ribbons: [],
+    pokerus: null,
+    eggSteps: 0,
+  };
+}
+
+function parseTrainingValues(value: unknown, kind: "IV" | "EV"): PokemonTrainingValues {
+  const maximum = kind === "IV" ? 31 : 252;
+  if (!isRecord(value) || !integer(value.hp, 0, maximum) || !integer(value.attack, 0, maximum)
+    || !integer(value.defense, 0, maximum) || !integer(value.specialAttack, 0, maximum)
+    || !integer(value.specialDefense, 0, maximum) || !integer(value.speed, 0, maximum)) {
+    throw new Error(`${kind} sauvegardés invalides.`);
+  }
+  const result = { hp: value.hp, attack: value.attack, defense: value.defense,
+    specialAttack: value.specialAttack, specialDefense: value.specialDefense, speed: value.speed };
+  if (kind === "EV" && Object.values(result).reduce((total, current) => total + current, 0) > 510) {
+    throw new Error("Total des EV sauvegardés invalide.");
+  }
+  return result;
+}
+
+function nullableString(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && value !== "");
+}
+
+function nullableMapId(value: unknown): value is number | null {
+  return value === null || integer(value, 1);
+}
+
+function parsePokemonMetadata(value: unknown, id: string, species: string, level: number): PersistentPokemonMetadata {
+  if (value === undefined) return createPersistentPokemonMetadata(id, species, level);
+  if (!isRecord(value) || value.schemaVersion !== PERSISTENT_POKEMON_METADATA_SCHEMA_VERSION
+    || !integer(value.personalId, 0, 0xffffffff) || !POKEMON_NATURES.includes(value.nature as PokemonNature)
+    || (value.gender !== null && !["male", "female", "genderless"].includes(value.gender as string))
+    || (value.happiness !== null && !integer(value.happiness, 0, 255)) || typeof value.shiny !== "boolean"
+    || !integer(value.form, 0) || !integer(value.markings, 0, 255) || !integer(value.eggSteps, 0)
+    || !Array.isArray(value.ribbons) || value.ribbons.some((ribbon) => typeof ribbon !== "string" || ribbon === "")
+    || new Set(value.ribbons).size !== value.ribbons.length || !isRecord(value.owner) || !isRecord(value.origin)) {
+    throw new Error("Métadonnées du Pokémon sauvegardé invalides.");
+  }
+  const owner = value.owner;
+  const ownerPronouns = owner.pronouns === undefined ? null : owner.pronouns;
+  if ((owner.trainerId !== null && !integer(owner.trainerId, 0, 0xffffffff))
+    || (owner.publicId !== null && !integer(owner.publicId, 0, 65535))
+    || (owner.trainerId !== null && owner.publicId !== (owner.trainerId & 0xffff))
+    || !nullableString(owner.name)
+    || (ownerPronouns !== null && !["masculine", "feminine", "neutral"].includes(ownerPronouns as string))) {
+    throw new Error("Dresseur d'origine sauvegardé invalide.");
+  }
+  const origin = value.origin;
+  if (!["encounter", "egg", "trade", "gift", "fateful", "unknown"].includes(origin.method as string)
+    || !nullableMapId(origin.mapId) || !integer(origin.level, 1, 100) || !nullableString(origin.receivedAt)
+    || !nullableMapId(origin.hatchedMapId) || !nullableString(origin.hatchedAt) || !nullableString(origin.ball)) {
+    throw new Error("Origine du Pokémon sauvegardé invalide.");
+  }
+  let pokerus: PersistentPokemonPokerus | null = null;
+  if (value.pokerus !== null) {
+    if (!isRecord(value.pokerus) || !integer(value.pokerus.strain, 1, 15)
+      || !integer(value.pokerus.daysRemaining, 0, 4) || typeof value.pokerus.cured !== "boolean") {
+      throw new Error("Pokérus sauvegardé invalide.");
+    }
+    pokerus = { strain: value.pokerus.strain, daysRemaining: value.pokerus.daysRemaining, cured: value.pokerus.cured };
+  }
+  return {
+    schemaVersion: PERSISTENT_POKEMON_METADATA_SCHEMA_VERSION,
+    personalId: value.personalId,
+    ivs: parseTrainingValues(value.ivs, "IV"),
+    evs: parseTrainingValues(value.evs, "EV"),
+    nature: value.nature as PokemonNature,
+    gender: value.gender as PokemonGender | null,
+    happiness: value.happiness as number | null,
+    shiny: value.shiny,
+    form: value.form,
+    owner: { trainerId: owner.trainerId as number | null, publicId: owner.publicId as number | null,
+      name: owner.name as string | null, pronouns: ownerPronouns as PlayerPronouns | null },
+    origin: { method: origin.method as PokemonObtainMethod, mapId: origin.mapId as number | null, level: origin.level,
+      receivedAt: origin.receivedAt as string | null, hatchedMapId: origin.hatchedMapId as number | null,
+      hatchedAt: origin.hatchedAt as string | null, ball: origin.ball as string | null },
+    markings: value.markings,
+    ribbons: [...value.ribbons] as string[],
+    pokerus,
+    eggSteps: value.eggSteps,
+  };
+}
+
 function parsePokemon(value: unknown): PersistentPokemon {
   if (!isRecord(value) || typeof value.id !== "string" || value.id === "" || typeof value.species !== "string" || value.species === ""
     || (value.nickname !== null && typeof value.nickname !== "string") || !integer(value.level, 1, 100)
@@ -111,11 +320,19 @@ function parsePokemon(value: unknown): PersistentPokemon {
     return { internalName: slot.internalName, pp: slot.pp, maxPp: slot.maxPp };
   });
   return { id: value.id, species: value.species, nickname: value.nickname, level: value.level, experience: value.experience,
-    stats, hp: value.hp, majorStatus: parseStatus(value.majorStatus), ability: value.ability, heldItem: value.heldItem, moves };
+    stats, hp: value.hp, majorStatus: parseStatus(value.majorStatus), ability: value.ability, heldItem: value.heldItem, moves,
+    metadata: parsePokemonMetadata(value.metadata, value.id, value.species, value.level) };
 }
 
 export function createEmptyPlayerParty(): PlayerPartyState {
   return { schemaVersion: PLAYER_PARTY_SCHEMA_VERSION, activeIndex: null, members: [] };
+}
+
+export function publicPokemonIdentity(pokemon: PersistentPokemon): PublicPokemonIdentity {
+  return { species: pokemon.species, nickname: pokemon.nickname, level: pokemon.level,
+    gender: pokemon.metadata.gender, shiny: pokemon.metadata.shiny, form: pokemon.metadata.form,
+    originalTrainer: { publicId: pokemon.metadata.owner.publicId, name: pokemon.metadata.owner.name,
+      pronouns: pokemon.metadata.owner.pronouns } };
 }
 
 export function createEmptyPlayerPokemonStorage(): PlayerPokemonStorageState {
@@ -194,10 +411,6 @@ export function healPlayerParty(party: PlayerPartyState): PlayerPartyState {
     moves: member.moves.map((slot) => ({ ...slot, pp: slot.maxPp })) })) };
 }
 
-function neutralStat(base: number, level: number): number {
-  return Math.floor(((2 * base + 31) * level) / 100) + 5;
-}
-
 export function experienceAtLevel(level: number, growthRate: string): number {
   if (!integer(level, 1, 100)) throw new Error(`Niveau invalide pour l'expérience : ${level}.`);
   const cube = level ** 3;
@@ -226,18 +439,126 @@ function levelForExperience(experience: number, growthRate: string): number {
   return 1;
 }
 
-function statsAtLevel(definition: PlayerCreationCatalog["pokemon"][number], level: number): BattleStats {
+const NATURE_STAT_ORDER = ["attack", "defense", "speed", "specialAttack", "specialDefense"] as const;
+
+function naturePercent(nature: PokemonNature, stat: typeof NATURE_STAT_ORDER[number]): number {
+  const natureIndex = POKEMON_NATURES.indexOf(nature);
+  const increased = Math.floor(natureIndex / 5);
+  const decreased = natureIndex % 5;
+  const statIndex = NATURE_STAT_ORDER.indexOf(stat);
+  if (increased === decreased || statIndex < 0) return 100;
+  if (statIndex === increased) return 110;
+  if (statIndex === decreased) return 90;
+  return 100;
+}
+
+function calculatedStat(base: number, level: number, iv: number, ev: number, percent: number): number {
+  const beforeNature = Math.floor(((2 * base + iv + Math.floor(ev / 4)) * level) / 100) + 5;
+  return Math.floor((beforeNature * percent) / 100);
+}
+
+/** Exact integer formulas and nature order used by PokeBattle_Pokemon#calcStats in Pokemon Z 2.12 FR. */
+export function calculatePokemonStats(definition: Pick<PokemonDefinition, "baseStats">, level: number,
+  metadata: Pick<PersistentPokemonMetadata, "ivs" | "evs" | "nature">): BattleStats {
+  if (!integer(level, 1, 100)) throw new Error("Niveau invalide pour le calcul des statistiques.");
   const base = definition.baseStats;
+  const hp = base.hp === 1 ? 1
+    : Math.floor(((2 * base.hp + metadata.ivs.hp + Math.floor(metadata.evs.hp / 4)) * level) / 100) + level + 10;
   return {
-    maxHp: Math.floor(((2 * base.hp + 31) * level) / 100) + level + 10,
-    attack: neutralStat(base.attack, level), defense: neutralStat(base.defense, level),
-    specialAttack: neutralStat(base.specialAttack, level), specialDefense: neutralStat(base.specialDefense, level),
-    speed: neutralStat(base.speed, level),
+    maxHp: hp,
+    attack: calculatedStat(base.attack, level, metadata.ivs.attack, metadata.evs.attack,
+      naturePercent(metadata.nature, "attack")),
+    defense: calculatedStat(base.defense, level, metadata.ivs.defense, metadata.evs.defense,
+      naturePercent(metadata.nature, "defense")),
+    speed: calculatedStat(base.speed, level, metadata.ivs.speed, metadata.evs.speed,
+      naturePercent(metadata.nature, "speed")),
+    specialAttack: calculatedStat(base.specialAttack, level, metadata.ivs.specialAttack, metadata.evs.specialAttack,
+      naturePercent(metadata.nature, "specialAttack")),
+    specialDefense: calculatedStat(base.specialDefense, level, metadata.ivs.specialDefense, metadata.evs.specialDefense,
+      naturePercent(metadata.nature, "specialDefense")),
+  };
+}
+
+function sameStats(left: BattleStats, right: BattleStats): boolean {
+  return left.maxHp === right.maxHp && left.attack === right.attack && left.defense === right.defense
+    && left.speed === right.speed && left.specialAttack === right.specialAttack
+    && left.specialDefense === right.specialDefense;
+}
+
+function hpWithPreservedDamage(pokemon: PersistentPokemon, nextMaxHp: number, protectLivingPokemon: boolean): number {
+  if (pokemon.hp === 0 && protectLivingPokemon) return 0;
+  const nextHp = nextMaxHp - (pokemon.stats.maxHp - pokemon.hp);
+  if (protectLivingPokemon && pokemon.hp > 0) return Math.max(1, Math.min(nextMaxHp, nextHp));
+  return Math.max(0, Math.min(nextMaxHp, nextHp));
+}
+
+/** Reconciles legacy stored stats once a species catalog is available, preserving damage and explicit K.O. state. */
+export function recalculatePersistentPokemonStats(pokemon: PersistentPokemon,
+  catalog: PlayerCreationCatalog, protectLivingPokemon = true): PersistentPokemon {
+  const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+  if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${pokemon.species}.`);
+  const stats = calculatePokemonStats(definition, pokemon.level, pokemon.metadata);
+  const hp = hpWithPreservedDamage(pokemon, stats.maxHp, protectLivingPokemon);
+  return sameStats(stats, pokemon.stats) && hp === pokemon.hp ? pokemon : { ...pokemon, stats, hp };
+}
+
+export function recalculatePlayerPokemonCollection(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  catalog: PlayerCreationCatalog): PlayerPokemonCollectionState {
+  const partyMembers = party.members.map((pokemon) => recalculatePersistentPokemonStats(pokemon, catalog));
+  const storageMembers = storage.members.map((pokemon) => recalculatePersistentPokemonStats(pokemon, catalog));
+  return {
+    party: partyMembers.every((pokemon, index) => pokemon === party.members[index]) ? party : { ...party, members: partyMembers },
+    storage: storageMembers.every((pokemon, index) => pokemon === storage.members[index]) ? storage : { ...storage, members: storageMembers },
+  };
+}
+
+const SOURCE_GENDER_THRESHOLDS: Readonly<Record<string, number>> = {
+  FemaleOneEighth: 31,
+  Female25Percent: 63,
+  Female50Percent: 127,
+  Female75Percent: 191,
+};
+
+function pokemonGender(genderRate: string, personalId: number): PokemonGender {
+  if (genderRate === "Genderless") return "genderless";
+  if (genderRate === "AlwaysFemale") return "female";
+  if (genderRate === "AlwaysMale") return "male";
+  const threshold = SOURCE_GENDER_THRESHOLDS[genderRate];
+  if (threshold === undefined) throw new Error(`Taux de genre Pokémon inconnu : ${genderRate}.`);
+  return (personalId & 0xff) <= threshold ? "female" : "male";
+}
+
+function sourceShiny(personalId: number, trainerId: number): boolean {
+  const mixed = (personalId ^ trainerId) >>> 0;
+  return ((mixed & 0xffff) ^ (mixed >>> 16)) < 100;
+}
+
+function createdPokemonMetadata(instanceId: string, species: string, level: number,
+  definition: PlayerCreationCatalog["pokemon"][number], context: PokemonCreationContext | undefined): PersistentPokemonMetadata {
+  const metadata = createPersistentPokemonMetadata(instanceId, species, level);
+  const owner = context?.owner;
+  const origin = context?.origin;
+  if (!integer(definition.happiness, 0, 255)) throw new Error(`Bonheur initial invalide pour ${species}.`);
+  if (owner !== undefined && (!integer(owner.trainerId, 0, 0xffffffff) || owner.name.trim() === ""
+    || owner.name.length > 12 || !["masculine", "feminine", "neutral"].includes(owner.pronouns))) {
+    throw new Error("Dresseur d'origine invalide.");
+  }
+  if (origin !== undefined && (origin.receivedAt === "" || Number.isNaN(Date.parse(origin.receivedAt))
+    || !nullableMapId(origin.mapId) || !["encounter", "egg", "trade", "gift", "fateful", "unknown"].includes(origin.method)
+    || !nullableString(origin.ball))) throw new Error("Contexte d'obtention du Pokémon invalide.");
+  return { ...metadata,
+    gender: pokemonGender(definition.genderRate, metadata.personalId),
+    happiness: definition.happiness,
+    shiny: owner === undefined ? false : sourceShiny(metadata.personalId, owner.trainerId),
+    owner: owner === undefined ? metadata.owner : { trainerId: owner.trainerId,
+      publicId: owner.trainerId & 0xffff, name: owner.name.trim(), pronouns: owner.pronouns },
+    origin: origin === undefined ? metadata.origin : { ...metadata.origin, method: origin.method,
+      mapId: origin.mapId, receivedAt: origin.receivedAt, ball: origin.ball },
   };
 }
 
 export function createPersistentPokemon(instanceId: string, species: string, level: number,
-  catalog: PlayerCreationCatalog): PersistentPokemon {
+  catalog: PlayerCreationCatalog, context?: PokemonCreationContext): PersistentPokemon {
   if (instanceId === "" || !integer(level, 1, 100)) throw new Error("Paramètres de création du Pokémon invalides.");
   const definition = catalog.pokemon.find((candidate) => candidate.internalName === species);
   if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${species}.`);
@@ -249,9 +570,11 @@ export function createPersistentPokemon(instanceId: string, species: string, lev
     if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);
     return { internalName: move.internalName, pp: move.pp, maxPp: move.pp };
   });
-  const stats = statsAtLevel(definition, level);
+  const metadata = createdPokemonMetadata(instanceId, species, level, definition, context);
+  const stats = calculatePokemonStats(definition, level, metadata);
   return { id: instanceId, species, nickname: null, level, experience: experienceAtLevel(level, definition.growthRate), stats, hp: stats.maxHp, majorStatus: null,
-    ability: definition.abilities[0] ?? null, heldItem: null, moves };
+    ability: definition.abilities[0] ?? null, heldItem: null, moves,
+    metadata };
 }
 
 export function grantPokemonExperience(pokemon: PersistentPokemon, amount: number,
@@ -273,8 +596,8 @@ export function grantPokemonExperience(pokemon: PersistentPokemon, amount: numbe
     moves = [...moves, { internalName: move.internalName, pp: move.pp, maxPp: move.pp }];
     learnedMoves.push(entry.move);
   }
-  const stats = statsAtLevel(definition, nextLevel);
-  const hp = Math.min(stats.maxHp, pokemon.hp + (stats.maxHp - pokemon.stats.maxHp));
+  const stats = calculatePokemonStats(definition, nextLevel, pokemon.metadata);
+  const hp = hpWithPreservedDamage(pokemon, stats.maxHp, false);
   return { pokemon: { ...pokemon, level: nextLevel, experience: nextExperience, stats, hp, moves },
     gained: nextExperience - currentExperience, levelsGained: nextLevel - pokemon.level, learnedMoves, skippedMoves };
 }

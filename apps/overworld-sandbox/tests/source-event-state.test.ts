@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createPersistentPokemonMetadata } from "@pokemon-z-battle/player-state";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
 import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, selectActiveEventPage } from "../src/source-event-state.js";
 
@@ -40,6 +41,7 @@ describe("persistent source event state", () => {
       stats: { maxHp: 21, attack: 12, defense: 13, specialAttack: 11, specialDefense: 12, speed: 10 }, hp: 21,
       majorStatus: null, ability: "OVERGROW", heldItem: null,
       moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }],
+      metadata: createPersistentPokemonMetadata("starter", "CHESPIN", 5),
     }] } };
     expect(selectActiveEventPage(starterEvent, 2, createSourceEventState())?.page).toBe(starterPage);
     expect(selectActiveEventPage(starterEvent, 2, state)).toBeNull();
@@ -132,6 +134,7 @@ describe("persistent source event state", () => {
       stats: { maxHp: 28, attack: 15, defense: 12, specialAttack: 14, specialDefense: 14, speed: 20 },
       hp: 3, majorStatus: { kind: "burn" as const }, ability: null, heldItem: null,
       moves: [{ internalName: "TACKLE", pp: 1, maxPp: 35 }],
+      metadata: createPersistentPokemonMetadata("starter", "PIKACHU", 8),
     }] } };
     const result = applySafeStateCommands(state, page(unconditional, [
       { kind: "heal-party", text: null, indent: 0, data: {} },
@@ -150,7 +153,8 @@ describe("persistent source event state", () => {
       checkpoint: { mapId: 2, x: 52, y: 22, direction: "up" },
       createPokemon: (species, level) => ({ id: "starter", species, nickname: null, level, experience: 0,
         stats: { maxHp: 22, attack: 12, defense: 14, specialAttack: 11, specialDefense: 13, speed: 10 }, hp: 22,
-        majorStatus: null, ability: "OVERGROW", heldItem: null, moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] }),
+        majorStatus: null, ability: "OVERGROW", heldItem: null, moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }],
+        metadata: createPersistentPokemonMetadata("starter", species, level) }),
     });
     expect(result).toMatchObject({ safe: true, appliedCommands: 3, state: { switches: {},
       pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true }, escapable: false },
@@ -162,7 +166,7 @@ describe("persistent source event state", () => {
     const member = (id: string) => ({ id, species: "PIKACHU", nickname: null, level: 5, experience: 0,
       stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 }, hp: 20,
       majorStatus: null, ability: null, heldItem: null,
-      moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] });
+      moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }], metadata: createPersistentPokemonMetadata(id, "PIKACHU", 5) });
     const state = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
       members: Array.from({ length: 6 }, (_, index) => member(`team-${index}`)) } };
     const result = applySafeStateCommands(state, page(unconditional, [

@@ -15,7 +15,10 @@ describe("avatar lab state", () => {
 
   it("discards malformed local data", () => {
     const removeItem = vi.fn();
-    expect(loadAvatarLabState({ getItem: () => "{}", removeItem })).toEqual(createAvatarLabState());
+    expect(loadAvatarLabState({ getItem: () => "{}", removeItem })).toMatchObject({
+      schemaVersion: 2, avatarId: "legacy-0", profile: { displayName: "Joueur" },
+      trainerIdentity: { schemaVersion: 1, trainerId: expect.any(Number), publicId: expect.any(Number) },
+    });
     expect(removeItem).toHaveBeenCalledWith(AVATAR_LAB_STORAGE_KEY);
     expect(() => parseAvatarLabState({ ...createAvatarLabState(), avatarId: "../../asset" })).toThrow("laboratoire");
   });

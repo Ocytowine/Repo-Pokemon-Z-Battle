@@ -1001,6 +1001,43 @@ explicitement desactivees jusqu'a leurs lots respectifs. Les mutations actives
 utilisent le noyau personnel persistant commun au solo, a l'hote et a l'invite,
 sans publier la collection privee dans la room.
 
+Plan de fiche detaillee valide le 2026-10-02 :
+`docs/POKEMON_DETAILS_PLAN.md` inventorie les cinq pages et la sous-page avancee
+de Pokemon Z V2.12 FR, les donnees disponibles, les briques manquantes et le
+contrat solo/Coop. Chaque increment doit reverifier scripts, donnees, assets et cas
+speciaux propres a cette version avant implementation. L'ordre commence par le
+modele persistant et sa migration deterministe, puis l'identite du Dresseur, le
+calculateur IV/EV/nature, les catalogues/assets et enfin la fiche en lecture et
+ses mutations. `Placer en tete` est reserve au contexte Equipe et ne doit pas etre
+propose depuis le Ranch.
+
+Premier increment de modele implemente le 2026-10-03 : le Pokemon persistant a
+desormais un bloc personnel versionne couvrant les champs necessaires aux cinq
+pages de Z. La migration des sauvegardes existantes est deterministe et valide les
+IV/EV selon les plafonds confirmes dans le script source, sans recalculer encore
+les statistiques visibles. Les champs historiques non reconstructibles restent
+explicitement inconnus. La suite de l'etape 1 devra enrichir ce contrat lors de la
+creation avec les donnees d'espece et de Dresseur, apres mise en place de
+l'identite stable de l'etape 2.
+
+Etape 2 de la fiche detaillee implementee le 2026-10-03 : une identite Dresseur
+privee 32 bits est maintenant creee et migree avec la selection de personnage,
+sans entrer dans le profil reseau. La fabrique Pokemon commune renseigne pour les
+ajouts scenarises le DO, l'ID public, le genre, le bonheur, la carte, la date et la
+ball selon les donnees et scripts de Z. Le seuil shiny specifique de la version
+(100/65 536) est respecte. Une projection publique sans trainerId, IV/EV ni
+historique prepare les futurs usages Coop ; aucune nouvelle donnee personnelle
+n'est repliquee par la room dans ce lot.
+
+Etape 3 de la fiche detaillee implementee le 2026-10-03 : le calcul simplifie a
+IV 31/nature neutre est remplace par le calculateur exact de Z pour la creation,
+la montee de niveau et la restauration. IV, EV, nature, ordre source des
+statistiques, troncatures et cas PV de base egal a 1 sont couverts. Les anciennes
+equipes et le Ranch sont recalcules au chargement en conservant les degats et le
+K.O., avec une protection contre un K.O. provoque uniquement par la migration.
+La mutation reste personnelle en solo, chez l'hote et chez l'invite ; le combat
+et le rendu distant reutilisent les statistiques persistantes deja existantes.
+
 Correctif de boucle sauvage implemente le 2026-10-02 : un `pendingEncounter`
 personnel n'inhibe plus indefiniment les rencontres apres la suppression du bouton
 HUD historique. Le pas suivant reprend automatiquement une rencontre valide ; une

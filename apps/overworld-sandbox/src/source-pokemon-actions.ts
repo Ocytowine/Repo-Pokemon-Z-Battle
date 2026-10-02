@@ -34,7 +34,7 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
     return [details, makeLead, item];
   }
   if (entry.location === "team") {
-    return [details, makeLead, item,
+    return [details, item,
     { id: "deposit", label: "Déposer", symbol: "↓", enabled: options.partySize > 1,
       hint: options.partySize > 1 ? "Vers le Ranch" : "Dernier Pokémon" }];
   }

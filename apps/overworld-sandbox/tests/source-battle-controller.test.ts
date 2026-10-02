@@ -14,10 +14,12 @@ const catalog: PlayerCreationCatalog = {
   pokemon: [
     { internalName: "CHESPIN", name: "Marisson", types: ["GRASS"],
       baseStats: { hp: 61, attack: 61, defense: 65, speed: 38, specialAttack: 48, specialDefense: 45 },
-      abilities: ["OVERGROW"], growthRate: "Parabolic", baseExperience: 64, levelUpMoves: [{ level: 1, move: "TACKLE" }] },
+      abilities: ["OVERGROW"], growthRate: "Parabolic", baseExperience: 64, genderRate: "FemaleOneEighth", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }] },
     { internalName: "BIDOOF", name: "Keunotor", types: ["NORMAL"],
       baseStats: { hp: 59, attack: 45, defense: 40, speed: 31, specialAttack: 35, specialDefense: 40 },
-      abilities: ["SIMPLE"], growthRate: "Medium", baseExperience: 50, levelUpMoves: [{ level: 1, move: "TACKLE" }] },
+      abilities: ["SIMPLE"], growthRate: "Medium", baseExperience: 50, genderRate: "Female50Percent", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }] },
   ],
   moves: [tackle],
 };

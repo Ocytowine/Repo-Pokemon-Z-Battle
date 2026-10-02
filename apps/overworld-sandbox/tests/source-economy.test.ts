@@ -7,7 +7,8 @@ const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "0
   category: "Physical" as const, accuracy: 100, pp: 35, priority: 0, effectChance: 0 };
 const catalog: PlayerCreationCatalog = { pokemon: [{ internalName: "CHESPIN", name: "Marisson", types: ["GRASS"],
   baseStats: { hp: 56, attack: 61, defense: 65, speed: 38, specialAttack: 48, specialDefense: 45 }, abilities: ["OVERGROW"],
-  growthRate: "Parabolic", baseExperience: 64, levelUpMoves: [{ level: 1, move: "TACKLE" }] }], moves: [tackle] };
+  growthRate: "Parabolic", baseExperience: 64, genderRate: "FemaleOneEighth", happiness: 70,
+  levelUpMoves: [{ level: 1, move: "TACKLE" }] }], moves: [tackle] };
 const potion = { id: 217, internalName: "POTION", name: "Potion", description: "Restaure des PV.", pocket: 2, price: 300 };
 
 describe("source economy", () => {

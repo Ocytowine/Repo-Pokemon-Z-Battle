@@ -1,4 +1,4 @@
-import { createPersistentPokemon } from "@pokemon-z-battle/player-state";
+import { createPersistentPokemon, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { finalDirectSourceTransfer } from "./source-autorun.js";
 import type { SourceTrainerBattleAudio } from "./source-battle-controller.js";
 import { isSourceStateCommand } from "./source-command-registry.js";
@@ -30,6 +30,7 @@ export interface SourceSequenceEffectDependencies {
   readonly updateEventState: (state: SourceEventState) => void;
   readonly getAssets: () => ImportedMapAssets | null;
   readonly getAvatar: () => ImportedAvatar;
+  readonly getPokemonCreationContext: (mapId: number) => PokemonCreationContext;
   readonly abort: (session: SourceSequenceSession, notice: string) => void;
   readonly beginItemPresentation: (session: SourceSequenceSession, gains: readonly SourceItemGain[]) => void;
   readonly startPendingEncounter: (onComplete: (won: boolean) => void) => boolean;
@@ -68,7 +69,8 @@ export class SourceSequenceEffects {
       session.eventId, { checkpoint: { mapId: session.mapId, x: avatar.x, y: avatar.y, direction: avatar.direction },
         createPokemon: (species, level) => {
           if (assets === null) throw new Error("Catalogue Pokémon indisponible.");
-          return createPersistentPokemon(crypto.randomUUID(), species, level, assets.battleCatalog);
+          return createPersistentPokemon(crypto.randomUUID(), species, level, assets.battleCatalog,
+            this.dependencies.getPokemonCreationContext(session.mapId));
         } });
     if (!result.safe) return this.abort(session,
       `Séquence interrompue : ${result.reason ?? "commande d'état invalide"}.`);
