@@ -291,10 +291,11 @@ export class AuthoritativeBattleRoom {
     if (world === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune carte narrative partagee.")];
     }
-    if (attached && (avatar === null || !this.sourceJoinAvailable(world, avatar))) {
+    const joinAvatar = attached && avatar !== null ? this.sourceJoinPoint(world, avatar) : null;
+    if (attached && joinAvatar === null) {
       return [this.error(player.playerId, requestId, "INTERACTION_UNAVAILABLE", "Point de retour sur la carte partagee invalide.")];
     }
-    const nextAvatar = attached ? avatar! : world.avatars.opponent;
+    const nextAvatar = attached ? joinAvatar! : world.avatars.opponent;
     const guestFollower = world.followers.opponent;
     this.#sourceWorldState = { ...world,
       avatars: { ...world.avatars, opponent: nextAvatar },
@@ -531,6 +532,15 @@ export class AuthoritativeBattleRoom {
     const hostFollower = world.followers.player;
     return (host.x !== avatar.x || host.y !== avatar.y)
       && (hostFollower === undefined || hostFollower.x !== avatar.x || hostFollower.y !== avatar.y);
+  }
+
+  private sourceJoinPoint(world: SourceWorldSnapshot, preferred: SourceAvatarSnapshot): SourceAvatarSnapshot | null {
+    const candidates = [preferred, ...(["down", "left", "right", "up"] as const).map((direction) => ({
+      x: world.avatars.player.x + SOURCE_DELTAS[direction].x,
+      y: world.avatars.player.y + SOURCE_DELTAS[direction].y,
+      direction: SOURCE_OPPOSITE[direction],
+    }))];
+    return candidates.find((candidate) => this.sourceJoinAvailable(world, candidate)) ?? null;
   }
 
   private sourceFollowerSpawn(world: SourceWorldSnapshot, side: BattleSide, species: string): SourceFollowerSnapshot {

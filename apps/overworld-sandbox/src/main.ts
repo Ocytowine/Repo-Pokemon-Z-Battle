@@ -48,7 +48,7 @@ import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persi
   type SourceWorldSave } from "./source-world-save.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
-import { guestSourceEventAccess, sourceDialoguePresentation } from "./source-coop-policy.js";
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceStateWithHostStory } from "./source-coop-policy.js";
 import "./style.css";
 
 const TILE_SIZE = 48;
@@ -129,7 +129,6 @@ let networkSourceWorldApplication = 0;
 let sourcePresentationCue: SourceScenePresentationCue | null = null;
 let sourcePresentationCueId = 0;
 let lastPublishedSourceScene = "";
-let lastAppliedPresentationCueId = 0;
 type AvatarId = DemoAvatarId;
 
 function activeNetworkPlayerProfile(): NetworkPlayerProfile {
@@ -224,10 +223,12 @@ function publishCurrentSourceScene(): void {
 }
 
 function renderedSourceEventState(): SourceEventState {
-  const story = networkSourceWorld?.story;
-  if (story === undefined || multiplayer.current?.ticket.side !== "opponent" || guestSourceExcursion) return sourceEventState;
-  return { ...sourceEventState, switches: story.switches, variables: story.variables,
-    selfSwitches: story.selfSwitches };
+  return sourceStateWithHostStory(sourceEventState, networkSourceWorld?.story ?? null,
+    multiplayer.current?.ticket.side === "opponent");
+}
+
+function isNetworkGuest(): boolean {
+  return multiplayer.current?.ticket.side === "opponent";
 }
 
 function guestUsesSharedSourceWorld(): boolean {
@@ -236,11 +237,11 @@ function guestUsesSharedSourceWorld(): boolean {
 }
 
 function sourceInteractionState(): SourceEventState {
-  return guestUsesSharedSourceWorld() ? renderedSourceEventState() : sourceEventState;
+  return isNetworkGuest() ? renderedSourceEventState() : sourceEventState;
 }
 
 function guestCanRunSourceEvent(active: ActiveSourceAutorun): boolean {
-  return !guestUsesSharedSourceWorld() || guestSourceEventAccess(active.page) !== "blocked";
+  return !isNetworkGuest() || guestSourceEventAccess(active.page) !== "blocked";
 }
 
 function startPendingSourceEncounter(): void {
@@ -265,7 +266,7 @@ function checkSourceWildEncounter(): boolean {
 function finishImportedStep(): void {
   if (importedAssets === null) return;
   const sharedGuest = guestUsesSharedSourceWorld();
-  if (sharedGuest) {
+  if (isNetworkGuest()) {
     const sharedEvent = activeEventAt(sourceMapEvents(), importedAvatar.x, importedAvatar.y,
       importedAssets.map.id, sourceInteractionState());
     if (sharedEvent !== null && (sharedEvent.page.settings.trigger === 1 || sharedEvent.page.settings.trigger === 2)
@@ -274,6 +275,7 @@ function finishImportedStep(): void {
       return;
     }
     importedNotice = `DÃ©placement vers ${importedAvatar.x},${importedAvatar.y}.`;
+    if (!sharedGuest && checkSourceWildEncounter()) return;
     renderImportedView();
     continueHeldSourceMovement();
     return;
@@ -303,7 +305,7 @@ function compileAndReportSourceScene(page: ImportedEventPage, label: string): So
 
 function refreshSourceParallelPresentation(assets: ImportedMapAssets): void {
   if (importedAssets !== assets) return;
-  if (guestUsesSharedSourceWorld()) {
+  if (isNetworkGuest()) {
     sourceParallelEvents.synchronize([]);
     sourceParallelAuditNotice = null;
     return;
@@ -316,7 +318,7 @@ function refreshSourceParallelPresentation(assets: ImportedMapAssets): void {
 
 async function runSourceParallelCycle(task: SourceParallelTask): Promise<"repeat" | "stop"> {
   const assets = importedAssets;
-  if (assets === null || assets.map.id !== task.mapId || !task.active() || guestUsesSharedSourceWorld()) return "stop";
+  if (assets === null || assets.map.id !== task.mapId || !task.active() || isNetworkGuest()) return "stop";
   const active = findActiveSourceParallelEvents(sourceMapEvents(), task.mapId, sourceEventState)
     .find(({ event, pageIndex }) => event.id === task.eventId && pageIndex === task.pageIndex);
   if (active === undefined) return "stop";
@@ -414,7 +416,7 @@ function beginSourceAutorun(autorun: ActiveSourceAutorun): boolean {
 }
 
 function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextState: SourceEventState): boolean {
-  if (importedAssets === null) return false;
+  if (importedAssets === null || isNetworkGuest()) return false;
   const autorun = findNewlyActivatedSourceAutorun(
     sourceMapEvents(), importedAssets.map.id, previousState, nextState,
   );
@@ -423,7 +425,7 @@ function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextS
 
 function beginPendingSourceMapEntryAutorun(): boolean {
   if (importedAssets === null || pendingSourceMapEntryAutorun !== importedAssets.map.id
-    || guestUsesSharedSourceWorld() || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
+    || isNetworkGuest() || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
   pendingSourceMapEntryAutorun = null;
   const autorun = findSourceMapEntryAutorun(sourceMapEvents(), importedAssets.map.id, sourceEventState);
   return autorun !== null && beginSourceAutorun(autorun);
@@ -548,7 +550,7 @@ function completeSourceSequence(sequence: SourceSequenceSession): void {
       renderImportedView();
       sequence.onComplete?.();
       if (importedAssets?.map.id === sequence.mapId) refreshSourceParallelPresentation(importedAssets);
-      const activated = !guestUsesSharedSourceWorld() && autorunBaseline !== undefined
+      const activated = !isNetworkGuest() && autorunBaseline !== undefined
         && importedAssets?.map.id === sequence.mapId
         && beginNewlyActivatedSourceAutorun(autorunBaseline, sourceEventState);
       if (!activated) queueMicrotask(beginPendingSourceMapEntryAutorun);
@@ -833,15 +835,6 @@ function closeNetworkBattlePresentation(battleId: string): void {
 function applyNetworkSourceScene(scene: SourceSceneSnapshot): void {
   networkSourceScene = scene;
   sourcePresentationCueId = Math.max(sourcePresentationCueId, scene.presentation?.id ?? 0);
-  if (multiplayer.current?.ticket.side !== "opponent" || guestSourceExcursion
-    || importedAssets?.map.id !== scene.mapId) return;
-  sourceNpcMotions.applyNetworkActors(scene.actors, performance.now());
-  const cue = scene.presentation;
-  if (cue !== null && cue.id > lastAppliedPresentationCueId) {
-    lastAppliedPresentationCueId = cue.id;
-    void sourcePresentation.execute({ kind: cue.kind, data: cue.data }, async () => undefined);
-  }
-  renderImportedView();
 }
 
 async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean): Promise<void> {
@@ -849,11 +842,16 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   const now = performance.now();
   const session = multiplayer.current;
   if (session === null) return;
-  if (session.ticket.side === "opponent" && (guestSourceExcursion || world.presence.opponent === "away")) {
+  if (session.ticket.side === "opponent" && world.presence.opponent === "away") {
     guestSourceExcursion = true;
     networkSourceWorld = world;
     multiplayer.publishSourceFollower(activeSourceFollowerSpecies());
-    importedNotice = "Excursion personnelle : votre carte et votre équipe restent locales.";
+    if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId)) {
+      multiplayer.setSourcePresence(true, importedAvatar);
+      importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
+    } else {
+      importedNotice = "Carte différente de celle de l'hôte · progression narrative de l'hôte conservée.";
+    }
     renderImportedView();
     return;
   }
@@ -971,7 +969,7 @@ function animateImportedMap(now: number): void {
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
-    && !guestUsesSharedSourceWorld()) {
+    && !isNetworkGuest()) {
     const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
     if (contact !== null) {
       beginSourceSequence(contact, `Contact événement ${contact.event.id} · ${contact.event.name}`);
@@ -1018,14 +1016,10 @@ function animateImportedMap(now: number): void {
 }
 
 function sourceSceneActivity(): SourceSceneActivity {
-  const observedScene = networkSourceScene;
-  const observedSequence = multiplayer.current?.ticket.side === "opponent"
-    && !guestSourceExcursion && observedScene !== null
-    && observedScene.mapId === importedAssets?.map.id && observedScene.sequenceActive;
   return { dialogue: sourceDialogues.current !== null,
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
-    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null || observedSequence,
+    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
 
@@ -1117,12 +1111,7 @@ function renderImportedView(): void {
 }
 
 function renderSourceDialogue(): void {
-  const observed = multiplayer.current?.ticket.side === "opponent" && networkSourceScene?.mapId === importedAssets?.map.id;
-  const presentation = sourceDialoguePresentation(sourceDialogues.current !== null, observed);
-  if (presentation === "local") sourceDialogueView.render(sourceDialogues.current, viewedMapId === SOURCE_MAP_ID);
-  else if (presentation === "readonly") {
-    sourceDialogueView.renderReadonly(networkSourceScene?.dialogue ?? null, viewedMapId === SOURCE_MAP_ID);
-  } else sourceDialogueView.render(null, viewedMapId === SOURCE_MAP_ID);
+  sourceDialogueView.render(sourceDialogues.current, viewedMapId === SOURCE_MAP_ID);
 }
 
 function finishAppliedSourceEvent(completed: SourceDialogueSession, encounterQueued: boolean): void {
@@ -1178,7 +1167,7 @@ function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: r
 
 function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
   const previousInventory = sourceEventState.inventory;
-  const result = applySafeStateCommands(sourceEventState, completed.flow.page, completed.mapId, completed.eventId,
+  const result = applySafeStateCommands(sourceInteractionState(), completed.flow.page, completed.mapId, completed.eventId,
     { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
       createPokemon: (species, level) => {
         if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
@@ -1265,7 +1254,7 @@ function chooseSourceOption(index: number): void {
 
 function beginSourceEvent(page: ImportedEventPage, mapId: number, eventId: number, label: string,
   translations: ReadonlyMap<string, string>): void {
-  applySourceDialogueUpdate(sourceDialogues.begin(page, mapId, eventId, label, translations, sourceEventState,
+  applySourceDialogueUpdate(sourceDialogues.begin(page, mapId, eventId, label, translations, sourceInteractionState(),
     sourceDirectionNumber(importedAvatar.direction), { playerName: activePlayerSelection.profile.displayName }));
 }
 
@@ -1527,12 +1516,11 @@ function move(playerId: string, direction: Direction): void {
     if (playerId !== "player") return;
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
     const networkSide = multiplayer.active && !guestSourceExcursion ? multiplayer.current?.ticket.side ?? null : null;
-    const guestSession = guestUsesSharedSourceWorld();
     const events = sourceMapEvents();
     const facingAvatar = { ...importedAvatar, direction };
     const eventAhead = playerTouchEventInDirection(events, importedAvatar, direction, importedAssets.map.id,
       sourceInteractionState());
-    if (eventAhead !== null && (!guestSession || guestCanRunSourceEvent(eventAhead))) {
+    if (eventAhead !== null && (!isNetworkGuest() || guestCanRunSourceEvent(eventAhead))) {
       importedAvatar = facingAvatar;
       publishCurrentSourceWorld();
       beginSourceSequence(eventAhead, `Événement de contact ${eventAhead.event.id} · ${eventAhead.event.name}`);
@@ -1628,7 +1616,6 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
 async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
   if (sourceBattles.active) return;
   lastPublishedSourceScene = "";
-  lastAppliedPresentationCueId = 0;
   networkSourceScene = null;
   networkServerUrl = serverUrl;
   networkRoomCode = roomCode.trim().toUpperCase();
@@ -1668,7 +1655,6 @@ function disconnectMultiplayer(): void {
   networkRemoteFollowerImage = null;
   networkRemoteFollowerAssetPath = null;
   lastPublishedSourceScene = "";
-  lastAppliedPresentationCueId = 0;
   events = [];
   setAuthoritativeState(initialState(), false);
   viewedMapId = importedAssets === null ? "meadow" : SOURCE_MAP_ID;

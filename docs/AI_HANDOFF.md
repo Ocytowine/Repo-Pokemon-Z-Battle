@@ -642,6 +642,22 @@ alors que le controleur attendait toujours sa validation, laissant `world-input`
 verrouille et donnant l'impression d'un freeze. Une fois le texte ou le choix
 termine, la sequence reprend, applique le soin local puis libere les controles.
 
+Correction de modele Coop du 2026-10-02 : la progression narrative n'est plus
+instanciee par joueur. Les switches, variables et self-switches de l'hote sont la
+reference de l'invite sur toutes les cartes, y compris lorsqu'il se trouve
+temporairement sur une carte differente. L'invite ne peut jamais executer un
+evenement narratif, un autorun ou une boucle parallele concurrente ; seuls ses
+soins, ses transferts et ses rencontres personnelles restent locaux.
+
+Les dialogues et cinematiques de l'hote ne sont plus affiches et ne verrouillent
+plus l'invite. Leurs consequences narratives publiees modifient toutefois aussitot
+les pages actives, obstacles et acces visibles chez lui. Si l'invite rejoint une
+carte avant l'hote, il reste temporairement `away`. Lorsque l'hote arrive ensuite
+sur cette meme carte, le client demande automatiquement son rattachement a
+l'instance partagee ; la room conserve sa position si elle est libre ou choisit
+une case voisine valide. Les deux avatars, suiveurs et collisions sont alors de
+nouveau communs.
+
 La personnalisation active possede maintenant une surcharge en `sessionStorage`.
 Deux onglets de la meme origine peuvent donc publier et conserver des profils
 distincts dans une room ; la copie persistante en `localStorage` reste le profil par
@@ -697,7 +713,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 317 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 318 tests et passe avec le build.
 
 ## Commandes utiles
 

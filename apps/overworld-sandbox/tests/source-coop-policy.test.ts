@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { guestSourceEventAccess, sourceDialoguePresentation } from "../src/source-coop-policy.js";
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceStateWithHostStory } from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
+import { createSourceEventState } from "../src/source-event-state.js";
 
 function page(kinds: readonly string[]): ImportedEventPage {
   return { conditions: { switch1Valid: false, switch2Valid: false, variableValid: false,
@@ -19,9 +20,18 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess(page(["show-text", "set-switches"]))).toBe("blocked");
   });
 
-  it("keeps a personal guest dialogue visible over the observed host scene", () => {
-    expect(sourceDialoguePresentation(true, true)).toBe("local");
-    expect(sourceDialoguePresentation(false, true)).toBe("readonly");
-    expect(sourceDialoguePresentation(false, false)).toBe("none");
+  it("rejoins the shared instance when the host reaches the guest's map", () => {
+    expect(shouldRejoinSharedSourceMap(true, "away", 7, 7)).toBe(true);
+    expect(shouldRejoinSharedSourceMap(true, "away", 6, 7)).toBe(false);
+    expect(shouldRejoinSharedSourceMap(true, "shared", 7, 7)).toBe(false);
+  });
+
+  it("uses the host story even while the guest is on another map", () => {
+    const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 } };
+    const synchronized = sourceStateWithHostStory(local,
+      { switches: { "10": true }, variables: { "2": 7 }, selfSwitches: { "4:2:A": true } }, true);
+    expect(synchronized).toMatchObject({ switches: { "10": true }, variables: { "2": 7 },
+      selfSwitches: { "4:2:A": true } });
+    expect(synchronized.party).toBe(local.party);
   });
 });

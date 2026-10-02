@@ -159,6 +159,13 @@ describe("authoritative battle room", () => {
     expect(joined.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().sourceWorld).toMatchObject({ presence: { opponent: "shared" },
       avatars: { opponent: { x: 0, y: 2, direction: "right" } } });
+
+    room.receive("bob", { type: "setSourcePresence", version: 8,
+      requestId: "guest-away-again", attached: false, avatar: null });
+    const safeFallback = room.receive("bob", { type: "setSourcePresence", version: 8,
+      requestId: "guest-return-occupied", attached: true, avatar: { x: 1, y: 2, direction: "up" } });
+    expect(safeFallback.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().sourceWorld?.avatars.opponent).not.toMatchObject({ x: 1, y: 2 });
   });
 
   it("publishes and persists a host-only read-only source scene", () => {
