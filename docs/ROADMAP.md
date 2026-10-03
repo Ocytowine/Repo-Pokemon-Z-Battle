@@ -1038,6 +1038,56 @@ K.O., avec une protection contre un K.O. provoque uniquement par la migration.
 La mutation reste personnelle en solo, chez l'hote et chez l'invite ; le combat
 et le rendu distant reutilisent les statistiques persistantes deja existantes.
 
+Etape 4 de la fiche detaillee implementee le 2026-10-03 : le catalogue runtime
+expose les talents, descriptions, cibles et champs d'espece verifies dans Z. Les
+traductions francaises extraites ont priorite ; l'entree Pokedex anglaise reste
+explicitement non affichable. Un resolveur commun couvre formes, variantes, genre,
+shiny, face/dos, icones, overworld, empreintes et cris avec replis deterministes.
+Les feuilles de categorie, rubans, shiny, statuts, Pokerus et les 24 Balls sont
+indexees pour la future fiche sans copier les sources dans Git.
+
+Ce meme contrat alimente deja les cartes de collection, suiveurs et combats. En
+Coop, seule l'apparence publique minimale des battlers et suiveurs est repliquee
+et preservee par la room ; toute donnee personnelle demeure locale. L'etape 5
+peut maintenant construire les cinq pages de lecture et decouper les feuilles
+fixes preparees par ce lot.
+
+Etape 5 de la fiche detaillee implementee le 2026-10-03 : un ecran commun en
+lecture s'ouvre depuis l'Equipe, le Ranch et le combat. Ses cinq pages reprennent
+Identite, Historique, Stats, Capacites et Rubans, avec navigation au clavier,
+changement de Pokemon et cri de forme. La fiche lit les donnees persistantes,
+catalogues francais et assets locaux reels ; sa sous-page avancee expose IV/EV,
+bonheur et Puissance Cachee selon les regles controlees dans Z.
+
+Les donnees non disponibles ne sont pas inventees : Pokedex francais, nom du lieu
+historique, etat obscur et cycle complet des oeufs/rubans restent explicites. La
+page Capacites affiche seulement les quatre attaques typees et leurs PP avant le
+lot 6. La consultation reste personnelle en solo comme pour chaque participant
+Coop ; une projection publique minimale testee exclut toutes les metadonnees
+privees et aucune nouvelle information n'est repliquee par la room.
+
+Etape 6 de la fiche detaillee implementee le 2026-10-03 : la page Capacites
+affiche maintenant categorie, puissance, precision, PP et description francaise,
+avec les conventions `???` et tiret du script source. Une selection en deux temps
+permute les emplacements dans le noyau persistant commun a l'Equipe et au Ranch.
+Le pont de combat consomme directement cet ordre lors de la creation de l'equipe ;
+la fiche d'un combat deja actif reste en lecture seule afin de ne pas diverger de
+l'etat autoritaire du tour.
+
+Cette mutation appartient au joueur et suit exactement le meme chemin local en
+solo, chez l'hote et chez l'invite. Elle n'est pas repliquee, tandis que la
+sauvegarde personnelle la restaure apres reconnexion. Le sprite de fiche n'affiche
+plus la feuille horizontale comme une image unique : un canvas la decoupe selon
+les dimensions et `frameCount` du manifeste, puis anime les images au rythme de
+120 ms retenu pour la lisibilite du portage. La reduction d'animations et l'annulation
+des boucles lors d'un changement de Pokemon sont prises en charge.
+
+Correctif du 2026-10-03 : les petites icones des cartes Equipe/Ranch et de la roue
+d'action alternent leurs deux poses source. Leur cadence suit aussi la logique de
+`PokemonIconSprite` : normale au-dessus de la moitie des PV, ralentie sous la
+moitie puis le quart, et figee au K.O. Le rendu de la fiche detaillee a en parallele
+ete accelere de 250 a 120 ms par image a la demande du porteur.
+
 Correctif de boucle sauvage implemente le 2026-10-02 : un `pendingEncounter`
 personnel n'inhibe plus indefiniment les rencontres apres la suppression du bouton
 HUD historique. Le pas suivant reprend automatiquement une rencontre valide ; une

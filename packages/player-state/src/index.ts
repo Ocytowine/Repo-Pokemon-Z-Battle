@@ -1,5 +1,5 @@
 import type { BattleAbility, BattleMove, BattleStats, BattleTeam, BattlerState, HeldItem, MajorStatusState } from "@pokemon-z-battle/battle-engine";
-import type { MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
+import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
 
 export { createDefaultPlayerProfile, parsePlayerProfile, PLAYER_PROFILE_SCHEMA_VERSION,
@@ -137,6 +137,16 @@ export interface PlayerBattleCatalog {
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
     & { readonly id?: number })[];
+}
+
+/** Runtime catalog required by the detailed Pokemon summary; battle-only callers may keep the smaller contracts above. */
+export interface PlayerDetailsCatalog extends PlayerCreationCatalog {
+  readonly pokemon: readonly (PlayerCreationCatalog["pokemon"][number]
+    & Pick<PokemonDefinition, "id" | "kind" | "pokedexEntry" | "effortPoints" | "hiddenAbilities" | "formNames"
+      | "stepsToHatch" | "height" | "weight">)[];
+  readonly moves: readonly (PlayerBattleCatalog["moves"][number]
+    & Pick<MoveDefinition, "targetCode" | "description">)[];
+  readonly abilities: readonly Pick<AbilityDefinition, "id" | "internalName" | "name" | "description">[];
 }
 
 export interface PokemonCreationContext {
@@ -406,6 +416,29 @@ export function movePokemonToPartyFront(party: PlayerPartyState, pokemonId: stri
     members: index === 0 ? [...party.members] : [pokemon, ...party.members.filter((_, memberIndex) => memberIndex !== index)] };
 }
 
+function pokemonWithReorderedMoves(pokemon: PersistentPokemon, fromIndex: number, toIndex: number): PersistentPokemon {
+  if (!integer(fromIndex, 0, pokemon.moves.length - 1) || !integer(toIndex, 0, pokemon.moves.length - 1)) {
+    throw new Error("Position de capacité invalide.");
+  }
+  if (fromIndex === toIndex) return pokemon;
+  const moves = [...pokemon.moves];
+  [moves[fromIndex], moves[toIndex]] = [moves[toIndex]!, moves[fromIndex]!];
+  return { ...pokemon, moves };
+}
+
+/** Swaps two move slots in the owner's canonical party/storage state. Battles consume this same order. */
+export function reorderPokemonMoves(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  pokemonId: string, fromIndex: number, toIndex: number): PlayerPokemonCollectionState {
+  const partyIndex = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  const storageIndex = storage.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (partyIndex >= 0 && storageIndex >= 0) throw new Error("Pokémon dupliqué entre l'équipe et le Ranch.");
+  if (partyIndex < 0 && storageIndex < 0) throw new Error("Pokémon absent de la collection.");
+  if (partyIndex >= 0) return { party: { ...party, members: party.members.map((pokemon, index) =>
+    index === partyIndex ? pokemonWithReorderedMoves(pokemon, fromIndex, toIndex) : pokemon) }, storage };
+  return { party, storage: { ...storage, members: storage.members.map((pokemon, index) =>
+    index === storageIndex ? pokemonWithReorderedMoves(pokemon, fromIndex, toIndex) : pokemon) } };
+}
+
 export function healPlayerParty(party: PlayerPartyState): PlayerPartyState {
   return { ...party, members: party.members.map((member) => ({ ...member, hp: member.stats.maxHp, majorStatus: null,
     moves: member.moves.map((slot) => ({ ...slot, pp: slot.maxPp })) })) };
@@ -642,7 +675,8 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
     hp: member.hp, majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
-    moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })) };
+    moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
+    appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
 }
 
 export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: PlayerBattleCatalog): BattleTeam {

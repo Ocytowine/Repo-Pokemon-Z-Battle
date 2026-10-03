@@ -1,5 +1,6 @@
 import type { PersistentPokemon, PlayerCreationCatalog, PlayerPartyState,
   PlayerPokemonStorageState } from "@pokemon-z-battle/player-state";
+import { resolvePokemonAsset, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 
 export type SourcePokemonLocation = "team" | "ranch";
 export type SourcePokemonSort = "number" | "name" | "current-power" | "potential-power" | "level";
@@ -55,8 +56,12 @@ export function sourcePokemonIconUrl(number: number): string {
   return `/__pokemon-z/source/Graphics/Icons/icon${String(number).padStart(3, "0")}.png`;
 }
 
+function sourcePokemonAssetUrl(path: string): string {
+  return `/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`;
+}
+
 export function createSourcePokemonCollection(party: PlayerPartyState, ranch: PlayerPokemonStorageState,
-  catalog: PlayerCreationCatalog): readonly SourcePokemonCollectionEntry[] {
+  catalog: PlayerCreationCatalog, assets?: PokemonAssetsManifest): readonly SourcePokemonCollectionEntry[] {
   const definitions = new Map(catalog.pokemon.map((definition) => [definition.internalName, definition]));
   const moves = new Map(catalog.moves.map((move) => [move.internalName, move]));
   const entry = (pokemon: PersistentPokemon, location: SourcePokemonLocation,
@@ -64,10 +69,13 @@ export function createSourcePokemonCollection(party: PlayerPartyState, ranch: Pl
     const definition = definitions.get(pokemon.species);
     if (definition === undefined) return null;
     const number = definition.id ?? 0;
+    const record = assets?.records.find((candidate) => candidate.id === number);
+    const icon = record === undefined ? null : resolvePokemonAsset(record, { kind: "icon", form: pokemon.metadata.form,
+      shiny: pokemon.metadata.shiny, female: pokemon.metadata.gender === "female" }).asset;
     return { pokemon, location, teamIndex, number, speciesName: definition.name,
       displayName: pokemon.nickname ?? definition.name, types: [...definition.types],
       currentPower: statTotal(pokemon.stats), potentialPower: baseStatTotal(definition.baseStats),
-      iconUrl: sourcePokemonIconUrl(number), moves: pokemon.moves.map((slot) => {
+      iconUrl: icon === null ? sourcePokemonIconUrl(number) : sourcePokemonAssetUrl(icon.path), moves: pokemon.moves.map((slot) => {
         const definition = moves.get(slot.internalName);
         return { internalName: slot.internalName, name: definition?.name ?? slot.internalName,
           type: definition?.type ?? "UNKNOWN", pp: slot.pp, maxPp: slot.maxPp };

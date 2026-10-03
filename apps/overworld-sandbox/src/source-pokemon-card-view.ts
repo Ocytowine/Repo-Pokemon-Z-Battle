@@ -13,6 +13,22 @@ export interface SourcePokemonCardOptions {
   readonly interactive?: boolean;
 }
 
+function pokemonIconCycleDuration(entry: SourcePokemonCollectionEntry): number | null {
+  if (entry.pokemon.hp <= 0) return null;
+  const healthRatio = entry.pokemon.hp / entry.pokemon.stats.maxHp;
+  if (healthRatio <= 0.25) return 1_000;
+  if (healthRatio <= 0.5) return 500;
+  return 250;
+}
+
+/** Two-frame source icon shared by collection cards and their contextual action wheel. */
+export function sourcePokemonIconHtml(entry: SourcePokemonCollectionEntry): string {
+  const duration = pokemonIconCycleDuration(entry);
+  const animated = duration === null ? "" : " animated";
+  const timing = duration === null ? "" : `;--pokemon-icon-cycle:${duration}ms`;
+  return `<span class="source-pokemon-icon${animated}" style="background-image:url('${escapeHtml(entry.iconUrl)}')${timing}" aria-hidden="true"></span>`;
+}
+
 /** Présentation commune destinée à l'équipe, au Ranch et aux sélections de combat. */
 export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
   options: SourcePokemonCardOptions = {}): string {
@@ -29,7 +45,7 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
   }).join("");
   const hpPercent = Math.max(0, Math.min(100, Math.round((entry.pokemon.hp / entry.pokemon.stats.maxHp) * 100)));
   return `<${element}${attributes} class="source-pokemon-card${selected}${active}">
-    <span class="source-pokemon-icon" style="background-image:url('${entry.iconUrl}')" aria-hidden="true"></span>
+    ${sourcePokemonIconHtml(entry)}
     <span class="source-pokemon-card-copy"><small>#${String(entry.number).padStart(3, "0")} · ${entry.location === "team" ? "ÉQUIPE" : "RANCH"}</small><strong>${escapeHtml(entry.displayName)} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span><span class="source-pokemon-vitals"><i><b style="width:${hpPercent}%"></b></i><em>${entry.pokemon.hp}/${entry.pokemon.stats.maxHp} PV</em></span></span>
     <span class="source-pokemon-moves" aria-label="Capacités de ${escapeHtml(entry.displayName)}">${moves}</span>
   </${element}>`;

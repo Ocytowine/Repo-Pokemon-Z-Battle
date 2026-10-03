@@ -109,12 +109,14 @@ describe("authoritative battle room", () => {
     expect(blocked[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
       state: { avatars: { player: { x: 1, y: 1, direction: "right" } } } });
     const guestFollower = room.receive("bob", { type: "setSourceFollower", version: 8,
-      requestId: "source-guest-follower", species: "CHESPIN" });
+      requestId: "source-guest-follower", species: "CHESPIN",
+      appearance: { form: 1, shiny: true, gender: "female" } });
     expect(guestFollower.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     room.receive("bob", { type: "moveAvatar", version: 8, requestId: "source-guest-1",
       direction: "left", sequence: 1 });
     expect(room.snapshot().sourceWorld?.avatars.opponent).toMatchObject({ x: 0, y: 2, direction: "left" });
-    expect(room.snapshot().sourceWorld?.followers.opponent).toMatchObject({ species: "CHESPIN", x: 1, y: 2 });
+    expect(room.snapshot().sourceWorld?.followers.opponent).toMatchObject({ species: "CHESPIN", x: 1, y: 2,
+      appearance: { form: 1, shiny: true, gender: "female" } });
     const blockedByGuestFollower = room.receive("alice", { type: "moveAvatar", version: 8,
       requestId: "source-host-follower-collision", direction: "down", sequence: 2 });
     expect(blockedByGuestFollower[1]?.message).toMatchObject({ type: "sourceWorldUpdated",

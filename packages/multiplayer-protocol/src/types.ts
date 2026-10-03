@@ -1,7 +1,8 @@
 import type { BattleSide, BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
-import type { SourceAvatarSnapshot, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot } from "./source-world.js";
+import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, SourceWorldHostState,
+  SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 
 export const PROTOCOL_VERSION = 8 as const;
@@ -69,7 +70,8 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
   | (RequestedMessage & { readonly type: "setSourcePresence"; readonly attached: boolean;
       readonly avatar: SourceAvatarSnapshot | null })
-  | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null })
+  | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;
+      readonly appearance?: SourceFollowerSnapshot["appearance"] })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 

@@ -87,13 +87,18 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     || !Array.isArray(value.members) || value.members.length < 1 || value.members.length > 6
     || !safeInteger(value.activeIndex, 0, value.members.length - 1)) return false;
   const valid = value.members.every((member) => {
-    if (!isRecord(member) || !hasExactKeys(member,
-      ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"])
+    const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
+    if (!isRecord(member) || !memberKeys.every((key) => key in member)
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
       || !isRecord(member.stats) || !isRecord(member.stages)
       || !Array.isArray(member.moves) || member.moves.length < 1 || member.moves.length > 4) return false;
+    if (member.appearance !== undefined && (!isRecord(member.appearance)
+      || !hasExactKeys(member.appearance, ["form", "shiny", "gender"])
+      || !safeInteger(member.appearance.form, 0, 999) || typeof member.appearance.shiny !== "boolean"
+      || member.appearance.gender !== null && !["male", "female", "genderless"].includes(String(member.appearance.gender)))) return false;
     const stats = member.stats;
     const stages = member.stages;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
@@ -204,8 +209,16 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("setSourceWorld mal formé");
       }
     case "setSourceFollower":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "species"]) || !isIdentifier(value.requestId)
-        || value.species !== null && (typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species))) {
+      if (Object.keys(value).some((key) => !["type", "version", "requestId", "species", "appearance"].includes(key))
+        || !["type", "version", "requestId", "species"].every((key) => key in value)
+        || !isIdentifier(value.requestId)
+        || value.species !== null && (typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species))
+        || value.appearance !== undefined && (!isRecord(value.appearance)
+          || !hasExactKeys(value.appearance, ["form", "shiny", "gender"])
+          || !Number.isInteger(value.appearance.form) || Number(value.appearance.form) < 0
+          || Number(value.appearance.form) > 999 || typeof value.appearance.shiny !== "boolean"
+          || value.appearance.gender !== null
+            && !["male", "female", "genderless"].includes(String(value.appearance.gender)))) {
         return invalid("setSourceFollower mal formé");
       }
       return value as unknown as ClientMessage;

@@ -1,7 +1,7 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
-  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceFollowerSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
@@ -29,7 +29,7 @@ interface MutableNetworkSession {
   snapshot: RoomSnapshot | null;
   submittedTurn: number | null;
   profile: NetworkPlayerProfile;
-  sourceFollowerSpecies: string | null | undefined;
+  sourceFollowerSignature: string | undefined;
 }
 
 export interface NetworkSessionView {
@@ -183,14 +183,15 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), scene }));
   }
 
-  public publishSourceFollower(species: string | null): void {
+  public publishSourceFollower(species: string | null, appearance?: SourceFollowerSnapshot["appearance"]): void {
     const session = this.activeSession;
     const socket = session?.socket;
-    if (session === null || session.sourceFollowerSpecies === species || socket === null || socket === undefined
+    const signature = JSON.stringify({ species, appearance });
+    if (session === null || session.sourceFollowerSignature === signature || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return;
-    session.sourceFollowerSpecies = species;
+    session.sourceFollowerSignature = signature;
     socket.send(JSON.stringify({ type: "setSourceFollower", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), species }));
+      requestId: crypto.randomUUID(), species, ...(appearance === undefined ? {} : { appearance }) }));
   }
 
   public challengePlayer(team: BattleTeam): void {
@@ -264,7 +265,7 @@ export class OverworldNetworkSession {
       snapshot: null,
       submittedTurn: null,
       profile,
-      sourceFollowerSpecies: undefined,
+      sourceFollowerSignature: undefined,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));

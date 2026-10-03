@@ -71,6 +71,7 @@ export interface SourceMenuViewCallbacks {
   readonly onMovementTestOverride: (enabled: boolean) => void;
   readonly onDive: () => void;
   readonly onPokemonLead: (pokemonId: string) => void;
+  readonly onPokemonDetails: (pokemonId: string) => void;
 }
 
 export class SourceMenuView {
@@ -101,7 +102,7 @@ export class SourceMenuView {
   private renderTeam(content: HTMLElement, model: SourceMenuViewModel): void {
     const members = model.eventState.party.members;
     const entries = createSourcePokemonCollection(model.eventState.party, model.eventState.ranch,
-      model.assets.battleCatalog).filter((entry) => entry.location === "team");
+      model.assets.battleCatalog, model.assets.pokemonAssets).filter((entry) => entry.location === "team");
     if (this.selectedTeamPokemonId !== null && !entries.some((entry) => entry.pokemon.id === this.selectedTeamPokemonId)) {
       this.selectedTeamPokemonId = null;
     }
@@ -131,6 +132,9 @@ export class SourceMenuView {
     });
     content.querySelector<HTMLButtonElement>('[data-pokemon-action="make-lead"]')?.addEventListener("click", () => {
       if (selected !== null) this.callbacks.onPokemonLead(selected.pokemon.id);
+    });
+    content.querySelector<HTMLButtonElement>('[data-pokemon-action="details"]')?.addEventListener("click", () => {
+      if (selected !== null) this.callbacks.onPokemonDetails(selected.pokemon.id);
     });
   }
 

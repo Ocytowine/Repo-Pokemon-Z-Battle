@@ -225,6 +225,32 @@ champs de combat deja prevus sont visibles a distance.
   categories, statuts et rubans ;
 - documenter chaque repli quand un asset de Z est absent.
 
+Etape implementee le 2026-10-03 : `PlayerDetailsCatalog` expose au runtime les
+talents et leurs descriptions, les descriptions et cibles de capacites, ainsi que
+numero, espece, formes, EV donnes, talents caches, pas d'eclosion, taille et poids.
+Noms, especes, formes, capacites et talents utilisent les catalogues francais
+extraits. L'entree Pokedex restant uniquement disponible dans le catalogue source
+anglais, elle est conservee comme donnee de provenance mais ne sera pas affichee
+par la fiche tant qu'une source francaise fiable n'aura pas ete raccordee.
+
+Un resolveur unique selectionne desormais battler face/dos, icone, sprite
+overworld, empreinte et cri selon forme, variante, shiny et genre. Son ordre de
+repli est deterministe et signale les dimensions absentes : variante exacte puis
+neutre, forme exacte puis forme de base, shiny puis normal, femelle puis neutre ;
+un dos ne peut jamais etre remplace silencieusement par une face si un dos existe.
+La forme `0` et la forme source `null` representent toutes deux la forme de base.
+Les cartes de collection, les suiveurs locaux/distants, les combats et les cris
+passent par ce contrat. `category.png`, `ribbons.png`, `shiny.png`, `statuses.PNG`,
+`summaryPokerus.png` et les 24 `summaryballNN.png` sont indexes depuis le manifeste
+local pour la fiche de l'etape 5, sans copier de fichier du jeu dans Git.
+
+En Coop, le combat transporte seulement l'apparence publique du battler. Un
+suiveur invite publie espece, forme, shiny et genre ; la room valide et conserve
+ce petit etat lors d'un changement de carte ou d'une reconnexion. Identifiant de
+Dresseur, IV, EV, objet, historique et collection ne sont jamais ajoutes au
+snapshot. Les feuilles de categories, statuts et rubans sont seulement preparees
+ici : leur decoupage et leur presentation appartiennent a l'etape 5.
+
 ### Etape 5 - Fiche en lecture
 
 - implementer les cinq onglets et la navigation equipe/Ranch/combat ;
@@ -232,11 +258,69 @@ champs de combat deja prevus sont visibles a distance.
 - conserver les cas speciaux non portes comme etats explicites, pas comme fausses
   donnees de demonstration.
 
+Etape implementee le 2026-10-03 apres relecture de
+`134-65688308-pscreen-summary.rb`, des statuts, de `$BallTypes` et des 80 rubans
+de Z. Le bouton `Details` de la roue ouvre maintenant un resume commun depuis
+l'Equipe ou le Ranch ; un bouton `Resume` donne acces au meme ecran en lecture
+seule pendant un combat. Les cinq pages `Identite`, `Historique`, `Stats`,
+`Capacites` et `Rubans` sont navigables au clic ou avec les fleches. Haut/bas
+change de Pokemon dans la collection du contexte et rejoue son vrai cri, comme
+dans l'ecran source.
+
+La colonne commune affiche sprite de forme/genre/shiny, niveau, statut, Ball,
+objet, Pokerus et marques. Les pages couvrent numero, espece, types, DO et ID
+public, experience, dimensions, nature, origine, caracteristique, statistiques et
+effets de nature, talent, appreciation IV par etoiles, puis la sous-page avancee
+IV/EV, bonheur et type de Puissance Cachee. Les quatre capacites et leurs PP sont
+lisibles ; descriptions, categorie, puissance, precision et reorganisation sont
+volontairement reservees a l'etape 6. Les rubans numeriques peuvent etre decoupes
+depuis la feuille source ; les identifiants encore symboliques restent affiches
+en texte plutot que d'inventer une correspondance.
+
+Les informations absentes restent explicites : lieu historique sous forme
+`Carte NNN` lorsqu'aucun libelle persistant n'existe, entree Pokedex francaise
+indisponible, etat obscur non represente, et presentation d'oeuf limitee aux pas
+restants. `createPublicSourcePokemonSummary` produit separement une projection
+publique minimale et marque Historique, Stats, Capacites et Rubans comme prives.
+La fiche utilise uniquement la sauvegarde personnelle en solo, chez l'hote et
+chez l'invite ; elle n'ajoute aucune donnee aux snapshots de room.
+
 ### Etape 6 - Capacites et ordre
 
 - afficher descriptions, categorie, puissance, precision et PP ;
 - reordonner les capacites via une operation personnelle persistante commune ;
 - raccorder le nouvel ordre au combat sans seconde implementation.
+
+Etape implementee le 2026-10-03 apres controle de `pbMoveSelection` dans
+`134-65688308-pscreen-summary.rb`. La page Capacites propose les quatre
+emplacements et affiche le nom et l'icone de type, les PP courants/maximaux, la
+categorie source, la puissance, la precision et la description francaise. Les
+valeurs speciales de Z sont conservees : puissance `1` affiche `???`, puissance
+ou precision `0` affiche un tiret. Selectionner `Reorganiser`, puis une seconde
+capacite, permute reellement les deux emplacements.
+
+`reorderPokemonMoves` est une operation pure du noyau `player-state`, commune a
+l'equipe et au Ranch. Son resultat est persiste dans la sauvegarde personnelle et
+`playerPartyToBattleTeam` consomme deja les capacites dans cet ordre : le combat
+suivant ne possede donc aucune implementation parallele. Une fiche ouverte depuis
+un combat actif reste volontairement en lecture seule pour ne pas modifier un
+etat de tour deja cree. Autorite et audience restent celles du proprietaire en
+solo, chez l'hote comme chez l'invite ; aucune intention ni donnee privee n'est
+repliquee a la room, et une reconnexion restaure l'ordre par la sauvegarde locale.
+
+Le sprite de la colonne commune est aussi corrige dans ce lot. Les battlers de Z
+sont des feuilles horizontales, pas des images fixes : le canvas decoupe maintenant
+`frameCount` images a partir des dimensions du manifeste et les joue toutes les
+120 ms pour obtenir le rythme visuel retenu par le portage. Le
+changement ou la fermeture de fiche annule la boucle precedente et la preference
+systeme de reduction des animations conserve uniquement la premiere image.
+
+Correctif visuel du meme jalon : les icones 128 x 64 des cartes Equipe/Ranch et
+de leur roue d'action alternent maintenant leurs deux poses 64 x 64, comme
+`PokemonIconSprite` dans Z. Un Pokemon au-dessus de la moitie de ses PV effectue
+un cycle en 250 ms ; l'animation ralentit a 500 puis 1 000 ms sous la moitie et le
+quart des PV, et reste sur sa premiere pose au K.O. La preference de reduction des
+animations est respectee.
 
 ### Etape 7 - Progression EV et bonheur
 

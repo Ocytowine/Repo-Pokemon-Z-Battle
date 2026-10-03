@@ -557,6 +557,71 @@ est personnelle et identique pour le solo, l'hote et l'invite ; elle n'ajoute ri
 au snapshot narratif. Les filtres de puissance du Ranch refleteront donc les
 statistiques exactes apres le premier chargement suivant cette version.
 
+Catalogues et assets de fiche implementes le 2026-10-03 : le chargeur overworld
+construit maintenant un `PlayerDetailsCatalog` avec les champs d'espece manquants,
+les talents, les cibles et les descriptions. Les libelles disponibles passent par
+les categories francaises extraites. L'entree Pokedex de `pokemon.json` reste en
+anglais et ne doit pas etre presentee dans la future fiche avant raccord d'une
+traduction fiable.
+
+`local-assets` fournit un resolveur generique et teste pour battlers face/dos,
+icones, overworld, empreintes et cris, avec formes, variantes, shiny et genre. La
+forme persistante `0` equivaut a la forme de base `null` du manifeste. Cartes de
+collection, suiveurs, combats et cris reutilisent ce resolveur. Les assets fixes
+de resume (categorie, rubans, shiny, statuts, Pokerus et 24 Balls) sont indexes
+depuis `asset-manifest.json` mais ne sont pas copies dans Git et ne sont pas encore
+rendus : cela appartient a l'ecran de lecture de l'etape suivante.
+
+Le raccord Coop est fait dans le meme lot. Les battlers autoritaires portent leur
+apparence publique ; un suiveur invite publie uniquement espece, forme, shiny et
+genre. Le protocole refuse les champs prives et la room conserve cette apparence
+pendant les replacements et reconnexions. IV, EV, identite Dresseur, objet,
+historique et contenu du Ranch restent personnels.
+
+Fiche en lecture implementee le 2026-10-03 : `source-pokemon-summary.ts` fournit
+le modele et la vue communs Equipe/Ranch/combat. Le bouton `Details` des cartes et
+le bouton `Resume` du combat ouvrent les cinq pages de Z. La navigation clic ou
+fleches change de page et de Pokemon ; chaque changement joue le cri resolu selon
+la forme. Sprite, Ball, statut, shiny, Pokerus et rubans utilisent les assets
+locaux indexes, sans copie dans Git.
+
+Identite, historique, stats, talent et sous-page IV/EV/bonheur/Puissance Cachee
+sont deja alimentes par la sauvegarde et le catalogue reels. La caracteristique
+reproduit le departage par `personalID % 6` de Z et l'appreciation IV reprend ses
+seuils 6/16/25. La page Capacites reste volontairement sommaire (type et PP) :
+descriptions, categorie, puissance, precision et changement d'ordre constituent
+l'etape 6. Les libelles de lieu non persistes restent `Carte NNN`, l'entree
+Pokedex anglaise n'est pas affichee, et les boucles oeuf/obscur/rubans non portees
+sont signalees plutot que simulees.
+
+Autorite : cette consultation est personnelle et fonctionne avec le meme composant
+pour le solo, l'hote et l'invite. Elle ne publie rien. Une projection publique
+pure et testee ne contient que l'identite visuelle, le niveau, les types et le DO
+public ; elle exclut explicitement historique, IV/EV, bonheur, objet et origine.
+
+Etape 6 de la fiche implementee le 2026-10-03 : la page Capacites utilise les
+definitions francaises completes pour afficher icone de type, categorie, puissance,
+precision, PP et description. Les sentinelles du script source sont respectees
+(`power == 1` devient `???`, zero devient un tiret). `reorderPokemonMoves` permute
+deux emplacements dans le modele canonique `player-state`, aussi bien en Equipe
+qu'au Ranch, puis persiste le resultat. `playerPartyToBattleTeam` conserve deja
+l'ordre du tableau, donc les futurs combats l'utilisent sans seconde logique ;
+un combat en cours expose seulement la fiche en lecture seule.
+
+Le contrat solo/Coop reste personnel : l'hote et l'invite utilisent le meme noyau
+local, rien n'est publie dans la room et la sauvegarde personnelle restaure l'ordre
+apres reconnexion. Le sprite du resume est maintenant reellement anime. Les PNG
+de battler de Z regroupent leurs images horizontalement ; le canvas decoupe la
+feuille avec les dimensions et `frameCount` extraits, puis avance toutes les
+120 ms selon le rythme visuel retenu apres recette. La boucle est annulee
+au changement/fermeture et `prefers-reduced-motion` fige la premiere image.
+
+Correctif visuel du 2026-10-03 : `sourcePokemonIconHtml` anime les deux poses
+64 x 64 des icones de carte et de la roue d'action sans changer le resolveur de
+forme/genre/shiny. La cadence reproduit les paliers de `PokemonIconSprite` selon
+les PV (cycle de 250, 500 ou 1 000 ms) et le K.O. reste fixe. Cette presentation
+est purement locale et ne change ni la sauvegarde ni le contrat Coop.
+
 L'autorun d'entree EV035 est egalement complet. `weather` gere effacement, pluie,
 orage et neige dans une couche CSS legere ; `erase-event` est absorbe par le cycle
 de visite de carte, qui ne lance deja l'autorun qu'une fois par chargement. EV040
@@ -910,7 +975,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 342 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 361 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

@@ -238,7 +238,9 @@ export class AuthoritativeBattleRoom {
     if (message.type === "setSourceWorld") return this.setSourceWorld(player, message.requestId, message.world);
     if (message.type === "setSourcePresence") return this.setSourcePresence(player, message.requestId,
       message.attached, message.avatar);
-    if (message.type === "setSourceFollower") return this.setSourceFollower(player, message.requestId, message.species);
+    if (message.type === "setSourceFollower") {
+      return this.setSourceFollower(player, message.requestId, message.species, message.appearance);
+    }
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
@@ -274,7 +276,8 @@ export class AuthoritativeBattleRoom {
     const withPresence = { ...nextWorld, presence: { ...nextWorld.presence, opponent: guestPresence } };
     this.#sourceWorldState = previousGuestFollower === undefined ? withPresence : { ...withPresence,
       followers: { ...withPresence.followers, opponent: sameMap ? previousGuestFollower
-        : this.sourceFollowerSpawn(withPresence, "opponent", previousGuestFollower.species) } };
+        : { ...this.sourceFollowerSpawn(withPresence, "opponent", previousGuestFollower.species),
+          ...(previousGuestFollower.appearance === undefined ? {} : { appearance: previousGuestFollower.appearance }) } } };
     if (!sameMap) this.#sourceSceneState = null;
     this.#revision += 1;
     return [
@@ -301,8 +304,9 @@ export class AuthoritativeBattleRoom {
     this.#sourceWorldState = { ...world,
       avatars: { ...world.avatars, opponent: nextAvatar },
       followers: guestFollower === undefined ? world.followers : { ...world.followers,
-        opponent: this.sourceFollowerSpawn({ ...world, avatars: { ...world.avatars, opponent: nextAvatar } },
-          "opponent", guestFollower.species) },
+        opponent: { ...this.sourceFollowerSpawn({ ...world, avatars: { ...world.avatars, opponent: nextAvatar } },
+          "opponent", guestFollower.species),
+        ...(guestFollower.appearance === undefined ? {} : { appearance: guestFollower.appearance }) } },
       presence: { ...world.presence, opponent: attached ? "shared" : "away" } };
     this.#revision += 1;
     return [
@@ -311,14 +315,16 @@ export class AuthoritativeBattleRoom {
     ];
   }
 
-  private setSourceFollower(player: RoomPlayer, requestId: string, species: string | null): readonly RoomDispatch[] {
+  private setSourceFollower(player: RoomPlayer, requestId: string, species: string | null,
+    appearance?: SourceFollowerSnapshot["appearance"]): readonly RoomDispatch[] {
     const world = this.#sourceWorldState;
     if (world === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune carte narrative partagee.")];
     }
     const followers: Partial<Record<BattleSide, SourceFollowerSnapshot>> = { ...world.followers };
     if (species === null) delete followers[player.side];
-    else followers[player.side] = this.sourceFollowerSpawn(world, player.side, species);
+    else followers[player.side] = { ...this.sourceFollowerSpawn(world, player.side, species),
+      ...(appearance === undefined ? {} : { appearance }) };
     this.#sourceWorldState = { ...world, followers };
     this.#revision += 1;
     return [

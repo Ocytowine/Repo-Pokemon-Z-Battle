@@ -106,10 +106,14 @@ describe("overworld network session", () => {
       dialogue: { label: "Crisanto", text: "Attention !", choices: [] }, actors: [], presentation: null });
     expect(JSON.parse(sockets[0]?.sent[1] ?? "{}")).toMatchObject({ type: "setSourceScene",
       scene: { mapId: 3, sequenceActive: true } });
-    session.publishSourceFollower("FENNEKIN");
-    session.publishSourceFollower("FENNEKIN");
-    expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
-    expect(sockets[0]?.sent).toHaveLength(3);
+    const followerAppearance = { form: 1, shiny: true, gender: "female" as const };
+    session.publishSourceFollower("FENNEKIN", followerAppearance);
+    session.publishSourceFollower("FENNEKIN", followerAppearance);
+    expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceFollower", species: "FENNEKIN",
+      appearance: followerAppearance });
+    session.publishSourceFollower("FENNEKIN", { ...followerAppearance, shiny: false });
+    expect(JSON.parse(sockets[0]?.sent[3] ?? "{}")).toMatchObject({ appearance: { shiny: false } });
+    expect(sockets[0]?.sent).toHaveLength(4);
 
     session.disconnect();
     expect(session.active).toBe(false);

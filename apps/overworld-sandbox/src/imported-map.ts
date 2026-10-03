@@ -1,6 +1,8 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { EMPTY_SOURCE_EVENT_STATE, selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
-import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
+import type { PlayerDetailsCatalog } from "@pokemon-z-battle/player-state";
+import { parsePokemonAssetsManifest, resolvePokemonSummaryAssets,
+  type PokemonAssetsManifest, type PokemonSummaryAssets } from "@pokemon-z-battle/local-assets";
 import type { SourceShopItem } from "./source-economy.js";
 import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.js";
 
@@ -99,7 +101,9 @@ export interface ImportedMapAssets {
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
   readonly pokemonOverworldPaths: ReadonlyMap<string, string>;
-  readonly battleCatalog: PlayerCreationCatalog;
+  readonly battleCatalog: PlayerDetailsCatalog;
+  readonly pokemonAssets: PokemonAssetsManifest;
+  readonly summaryAssets: PokemonSummaryAssets;
   readonly trainers: readonly ImportedTrainer[];
   readonly trainerTypes: readonly ImportedTrainerType[];
   readonly encounter: ImportedEncounterTable | null;
@@ -505,18 +509,29 @@ function localizedNames(localizationValue: unknown, category: string): ReadonlyM
   return names;
 }
 
-function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localizationValue: unknown): PlayerCreationCatalog {
-  if (!isRecord(pokemonValue) || !Array.isArray(pokemonValue.records) || !isRecord(movesValue) || !Array.isArray(movesValue.records)) {
-    throw new Error("Les catalogues Pokémon et capacités sont invalides.");
+function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitiesValue: unknown,
+  localizationValue: unknown): PlayerDetailsCatalog {
+  if (!isRecord(pokemonValue) || !Array.isArray(pokemonValue.records) || !isRecord(movesValue) || !Array.isArray(movesValue.records)
+    || !isRecord(abilitiesValue) || !Array.isArray(abilitiesValue.records)) {
+    throw new Error("Les catalogues Pokémon, capacités et talents sont invalides.");
   }
   const pokemonNames = localizedNames(localizationValue, "pokemonNames");
+  const pokemonKinds = localizedNames(localizationValue, "pokemonKinds");
+  const pokemonFormNames = localizedNames(localizationValue, "pokemonFormNames");
   const moveNames = localizedNames(localizationValue, "moveNames");
+  const moveDescriptions = localizedNames(localizationValue, "moveDescriptions");
+  const abilityNames = localizedNames(localizationValue, "abilityNames");
+  const abilityDescriptions = localizedNames(localizationValue, "abilityDescriptions");
   const pokemon = pokemonValue.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string" || !Array.isArray(entry.types)
       || !entry.types.every((type) => typeof type === "string") || !isRecord(entry.baseStats) || !Array.isArray(entry.abilities)
       || typeof entry.growthRate !== "string" || !Number.isInteger(entry.baseExperience) || (entry.baseExperience as number) < 1
       || typeof entry.genderRate !== "string" || !Number.isInteger(entry.happiness)
       || (entry.happiness as number) < 0 || (entry.happiness as number) > 255
+      || typeof entry.kind !== "string" || typeof entry.pokedexEntry !== "string" || !isRecord(entry.effortPoints)
+      || !Array.isArray(entry.hiddenAbilities) || !entry.hiddenAbilities.every((ability) => typeof ability === "string")
+      || !Array.isArray(entry.formNames) || !entry.formNames.every((form) => typeof form === "string")
+      || !Number.isInteger(entry.stepsToHatch) || !Number.isFinite(entry.height) || !Number.isFinite(entry.weight)
       || !entry.abilities.every((ability) => typeof ability === "string") || !Array.isArray(entry.levelUpMoves)) {
       throw new Error("Une définition de Pokémon est invalide.");
     }
@@ -530,25 +545,46 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, localiza
       if (!isRecord(move) || !Number.isInteger(move.level) || typeof move.move !== "string") throw new Error("Une capacité de niveau est invalide.");
       return { level: move.level as number, move: move.move };
     });
+    const effortPoints = entry.effortPoints;
+    const effort = (name: string): number => {
+      const value = effortPoints[name];
+      if (!Number.isInteger(value) || (value as number) < 0) throw new Error("Un rendement EV est invalide.");
+      return value as number;
+    };
     return { id: entry.id as number, internalName: entry.internalName, name: pokemonNames.get(entry.id as number) ?? entry.name, types: entry.types as string[],
       baseStats: { hp: stat("hp"), attack: stat("attack"), defense: stat("defense"), speed: stat("speed"),
         specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
       abilities: entry.abilities as string[], levelUpMoves, growthRate: entry.growthRate,
-      baseExperience: entry.baseExperience as number, genderRate: entry.genderRate, happiness: entry.happiness as number };
+      baseExperience: entry.baseExperience as number, genderRate: entry.genderRate, happiness: entry.happiness as number,
+      kind: pokemonKinds.get(entry.id as number) ?? entry.kind, pokedexEntry: entry.pokedexEntry,
+      effortPoints: { hp: effort("hp"), attack: effort("attack"), defense: effort("defense"), speed: effort("speed"),
+        specialAttack: effort("specialAttack"), specialDefense: effort("specialDefense") },
+      hiddenAbilities: entry.hiddenAbilities as string[],
+      formNames: pokemonFormNames.get(entry.id as number)?.split(",").map((name) => name.trim()) ?? entry.formNames as string[],
+      stepsToHatch: entry.stepsToHatch as number, height: entry.height as number, weight: entry.weight as number };
   });
   const moves = movesValue.records.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string"
       || typeof entry.functionCode !== "string" || !Number.isInteger(entry.power) || typeof entry.type !== "string"
       || !["Physical", "Special", "Status"].includes(String(entry.category)) || !Number.isInteger(entry.accuracy)
-      || !Number.isInteger(entry.pp) || !Number.isInteger(entry.priority) || !Number.isInteger(entry.effectChance) || typeof entry.flags !== "string") {
+      || !Number.isInteger(entry.pp) || !Number.isInteger(entry.priority) || !Number.isInteger(entry.effectChance) || typeof entry.flags !== "string"
+      || typeof entry.targetCode !== "string" || typeof entry.description !== "string") {
       throw new Error("Une définition de capacité est invalide.");
     }
     return { id: entry.id as number, internalName: entry.internalName, name: moveNames.get(entry.id as number) ?? entry.name, functionCode: entry.functionCode,
       power: entry.power as number, type: entry.type, category: entry.category as "Physical" | "Special" | "Status",
       accuracy: entry.accuracy as number, pp: entry.pp as number, priority: entry.priority as number,
-      effectChance: entry.effectChance as number, flags: entry.flags };
+      effectChance: entry.effectChance as number, flags: entry.flags, targetCode: entry.targetCode,
+      description: moveDescriptions.get(entry.id as number) ?? entry.description };
   });
-  return { pokemon, moves };
+  const abilities = abilitiesValue.records.map((entry) => {
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string"
+      || typeof entry.name !== "string" || typeof entry.description !== "string") throw new Error("Une définition de talent est invalide.");
+    return { id: entry.id as number, internalName: entry.internalName,
+      name: abilityNames.get(entry.id as number) ?? entry.name,
+      description: abilityDescriptions.get(entry.id as number) ?? entry.description };
+  });
+  return { pokemon, moves, abilities };
 }
 
 const jsonCache = new Map<string, Promise<unknown>>();
@@ -623,12 +659,13 @@ function parsePokemonOverworldPaths(value: unknown): ReadonlyMap<string, string>
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, pokemonAssetsValue, movesValue, encountersValue,
-    battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
+    movesValue, abilitiesValue, encountersValue, battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/pokemon-assets.json"),
-    fetchJson("/__pokemon-z/data/moves.json"),
+    fetchJson("/__pokemon-z/data/asset-manifest.json"), fetchJson("/__pokemon-z/data/moves.json"),
+    fetchJson("/__pokemon-z/data/abilities.json"),
     fetchJson("/__pokemon-z/data/encounters.json"),
     fetchJson("/__pokemon-z/data/map-battle-metadata.json"),
     fetchJson("/__pokemon-z/data/trainers.json"), fetchJson("/__pokemon-z/data/trainer-types.json"),
@@ -639,7 +676,9 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const items = parseImportedItems(itemsValue, localizationValue);
   const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
-  const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, localizationValue);
+  const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, abilitiesValue, localizationValue);
+  const pokemonAssets = parsePokemonAssetsManifest(pokemonAssetsValue);
+  const summaryAssets = resolvePokemonSummaryAssets(assetManifestValue);
   const pokemonOverworldPaths = parsePokemonOverworldPaths(pokemonAssetsValue);
   const trainers = parseImportedTrainers(trainersValue);
   const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
@@ -658,7 +697,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
-    mapTranslations, itemNames, items, pokemonOverworldPaths, battleCatalog,
+    mapTranslations, itemNames, items, pokemonOverworldPaths, battleCatalog, pokemonAssets, summaryAssets,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }

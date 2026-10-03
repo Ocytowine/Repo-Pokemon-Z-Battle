@@ -1,5 +1,6 @@
 import type { PlayerCreationCatalog, PlayerPartyState, PlayerPokemonStorageState }
   from "@pokemon-z-battle/player-state";
+import type { PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePokemonTypeLabel,
   sourcePokemonTypes, type SourcePokemonFilters, type SourcePokemonSort } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
@@ -10,6 +11,7 @@ export interface SourceRanchViewModel {
   readonly party: PlayerPartyState;
   readonly ranch: PlayerPokemonStorageState;
   readonly catalog: PlayerCreationCatalog;
+  readonly assets: PokemonAssetsManifest;
 }
 
 export type SourceRanchTransferDestination = "team" | "ranch";
@@ -22,14 +24,15 @@ export class SourceRanchView {
 
   public constructor(private readonly onClose: () => void,
     private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void,
-    private readonly onLead: (pokemonId: string) => void) {}
+    private readonly onLead: (pokemonId: string) => void,
+    private readonly onDetails: (pokemonId: string) => void) {}
 
   public render(model: SourceRanchViewModel): void {
     const root = document.querySelector<HTMLElement>("#source-ranch");
     if (root === null) return;
     root.hidden = !model.open;
     if (!model.open) return;
-    const collection = createSourcePokemonCollection(model.party, model.ranch, model.catalog);
+    const collection = createSourcePokemonCollection(model.party, model.ranch, model.catalog, model.assets);
     const filtered = filterSourcePokemonCollection(collection, this.filters);
     const types = sourcePokemonTypes(model.catalog);
     if (this.selectedPokemonId !== null && !collection.some((entry) => entry.pokemon.id === this.selectedPokemonId)) {
@@ -92,6 +95,7 @@ export class SourceRanchView {
         if (button.dataset.pokemonAction === "deposit") this.onTransfer(selected.pokemon.id, "ranch");
         else if (button.dataset.pokemonAction === "withdraw") this.onTransfer(selected.pokemon.id, "team");
         else if (button.dataset.pokemonAction === "make-lead") this.onLead(selected.pokemon.id);
+        else if (button.dataset.pokemonAction === "details") this.onDetails(selected.pokemon.id);
       });
     });
   }

@@ -5,7 +5,7 @@ import { addPokemonToParty, addPokemonToStorage, calculatePokemonStats, createDe
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, publicPokemonIdentity, recalculatePersistentPokemonStats,
-  storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
+  reorderPokemonMoves, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
@@ -140,6 +140,20 @@ describe("persistent player party", () => {
     expect(() => movePokemonToPartyFront(party, "missing")).toThrow("absent de l'équipe");
   });
 
+  it("reorders move slots in the canonical party or Ranch state", () => {
+    const twoMoves = { ...party.members[0]!, moves: [party.members[0]!.moves[0]!,
+      { internalName: "THUNDERBOLT", pp: 12, maxPp: 15 }] };
+    const reorderedParty = reorderPokemonMoves({ ...party, members: [twoMoves] }, createEmptyPlayerPokemonStorage(),
+      "starter", 0, 1);
+    expect(reorderedParty.party.members[0]?.moves.map((move) => move.internalName))
+      .toEqual(["THUNDERBOLT", "TACKLE"]);
+    expect(twoMoves.moves.map((move) => move.internalName)).toEqual(["TACKLE", "THUNDERBOLT"]);
+    const ranch = { ...createEmptyPlayerPokemonStorage(), members: [twoMoves] };
+    expect(reorderPokemonMoves(createEmptyPlayerParty(), ranch, "starter", 1, 0).storage.members[0]?.moves[0]?.internalName)
+      .toBe("THUNDERBOLT");
+    expect(() => reorderPokemonMoves(party, createEmptyPlayerPokemonStorage(), "starter", 0, 2)).toThrow("Position");
+  });
+
   it("heals HP, status and PP immutably", () => {
     const healed = healPlayerParty(party);
     expect(healed.members[0]).toMatchObject({ hp: 35, majorStatus: null, moves: [{ pp: 35, maxPp: 35 }] });
@@ -147,12 +161,16 @@ describe("persistent player party", () => {
   });
 
   it("round-trips mutable battle resources through the engine team", () => {
-    const team = playerPartyToBattleTeam(party, catalog);
+    const visualParty = { ...party, members: party.members.map((member) => ({ ...member,
+      metadata: { ...member.metadata, form: 2, shiny: true, gender: "female" as const } })) };
+    const team = playerPartyToBattleTeam(visualParty, catalog);
     expect(team.members[0]).toMatchObject({ species: "PIKACHU", name: "Pikachu", hp: 4, ability: "QUICKFEET",
+      appearance: { form: 2, shiny: true, gender: "female" },
       moves: [{ pp: 2, move: { internalName: "TACKLE", name: "Charge" } }] });
     const result = { ...team, members: team.members.map((member) => ({ ...member, hp: 1, majorStatus: { kind: "burn" as const },
       moves: member.moves.map((slot) => ({ ...slot, pp: 1 })) })) };
-    expect(storeBattleTeam(party, result).members[0]).toMatchObject({ hp: 1, majorStatus: { kind: "burn" }, moves: [{ pp: 1 }] });
+    expect(storeBattleTeam(visualParty, result).members[0]).toMatchObject({ hp: 1, majorStatus: { kind: "burn" },
+      metadata: { form: 2, shiny: true, gender: "female" }, moves: [{ pp: 1 }] });
   });
 
   it("blocks unsupported battle mechanics explicitly", () => {

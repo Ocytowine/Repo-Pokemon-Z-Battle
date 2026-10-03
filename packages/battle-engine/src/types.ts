@@ -70,6 +70,12 @@ export interface BattlerState {
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
   readonly moves: readonly MoveSlot[];
+  /** Public visual identity replicated with battle state; excludes private Pokemon metadata. */
+  readonly appearance?: {
+    readonly form: number;
+    readonly shiny: boolean;
+    readonly gender: "male" | "female" | "genderless" | null;
+  };
 }
 
 export interface BattleState {

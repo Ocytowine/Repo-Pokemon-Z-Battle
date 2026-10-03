@@ -5,15 +5,16 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  recalculatePlayerPokemonCollection,
+  recalculatePlayerPokemonCollection, reorderPokemonMoves,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
-import type { SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
+import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom, type BattleTeam, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
@@ -41,6 +42,8 @@ import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceRanchView } from "./source-ranch-view.js";
+import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
+import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
 import { networkBattleEventsForViewer, networkBattleForViewer, oppositeBattleSide }
   from "./network-battle-presentation.js";
 import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
@@ -52,6 +55,7 @@ import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persi
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMovement,
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
+import { sourceBagEntries } from "./source-bag.js";
 import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
@@ -106,6 +110,8 @@ let sourceSequenceChoicePrompt: SourceSequenceSession | null = null;
 interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly stock: readonly SourceShopItem[]; notice: string | null }
 let sourceShop: SourceShopSession | null = null;
 let sourceRanchSequence: SourceSequenceSession | null = null;
+let sourcePokemonSummarySession: { readonly context: SourcePokemonSummaryContext; pokemonId: string } | null = null;
+let sourcePokemonSummaryCry: HTMLAudioElement | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 let sourceFollowerImage: HTMLImageElement | null = null;
@@ -167,13 +173,19 @@ function persistSourceEventState(): void {
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
   queueMicrotask(publishCurrentSourceWorld);
-  queueMicrotask(() => multiplayer.publishSourceFollower(activeSourceFollowerSpecies()));
+  queueMicrotask(publishActiveSourceFollower);
 }
 
-function activeSourceFollowerSpecies(): string | null {
+function activeSourceFollower(): { species: string; appearance: NonNullable<SourceFollowerSnapshot["appearance"]> } | null {
   const activeIndex = sourceEventState.party.activeIndex;
   const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
-  return sourceEventState.followerEnabled ? member?.species ?? null : null;
+  return !sourceEventState.followerEnabled || member === null ? null : { species: member.species,
+    appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
+}
+
+function publishActiveSourceFollower(): void {
+  const follower = activeSourceFollower();
+  multiplayer.publishSourceFollower(follower?.species ?? null, follower?.appearance);
 }
 
 function sourceWorldHostState(): SourceWorldHostState | null {
@@ -189,7 +201,8 @@ function sourceWorldHostState(): SourceWorldHostState | null {
     blockedPoints: blockingDefaultEventPoints(sourceMapEvents(), map.id, sourceEventState),
     host: { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
     follower: !sourceEventState.followerEnabled || member === null || followerPosition === null ? null
-      : { ...followerPosition, species: member.species },
+      : { ...followerPosition, species: member.species,
+        appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } },
     story: { switches: sourceEventState.switches, variables: sourceEventState.variables,
       selfSwitches: sourceEventState.selfSwitches } };
 }
@@ -686,9 +699,21 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onMovementTestOverride: setSourceMovementTestOverride,
   onDive: requestSourceDive,
   onPokemonLead: setSourcePartyLead,
+  onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
-const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead);
+const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
+  (pokemonId) => openSourcePokemonSummary("ranch", pokemonId));
+const sourcePokemonSummaryView = new SourcePokemonSummaryView({
+  onClose: closeSourcePokemonSummary,
+  onPokemonChanged: (pokemonId, cryPath) => {
+    if (sourcePokemonSummarySession === null) return;
+    sourcePokemonSummarySession.pokemonId = pokemonId;
+    playSourcePokemonSummaryCry(cryPath);
+    renderSourcePokemonSummary();
+  },
+  onMoveReorder: reorderSourcePokemonMoves,
+});
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
 const sourceBattleVisuals = new SourceBattleVisuals();
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
@@ -755,10 +780,14 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) void sourceBattles.submitAction(moveIndex);
     else multiplayer.submitBattleAction({ kind: "move", moveIndex });
   },
-  onSwitch: (teamIndex) => { multiplayer.submitBattleAction({ kind: "switch", teamIndex }); },
+  onSwitch: (teamIndex, local) => {
+    if (local) void sourceBattles.switchPokemon(teamIndex);
+    else multiplayer.submitBattleAction({ kind: "switch", teamIndex });
+  },
   onReplacement: (teamIndex) => { multiplayer.submitBattleReplacement(teamIndex); },
   onLeave: () => { multiplayer.leaveBattle(); },
   onEscape: () => { void sourceBattles.escape(); },
+  onDetails: (pokemonId) => openSourcePokemonSummary("battle", pokemonId),
 });
 const sourcePlayerDuelView = new SourcePlayerDuelView({
   onAccept: () => {
@@ -862,7 +891,7 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   if (session.ticket.side === "opponent" && world.presence.opponent === "away") {
     guestSourceExcursion = true;
     networkSourceWorld = world;
-    multiplayer.publishSourceFollower(activeSourceFollowerSpecies());
+    publishActiveSourceFollower();
     if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId)) {
       multiplayer.setSourcePresence(true, importedAvatar);
       importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
@@ -877,7 +906,7 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   const synchronizeOwnAvatar = applyOwnAvatar || mapChanged;
   networkSourceWorld = synchronizeOwnAvatar ? world : { ...world,
     avatars: { ...world.avatars, [session.ticket.side]: importedAvatar } };
-  multiplayer.publishSourceFollower(activeSourceFollowerSpecies());
+  publishActiveSourceFollower();
   const own = synchronizeOwnAvatar ? world.avatars[session.ticket.side] : importedAvatar;
   if (synchronizeOwnAvatar) {
     sourceMovementMode = world.avatars[session.ticket.side].mode ?? sourceMovementMode;
@@ -936,7 +965,11 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
 
 function synchronizeNetworkRemoteFollowerAsset(world: SourceWorldSnapshot, remoteSide: AvatarId): void {
   const follower = world.followers?.[remoteSide];
-  const path = follower === undefined ? null : importedAssets?.pokemonOverworldPaths.get(follower.species) ?? null;
+  const record = follower === undefined ? undefined
+    : importedAssets?.pokemonAssets.records.find((candidate) => candidate.internalName === follower.species);
+  const path = record === undefined ? null : resolvePokemonAsset(record, { kind: "overworld",
+    form: follower?.appearance?.form ?? 0, shiny: follower?.appearance?.shiny ?? false,
+    female: follower?.appearance?.gender === "female" }).asset?.path ?? null;
   if (path === networkRemoteFollowerAssetPath) return;
   networkRemoteFollowerAssetPath = path;
   networkRemoteFollowerImage = null;
@@ -1203,7 +1236,61 @@ function closeSourceRanch(): void {
 function renderSourceRanch(): void {
   if (importedAssets === null) return;
   sourceRanchView.render({ open: sourceRanchSequence !== null, party: sourceEventState.party,
-    ranch: sourceEventState.ranch, catalog: importedAssets.battleCatalog });
+    ranch: sourceEventState.ranch, catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+}
+
+function openSourcePokemonSummary(context: SourcePokemonSummaryContext, pokemonId: string): void {
+  if (importedAssets === null) return;
+  const collection = createSourcePokemonCollection(sourceEventState.party, sourceEventState.ranch,
+    importedAssets.battleCatalog, importedAssets.pokemonAssets);
+  const permitted = context === "ranch" ? collection : collection.filter((entry) => entry.location === "team");
+  if (!permitted.some((entry) => entry.pokemon.id === pokemonId)) return;
+  sourcePokemonSummarySession = { context, pokemonId };
+  heldMovementKeys.clear();
+  renderImportedView();
+}
+
+function closeSourcePokemonSummary(): void {
+  if (sourcePokemonSummarySession === null) return;
+  sourcePokemonSummarySession = null;
+  sourcePokemonSummaryCry?.pause();
+  sourcePokemonSummaryCry = null;
+  renderImportedView();
+}
+
+function playSourcePokemonSummaryCry(path: string | null): void {
+  sourcePokemonSummaryCry?.pause();
+  sourcePokemonSummaryCry = null;
+  if (path === null) return;
+  const audio = new Audio(`/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`);
+  audio.volume = sourceMenuVolume(localStorage) / 100 * 0.8;
+  sourcePokemonSummaryCry = audio;
+  void audio.play().catch(() => undefined);
+}
+
+function renderSourcePokemonSummary(): void {
+  const assets = importedAssets;
+  const session = sourcePokemonSummarySession;
+  if (assets === null) return;
+  const collection = createSourcePokemonCollection(sourceEventState.party, sourceEventState.ranch,
+    assets.battleCatalog, assets.pokemonAssets);
+  const entries = session?.context === "ranch" ? collection : collection.filter((entry) => entry.location === "team");
+  sourcePokemonSummaryView.render({ open: session !== null, context: session?.context ?? "team",
+    pokemonId: session?.pokemonId ?? null, entries, catalog: assets.battleCatalog,
+    pokemonAssets: assets.pokemonAssets, summaryAssets: assets.summaryAssets, itemNames: assets.itemNames });
+}
+
+function reorderSourcePokemonMoves(pokemonId: string, fromIndex: number, toIndex: number): void {
+  if (sourcePokemonSummarySession?.context === "battle") return;
+  try {
+    const result = reorderPokemonMoves(sourceEventState.party, sourceEventState.ranch, pokemonId, fromIndex, toIndex);
+    sourceEventState = { ...sourceEventState, party: result.party, ranch: result.storage };
+    persistSourceEventState();
+    importedNotice = "Ordre des capacités mis à jour.";
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Réorganisation des capacités impossible.";
+  }
+  renderImportedView();
 }
 
 function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ranch"): void {
@@ -1259,6 +1346,7 @@ function renderImportedView(): void {
   renderSourceMenu();
   renderSourceShop();
   renderSourceRanch();
+  renderSourcePokemonSummary();
   publishCurrentSourceScene();
 }
 
@@ -1448,7 +1536,9 @@ function synchronizeSourceFollower(): void {
   const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
   const enabled = sourceEventState.followerEnabled && member !== null;
   sourceFollowerMotion.synchronize(enabled, importedAssets.map, importedAvatar);
-  const path = enabled ? importedAssets.pokemonOverworldPaths.get(member.species) ?? null : null;
+  const record = enabled ? importedAssets.pokemonAssets.records.find((candidate) => candidate.internalName === member.species) : undefined;
+  const path = record === undefined ? null : resolvePokemonAsset(record, { kind: "overworld", form: member.metadata.form,
+    shiny: member.metadata.shiny, female: member.metadata.gender === "female" }).asset?.path ?? null;
   if (path === sourceFollowerAssetPath) return;
   sourceFollowerAssetPath = path;
   sourceFollowerImage = null;
@@ -1578,11 +1668,15 @@ function renderEncounter(): void {
     ? networkBattleForViewer(canonicalNetworkState, network.ticket.side) : canonicalNetworkState;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : presentedNetworkState;
   const localSourceBattle = battleState !== null && battleState === sourceBattle;
+  const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
+    sourceEventState.inventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     networkSide: networkBattle?.duel === true ? "player" : network?.ticket.side ?? null,
     networkSubmittedTurn: network?.submittedTurn ?? null,
-    escapable: localSourceBattle && sourceEventState.pendingEncounter?.escapable === true });
+    escapable: localSourceBattle && sourceEventState.pendingEncounter?.escapable === true,
+    capturable: localSourceBattle && sourceEventState.pendingEncounter !== null,
+    bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
   sourcePlayerDuelView.render({ challenge: duel, side, players: network?.snapshot?.players ?? [],
@@ -1816,6 +1910,7 @@ function continueHeldSourceMovement(): void {
 window.addEventListener("keydown", (event) => {
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = true;
   if (event.code === "Escape") {
+    if (sourcePokemonSummarySession !== null) { event.preventDefault(); closeSourcePokemonSummary(); return; }
     if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
@@ -1826,6 +1921,19 @@ window.addEventListener("keydown", (event) => {
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
     || target instanceof HTMLSelectElement || target instanceof HTMLElement && target.isContentEditable) return;
+  if (sourcePokemonSummarySession !== null) {
+    const summary = document.querySelector<HTMLElement>("#source-pokemon-summary");
+    if (event.code === "ArrowUp" || event.code === "ArrowDown") {
+      event.preventDefault();
+      summary?.querySelector<HTMLButtonElement>(`[data-summary-pokemon="${event.code === "ArrowUp" ? "previous" : "next"}"]`)?.click();
+    } else if (event.code === "ArrowLeft" || event.code === "ArrowRight") {
+      event.preventDefault();
+      const tabs = [...summary?.querySelectorAll<HTMLButtonElement>("[data-summary-page]") ?? []];
+      const active = Math.max(0, tabs.findIndex((button) => button.classList.contains("active")));
+      tabs[Math.max(0, Math.min(tabs.length - 1, active + (event.code === "ArrowLeft" ? -1 : 1)))]?.click();
+    } else if (event.code !== "Tab" && event.code !== "Enter" && event.code !== "Space") event.preventDefault();
+    return;
+  }
   if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
     event.preventDefault(); toggleSourceMenu(); return;
   }

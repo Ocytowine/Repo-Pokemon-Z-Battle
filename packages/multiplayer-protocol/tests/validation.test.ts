@@ -72,7 +72,11 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage('{"type":"moveAvatar","version":8,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
     expect(parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f1","species":"FENNEKIN"}'))
       .toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
+    expect(parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f2","species":"FENNEKIN","appearance":{"form":1,"shiny":true,"gender":"female"}}'))
+      .toMatchObject({ type: "setSourceFollower", appearance: { form: 1, shiny: true, gender: "female" } });
     expect(() => parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f1","species":"../secret"}'))
+      .toThrow("setSourceFollower mal formé");
+    expect(() => parseClientMessage('{"type":"setSourceFollower","version":8,"requestId":"f3","species":"FENNEKIN","appearance":{"form":0,"shiny":false,"gender":"male","trainerId":42}}'))
       .toThrow("setSourceFollower mal formé");
   });
 

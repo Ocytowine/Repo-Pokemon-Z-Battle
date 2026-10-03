@@ -1,11 +1,11 @@
-import { SeededRandom, type BattleSide, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { SeededRandom, type BattleSide, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import {
   applyAutomaticReplacements,
   attemptSourceEncounterEscape,
   createSourceEncounterBattle,
   createSourceTrainerBattle,
-  resolveSourceEncounterTurn,
+  resolveSourceEncounterAction,
   settleSourceEncounter,
   storeSourceEncounterParty,
   type SourceTrainerDefinition,
@@ -185,13 +185,21 @@ export class SourceBattleController {
   }
 
   public async submitAction(moveIndex: number): Promise<void> {
+    await this.submitTurnAction({ kind: "move", moveIndex });
+  }
+
+  public async switchPokemon(teamIndex: number): Promise<void> {
+    await this.submitTurnAction({ kind: "switch", teamIndex });
+  }
+
+  private async submitTurnAction(action: TeamBattleAction): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
     this.resolving = true;
     this.callbacks.render();
     try {
       const eventState = this.callbacks.getEventState();
       const before = this.battle;
-      const result = resolveSourceEncounterTurn(before, moveIndex, this.rng);
+      const result = resolveSourceEncounterAction(before, action, this.rng);
       await this.presentation.playTurn(before, result.events);
       this.battle = applyAutomaticReplacements(result.state);
       if (this.battle.status === "finished") {

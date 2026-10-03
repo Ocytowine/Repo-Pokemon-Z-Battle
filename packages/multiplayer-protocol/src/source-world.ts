@@ -24,6 +24,8 @@ export interface SourceMovementResult {
 
 export interface SourceFollowerSnapshot extends SourceAvatarSnapshot {
   readonly species: string;
+  readonly appearance?: { readonly form: number; readonly shiny: boolean;
+    readonly gender: "male" | "female" | "genderless" | null };
 }
 
 export type SourcePlayerPresence = "shared" | "away";
@@ -102,13 +104,23 @@ function parseAvatar(value: unknown, width: number, height: number): SourceAvata
 
 function parseFollower(value: unknown, width: number, height: number): SourceFollowerSnapshot | null {
   if (value === null || value === undefined) return null;
-  if (!isRecord(value) || !exactKeys(value, ["x", "y", "direction", "species"])
+  if (!isRecord(value) || !["x", "y", "direction", "species"].every((key) => key in value)
+    || Object.keys(value).some((key) => !["x", "y", "direction", "species", "appearance"].includes(key))
     || !integer(value.x, 0, width - 1) || !integer(value.y, 0, height - 1)
     || typeof value.direction !== "string" || !DIRECTIONS.has(value.direction as Direction)
     || typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species)) {
     throw new Error("Pokemon suiveur de carte source invalide.");
   }
-  return { x: value.x, y: value.y, direction: value.direction as Direction, species: value.species };
+  if (value.appearance !== undefined && (!isRecord(value.appearance)
+    || !exactKeys(value.appearance, ["form", "shiny", "gender"])
+    || !integer(value.appearance.form, 0, 999) || typeof value.appearance.shiny !== "boolean"
+    || value.appearance.gender !== null && !["male", "female", "genderless"].includes(String(value.appearance.gender)))) {
+    throw new Error("Apparence du Pokemon suiveur invalide.");
+  }
+  return { x: value.x, y: value.y, direction: value.direction as Direction, species: value.species,
+    ...(value.appearance === undefined ? {} : {
+      appearance: value.appearance as NonNullable<SourceFollowerSnapshot["appearance"]>,
+    }) };
 }
 
 function parseBooleanRecord(value: unknown): Readonly<Record<string, boolean>> {

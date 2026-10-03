@@ -36,8 +36,19 @@ describe("shared Pokemon card and contextual actions", () => {
     expect(html).toContain("normal.png");
     expect(html).toContain("grass.png");
     expect(html.match(/source-pokemon-move/g)).toHaveLength(5);
+    expect(html).toContain("source-pokemon-icon animated");
+    expect(html).toContain("--pokemon-icon-cycle:250ms");
     expect(html).not.toContain("source-pokemon-power");
     expect(html).not.toContain("POTENTIEL");
+  });
+
+  it("slows the two-frame source icon with low HP and freezes it when knocked out", () => {
+    const healthy = entry();
+    expect(sourcePokemonCardHtml({ ...healthy, pokemon: { ...healthy.pokemon, hp: 5 } }))
+      .toContain("--pokemon-icon-cycle:1000ms");
+    const knockedOut = sourcePokemonCardHtml({ ...healthy, pokemon: { ...healthy.pokemon, hp: 0 } });
+    expect(knockedOut).toContain('class="source-pokemon-icon"');
+    expect(knockedOut).not.toContain("--pokemon-icon-cycle");
   });
 
   it("offers team actions according to the selected Pokemon state", () => {
@@ -45,7 +56,7 @@ describe("shared Pokemon card and contextual actions", () => {
     const actions = sourcePokemonActions("team", selected,
       { partySize: 2, partyFull: false, activePokemonId: "another" });
     expect(actions.map((action) => [action.id, action.enabled])).toEqual([
-      ["details", false], ["make-lead", true], ["give-item", false],
+      ["details", true], ["make-lead", true], ["give-item", false],
     ]);
     expect(sourcePokemonActionWheelHtml(selected, actions)).toContain('data-pokemon-action="make-lead"');
   });

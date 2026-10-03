@@ -33,6 +33,20 @@ export interface PokemonAssetsManifest {
   readonly records: readonly PokemonAssetRecord[];
 }
 
+export interface PokemonAssetRequest {
+  readonly kind: PokemonAssetReference["kind"];
+  readonly form?: number | null;
+  readonly shiny?: boolean;
+  readonly female?: boolean;
+  readonly back?: boolean;
+  readonly variant?: string | null;
+}
+
+export interface ResolvedPokemonAsset {
+  readonly asset: PokemonAssetReference | null;
+  readonly fallbacks: readonly ("variant" | "form" | "shiny" | "female" | "back")[];
+}
+
 export interface AssetManifestEntry {
   readonly path: string;
   readonly category: string;
@@ -47,6 +61,15 @@ export interface AssetManifestEntry {
 export interface AssetManifest {
   readonly schemaVersion: string;
   readonly records: readonly AssetManifestEntry[];
+}
+
+export interface PokemonSummaryAssets {
+  readonly category: string | null;
+  readonly ribbons: string | null;
+  readonly shiny: string | null;
+  readonly statuses: string | null;
+  readonly pokerus: string | null;
+  readonly balls: ReadonlyMap<number, string>;
 }
 
 export interface LocalManifests {
@@ -99,6 +122,16 @@ function isPokemonManifest(value: unknown): value is PokemonAssetsManifest {
   if (!isRecord(value) || !Array.isArray(value.records)) return false;
   const first = value.records[0] as unknown;
   return isRecord(first) && typeof first.id === "number" && isRecord(first.assets);
+}
+
+export function parsePokemonAssetsManifest(value: unknown): PokemonAssetsManifest {
+  if (!isPokemonManifest(value)) throw new Error("Le manifeste des assets Pokémon est invalide.");
+  return value;
+}
+
+export function parseAssetManifest(value: unknown): AssetManifest {
+  if (!isAssetManifest(value)) throw new Error("Le manifeste général des assets est invalide.");
+  return value;
 }
 
 function isAnimationManifest(value: unknown): value is BattleAnimationsManifest {
@@ -238,14 +271,55 @@ export function findPokemonRecord(manifest: PokemonAssetsManifest, id: number): 
   return manifest.records.find((record) => record.id === id);
 }
 
+function requestPenalty(asset: PokemonAssetReference, request: PokemonAssetRequest): number {
+  const requestedForm = request.form === undefined || request.form === 0 ? null : request.form;
+  const requestedVariant = request.variant ?? null;
+  const requestedShiny = request.shiny ?? false;
+  const requestedFemale = request.female ?? false;
+  const requestedBack = request.back ?? false;
+  const form = asset.form === requestedForm ? 0 : asset.form === null ? 20 : 40;
+  const variant = asset.variant === requestedVariant ? 0 : asset.variant === null ? 100 : 200;
+  const shiny = asset.shiny === requestedShiny ? 0 : !asset.shiny ? 8 : 16;
+  const female = asset.female === requestedFemale ? 0 : !asset.female ? 4 : 8;
+  const back = asset.back === requestedBack ? 0 : 1_000;
+  return form + variant + shiny + female + back;
+}
+
+/** Resolves every Pokemon visual through one deterministic variant/fallback contract. */
+export function resolvePokemonAsset(record: PokemonAssetRecord, request: PokemonAssetRequest): ResolvedPokemonAsset {
+  const requested = { form: request.form === undefined || request.form === 0 ? null : request.form,
+    variant: request.variant ?? null,
+    shiny: request.shiny ?? false, female: request.female ?? false, back: request.back ?? false };
+  const candidates = [...record.assets[request.kind]].sort((left, right) =>
+    requestPenalty(left, request) - requestPenalty(right, request) || left.path.localeCompare(right.path, "en"));
+  const asset = candidates[0] ?? null;
+  if (asset === null) return { asset: null, fallbacks: [] };
+  const fallbacks: ("variant" | "form" | "shiny" | "female" | "back")[] = [];
+  if (asset.variant !== requested.variant) fallbacks.push("variant");
+  if (asset.form !== requested.form) fallbacks.push("form");
+  if (asset.shiny !== requested.shiny) fallbacks.push("shiny");
+  if (asset.female !== requested.female) fallbacks.push("female");
+  if (asset.back !== requested.back) fallbacks.push("back");
+  return { asset, fallbacks };
+}
+
 export function selectBattler(record: PokemonAssetRecord, back: boolean): PokemonAssetReference | null {
-  const candidates = record.assets.battler.filter((asset) => asset.back === back && asset.variant === null);
-  return candidates.find((asset) => asset.form === null && !asset.shiny && !asset.female)
-    ?? candidates.find((asset) => asset.form === null && !asset.shiny)
-    ?? candidates[0]
-    ?? null;
+  return resolvePokemonAsset(record, { kind: "battler", back }).asset;
 }
 
 export function selectCry(record: PokemonAssetRecord): PokemonAssetReference | null {
-  return record.assets.cry.find((asset) => asset.form === null) ?? record.assets.cry[0] ?? null;
+  return resolvePokemonAsset(record, { kind: "cry" }).asset;
+}
+
+export function resolvePokemonSummaryAssets(value: unknown): PokemonSummaryAssets {
+  const manifest = parseAssetManifest(value);
+  const paths = new Map(manifest.records.map((entry) => [entry.path.replaceAll("\\", "/").toLocaleLowerCase("en"), entry.path]));
+  const picture = (name: string): string | null => paths.get(`graphics/pictures/${name.toLocaleLowerCase("en")}`) ?? null;
+  const balls = new Map<number, string>();
+  for (const entry of manifest.records) {
+    const match = /(?:^|\/)summaryball(\d{2})\.png$/iu.exec(entry.path.replaceAll("\\", "/"));
+    if (match !== null) balls.set(Number(match[1]), entry.path);
+  }
+  return { category: picture("category.png"), ribbons: picture("ribbons.png"), shiny: picture("shiny.png"),
+    statuses: picture("statuses.PNG"), pokerus: picture("summaryPokerus.png"), balls };
 }

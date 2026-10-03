@@ -1,7 +1,7 @@
-import { buildBattleScenes, loadLocalManifestsFromUrls, selectBattler, selectCry,
+import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, selectCry,
   type AssetManifest, type BattleAnimationCel, type BattleAnimationRecord, type BattleAnimationsManifest,
   type LocalManifests, type PokemonAssetReference, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
-import type { BattleMove, BattleSide, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleMove, BattleSide, BattlerState, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
   sourceTrainerSpritePlacement } from "./source-battle-layout.js";
 
@@ -110,16 +110,18 @@ function availableAudioStem(manifest: AssetManifest, stem: string): string | nul
 }
 
 export function selectSourceBattleAudio(assets: AssetManifest, pokemon: PokemonAssetsManifest,
-  playerSpecies: string, opponentSpecies: string, battleMusic = "Salvaje.ogg", victoryMusic = "VictoriaSalvaje.ogg"): SourceBattleAudio {
-  const cry = (species: string): string | null => {
+  playerSpecies: string, opponentSpecies: string, battleMusic = "Salvaje.ogg", victoryMusic = "VictoriaSalvaje.ogg",
+  appearance?: { readonly player?: BattlerState["appearance"]; readonly opponent?: BattlerState["appearance"] }): SourceBattleAudio {
+  const cry = (species: string, visual: BattlerState["appearance"]): string | null => {
     const record = pokemon.records.find((candidate) => candidate.internalName === species);
-    return record === undefined ? null : selectCry(record)?.path ?? null;
+    return record === undefined ? null : resolvePokemonAsset(record, { kind: "cry", form: visual?.form ?? 0,
+      shiny: visual?.shiny ?? false, female: visual?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
   };
   return {
     battleMusic: availableAudio(assets, `Audio/BGM/${battleMusic}`),
     victoryMusic: availableAudio(assets, `Audio/ME/${victoryMusic}`),
-    playerCry: cry(playerSpecies),
-    opponentCry: cry(opponentSpecies),
+    playerCry: cry(playerSpecies, appearance?.player),
+    opponentCry: cry(opponentSpecies, appearance?.opponent),
     sendOut: availableAudioStem(assets, "Audio/SE/recall"),
   };
 }
@@ -174,7 +176,7 @@ export class SourceBattleVisuals {
       const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
       if (player === undefined || opponent === undefined) return;
       const selectedAudio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species,
-        battleMusic, victoryMusic);
+        battleMusic, victoryMusic, { player: player.appearance, opponent: opponent.appearance });
       this.#victoryMusicPath = selectedAudio.victoryMusic;
       await this.render(state, audio.battleback ?? "snow");
       if (session !== this.#audioSession) return;
@@ -209,7 +211,8 @@ export class SourceBattleVisuals {
     const player = state.teams.player.members[state.teams.player.activeIndex];
     const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
     if (player === undefined || opponent === undefined) return;
-    const key = `${battleback}:${player.species}:${opponent.species}`;
+    const appearanceKey = (battler: BattlerState) => `${battler.species}:${battler.appearance?.form ?? 0}:${Number(battler.appearance?.shiny)}:${battler.appearance?.gender ?? "unknown"}`;
+    const key = `${battleback}:${appearanceKey(player)}:${appearanceKey(opponent)}`;
     if (key === this.#renderedSpecies) {
       if (this.#rendering !== null) await this.#rendering;
       return;
@@ -228,8 +231,8 @@ export class SourceBattleVisuals {
         this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
         document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
         await Promise.all([
-          this.renderBattler("player", player.species, true, manifests),
-          this.renderBattler("opponent", opponent.species, false, manifests),
+          this.renderBattler("player", player, true, manifests),
+          this.renderBattler("opponent", opponent, false, manifests),
         ]);
       } catch {
         this.fallback("player", player.name);
@@ -421,10 +424,12 @@ export class SourceBattleVisuals {
     if (path === null) image.removeAttribute("src"); else image.src = sourceUrl(path);
   }
 
-  private async renderBattler(side: BattleSide, species: string, back: boolean, manifests: LocalManifests): Promise<void> {
-    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === species);
-    const asset = record === undefined ? null : selectBattler(record, back);
-    if (asset === null) { this.fallback(side, species); return; }
+  private async renderBattler(side: BattleSide, battler: BattlerState, back: boolean, manifests: LocalManifests): Promise<void> {
+    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === battler.species);
+    const asset = record === undefined ? null : resolvePokemonAsset(record, { kind: "battler", back,
+      form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
+      female: battler.appearance?.gender === "female" }).asset;
+    if (asset === null) { this.fallback(side, battler.species); return; }
     const slot = document.getElementById(`source-${side}-sprite`);
     if (slot === null) return;
     try {
@@ -441,7 +446,7 @@ export class SourceBattleVisuals {
       slot.style.height = sourceBattlePercent(placement.height, "y");
       slot.style.transformOrigin = `${(placement.originX / placement.width) * 100}% ${(placement.originY / placement.height) * 100}%`;
     } catch {
-      this.fallback(side, record?.name ?? species);
+      this.fallback(side, record?.name ?? battler.species);
     }
   }
 

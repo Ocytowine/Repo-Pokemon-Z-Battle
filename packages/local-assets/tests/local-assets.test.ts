@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildBattleScenes, createHttpDirectoryHandle, fileFromLocalPath, selectBattler, type AssetManifest, type PokemonAssetRecord } from "../src/index.js";
+import { buildBattleScenes, createHttpDirectoryHandle, fileFromLocalPath, resolvePokemonAsset,
+  resolvePokemonSummaryAssets, selectBattler, type AssetManifest, type PokemonAssetRecord } from "../src/index.js";
 
 describe("local asset helpers", () => {
   it("groups battleback triplets and reports incomplete scenes", () => {
@@ -15,6 +16,31 @@ describe("local asset helpers", () => {
     const record = { id: 25, internalName: "PIKACHU", name: "Pikachu", assets: { battler: [front, back], icon: [], footprint: [], cry: [], overworld: [] } } satisfies PokemonAssetRecord;
     expect(selectBattler(record, true)?.path).toBe("back.png");
     expect(selectBattler(record, false)?.path).toBe("front.png");
+  });
+
+  it("resolves form, shiny, gender and back variants with explicit fallbacks", () => {
+    const base = { pokemonId: 25, kind: "battler" as const, form: null, shiny: false, female: false,
+      back: false, variant: null, width: 96, height: 96, frameCount: 1 };
+    const record = { id: 25, internalName: "PIKACHU", name: "Pikachu", assets: { battler: [
+      { ...base, path: "default.png" }, { ...base, form: 1, shiny: true, female: true, back: true, path: "exact.png" },
+      { ...base, form: 1, back: true, path: "form-back.png" },
+    ], icon: [], footprint: [], cry: [], overworld: [] } } satisfies PokemonAssetRecord;
+    expect(resolvePokemonAsset(record, { kind: "battler", form: 1, shiny: true, female: true, back: true }))
+      .toEqual({ asset: expect.objectContaining({ path: "exact.png" }), fallbacks: [] });
+    expect(resolvePokemonAsset(record, { kind: "battler", form: 2, shiny: true, female: true, back: true }))
+      .toMatchObject({ asset: { path: "exact.png" }, fallbacks: ["form"] });
+  });
+
+  it("indexes every fixed source summary asset and available ball", () => {
+    const entry = (path: string) => ({ path, category: "graphics/pictures", mediaType: "image" as const, image: null });
+    const assets = resolvePokemonSummaryAssets({ schemaVersion: "1", records: [entry("Graphics/Pictures/category.png"),
+      entry("Graphics/Pictures/ribbons.png"), entry("Graphics/Pictures/shiny.png"), entry("Graphics/Pictures/statuses.PNG"),
+      entry("Graphics/Pictures/summaryPokerus.png"), entry("Graphics/Pictures/summaryball00.png"),
+      entry("Graphics/Pictures/summaryball23.png")] });
+    expect(assets).toMatchObject({ category: "Graphics/Pictures/category.png", ribbons: "Graphics/Pictures/ribbons.png",
+      shiny: "Graphics/Pictures/shiny.png", statuses: "Graphics/Pictures/statuses.PNG",
+      pokerus: "Graphics/Pictures/summaryPokerus.png" });
+    expect([...assets.balls]).toEqual([[0, "Graphics/Pictures/summaryball00.png"], [23, "Graphics/Pictures/summaryball23.png"]]);
   });
 
   it("loads a nested asset from the local development endpoint", async () => {

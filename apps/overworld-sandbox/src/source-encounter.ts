@@ -1,5 +1,5 @@
 import { createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
-  type RandomSource, type TeamBattleState, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
+  type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 
@@ -48,20 +48,28 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     { player: player.activeIndex, opponent: opponent.activeIndex });
 }
 
-export function resolveSourceEncounterTurn(state: TeamBattleState, playerMoveIndex: number,
+export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
   rng: RandomSource): TeamTurnResult {
   const player = state.teams.player.members[state.teams.player.activeIndex];
   const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
-  const playerMove = player?.moves[playerMoveIndex];
-  if (playerMove === undefined || playerMove.pp <= 0) throw new Error("Cette capacité n'est pas disponible.");
+  if (player === undefined) throw new Error("Combattant actif introuvable.");
+  if (playerAction.kind === "move") {
+    const playerMove = player.moves[playerAction.moveIndex];
+    if (playerMove === undefined || playerMove.pp <= 0) throw new Error("Cette capacité n'est pas disponible.");
+  }
   const opponentMoves = opponent?.moves.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.pp > 0) ?? [];
   if (opponentMoves.length === 0) throw new Error("L'adversaire n'a plus de capacité disponible.");
   const opponentMove = opponentMoves[rng.nextInt(opponentMoves.length)];
   if (opponentMove === undefined) throw new Error("Choix de capacité adverse impossible.");
   return resolveTeamTurn(state, {
-    player: { kind: "move", moveIndex: playerMoveIndex },
+    player: playerAction,
     opponent: { kind: "move", moveIndex: opponentMove.index },
   }, rng);
+}
+
+export function resolveSourceEncounterTurn(state: TeamBattleState, playerMoveIndex: number,
+  rng: RandomSource): TeamTurnResult {
+  return resolveSourceEncounterAction(state, { kind: "move", moveIndex: playerMoveIndex }, rng);
 }
 
 export type SourceEscapeResult = { readonly escaped: true } | { readonly escaped: false; readonly turn: TeamTurnResult };

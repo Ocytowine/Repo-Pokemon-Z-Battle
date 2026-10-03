@@ -1,4 +1,5 @@
 import type { SourcePokemonCollectionEntry } from "./source-pokemon-collection.js";
+import { sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 
 export type SourcePokemonActionContext = "team" | "ranch" | "battle";
 export type SourcePokemonActionId = "details" | "make-lead" | "give-item" | "deposit" | "withdraw"
@@ -24,7 +25,8 @@ const future = (id: SourcePokemonActionId, label: string, symbol: string): Sourc
 /** Contextual action contract shared by team, Ranch and future battle selections. */
 export function sourcePokemonActions(context: SourcePokemonActionContext, entry: SourcePokemonCollectionEntry,
   options: SourcePokemonActionOptions): readonly SourcePokemonAction[] {
-  const details = future("details", "Détails", "i");
+  const details: SourcePokemonAction = { id: "details", label: "Détails", symbol: "i", enabled: true,
+    hint: "Ouvrir le résumé" };
   const item = future("give-item", entry.pokemon.heldItem === null ? "Donner objet" : "Gérer objet", "◇");
   const alreadyLead = entry.teamIndex === 0 && entry.pokemon.id === options.activePokemonId;
   const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !alreadyLead,
@@ -56,7 +58,7 @@ export function sourcePokemonActionWheelHtml(entry: SourcePokemonCollectionEntry
   }).join("");
   return `<div class="source-pokemon-wheel-backdrop" data-pokemon-wheel-dismiss>
     <section class="source-pokemon-wheel" role="dialog" aria-modal="true" aria-label="Actions pour ${escapeHtml(entry.displayName)}">
-      ${actionButtons}<button type="button" class="source-pokemon-wheel-center" data-pokemon-wheel-close aria-label="Fermer les actions"><span class="source-pokemon-icon" style="background-image:url('${entry.iconUrl}')" aria-hidden="true"></span><strong>${escapeHtml(entry.displayName)}</strong><small>Fermer</small></button>
+      ${actionButtons}<button type="button" class="source-pokemon-wheel-center" data-pokemon-wheel-close aria-label="Fermer les actions">${sourcePokemonIconHtml(entry)}<strong>${escapeHtml(entry.displayName)}</strong><small>Fermer</small></button>
     </section>
   </div>`;
 }
