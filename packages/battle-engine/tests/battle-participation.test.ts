@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { activeBattleController, applyBattleJoin, approveBattleJoin, proposeBattleJoin,
+import { activeBattleController, applyBattleJoin, approveBattleJoin, createSharedBattleLedger, proposeBattleJoin,
+  recordSharedBattleTurn,
   type BattlerState, type SharedBattleParticipation } from "../src/index.js";
 
 function pokemon(id: string): BattlerState {
@@ -43,5 +44,19 @@ describe("shared battle participation", () => {
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "player",
       members: Array.from({ length: 6 }, (_, index) => pokemon(`g${index}`)),
       finalMemberIds: ["starter", ...Array.from({ length: 6 }, (_, index) => `g${index}`)] })).toThrow(/six/u);
+  });
+
+  it("records engaged and defeated Pokémon across active changes", () => {
+    const first = pokemon("first");
+    const reserve = pokemon("reserve");
+    const foe = pokemon("foe");
+    const before = { turn: 1, status: "active" as const, winner: null,
+      teams: { player: { activeIndex: 0, members: [first, reserve] }, opponent: { activeIndex: 0, members: [foe] } },
+      replacementRequired: [] };
+    const after = { ...before, turn: 2, teams: { ...before.teams, player: { ...before.teams.player, activeIndex: 1 } } };
+    const ledger = recordSharedBattleTurn(createSharedBattleLedger(before), before, after,
+      [{ type: "fainted", side: "opponent" }]);
+    expect(ledger.engagedMemberIds.player).toEqual(["first", "reserve"]);
+    expect(ledger.defeatedMembers).toEqual([{ side: "opponent", battler: foe }]);
   });
 });

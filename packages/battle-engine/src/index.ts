@@ -1,5 +1,6 @@
 export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
-export { activeBattleController, applyBattleJoin, approveBattleJoin, battleJoinApproved, proposeBattleJoin } from "./battle-participation.js";
+export { activeBattleController, applyBattleJoin, approveBattleJoin, battleJoinApproved, createSharedBattleLedger,
+  proposeBattleJoin, recordSharedBattleTurn } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
 export { resolveTurn } from "./resolve-turn.js";
 export { SeededRandom } from "./rng.js";
@@ -38,4 +39,4 @@ export type {
   WaitAction,
 } from "./types.js";
 export type { BattleJoinProposal, OwnedBattleMember, SharedBattleCamp, SharedBattleFormat,
-  SharedBattleParticipation } from "./battle-participation.js";
+  SharedBattleLedger, SharedBattleParticipation } from "./battle-participation.js";

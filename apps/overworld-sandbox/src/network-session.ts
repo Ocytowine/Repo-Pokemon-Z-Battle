@@ -202,6 +202,17 @@ export class OverworldNetworkSession {
     this.sendRequest({ type: "respondPlayerChallenge", accept, team });
   }
 
+  public proposeBattleJoin(side: "player" | "opponent", team: BattleTeam,
+    finalMemberIds: readonly string[]): void {
+    const battleId = this.activeSession?.snapshot?.battle?.id;
+    if (battleId !== undefined) this.sendRequest({ type: "proposeBattleJoin", battleId, side, team, finalMemberIds });
+  }
+
+  public respondBattleJoin(accept: boolean): void {
+    const battleId = this.activeSession?.snapshot?.battle?.id;
+    if (battleId !== undefined) this.sendRequest({ type: "respondBattleJoin", battleId, accept });
+  }
+
   public leaveBattle(): void {
     const battleId = this.activeSession?.snapshot?.battle?.id;
     if (battleId !== undefined) this.sendRequest({ type: "leaveBattle", battleId });
@@ -288,9 +299,9 @@ export class OverworldNetworkSession {
         session.pendingMovementSequence = null;
       }
       session.snapshot = snapshot;
-      if (previousBattle === null && snapshot.battle?.duel === true) {
+      if (previousBattle === null && snapshot.battle !== null) {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
-      } else if (previousBattle?.duel === true && snapshot.battle === null) {
+      } else if (previousBattle !== null && snapshot.battle === null) {
         this.callbacks.onBattleClosed(previousBattle.id);
       }
       if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) session.submittedTurn = null;
@@ -383,12 +394,10 @@ export class OverworldNetworkSession {
           session.snapshot = {
             ...snapshot,
             phase: message.state.status === "finished" ? "finished" : "battle",
-            battle: { id: message.battleId, state: message.state, duel: snapshot.battle.duel },
+            battle: { ...snapshot.battle, state: message.state },
           };
           session.submittedTurn = null;
-          if (snapshot.battle.duel) {
-            this.callbacks.onBattleTurnResolved(message.battleId, before, message.state, message.events);
-          }
+          this.callbacks.onBattleTurnResolved(message.battleId, before, message.state, message.events);
           this.setStatus(message.state.status === "finished" ? "Combat terminé" : "Combat", message.state.status === "finished"
             ? `Victoire : ${message.state.winner}. Retour dans le monde…`
             : `Tour ${message.state.turn} prêt.`);
@@ -398,11 +407,9 @@ export class OverworldNetworkSession {
           if (snapshot?.battle?.id !== message.battleId) return;
           const before = snapshot.battle.state;
           session.snapshot = { ...snapshot,
-            battle: { id: message.battleId, state: message.state, duel: snapshot.battle.duel } };
+            battle: { ...snapshot.battle, state: message.state } };
           session.submittedTurn = null;
-          if (snapshot.battle.duel) {
-            this.callbacks.onBattleReplacementResolved(message.battleId, before, message.state, message.events);
-          }
+          this.callbacks.onBattleReplacementResolved(message.battleId, before, message.state, message.events);
           this.callbacks.onRender();
         } else if (message.type === "error") {
           session.submittedTurn = null;

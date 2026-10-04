@@ -1,4 +1,8 @@
-import { createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn, type BattleSide, type BattleTeam, type BattlerState, type StatefulRandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
+import { activeBattleController, applyBattleJoin, approveBattleJoin, createSharedBattleLedger, createTeamBattleState,
+  proposeBattleJoin, recordSharedBattleTurn, replaceFaintedPokemon, resolveTeamTurn, type BattleJoinProposal,
+  type BattleSide, type BattleTeam, type BattlerState, type SharedBattleCamp, type SharedBattleLedger,
+  type SharedBattleParticipation, type StatefulRandomSource, type TeamBattleAction,
+  type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
   type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
@@ -25,7 +29,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 8;
+  readonly version: 9;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -48,6 +52,9 @@ export interface PersistedRoomState {
   readonly activeEncounter?: ActiveEncounter | null;
   readonly duelChallenge?: PersistedDuelChallenge | null;
   readonly activeDuel?: boolean;
+  readonly battleParticipation?: SharedBattleParticipation | null;
+  readonly battleJoinProposal?: BattleJoinProposal | null;
+  readonly battleLedger?: SharedBattleLedger | null;
 }
 
 export interface EncounterContext {
@@ -94,6 +101,9 @@ export class AuthoritativeBattleRoom {
   #activeEncounter: ActiveEncounter | null = null;
   #duelChallenge: PersistedDuelChallenge | null = null;
   #activeDuel = false;
+  #battleParticipation: SharedBattleParticipation | null = null;
+  #battleJoinProposal: BattleJoinProposal | null = null;
+  #battleLedger: SharedBattleLedger | null = null;
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
@@ -111,6 +121,9 @@ export class AuthoritativeBattleRoom {
       this.#activeEncounter = persisted.activeEncounter ?? null;
       this.#duelChallenge = persisted.duelChallenge ?? null;
       this.#activeDuel = persisted.activeDuel ?? false;
+      this.#battleParticipation = persisted.battleParticipation ?? null;
+      this.#battleJoinProposal = persisted.battleJoinProposal ?? null;
+      this.#battleLedger = persisted.battleLedger ?? null;
       this.#worldState = persisted.worldState;
       this.#sourceWorldState = persisted.sourceWorldState === null ? null
         : { ...persisted.sourceWorldState, followers: persisted.sourceWorldState.followers ?? {},
@@ -164,6 +177,7 @@ export class AuthoritativeBattleRoom {
       if (this.#duelChallenge?.challenger === player.side || this.#duelChallenge?.challenged === player.side) {
         this.#duelChallenge = null;
       }
+      if (this.#battleJoinProposal?.requiredApprovals.includes(player.playerId)) this.#battleJoinProposal = null;
       this.#revision += 1;
     }
     return this.snapshot();
@@ -175,7 +189,8 @@ export class AuthoritativeBattleRoom {
       .map(({ playerId, side, ready, connected, profile }) => ({ playerId, side, ready, connected, profile }));
     const phase = this.#battleState === null ? "waiting" : this.#battleState.status === "finished" ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null
-      : { id: this.#battleId, state: this.#battleState, duel: this.#activeDuel };
+      : { id: this.#battleId, state: this.#battleState, duel: this.#activeDuel,
+        participation: this.#battleParticipation, joinProposal: this.#battleJoinProposal, ledger: this.#battleLedger };
     return {
       revision: this.#revision,
       roomCode: this.#roomCode,
@@ -197,7 +212,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 8,
+      version: 9,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -215,6 +230,9 @@ export class AuthoritativeBattleRoom {
       activeEncounter: this.#activeEncounter,
       duelChallenge: this.#duelChallenge,
       activeDuel: this.#activeDuel,
+      battleParticipation: this.#battleParticipation,
+      battleJoinProposal: this.#battleJoinProposal,
+      battleLedger: this.#battleLedger,
     };
   }
 
@@ -247,6 +265,10 @@ export class AuthoritativeBattleRoom {
     if (message.type === "challengePlayer") return this.challengePlayer(player, message.requestId, message.team);
     if (message.type === "respondPlayerChallenge") {
       return this.respondPlayerChallenge(player, message.requestId, message.accept, message.team);
+    }
+    if (message.type === "proposeBattleJoin") return this.proposeBattleJoin(player, message);
+    if (message.type === "respondBattleJoin") {
+      return this.respondBattleJoin(player, message.requestId, message.battleId, message.accept);
     }
     if (message.type === "leaveBattle") return this.leaveBattle(player, message.requestId, message.battleId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
@@ -410,21 +432,48 @@ export class AuthoritativeBattleRoom {
     if (encounter === null || this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucune rencontre active.")];
     }
-    if (encounter.ownerSide !== "player" || player.side !== encounter.ownerSide) {
-      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Seul le meneur de la rencontre choisit l'action.")];
-    }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
     if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
+    if (this.#battleJoinProposal !== null) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "La proposition de participation doit d'abord être traitée.")];
+    }
+    const controlledSide = (["player", "opponent"] as const).find((side) => this.#battleParticipation === null
+      ? side === encounter.ownerSide && player.side === encounter.ownerSide
+      : activeBattleController(this.#battleParticipation, side) === player.playerId);
+    if (controlledSide === undefined) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le Pokémon actif appartient à l'autre Dresseur.")];
+    }
+    if (this.#pendingActions.has(controlledSide)) {
+      return [this.error(player.playerId, message.requestId, "ACTION_ALREADY_SUBMITTED", "Une action est déjà enregistrée pour ce camp.")];
+    }
 
     const battleId = this.#battleId;
-    const resolvedTurn = this.#battleState.turn;
-    const result = resolveTeamTurn(this.#battleState, { player: message.action, opponent: { kind: "move", moveIndex: 0 } }, this.#rng);
-    this.#battleState = result.state;
+    this.#pendingActions.set(controlledSide, message.action);
+    for (const side of ["player", "opponent"] as const) {
+      if (this.#pendingActions.has(side)) continue;
+      if (this.#battleParticipation === null || activeBattleController(this.#battleParticipation, side) === null) {
+        this.#pendingActions.set(side, { kind: "move", moveIndex: 0 });
+      }
+    }
     this.#revision += 1;
     const output: RoomDispatch[] = [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
-      { audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION, battleId, turn: resolvedTurn, state: result.state, events: result.events } },
     ];
+    const playerAction = this.#pendingActions.get("player");
+    const opponentAction = this.#pendingActions.get("opponent");
+    if (playerAction === undefined || opponentAction === undefined) return output;
+    const resolvedTurn = this.#battleState.turn;
+    const beforeState = this.#battleState;
+    const result = resolveTeamTurn(this.#battleState, { player: playerAction, opponent: opponentAction }, this.#rng);
+    this.#battleState = result.state;
+    if (this.#battleLedger !== null) {
+      this.#battleLedger = recordSharedBattleTurn(this.#battleLedger, beforeState, result.state, result.events);
+    }
+    this.synchronizeBattleParticipation();
+    this.#pendingActions.clear();
+    this.#revision += 1;
+    output.push({ audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
+      battleId, turn: resolvedTurn, state: result.state, events: result.events } });
 
     if (result.state.status === "finished" && result.state.winner !== null) {
       this.#worldState = {
@@ -439,6 +488,9 @@ export class AuthoritativeBattleRoom {
         },
       };
       this.#activeEncounter = null;
+      this.#battleParticipation = null;
+      this.#battleJoinProposal = null;
+      this.#battleLedger = null;
       this.#battleState = null;
       this.#battleId = null;
       for (const roomPlayer of this.#players.values()) roomPlayer.ready = false;
@@ -570,6 +622,20 @@ export class AuthoritativeBattleRoom {
       this.#battleSequence += 1;
       this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
       this.#activeEncounter = { encounterId: encounter.encounterId, kind: encounter.kind, ownerSide: player.side };
+      this.#battleParticipation = {
+        battleOwnerId: player.playerId,
+        format: "single",
+        camps: {
+          player: { trainerIds: [player.playerId], members: this.#battleState.teams.player.members.map((battler) => ({
+            ownerId: player.playerId, battler })),
+          activeMemberId: this.#battleState.teams.player.members[this.#battleState.teams.player.activeIndex]!.id },
+          opponent: { trainerIds: [], members: this.#battleState.teams.opponent.members.map((battler) => ({
+            ownerId: null, battler })),
+          activeMemberId: this.#battleState.teams.opponent.members[this.#battleState.teams.opponent.activeIndex]!.id },
+        },
+      };
+      this.#battleJoinProposal = null;
+      this.#battleLedger = createSharedBattleLedger(this.#battleState);
     }
     this.#revision += 1;
     const output: RoomDispatch[] = [
@@ -608,6 +674,77 @@ export class AuthoritativeBattleRoom {
     ];
   }
 
+  private proposeBattleJoin(player: RoomPlayer,
+    message: Extract<ClientMessage, { readonly type: "proposeBattleJoin" }>): readonly RoomDispatch[] {
+    if (this.#battleId !== message.battleId || this.#battleState === null || this.#activeEncounter === null
+      || this.#battleParticipation === null || this.#battleState.status !== "active" || this.#battleState.turn !== 1
+      || this.#activeDuel || this.#pendingActions.size > 0) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce combat n'accepte plus de participant.")];
+    }
+    if (player.playerId === this.#battleParticipation.battleOwnerId) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le meneur participe déjà à ce combat.")];
+    }
+    try {
+      this.#battleJoinProposal = proposeBattleJoin(this.#battleParticipation, {
+        joinerId: player.playerId,
+        side: message.side,
+        members: message.team.members,
+        finalMemberIds: message.finalMemberIds,
+      });
+    } catch (error) {
+      return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        error instanceof Error ? error.message : "Proposition de composition invalide.")];
+    }
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private respondBattleJoin(player: RoomPlayer, requestId: string, battleId: string,
+    accept: boolean): readonly RoomDispatch[] {
+    if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
+      || this.#battleJoinProposal === null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune proposition de participation active.")];
+    }
+    if (!this.#battleJoinProposal.requiredApprovals.includes(player.playerId)
+      || this.#battleJoinProposal.joinerId === player.playerId) {
+      return [this.error(player.playerId, requestId, "UNAUTHORIZED", "Ce joueur ne peut pas répondre à cette proposition.")];
+    }
+    if (!accept) {
+      this.#battleJoinProposal = null;
+      this.#battleLedger = null;
+    } else {
+      try {
+        const approved = approveBattleJoin(this.#battleJoinProposal, player.playerId);
+        const participation = applyBattleJoin(this.#battleParticipation, approved);
+        const teams: Record<BattleSide, readonly BattlerState[]> = {
+          player: participation.camps.player.members.map((member) => member.battler),
+          opponent: participation.camps.opponent.members.map((member) => member.battler),
+        };
+        const activeIndices: Record<BattleSide, number> = {
+          player: Math.max(0, participation.camps.player.members.findIndex((member) => member.battler.id
+            === participation.camps.player.activeMemberId)),
+          opponent: Math.max(0, participation.camps.opponent.members.findIndex((member) => member.battler.id
+            === participation.camps.opponent.activeMemberId)),
+        };
+        this.#battleParticipation = participation;
+        this.#battleState = createTeamBattleState(teams, activeIndices);
+        this.#battleLedger = createSharedBattleLedger(this.#battleState);
+        this.#battleJoinProposal = null;
+      } catch (error) {
+        return [this.error(player.playerId, requestId, "INVALID_MESSAGE",
+          error instanceof Error ? error.message : "Accord de participation invalide.")];
+      }
+    }
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
   private respondPlayerChallenge(player: RoomPlayer, requestId: string, accept: boolean,
     team: BattleTeam | null): readonly RoomDispatch[] {
     const challenge = this.#duelChallenge;
@@ -629,6 +766,8 @@ export class AuthoritativeBattleRoom {
         : { player: team.activeIndex, opponent: challenge.team.activeIndex };
       this.#battleState = createTeamBattleState(teams, activeIndices);
       this.#activeDuel = true;
+      this.#battleParticipation = null;
+      this.#battleJoinProposal = null;
       this.#battleSequence += 1;
       this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
       this.#pendingActions.clear();
@@ -649,6 +788,9 @@ export class AuthoritativeBattleRoom {
     this.#battleState = null;
     this.#battleId = null;
     this.#activeDuel = false;
+    this.#battleParticipation = null;
+    this.#battleJoinProposal = null;
+    this.#battleLedger = null;
     this.#pendingActions.clear();
     this.#pendingReplacements.clear();
     this.#revision += 1;
@@ -664,13 +806,19 @@ export class AuthoritativeBattleRoom {
     }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
     if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
-    if (!this.#battleState.replacementRequired.includes(player.side)) {
+    const battleSide = this.#battleParticipation === null ? player.side
+      : (["player", "opponent"] as const).find((side) => this.#battleParticipation!.camps[side].trainerIds.includes(player.playerId));
+    if (battleSide === undefined || !this.#battleState.replacementRequired.includes(battleSide)) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun remplacement requis pour ce camp.")];
     }
-    if (this.#pendingReplacements.has(player.side)) {
+    const replacementOwner = this.#battleParticipation?.camps[battleSide].members[message.teamIndex]?.ownerId;
+    if (this.#battleParticipation !== null && replacementOwner !== player.playerId) {
+      return [this.error(player.playerId, message.requestId, "UNAUTHORIZED", "Ce Pokémon appartient à l'autre Dresseur.")];
+    }
+    if (this.#pendingReplacements.has(battleSide)) {
       return [this.error(player.playerId, message.requestId, "REPLACEMENT_ALREADY_SUBMITTED", "Un remplacement est déjà enregistré.")];
     }
-    this.#pendingReplacements.set(player.side, message.teamIndex);
+    this.#pendingReplacements.set(battleSide, message.teamIndex);
     this.#revision += 1;
     const output: RoomDispatch[] = [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) }];
     if (!this.#battleState.replacementRequired.every((side) => this.#pendingReplacements.has(side))) return output;
@@ -678,6 +826,7 @@ export class AuthoritativeBattleRoom {
     const replacements = Object.fromEntries(this.#pendingReplacements) as Partial<Record<BattleSide, number>>;
     const result = replaceFaintedPokemon(this.#battleState, replacements);
     this.#battleState = result.state;
+    this.synchronizeBattleParticipation();
     this.#pendingReplacements.clear();
     this.#revision += 1;
     output.push({ audience: "all", message: { type: "replacementResolved", version: PROTOCOL_VERSION, battleId: this.#battleId, state: result.state, events: result.events } });
@@ -693,6 +842,20 @@ export class AuthoritativeBattleRoom {
       if (oldest !== undefined) player.acknowledged.delete(oldest);
     }
     return message;
+  }
+
+  private synchronizeBattleParticipation(): void {
+    if (this.#battleParticipation === null || this.#battleState === null) return;
+    const synchronizeCamp = (side: BattleSide): SharedBattleCamp => {
+      const team = this.#battleState!.teams[side];
+      const camp = this.#battleParticipation!.camps[side];
+      return { ...camp, members: team.members.map((battler) => ({
+        ownerId: camp.members.find((member) => member.battler.id === battler.id)?.ownerId ?? null,
+        battler,
+      })), activeMemberId: team.members[team.activeIndex]!.id };
+    };
+    this.#battleParticipation = { ...this.#battleParticipation,
+      camps: { player: synchronizeCamp("player"), opponent: synchronizeCamp("opponent") } };
   }
 
   private error(playerId: string, requestId: string | null, code: ProtocolErrorCode, message: string): RoomDispatch {

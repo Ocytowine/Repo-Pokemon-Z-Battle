@@ -738,9 +738,37 @@ Premier noyau de ce contrat implemente le 2026-10-04 dans `battle-engine` :
 Pokemon et actif. Une proposition de jonction valide les identifiants, refuse les
 combats doubles et camps pleins, impose un a six membres, exige au moins un Pokemon
 de l'invite et recueille les accords requis avant de modifier la composition. Le
-resolveur indique ensuite quel joueur a autorite sur l'actif. Le protocole, la room
-et l'ecran d'accord restent le prochain lot ; ce noyau n'est pas encore accessible
-depuis l'interface du jeu.
+resolveur indique ensuite quel joueur a autorite sur l'actif. Ce premier noyau
+etait initialement sans protocole ni interface ; le deuxieme lot ci-dessous les
+raccorde.
+
+Deuxieme noyau implemente le 2026-10-04 : le protocole v9 transporte la
+participation et la proposition dans chaque snapshot. L'invite choisit le camp et
+la composition finale depuis un panneau en jeu ; l'hote accepte ou refuse avant le
+premier tour. La room persiste proposition, accords, proprietaires et actif, bloque
+les actions pendant la decision et n'accepte ensuite l'action que du proprietaire
+du Pokemon actif. Une reconnexion restaure ces informations. Les rencontres du
+monde reseau utilisent ce flux ; publier les combats narratifs actuellement locaux
+de Pokemon Z dans la room reste le lot suivant avant une recette manuelle complete
+depuis le parcours source.
+
+Troisieme fondation commencee le 2026-10-04 : la restitution d'un camp mixte est
+desormais filtree par proprietaire avec `storeOwnedBattleResults`. Elle ne recopie
+que PV, statut, PP et actif des Pokemon personnels presents dans le combat ; les
+Pokemon ecartes et ceux de l'autre Dresseur restent intacts. La publication du
+combat source attend encore la conversion du journal autoritaire des engagements
+et K.O. pour attribuer l'EXP au bon proprietaire, y compris apres un changement
+d'actif. `SharedBattleLedger`/`recordSharedBattleTurn` enregistre les actifs
+successifs et battlers vaincus sans doublon ; la room le met a jour, le publie et le
+restaure deja. La conversion en gains selon les courbes source constitue le prochain
+sous-lot.
+
+Plan global valide le 2026-10-04 :
+[`SHARED_SOURCE_BATTLE_PLAN.md`](SHARED_SOURCE_BATTLE_PLAN.md) decoupe la suite en
+stabilisation, session/reglement communs, publication des combats source, jonction,
+boucle tactique autoritaire, resultats personnels, reprise narrative et E2E. Le
+jalon ne sera coche qu'apres un sauvage et un Dresseur reels valides en solo, chez
+l'hote, chez l'invite et apres reconnexion.
 
 ### Increment 9.6 - Rencontres sauvages du monde
 

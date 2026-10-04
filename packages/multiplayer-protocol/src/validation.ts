@@ -233,6 +233,19 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("respondPlayerChallenge mal forme");
       }
       return value as unknown as ClientMessage;
+    case "proposeBattleJoin":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "side", "team", "finalMemberIds"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
+        || !["player", "opponent"].includes(String(value.side)) || !isBattleTeam(value.team)
+        || !Array.isArray(value.finalMemberIds) || value.finalMemberIds.length < 1 || value.finalMemberIds.length > 6
+        || !value.finalMemberIds.every(isIdentifier)) return invalid("proposeBattleJoin mal forme");
+      return value as unknown as ClientMessage;
+    case "respondBattleJoin":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "accept"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId) || typeof value.accept !== "boolean") {
+        return invalid("respondBattleJoin mal forme");
+      }
+      return value as unknown as ClientMessage;
     case "leaveBattle":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) return invalid("leaveBattle mal forme");

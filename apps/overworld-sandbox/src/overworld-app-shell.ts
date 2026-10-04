@@ -16,6 +16,7 @@ export function mountOverworldApp(): HTMLCanvasElement {
           <section id="source-ranch" class="source-ranch" hidden aria-label="Ranch Pokémon"></section>
           <section id="source-pokemon-summary" class="source-pokemon-summary" hidden aria-label="Résumé Pokémon"></section>
           <section id="player-duel-prompt" class="player-duel-prompt" hidden aria-label="Défi entre joueurs"></section>
+          <section id="battle-join-prompt" class="battle-join-prompt" hidden aria-label="Rejoindre le combat"></section>
           <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
             <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
             <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">

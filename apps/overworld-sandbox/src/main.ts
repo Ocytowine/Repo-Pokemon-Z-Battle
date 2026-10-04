@@ -13,7 +13,8 @@ import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, 
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
-import { SeededRandom, type BattleTeam, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { SeededRandom, activeBattleController, type BattleTeam, type TeamBattleEvent,
+  type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
@@ -41,6 +42,7 @@ import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
+import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
@@ -64,7 +66,7 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import "./style.css";
 
-const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v8";
+const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
 let viewedMapId = SOURCE_MAP_ID;
@@ -796,6 +798,13 @@ const sourcePlayerDuelView = new SourcePlayerDuelView({
   },
   onRefuse: () => { multiplayer.respondPlayerChallenge(false, null); },
 });
+const sourceBattleJoinView = new SourceBattleJoinView({
+  onPropose: (side, finalMemberIds) => {
+    const team = currentPlayerDuelTeam();
+    if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds);
+  },
+  onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
+});
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onStatus: setNetworkText,
   onWorldState: () => undefined,
@@ -818,8 +827,17 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onRender: render,
 });
 
+function networkBattleViewerSide(): "player" | "opponent" {
+  const session = multiplayer.current;
+  const battle = session?.snapshot?.battle;
+  if (session === null || battle === null || battle === undefined) return "player";
+  if (battle.duel) return session.ticket.side;
+  return (["player", "opponent"] as const).find((side) =>
+    battle.participation?.camps[side].trainerIds.includes(session.ticket.playerId)) ?? "player";
+}
+
 function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState): void {
-  const side = multiplayer.current?.ticket.side ?? "player";
+  const side = networkBattleViewerSide();
   networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
@@ -849,7 +867,7 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
 
 function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, state: TeamBattleState,
   events: readonly TeamBattleEvent[]): void {
-  const side = multiplayer.current?.ticket.side ?? "player";
+  const side = networkBattleViewerSide();
   networkBattleAnimating = true;
   render();
   networkBattlePresentation = networkBattlePresentation.then(async () => {
@@ -1664,15 +1682,19 @@ function renderEncounter(): void {
   const networkBattle = network?.snapshot?.battle ?? null;
   const canonicalNetworkState = networkBattle !== null && networkPresentedBattle?.id === networkBattle.id
     ? networkPresentedBattle.state : networkBattle?.state ?? null;
-  const presentedNetworkState = canonicalNetworkState !== null && networkBattle?.duel === true && network !== null
-    ? networkBattleForViewer(canonicalNetworkState, network.ticket.side) : canonicalNetworkState;
+  const viewerSide = networkBattleViewerSide();
+  const presentedNetworkState = canonicalNetworkState !== null && networkBattle !== null
+    ? networkBattleForViewer(canonicalNetworkState, viewerSide) : canonicalNetworkState;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : presentedNetworkState;
   const localSourceBattle = battleState !== null && battleState === sourceBattle;
   const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
     sourceEventState.inventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
-    networkSide: networkBattle?.duel === true ? "player" : network?.ticket.side ?? null,
+    networkSide: networkBattle !== null && network !== null
+      && (networkBattle.duel || networkBattle.participation !== null
+        && activeBattleController(networkBattle.participation, viewerSide) === network.ticket.playerId)
+      ? "player" : null,
     networkSubmittedTurn: network?.submittedTurn ?? null,
     escapable: localSourceBattle && sourceEventState.pendingEncounter?.escapable === true,
     capturable: localSourceBattle && sourceEventState.pendingEncounter !== null,
@@ -1681,6 +1703,8 @@ function renderEncounter(): void {
   const duel = network?.snapshot?.duelChallenge ?? null;
   sourcePlayerDuelView.render({ challenge: duel, side, players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
+  sourceBattleJoinView.render({ battle: networkBattle, playerId: network?.ticket.playerId ?? null,
+    team: currentPlayerDuelTeam() });
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
     sourceEventState = { ...sourceEventState,

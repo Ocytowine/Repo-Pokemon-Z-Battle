@@ -1,4 +1,5 @@
-import type { BattleAbility, BattleMove, BattleStats, BattleTeam, BattlerState, HeldItem, MajorStatusState } from "@pokemon-z-battle/battle-engine";
+import type { BattleAbility, BattleMove, BattleSide, BattleStats, BattleTeam, BattlerState, HeldItem,
+  MajorStatusState, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
 
@@ -701,4 +702,32 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
   const activeIndex = members.findIndex((member) => member.id === activeId);
   if (activeIndex < 0) throw new Error("Pokémon actif du résultat introuvable.");
   return { ...party, activeIndex, members };
+}
+
+/** Restores only the Pokémon owned by one participant from a shared camp battle. */
+export function storeOwnedBattleResults(party: PlayerPartyState, participation: SharedBattleParticipation,
+  state: TeamBattleState, ownerId: string): PlayerPartyState {
+  const owned = new Map<string, { readonly side: BattleSide; readonly battler: BattlerState }>();
+  for (const side of ["player", "opponent"] as const) {
+    const teamById = new Map(state.teams[side].members.map((battler) => [battler.id, battler]));
+    for (const member of participation.camps[side].members) {
+      if (member.ownerId !== ownerId) continue;
+      const battler = teamById.get(member.battler.id);
+      if (battler === undefined) throw new Error(`Résultat partagé incomplet pour ${member.battler.id}.`);
+      if (owned.has(battler.id)) throw new Error(`Propriété partagée dupliquée pour ${battler.id}.`);
+      owned.set(battler.id, { side, battler });
+    }
+  }
+  const members = party.members.map((pokemon) => {
+    const result = owned.get(pokemon.id)?.battler;
+    if (result === undefined) return pokemon;
+    const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
+    return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
+  });
+  const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])
+    .find((battler) => battler !== undefined && owned.has(battler.id));
+  const activeIndex = activeOwned === undefined ? party.activeIndex
+    : members.findIndex((pokemon) => pokemon.id === activeOwned.id);
+  return { ...party, members, activeIndex: activeIndex === null || activeIndex < 0 ? party.activeIndex : activeIndex };
 }

@@ -1011,9 +1011,45 @@ Fondation implementee le 2026-10-04 dans `battle-engine` :
 `applyBattleJoin` et `activeBattleController` constituent le noyau pur commun. Ils
 valident format simple, maximum de deux Dresseurs et six Pokemon par camp,
 proprietes, composition finale et accords. Trois tests couvrent jonction alliee,
-jonction adverse et refus des cas interdits. Aucun bouton n'est encore expose : le
-prochain lot doit versionner le protocole, persister proposition/accord dans la
-room, puis raccorder le combat source local a cette autorite.
+jonction adverse et refus des cas interdits. Ce premier noyau etait initialement
+sans protocole ni interface ; le deuxieme lot ci-dessous les raccorde.
+
+Deuxieme lot implemente le 2026-10-04 : `PROTOCOL_VERSION` passe a 9 et les
+snapshots de combat exposent `participation` et `joinProposal`. Les intentions
+`proposeBattleJoin` et `respondBattleJoin` sont strictement validees. La room
+accepte une proposition uniquement au tour 1 d'une rencontre simple sans action
+en attente, attend l'accord du meneur, reconstruit l'equipe autoritaire et route
+chaque action vers le proprietaire de l'actif. Proposition et proprietes survivent
+a l'export/restauration ; une deconnexion annule seulement une proposition non
+validee. `SourceBattleJoinView` fournit dans le jeu le choix du camp, la selection
+cumulee a six et le panneau Accepter/Refuser. Un joueur qui n'a pas l'actif reste
+en observation et ses commandes sont bloquees.
+
+Dette explicite : ce flux est raccorde aux rencontres deja creees par la room, mais
+les combats du parcours Pokemon Z naissent encore dans `SourceBattleController`
+sur le client. Le prochain lot doit publier leur ouverture et leur contexte dans
+la room, puis reventiler le resultat vers les sauvegardes personnelles avant que la
+participation soit testable sur les combats narratifs courants.
+
+Troisieme fondation commencee le 2026-10-04 : `storeOwnedBattleResults` restaure
+PV, statut, PP et membre actif uniquement pour les Pokemon dont le participant est
+proprietaire dans `SharedBattleParticipation`. Les membres non retenus dans le camp
+restent inchanges et les Pokemon d'un autre joueur ne peuvent pas entrer dans sa
+sauvegarde. Ce garde-fou est teste sur un camp hote/invite mixte. Avant de publier
+les combats source, la room doit encore journaliser les Pokemon effectivement
+engages et les K.O. credités : l'etat final seul ne suffit pas pour attribuer l'EXP
+sans erreur lorsque l'actif change de proprietaire. Le noyau pur
+`SharedBattleLedger`/`recordSharedBattleTurn` conserve maintenant les identifiants
+passes sur le terrain et chaque battler vaincu sans doublon. La room le cree avant
+le premier tour, le met a jour apres chaque resolution et le persiste dans les
+snapshots/reconnexions. Il reste a convertir ces credits avec les courbes source.
+
+Le plan d'integration complet est consigne dans
+[`SHARED_SOURCE_BATTLE_PLAN.md`](SHARED_SOURCE_BATTLE_PLAN.md). Il fixe l'ordre des
+lots, l'autorite, le cycle `join-window -> active -> settling -> closed`, les
+credits d'EXP par K.O., les reglements personnels idempotents et la reprise
+narrative. Cette planification ne declare pas le raccord termine : les combats de
+`SourceBattleController` restent locaux jusqu'au lot de publication dans la room.
 
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
@@ -1032,7 +1068,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 365 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 369 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

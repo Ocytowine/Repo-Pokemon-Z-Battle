@@ -102,8 +102,8 @@ export class SourceBattleOverlay {
       return;
     }
     const submitted = !model.local && model.networkSubmittedTurn === model.state.turn;
-    const blocked = submitted || model.animating;
-    const replacement = !model.local && model.state.replacementRequired.includes("player");
+    const blocked = submitted || model.animating || !model.local && model.networkSide === null;
+    const replacement = !model.local && model.networkSide !== null && model.state.replacementRequired.includes("player");
     if (replacement) {
       this.menu = "pokemon";
       this.renderPokemon(actions, team, model, blocked, true);

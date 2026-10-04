@@ -5,8 +5,9 @@ import { addPokemonToParty, addPokemonToStorage, calculatePokemonStats, createDe
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, publicPokemonIdentity, recalculatePersistentPokemonStats,
-  reorderPokemonMoves, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
+  reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
+import { createTeamBattleState, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
   id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
@@ -188,6 +189,23 @@ describe("persistent player party", () => {
       ability: "STATIC", moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] });
     expect(pokemon.experience).toBe(125);
     expect(addPokemonToParty(createEmptyPlayerParty(), pokemon)).toMatchObject({ activeIndex: 0, members: [{ species: "PIKACHU" }] });
+  });
+
+  it("restores only one owner's resources from a mixed shared camp", () => {
+    const hostTeam = playerPartyToBattleTeam(party, catalog);
+    const guest = { ...hostTeam.members[0]!, id: "guest-mon", hp: 18 };
+    const state = createTeamBattleState({ player: [{ ...hostTeam.members[0]!, hp: 1 }, guest],
+      opponent: [{ ...guest, id: "wild" }] });
+    const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["host", "guest"], activeMemberId: "starter", members: [
+        { ownerId: "host", battler: state.teams.player.members[0]! },
+        { ownerId: "guest", battler: state.teams.player.members[1]! },
+      ] },
+      opponent: { trainerIds: [], activeMemberId: "wild",
+        members: [{ ownerId: null, battler: state.teams.opponent.members[0]! }] },
+    } };
+    expect(storeOwnedBattleResults(party, participation, state, "host").members[0]).toMatchObject({ id: "starter", hp: 1 });
+    expect(storeOwnedBattleResults(party, participation, state, "guest").members[0]).toMatchObject({ id: "starter", hp: 4 });
   });
 
   it("matches the source IV, EV and nature formulas in source stat order", () => {

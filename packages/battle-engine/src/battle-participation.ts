@@ -1,4 +1,4 @@
-import type { BattleSide, BattlerState } from "./types.js";
+import type { BattleSide, BattlerState, TeamBattleEvent, TeamBattleState } from "./types.js";
 import { MAX_TEAM_SIZE } from "./team-battle.js";
 
 export type SharedBattleFormat = "single" | "double";
@@ -27,6 +27,11 @@ export interface BattleJoinProposal {
   readonly finalMemberIds: readonly string[];
   readonly requiredApprovals: readonly string[];
   readonly approvals: readonly string[];
+}
+
+export interface SharedBattleLedger {
+  readonly engagedMemberIds: Readonly<Record<BattleSide, readonly string[]>>;
+  readonly defeatedMembers: readonly { readonly side: BattleSide; readonly battler: BattlerState }[];
 }
 
 function unique(values: readonly string[]): readonly string[] {
@@ -87,4 +92,29 @@ export function applyBattleJoin(state: SharedBattleParticipation, proposal: Batt
 export function activeBattleController(state: SharedBattleParticipation, side: BattleSide): string | null {
   const camp = state.camps[side];
   return camp.members.find((member) => member.battler.id === camp.activeMemberId)?.ownerId ?? null;
+}
+
+export function createSharedBattleLedger(state: TeamBattleState): SharedBattleLedger {
+  return { engagedMemberIds: {
+    player: [state.teams.player.members[state.teams.player.activeIndex]!.id],
+    opponent: [state.teams.opponent.members[state.teams.opponent.activeIndex]!.id],
+  }, defeatedMembers: [] };
+}
+
+export function recordSharedBattleTurn(ledger: SharedBattleLedger, before: TeamBattleState,
+  after: TeamBattleState, events: readonly TeamBattleEvent[]): SharedBattleLedger {
+  const engaged = { player: [...ledger.engagedMemberIds.player], opponent: [...ledger.engagedMemberIds.opponent] };
+  for (const side of ["player", "opponent"] as const) {
+    const active = after.teams[side].members[after.teams[side].activeIndex];
+    if (active !== undefined && !engaged[side].includes(active.id)) engaged[side].push(active.id);
+  }
+  const defeated = [...ledger.defeatedMembers];
+  for (const event of events) {
+    if (event.type !== "fainted") continue;
+    const battler = before.teams[event.side].members[before.teams[event.side].activeIndex];
+    if (battler !== undefined && !defeated.some((entry) => entry.battler.id === battler.id)) {
+      defeated.push({ side: event.side, battler });
+    }
+  }
+  return { engagedMemberIds: engaged, defeatedMembers: defeated };
 }

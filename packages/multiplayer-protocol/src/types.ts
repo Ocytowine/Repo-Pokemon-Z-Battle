@@ -1,11 +1,11 @@
-import type { BattleSide, BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleJoinProposal, BattleSide, BattleTeam, SharedBattleLedger, SharedBattleParticipation, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
 import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, SourceWorldHostState,
   SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 
-export const PROTOCOL_VERSION = 8 as const;
+export const PROTOCOL_VERSION = 9 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
@@ -28,7 +28,9 @@ export interface RoomSnapshot {
   readonly roomCode: string;
   readonly phase: RoomPhase;
   readonly players: readonly RoomPlayerSnapshot[];
-  readonly battle: { readonly id: string; readonly state: TeamBattleState; readonly duel: boolean } | null;
+  readonly battle: { readonly id: string; readonly state: TeamBattleState; readonly duel: boolean;
+    readonly participation: SharedBattleParticipation | null; readonly joinProposal: BattleJoinProposal | null;
+    readonly ledger: SharedBattleLedger | null } | null;
   readonly duelChallenge: PlayerDuelChallenge | null;
   readonly world: OverworldState;
   readonly sourceWorld: SourceWorldSnapshot | null;
@@ -65,6 +67,9 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "challengePlayer"; readonly team: BattleTeam })
   | (RequestedMessage & { readonly type: "respondPlayerChallenge"; readonly accept: boolean;
       readonly team: BattleTeam | null })
+  | (RequestedMessage & { readonly type: "proposeBattleJoin"; readonly battleId: string;
+      readonly side: BattleSide; readonly team: BattleTeam; readonly finalMemberIds: readonly string[] })
+  | (RequestedMessage & { readonly type: "respondBattleJoin"; readonly battleId: string; readonly accept: boolean })
   | (RequestedMessage & { readonly type: "leaveBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
