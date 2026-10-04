@@ -697,6 +697,51 @@ sont ajoutees si un emplacement est libre ; celles qui exigent d'en oublier une
 sont signalees explicitement et restent a raccorder a une interface de choix. Le
 premier Keunotor niveau 2 rapporte ainsi 13 points au starter niveau 5.
 
+Refonte UI/UX du combat implementee le 2026-10-04 : les commandes du joueur sont
+regroupees dans un panneau 2 x 2 `Attaque`, `Pokemon`, `Sac`, `Fuite`. Chaque
+commande ouvre son propre sous-ecran avec retour explicite. Attaque conserve les
+quatre capacites typees et leurs PP ; Pokemon liste toute l'equipe, ses PV, le
+K.O. et le membre actif, puis propose `Details` ou `Changer`. Le changement
+volontaire passe maintenant par le meme `TeamBattleAction` en combat source local
+et dans la room Coop autoritaire ; l'adversaire conserve son action du tour.
+
+Le Sac expose les trois familles demandees a partir de l'inventaire reel : Balls,
+soins et objets de combat. La famille Balls est inaccessible contre un Dresseur
+ou un joueur. Les objets eux-memes restent volontairement desactives tant que
+capture, ciblage des soins et effets de combat ne sont pas portes dans le noyau
+partage puis dans la room ; l'UI indique cette dette au lieu de simuler un effet.
+Le HUD joueur est aligne avec ce panneau, montre les membres disponibles/actif/K.O.
+et colore sa jauge de PV aux seuils de danger.
+
+Cycle de presentation repris le 2026-10-04 d'apres `pbBattleAnimation`,
+`pbStartBattle`, `pbTrainerSendOut`, `pbSendOut`, `pbGainEXP` et `pbEndBattle`.
+L'ouverture joue les flashes gris, le passage au noir puis l'ouverture verticale
+de la scene. Pokemon sauvage et Dresseurs ont leurs entrees distinctes. La victoire
+ne ferme plus la scene avant le reglement : baisse de la musique de combat, ME de
+victoire, texte et jauge d'EXP sur chaque seuil de niveau, annonces de niveau et de
+capacite, argent, puis fondu final. Defaite et fuite n'emploient pas le ME de
+victoire. Le noyau calcule et persiste toujours le resultat avant sa presentation.
+
+Prochain contrat combat Coop/PvP valide : rejoindre signifie apporter ses propres
+Pokemon dans un combat simple, sans le convertir en combat double. Chaque camp
+conserve un seul Pokemon actif, six membres au maximum et jusqu'a deux Dresseurs.
+L'entree est refusee si la bataille source est deja double ou si les deux camps ont
+deja deux Dresseurs. La room reste autoritaire ; equipe, EXP, objets et recompenses
+restent personnels ; l'issue narrative appartient a l'hote ; une reconnexion
+restaure camp, place, proprietaires et battlers. Dans le camp adverse, l'invite
+choisit sa contribution dans la limite des six places. Dans le camp de l'hote, la
+composition finale est une proposition que les deux Dresseurs doivent accepter.
+Le controle de l'action courante appartient au proprietaire du Pokemon actif.
+
+Premier noyau de ce contrat implemente le 2026-10-04 dans `battle-engine` :
+`SharedBattleParticipation` separe format, camps, Dresseurs, proprietaire de chaque
+Pokemon et actif. Une proposition de jonction valide les identifiants, refuse les
+combats doubles et camps pleins, impose un a six membres, exige au moins un Pokemon
+de l'invite et recueille les accords requis avant de modifier la composition. Le
+resolveur indique ensuite quel joueur a autorite sur l'actif. Le protocole, la room
+et l'ecran d'accord restent le prochain lot ; ce noyau n'est pas encore accessible
+depuis l'interface du jeu.
+
 ### Increment 9.6 - Rencontres sauvages du monde
 
 - [x] exposer le terrain effectif de chaque case selon les trois couches et les

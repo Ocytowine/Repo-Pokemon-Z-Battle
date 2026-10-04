@@ -123,7 +123,7 @@ export class SourceBattleOverlay {
     actions.innerHTML = `<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
       <button data-battle-menu="pokemon" class="pokemon"${disabled(blocked)}><b>●</b><span>Pokémon</span><small>${reserves} remplaçant${reserves > 1 ? "s" : ""}</small></button>
-      <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} disponible${bagCount > 1 ? "s" : ""}</small></button>
+      <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
       <button id="escape-source-encounter" class="escape"${disabled(blocked || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {

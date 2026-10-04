@@ -110,7 +110,8 @@ describe("source battle controller", () => {
       getResources: () => ({ catalog, battleback: "grass", battleMusic: null, victoryMusic: null }),
       setNotice: vi.fn(), render: vi.fn(),
     };
-    const controller = new SourceBattleController(presentation(), callbacks);
+    const visuals = presentation();
+    const controller = new SourceBattleController(visuals, callbacks);
 
     expect(controller.startPendingEncounter()).toBe(false);
 
@@ -146,7 +147,8 @@ describe("source battle controller", () => {
       getResources: () => ({ catalog, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "victory.ogg" }),
       setNotice: vi.fn(), render: vi.fn(),
     };
-    const controller = new SourceBattleController(presentation(), callbacks);
+    const visuals = presentation();
+    const controller = new SourceBattleController(visuals, callbacks);
     const completed = vi.fn();
 
     expect(controller.startPendingEncounter(completed)).toBe(true);
@@ -155,6 +157,9 @@ describe("source battle controller", () => {
     expect(controller.active).toBe(false);
     expect(eventState.pendingEncounter).toBeNull();
     expect(completed).toHaveBeenCalledWith(true);
+    expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({
+      experience: expect.objectContaining({ pokemonName: "Marisson", amount: expect.any(Number) }),
+    }));
   });
 
   it("starts a non-escapable trainer battle and reports its result", async () => {
@@ -182,5 +187,6 @@ describe("source battle controller", () => {
     expect(completed).toHaveBeenCalledWith(true);
     expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
+    expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120 }));
   });
 });

@@ -1002,8 +1002,7 @@ function synchronizeNetworkPlayerProfiles(players: readonly RoomPlayerSnapshot[]
     networkProfileSignatures[player.side] = signature;
     const application = (networkProfileApplications[player.side] ?? 0) + 1;
     networkProfileApplications[player.side] = application;
-    void loadSourcePlayerVisuals({ schemaVersion: 1, avatarId: player.profile.visualPreset,
-      profile: player.profile.profile }).then((visuals) => {
+    void loadSourcePlayerVisuals({ avatarId: player.profile.visualPreset, profile: player.profile.profile }).then((visuals) => {
       if (networkProfileApplications[player.side] !== application
         || networkProfileSignatures[player.side] !== signature) return;
       networkAvatarImages = { ...networkAvatarImages, [player.side]: visuals.overworld };
@@ -1536,8 +1535,9 @@ function synchronizeSourceFollower(): void {
   const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
   const enabled = sourceEventState.followerEnabled && member !== null;
   sourceFollowerMotion.synchronize(enabled, importedAssets.map, importedAvatar);
-  const record = enabled ? importedAssets.pokemonAssets.records.find((candidate) => candidate.internalName === member.species) : undefined;
-  const path = record === undefined ? null : resolvePokemonAsset(record, { kind: "overworld", form: member.metadata.form,
+  const record = member === null || !enabled ? undefined
+    : importedAssets.pokemonAssets.records.find((candidate) => candidate.internalName === member.species);
+  const path = record === undefined || member === null ? null : resolvePokemonAsset(record, { kind: "overworld", form: member.metadata.form,
     shiny: member.metadata.shiny, female: member.metadata.gender === "female" }).asset?.path ?? null;
   if (path === sourceFollowerAssetPath) return;
   sourceFollowerAssetPath = path;

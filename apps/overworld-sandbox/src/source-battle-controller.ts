@@ -1,5 +1,5 @@
 import { SeededRandom, type BattleSide, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
+import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 import {
   applyAutomaticReplacements,
   attemptSourceEncounterEscape,
@@ -28,8 +28,47 @@ export interface SourceBattlePresentation {
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
   }) => Promise<void>;
   readonly playTurn: (before: TeamBattleState, events: readonly TeamBattleEvent[]) => Promise<void>;
-  readonly endBattle: (winner: BattleSide | null) => Promise<void> | void;
+  readonly endBattle: (winner: BattleSide | null, outcome?: SourceBattleOutcome) => Promise<void> | void;
   readonly render: (state: TeamBattleState, battleback?: string) => Promise<void>;
+}
+
+export interface SourceBattleExperiencePresentation {
+  readonly pokemonName: string;
+  readonly amount: number;
+  readonly beforeLevel: number;
+  readonly afterLevel: number;
+  readonly beforeExperience: number;
+  readonly afterExperience: number;
+  readonly growthRate: string;
+  readonly learnedMoves: readonly string[];
+  readonly skippedMoves: readonly string[];
+}
+
+export interface SourceBattleOutcome {
+  readonly experience?: SourceBattleExperiencePresentation;
+  readonly money?: number;
+}
+
+function battleExperiencePresentation(before: PlayerPartyState, after: PlayerPartyState,
+  reward: NonNullable<ReturnType<typeof settleSourceEncounter>["experience"]>, catalog: PlayerCreationCatalog,
+): SourceBattleExperiencePresentation | undefined {
+  const previous = before.members.find((pokemon) => pokemon.id === reward.pokemonId);
+  const next = after.members.find((pokemon) => pokemon.id === reward.pokemonId);
+  if (previous === undefined || next === undefined) return undefined;
+  const definition = catalog.pokemon.find((pokemon) => pokemon.internalName === next.species);
+  if (definition === undefined) return undefined;
+  const moveName = (internalName: string): string => catalog.moves.find((move) => move.internalName === internalName)?.name ?? internalName;
+  return {
+    pokemonName: next.nickname ?? definition.name,
+    amount: reward.amount,
+    beforeLevel: previous.level,
+    afterLevel: next.level,
+    beforeExperience: Math.max(previous.experience, experienceAtLevel(previous.level, definition.growthRate)),
+    afterExperience: next.experience,
+    growthRate: definition.growthRate,
+    learnedMoves: reward.learnedMoves.map(moveName),
+    skippedMoves: reward.skippedMoves.map(moveName),
+  };
 }
 
 export interface SourceBattleCallbacks {
@@ -168,7 +207,7 @@ export class SourceBattleController {
           const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
-          await this.presentation.endBattle(this.battle.winner);
+          await this.presentation.endBattle(this.battle.winner, { ...(loss > 0 ? { money: -loss } : {}) });
           this.clear();
           this.callbacks.setNotice(`Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.${loss > 0 ? ` · -${loss.toLocaleString("fr-FR")} ₽` : ""}`);
           encounterCompletion?.(false);
@@ -204,23 +243,31 @@ export class SourceBattleController {
       this.battle = applyAutomaticReplacements(result.state);
       if (this.battle.status === "finished") {
         const winner = this.battle.winner;
-        await this.presentation.endBattle(winner);
         const resources = this.callbacks.getResources();
         const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
         let nextState = { ...eventState, party: settlement.party };
         const trainerCompletion = this.trainerCompletion;
         const encounterCompletion = this.encounterCompletion;
         let moneyNotice = "";
+        let moneyDelta = 0;
         if (winner === "player" && trainerCompletion !== null) {
           const amount = sourceTrainerReward(before.teams.opponent.members.map((member) => member.level),
             this.trainerAudio?.baseMoney ?? 0);
           nextState = addSourceMoney(nextState, amount);
+          moneyDelta = amount;
           if (amount > 0) moneyNotice = ` · +${amount.toLocaleString("fr-FR")} ₽`;
         } else if (winner !== "player") {
           const amount = sourceDefeatLoss(nextState);
           nextState = { ...nextState, money: nextState.money - amount };
+          moneyDelta = -amount;
           if (amount > 0) moneyNotice = ` · -${amount.toLocaleString("fr-FR")} ₽`;
         }
+        const experience = settlement.experience === null || resources === null ? undefined
+          : battleExperiencePresentation(eventState.party, settlement.party, settlement.experience, resources.catalog);
+        await this.presentation.endBattle(winner, {
+          ...(experience === undefined ? {} : { experience }),
+          ...(moneyDelta === 0 ? {} : { money: moneyDelta }),
+        });
         if (trainerCompletion === null && settlement.completed) nextState = completePendingEncounter(nextState);
         this.callbacks.updateEventState(nextState);
         this.clear();

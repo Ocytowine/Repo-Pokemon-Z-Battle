@@ -1,6 +1,8 @@
 import { loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
 import type { PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 
+export type SourcePlayerVisualSelection = Pick<PlayerAvatarSelection, "avatarId" | "profile">;
+
 type OverworldContext = "overworld" | "bicycle" | "surf" | "run" | "dive" | "fish" | "fishSurf";
 interface AssetReference { readonly path: string | null }
 interface AvatarRecord {
@@ -12,7 +14,7 @@ interface AvatarRecord {
 interface AvatarCatalog { readonly records: readonly AvatarRecord[] }
 
 export interface SourcePlayerVisuals {
-  readonly selection: PlayerAvatarSelection;
+  readonly selection: SourcePlayerVisualSelection;
   readonly overworld: HTMLImageElement;
   readonly pickup: HTMLImageElement;
   readonly battleFront: HTMLImageElement;
@@ -34,7 +36,7 @@ async function imageFromCanvas(canvas: HTMLCanvasElement): Promise<HTMLImageElem
   const image = new Image(); image.src = canvas.toDataURL(); await image.decode(); return image;
 }
 
-async function recoloredImage(path: string, comparisonPaths: readonly string[], selection: PlayerAvatarSelection): Promise<HTMLImageElement> {
+async function recoloredImage(path: string, comparisonPaths: readonly string[], selection: SourcePlayerVisualSelection): Promise<HTMLImageElement> {
   return imageFromCanvas(await loadRecoloredAvatarCanvas(sourceUrl(path), comparisonPaths.map(sourceUrl), selection.profile.colors));
 }
 
@@ -44,7 +46,7 @@ async function catalog(): Promise<AvatarCatalog> {
   return response.json() as Promise<AvatarCatalog>;
 }
 
-export async function loadSourcePlayerVisuals(selection: PlayerAvatarSelection): Promise<SourcePlayerVisuals> {
+export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelection): Promise<SourcePlayerVisuals> {
   const avatarCatalog = await catalog();
   const selected = avatarCatalog.records.find((record) => record.id === selection.avatarId);
   if (selected === undefined) throw new Error(`Profil visuel absent : ${selection.avatarId}.`);

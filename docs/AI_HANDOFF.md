@@ -958,6 +958,63 @@ afin que son propre Dresseur et son Pokemon restent du cote joueur. Les images
 `battleBack` et `battleFront` proviennent des deux profils personnalises charges.
 Les boutons sont verrouilles pendant toute animation reseau.
 
+Refonte de commandes du 2026-10-04 : `SourceBattleOverlay` utilise maintenant
+quatre entrees stables (`Attaque`, `Pokemon`, `Sac`, `Fuite`) et des sous-ecrans
+partages entre combat source et duel Coop. La projection reseau deja retournee du
+point de vue de l'invite est toujours lue comme equipe `player`, ce qui evite de
+presenter les commandes de l'hote chez l'invite. L'ecran Pokemon liste chaque
+membre avec PV, etat actif/K.O., `Details` et `Changer`; les remplacements forces
+emploient la meme liste.
+
+Le changement local n'est plus une dette : `resolveSourceEncounterAction` accepte
+la meme union `TeamBattleAction` que le moteur commun, choisit l'action adverse,
+puis resout attaque ou changement dans un tour unique. Le duel continue d'envoyer
+seulement l'intention `switch` a la room autoritaire. La restauration persiste
+l'index actif avec les PV/PP comme auparavant.
+
+Le Sac de combat lit les poches 3, 2 et 7 de l'inventaire personnel pour afficher
+respectivement Balls, soins et objets de combat. Aucun usage n'est encore actif :
+capture, consommation atomique, cible de soin et modificateurs d'objet doivent
+etre implementes dans un noyau partage et valides par la room avant activation.
+Les Balls sont deja masquees comme action contre un Dresseur ou un joueur. Le HUD
+affiche aussi les membres prets, actif et K.O., avec jauges verte/orange/rouge.
+
+Reprise de mise en scene du 2026-10-04 : le cycle suit maintenant l'ordre des
+scripts Pokemon Z. L'introduction enchaine flashes gris, noir, ouverture de la
+scene, apparition sauvage ou entree du Dresseur, puis envoi du Pokemon joueur. La
+fin calcule le reglement avant de masquer la scene : baisse de la BGM, ME de
+victoire, message d'EXP, jauge animee sur chaque seuil, annonces de niveau et de
+capacite, argent puis fondu noir et audio. `SourceBattleOutcome` ne transporte que
+les donnees tranchees par le noyau ; la vue ne modifie ni equipe ni portefeuille.
+Les duels reseau sans EXP utilisent le meme pipeline de sortie.
+
+Contrat valide pour le prochain lot : l'invite apporte ses propres Pokemon, mais le
+combat reste simple avec un seul actif par camp. Chaque camp contient au maximum
+six Pokemon et deux Dresseurs. Une bataille source deja double, ou une bataille dont
+les deux camps ont deja deux Dresseurs, n'accepte personne. Cote adverse, l'invite
+choisit sa contribution dans la limite des six places. Cote hote, une proposition
+de composition finale doit etre acceptee par les deux joueurs du camp. Le Pokemon
+actif determine quel proprietaire soumet l'action ; aucun joueur ne pilote le
+Pokemon de l'autre.
+
+Ne pas greffer ce comportement sur le duel binaire actuel. Autorite : room. Domaine
+: combat partage, ressources/progression personnelles, histoire de l'hote.
+Intentions minimales : proposer/rejoindre/refuser, choisir un camp, proposer une
+composition, accepter la composition et soumettre l'action de son Pokemon. Snapshot
+minimal : participants, camp, proprietaire de chaque membre, actif, actions
+attendues et revision. La reconnexion restaure place et proprietes ; l'audience se
+limite aux participants et observateurs presents. EXP, PP, PV, objets et evolutions
+doivent etre reventiles vers la sauvegarde du proprietaire apres le combat.
+
+Fondation implementee le 2026-10-04 dans `battle-engine` :
+`SharedBattleParticipation`, `proposeBattleJoin`, `approveBattleJoin`,
+`applyBattleJoin` et `activeBattleController` constituent le noyau pur commun. Ils
+valident format simple, maximum de deux Dresseurs et six Pokemon par camp,
+proprietes, composition finale et accords. Trois tests couvrent jonction alliee,
+jonction adverse et refus des cas interdits. Aucun bouton n'est encore expose : le
+prochain lot doit versionner le protocole, persister proposition/accord dans la
+room, puis raccorder le combat source local a cette autorite.
+
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
 l'acceptation et le refus, puis jouer un combat complet depuis les deux onglets,
@@ -975,7 +1032,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 361 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 365 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

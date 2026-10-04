@@ -4,6 +4,8 @@ import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, sel
 import type { BattleMove, BattleSide, BattlerState, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
   sourceTrainerSpritePlacement } from "./source-battle-layout.js";
+import { experienceAtLevel } from "@pokemon-z-battle/player-state";
+import type { SourceBattleExperiencePresentation, SourceBattleOutcome } from "./source-battle-controller.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -161,6 +163,10 @@ export class SourceBattleVisuals {
     panel?.classList.add("intro-playing");
     stage?.classList.add("intro-playing");
     stage?.classList.toggle("opponent-intro", audio.opponentTrainer !== undefined);
+    const experienceTrack = document.getElementById("source-player-exp-track");
+    const experienceBar = document.getElementById("source-player-exp-bar");
+    experienceTrack?.classList.remove("active");
+    if (experienceBar !== null) experienceBar.style.width = "0%";
     window.setTimeout(() => panel?.classList.remove("entering"), 700);
     const session = ++this.#audioSession;
     // Le chargement asynchrone des manifestes peut sortir de la fenêtre d'activation
@@ -168,7 +174,7 @@ export class SourceBattleVisuals {
     const battleMusic = audio.battleMusic ?? "Salvaje.ogg";
     const victoryMusic = audio.victoryMusic ?? "VictoriaSalvaje.ogg";
     this.#victoryMusicPath = `Audio/ME/${victoryMusic}`;
-    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0.55 });
+    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0 });
     try {
       const manifests = await this.manifests();
       if (session !== this.#audioSession) return;
@@ -180,8 +186,15 @@ export class SourceBattleVisuals {
       this.#victoryMusicPath = selectedAudio.victoryMusic;
       await this.render(state, audio.battleback ?? "snow");
       if (session !== this.#audioSession) return;
-      if (selectedAudio.opponentCry !== null) this.playAudio(selectedAudio.opponentCry, { volume: 0.8, oneShot: true });
-      if (audio.opponentTrainer !== undefined) await this.playOpponentEntrance(audio.opponentTrainer, opponent.name, session);
+      await this.playOpeningTransition(session);
+      if (session !== this.#audioSession) return;
+      if (this.#battleMusic !== null) this.#battleMusic.volume = 0.55;
+      if (audio.opponentTrainer !== undefined) {
+        await this.playOpponentEntrance(audio.opponentTrainer, opponent.name, session, selectedAudio.sendOut,
+          selectedAudio.opponentCry);
+      } else {
+        await this.playWildOpponentEntrance(opponent.name, session, selectedAudio.opponentCry);
+      }
       await this.playPlayerEntrance(player.name, session, selectedAudio.sendOut, selectedAudio.playerCry);
     } catch {
       // Les visuels et le moteur de combat restent utilisables si l'audio local est absent.
@@ -193,17 +206,38 @@ export class SourceBattleVisuals {
     }
   }
 
-  async endBattle(winner: BattleSide | null): Promise<void> {
+  async endBattle(winner: BattleSide | null, outcome: SourceBattleOutcome = {}): Promise<void> {
     const victoryPath = winner === "player" ? this.#victoryMusicPath : null;
-    this.stopAudio();
-    this.#audioSession += 1;
-    this.#victoryMusicPath = null;
-    if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
+    const session = ++this.#audioSession;
     const panel = document.getElementById("encounter-panel");
+    panel?.classList.add("outro-playing");
+    await this.fadeAudio(this.#battleMusic, winner === "player" ? 350 : 1_000);
+    this.#battleMusic = null;
+    if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
+    if (winner === "player") {
+      this.message("Victoire !");
+      await delay(700);
+      if (outcome.experience !== undefined) await this.playExperience(outcome.experience, session);
+      if (outcome.money !== undefined && outcome.money > 0) {
+        this.message(`Vous remportez ${outcome.money.toLocaleString("fr-FR")} ₽ !`);
+        await delay(850);
+      }
+    } else if (winner === "opponent") {
+      this.message("Vous n'avez plus de Pokémon en état de combattre…");
+      await delay(900);
+      if (outcome.money !== undefined && outcome.money < 0) {
+        this.message(`Vous perdez ${Math.abs(outcome.money).toLocaleString("fr-FR")} ₽.`);
+        await delay(750);
+      }
+    }
+    if (session !== this.#audioSession) return;
     panel?.classList.remove("entering");
     panel?.classList.add("leaving");
-    await delay(420);
+    await Promise.all([delay(900), this.fadeAudio(this.#outroMusic, 900)]);
     panel?.classList.remove("leaving");
+    panel?.classList.remove("outro-playing");
+    this.stopAudio();
+    this.#victoryMusicPath = null;
   }
 
   async render(state: TeamBattleState, battleback = "snow"): Promise<void> {
@@ -308,6 +342,47 @@ export class SourceBattleVisuals {
     return this.#manifests;
   }
 
+  private async playOpeningTransition(session: number): Promise<void> {
+    const curtain = document.getElementById("source-battle-curtain");
+    const stage = document.getElementById("source-battle-stage");
+    if (curtain === null || stage === null) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    curtain.classList.add("active");
+    const flashes = curtain.animate(reduced ? [{ opacity: 1 }, { opacity: 0 }] : [
+      { opacity: 0, background: "#a0a0a0", offset: 0 },
+      { opacity: .82, background: "#a0a0a0", offset: .09 }, { opacity: 0, offset: .18 },
+      { opacity: .82, background: "#a0a0a0", offset: .27 }, { opacity: 0, offset: .36 },
+      { opacity: .82, background: "#a0a0a0", offset: .45 }, { opacity: 0, offset: .54 },
+      { opacity: 1, background: "#050706", offset: .72 }, { opacity: 1, background: "#050706", offset: 1 },
+    ], { duration: reduced ? 20 : 900, fill: "forwards", easing: "linear" });
+    await flashes.finished.catch(() => undefined);
+    if (session !== this.#audioSession) return;
+    const reveal = stage.animate([
+      { clipPath: "inset(50% 0 50% 0)" }, { clipPath: "inset(0 0 0 0)" },
+    ], { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+    const uncover = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
+      { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+    await Promise.all([reveal.finished.catch(() => undefined), uncover.finished.catch(() => undefined)]);
+    reveal.cancel(); uncover.cancel(); flashes.cancel(); curtain.classList.remove("active");
+  }
+
+  private async playWildOpponentEntrance(pokemonName: string, session: number, cry: string | null): Promise<void> {
+    const stage = document.getElementById("source-battle-stage");
+    const sprite = document.getElementById("source-opponent-sprite");
+    if (stage === null || sprite === null) return;
+    stage.classList.add("revealing-opponent");
+    this.message(`Un ${pokemonName} sauvage apparaît !`);
+    if (cry !== null) this.playAudio(cry, { volume: 0.8, oneShot: true });
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const reveal = sprite.animate([
+      { opacity: 0, transform: "translateX(-42px) scale(.78)", filter: "brightness(0)" },
+      { opacity: 1, transform: "translateX(0) scale(1)", filter: "brightness(1)" },
+    ], { duration: reduced ? 20 : 720, fill: "forwards", easing: "cubic-bezier(.2,.8,.2,1)" });
+    await reveal.finished.catch(() => undefined);
+    if (session === this.#audioSession) await delay(reduced ? 20 : 420);
+    reveal.cancel();
+  }
+
   private async playPlayerEntrance(playerName: string, session: number, sendOutSound: string | null,
     playerCry: string | null): Promise<void> {
     const trainer = document.getElementById("source-player-trainer") as HTMLImageElement | null;
@@ -323,7 +398,11 @@ export class SourceBattleVisuals {
     trainer.hidden = false;
     ball.hidden = true;
     this.message(`En avant, ${playerName} !`);
-    await delay(reduced ? 20 : 850);
+    const arrival = trainer.animate([
+      { transform: "translateX(208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 520, easing: "ease-out" });
+    await arrival.finished.catch(() => undefined);
+    await delay(reduced ? 20 : 330);
     const trainerDuration = reduced ? 20 : 1_100;
     const trainerAnimation = trainer.animate([
       { transform: "translateX(0)", opacity: 1 },
@@ -361,7 +440,7 @@ export class SourceBattleVisuals {
   }
 
   private async playOpponentEntrance(trainerData: { readonly id: number; readonly name: string }, pokemonName: string,
-    session: number): Promise<void> {
+    session: number, sendOutSound: string | null, opponentCry: string | null): Promise<void> {
     const trainer = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
     const stage = document.getElementById("source-battle-stage");
     const sprite = document.getElementById("source-opponent-sprite");
@@ -376,9 +455,15 @@ export class SourceBattleVisuals {
     trainer.hidden = false;
     this.message(`${trainerData.name} vous défie !`);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    await delay(reduced ? 20 : 1_150);
+    const arrival = trainer.animate([
+      { transform: "translateX(-208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 620, easing: "ease-out" });
+    await arrival.finished.catch(() => undefined);
+    await delay(reduced ? 20 : 530);
     stage.classList.add("revealing-opponent");
     this.message(`${trainerData.name} envoie ${pokemonName} !`);
+    if (sendOutSound !== null) this.playAudio(sendOutSound, { volume: 0.8, oneShot: true });
+    if (opponentCry !== null) this.playAudio(opponentCry, { volume: 0.8, oneShot: true });
     const trainerAnimation = trainer.animate([
       { transform: "translateX(0)", opacity: 1 },
       { transform: "translateX(208px)", opacity: 1 },
@@ -390,6 +475,46 @@ export class SourceBattleVisuals {
     await Promise.all([trainerAnimation.finished.catch(() => undefined), pokemonAnimation.finished.catch(() => undefined)]);
     trainerAnimation.cancel(); pokemonAnimation.cancel(); trainer.hidden = true;
     stage.classList.remove("opponent-intro", "revealing-opponent");
+  }
+
+  private async playExperience(experience: SourceBattleExperiencePresentation, session: number): Promise<void> {
+    const bar = document.getElementById("source-player-exp-bar");
+    const level = document.getElementById("source-player-level");
+    const track = document.getElementById("source-player-exp-track");
+    if (bar === null || level === null || track === null) return;
+    track.classList.add("active");
+    this.message(`${experience.pokemonName} gagne ${experience.amount} points d'Expérience !`);
+    await delay(700);
+    let cursor = experience.beforeExperience;
+    for (let currentLevel = experience.beforeLevel; currentLevel <= experience.afterLevel && cursor <= experience.afterExperience; currentLevel += 1) {
+      if (session !== this.#audioSession) return;
+      const floor = experienceAtLevel(currentLevel, experience.growthRate);
+      const ceiling = currentLevel >= 100 ? floor + 1 : experienceAtLevel(currentLevel + 1, experience.growthRate);
+      const target = Math.min(experience.afterExperience, ceiling);
+      const startRatio = Math.max(0, Math.min(1, (cursor - floor) / Math.max(1, ceiling - floor)));
+      const endRatio = Math.max(0, Math.min(1, (target - floor) / Math.max(1, ceiling - floor)));
+      bar.style.width = `${startRatio * 100}%`;
+      const animation = bar.animate([{ width: `${startRatio * 100}%` }, { width: `${endRatio * 100}%` }],
+        { duration: Math.max(260, (endRatio - startRatio) * 1_150), fill: "forwards", easing: "linear" });
+      await animation.finished.catch(() => undefined);
+      animation.cancel(); bar.style.width = `${endRatio * 100}%`;
+      cursor = target;
+      if (cursor >= ceiling && currentLevel < experience.afterLevel) {
+        level.textContent = `N. ${currentLevel + 1}`;
+        this.message(`${experience.pokemonName} monte au niveau ${currentLevel + 1} !`);
+        await delay(700);
+        bar.style.width = "0%";
+      }
+      if (currentLevel >= experience.afterLevel || currentLevel >= 100) break;
+    }
+    for (const move of experience.learnedMoves) {
+      this.message(`${experience.pokemonName} apprend ${move} !`);
+      await delay(700);
+    }
+    if (experience.skippedMoves.length > 0) {
+      this.message(`Capacité à choisir plus tard : ${experience.skippedMoves.join(", ")}.`);
+      await delay(850);
+    }
   }
 
   private placeTrainer(element: HTMLElement, side: BattleSide, width: number, height: number): void {
@@ -409,10 +534,23 @@ export class SourceBattleVisuals {
       const level = document.getElementById(`source-${side}-level`);
       const hp = document.getElementById(`source-${side}-hp`);
       const bar = document.getElementById(`source-${side}-hp-bar`);
+      const teamState = document.getElementById(`source-${side}-team`);
       if (name !== null) name.textContent = battler.name;
       if (level !== null) level.textContent = `N. ${battler.level}`;
       if (hp !== null) hp.textContent = side === "player" ? `${battler.hp} / ${battler.stats.maxHp}` : `${battler.hp} PV`;
-      if (bar !== null) bar.style.width = `${Math.max(0, (battler.hp / battler.stats.maxHp) * 100)}%`;
+      if (bar !== null) {
+        const ratio = Math.max(0, battler.hp / battler.stats.maxHp);
+        bar.style.width = `${ratio * 100}%`;
+        bar.dataset.health = ratio <= 0.2 ? "critical" : ratio <= 0.5 ? "warning" : "healthy";
+      }
+      if (teamState !== null) {
+        teamState.replaceChildren(...team.members.map((member, index) => {
+          const dot = document.createElement("i");
+          dot.className = member.hp <= 0 ? "fainted" : index === team.activeIndex ? "active" : "ready";
+          dot.title = `${member.name} · ${member.hp}/${member.stats.maxHp} PV`;
+          return dot;
+        }));
+      }
       if (battler.hp > 0) document.getElementById(`source-${side}-sprite`)?.classList.remove("fainted");
     }
   }
@@ -588,6 +726,26 @@ export class SourceBattleVisuals {
       if (this.#outroMusic === audio) this.#outroMusic = null;
     });
     return audio;
+  }
+
+  private async fadeAudio(audio: HTMLAudioElement | null, duration: number): Promise<void> {
+    if (audio === null) return;
+    const initialVolume = audio.volume;
+    if (initialVolume <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      audio.pause();
+      return;
+    }
+    const startedAt = performance.now();
+    await new Promise<void>((resolve) => {
+      const frame = (now: number): void => {
+        const ratio = Math.min(1, (now - startedAt) / Math.max(1, duration));
+        audio.volume = initialVolume * (1 - ratio);
+        if (ratio < 1 && !audio.paused) window.requestAnimationFrame(frame);
+        else resolve();
+      };
+      window.requestAnimationFrame(frame);
+    });
+    audio.pause();
   }
 
   private stopAudio(): void {

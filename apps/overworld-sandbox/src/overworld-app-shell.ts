@@ -40,9 +40,10 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <div id="source-player-ball" class="source-player-ball" aria-hidden="true" hidden></div>
               <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
               <div id="source-move-effects" class="source-animation-layer source-move-effects" aria-hidden="true"></div>
-              <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><small id="source-opponent-hp"></small></article>
-              <article class="source-battle-hud source-player-hud"><div><strong id="source-player-name">Joueur</strong><span id="source-player-level"></span></div><div class="source-health-track"><span id="source-player-hp-bar"></span></div><small id="source-player-hp"></small></article>
+              <article class="source-battle-hud source-opponent-hud"><div><strong id="source-opponent-name">Adversaire</strong><span id="source-opponent-level"></span></div><div class="source-health-track"><span id="source-opponent-hp-bar"></span></div><footer><span id="source-opponent-team" class="source-battle-team-dots"></span><small id="source-opponent-hp"></small></footer></article>
+              <article class="source-battle-hud source-player-hud"><div><strong id="source-player-name">Joueur</strong><span id="source-player-level"></span></div><div class="source-health-track"><span id="source-player-hp-bar"></span></div><div id="source-player-exp-track" class="source-experience-track" aria-label="Expérience"><span id="source-player-exp-bar"></span></div><footer><span id="source-player-team" class="source-battle-team-dots"></span><small id="source-player-hp"></small></footer></article>
               <div id="source-battle-message" class="source-battle-message">Un Pokémon sauvage apparaît !</div>
+              <div id="source-battle-curtain" class="source-battle-curtain" aria-hidden="true"></div>
             </div>
             <div class="encounter-overlay-heading"><h2 id="encounter-title">Combat</h2><span id="encounter-turn">Tour 1</span></div>
             <p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { SeededRandom } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
-import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
+import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle, resolveSourceEncounterAction, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, selectSourceBattleAnimation, selectSourceBattleAudio,
   sourcePlayerBallKeyframes, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
 import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
@@ -94,6 +94,17 @@ describe("source encounter bridge", () => {
     const stored = storeSourceEncounterParty(party, battle);
     expect(stored.members[0]?.moves[0]?.pp).toBe(34);
     expect(stored.members[0]?.hp).toBe(battle.teams.player.members[0]?.hp);
+  });
+
+  it("uses the same turn resolver when the player switches Pokemon in a local battle", () => {
+    let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("first", "CHESPIN", 5, catalog));
+    party = addPokemonToParty(party, createPersistentPokemon("second", "CHESPIN", 5, catalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
+    const result = resolveSourceEncounterAction(battle, { kind: "switch", teamIndex: 1 }, new SeededRandom(12));
+    expect(result.state.teams.player.activeIndex).toBe(1);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "pokemonSwitched", side: "player",
+      fromIndex: 0, toIndex: 1, reason: "voluntary" }));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "moveUsed", side: "opponent" }));
   });
 
   it("builds a trainer team from the extracted trainer definition", () => {
