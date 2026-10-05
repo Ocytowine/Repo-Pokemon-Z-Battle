@@ -35,6 +35,7 @@ describe("guest source event policy", () => {
 
   it("uses the authoritative shared avatars to offer a PvP challenge to either player", () => {
     const world = { mapId: 14, width: 10, height: 10, passages: "f".repeat(100), blockedPoints: [],
+      actors: [], actorRevision: 0,
       story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
       presence: { player: "shared", opponent: "shared" },
       avatars: { player: { x: 4, y: 4, direction: "down" }, opponent: { x: 4, y: 5, direction: "up" } } } as const;

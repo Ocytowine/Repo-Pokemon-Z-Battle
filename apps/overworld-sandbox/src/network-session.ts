@@ -2,7 +2,7 @@ import { type Direction, type OverworldEvent, type OverworldState } from "@pokem
 import { PROTOCOL_VERSION, normalizeRoomCode, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
-  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
@@ -31,6 +31,7 @@ interface MutableNetworkSession {
   submittedTurn: number | null;
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
+  sourceActorSignature: string | undefined;
   pendingSettlement: SourceBattleSettlement | null;
   closingBattleId: string | null;
 }
@@ -55,6 +56,8 @@ export interface NetworkSessionCallbacks {
   readonly onConnectionFormChanged: (serverUrl: string, roomCode: string) => void;
   readonly onPlayersChanged: (players: readonly RoomPlayerSnapshot[]) => void;
   readonly onSourceWorldState: (state: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean) => void;
+  readonly onSourceActorsState: (mapId: number, actorRevision: number,
+    actors: readonly SourceWorldActorSnapshot[]) => void;
   readonly onSourceSceneState: (state: SourceSceneSnapshot) => void;
   readonly onBattleStarted: (battleId: string, state: TeamBattleState) => void;
   readonly onBattleTurnResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
@@ -227,6 +230,17 @@ export class OverworldNetworkSession {
     this.sendRequest({ type: "respondPlayerChallenge", accept, team });
   }
 
+  public publishSourceActors(mapId: number, actors: readonly SourceWorldActorSnapshot[]): void {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    const signature = JSON.stringify({ mapId, actors });
+    if (session === null || session.ticket.side !== "player" || session.sourceActorSignature === signature
+      || socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return;
+    session.sourceActorSignature = signature;
+    socket.send(JSON.stringify({ type: "setSourceActors", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), mapId, actors }));
+  }
+
   public retryBattleSettlement(): void {
     const session = this.activeSession;
     if (session?.pendingSettlement !== null && session?.pendingSettlement !== undefined) {
@@ -368,6 +382,7 @@ export class OverworldNetworkSession {
       submittedTurn: null,
       profile,
       sourceFollowerSignature: undefined,
+      sourceActorSignature: undefined,
       pendingSettlement: null,
       closingBattleId: null,
     };
@@ -480,6 +495,16 @@ export class OverworldNetworkSession {
           if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceWorld: message.state,
             revision: message.revision };
           this.callbacks.onSourceWorldState(message.state, true, message.side === session.ticket.side);
+        } else if (message.type === "sourceActorsUpdated") {
+          if (message.revision < session.revision) return;
+          session.revision = message.revision;
+          const sourceWorld = session.snapshot?.sourceWorld;
+          if (session.snapshot !== null && sourceWorld !== null && sourceWorld !== undefined
+            && sourceWorld.mapId === message.mapId && message.actorRevision >= sourceWorld.actorRevision) {
+            session.snapshot = { ...session.snapshot, revision: message.revision,
+              sourceWorld: { ...sourceWorld, actors: message.actors, actorRevision: message.actorRevision } };
+          }
+          this.callbacks.onSourceActorsState(message.mapId, message.actorRevision, message.actors);
         } else if (message.type === "sourceSceneUpdated") {
           if (message.revision < session.revision) return;
           session.revision = message.revision;

@@ -314,8 +314,26 @@ export function eventFootprint(event: ImportedMapEvent): GridPoint[] {
 export function blockingDefaultEventPoints(events: readonly ImportedMapEvent[], mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): GridPoint[] {
   return events.flatMap((event) => {
     const page = selectEventPage(event, mapId, state);
-    const visible = page !== null && (page.graphic.characterName !== "" || page.graphic.tileId > 0);
-    return visible && !page.settings.through ? eventFootprint(event) : [];
+    if (page === null || page.settings.through) return [];
+    const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
+    // RPG Maker laisse traverser une page sans graphisme, mais ses declencheurs
+    // de contact 1/2 arretent tout de meme le pas pour lancer l'evenement. L'hote
+    // les execute avant son mouvement ; un invite sans autorite narrative doit
+    // donc recevoir la meme occupation effective depuis la room.
+    const contact = page.settings.trigger === 1 || page.settings.trigger === 2;
+    return visible || contact ? eventFootprint(event) : [];
+  });
+}
+
+/** Obstacles sans acteur visuel qui doivent tout de meme etre partages par la room. */
+export function blockingNarrativeEventPoints(events: readonly ImportedMapEvent[], mapId = 0,
+  state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): GridPoint[] {
+  return events.flatMap((event) => {
+    const page = selectEventPage(event, mapId, state);
+    if (page === null || page.settings.through) return [];
+    const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
+    const contact = page.settings.trigger === 1 || page.settings.trigger === 2;
+    return !visible && contact ? eventFootprint(event) : [];
   });
 }
 

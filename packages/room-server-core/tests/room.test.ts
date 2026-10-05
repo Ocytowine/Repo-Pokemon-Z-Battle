@@ -230,6 +230,74 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
   });
 
+  it("uses host-published NPCs as authoritative collisions and restores them with the room", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const blockingActor = { eventId: 17, x: 2, y: 2, direction: "left" as const,
+      blocking: true, moveSpeed: 3, action: "idle" as const };
+
+    const published = room.receive("alice", { type: "setSourceActors", version: 12,
+      requestId: "actors-blocking", mapId: 3, actors: [blockingActor] });
+    expect(published.map((entry) => entry.message.type)).toEqual(["ack", "sourceActorsUpdated"]);
+    expect(published[1]?.message).toMatchObject({ type: "sourceActorsUpdated", actorRevision: 1,
+      actors: [blockingActor] });
+    const blocked = room.receive("bob", { type: "moveAvatar", version: 12,
+      requestId: "guest-blocked-by-npc", direction: "right", sequence: 1 });
+    expect(blocked[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { opponent: { x: 1, y: 2, direction: "right" } } } });
+
+    expect(room.receive("bob", { type: "setSourceActors", version: 12,
+      requestId: "guest-cannot-move-npcs", mapId: 3, actors: [] })[0]?.message)
+      .toMatchObject({ type: "error", code: "HOST_ONLY" });
+    const movedActor = { ...blockingActor, x: 0, y: 0, direction: "up" as const, action: "step" as const };
+    room.receive("alice", { type: "setSourceActors", version: 12,
+      requestId: "actors-moved", mapId: 3, actors: [movedActor] });
+    room.receive("bob", { type: "moveAvatar", version: 12,
+      requestId: "guest-after-npc", direction: "right", sequence: 2 });
+    expect(room.snapshot().sourceWorld).toMatchObject({ actorRevision: 2, actors: [movedActor],
+      avatars: { opponent: { x: 2, y: 2 } } });
+
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().sourceWorld).toMatchObject({ actorRevision: 2, actors: [movedActor] });
+    restored.connect("bob");
+    expect(restored.snapshot().sourceWorld?.actors).toEqual([movedActor]);
+  });
+
+  it("applies the host narrative blockers to guest movement and restores them after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+
+    const blockedBySwitch = { ...sourceWorld, blockedPoints: [{ x: 2, y: 2 }],
+      story: { ...sourceWorld.story, switches: { ...sourceWorld.story.switches, "90": true } } };
+    room.receive("alice", { type: "setSourceWorld", version: 12, requestId: "narrative-switch",
+      world: blockedBySwitch });
+    const blocked = room.receive("bob", { type: "moveAvatar", version: 12,
+      requestId: "guest-blocked-by-switch", direction: "right", sequence: 1 });
+    expect(blocked[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { opponent: { x: 1, y: 2, direction: "right" } },
+        blockedPoints: [{ x: 2, y: 2 }], story: { switches: { "90": true } } } });
+
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().sourceWorld).toMatchObject({ blockedPoints: [{ x: 2, y: 2 }],
+      story: { switches: { "90": true } } });
+
+    const openedBySelfSwitch = { ...sourceWorld, blockedPoints: [],
+      story: { ...sourceWorld.story, selfSwitches: { "3:8:A": true } } };
+    restored.receive("alice", { type: "setSourceWorld", version: 12, requestId: "narrative-self-switch",
+      world: openedBySelfSwitch });
+    const moved = restored.receive("bob", { type: "moveAvatar", version: 12,
+      requestId: "guest-opened-by-self-switch", direction: "right", sequence: 2 });
+    expect(moved[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
+      state: { avatars: { opponent: { x: 2, y: 2, direction: "right" } }, blockedPoints: [],
+        story: { selfSwitches: { "3:8:A": true } } } });
+  });
+
   it("lets the guest leave and safely rejoin the shared source map", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");

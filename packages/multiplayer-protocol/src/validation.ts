@@ -1,6 +1,6 @@
 import { MAX_CLIENT_MESSAGE_BYTES, PROTOCOL_VERSION, type ClientMessage } from "./types.js";
 import { parseNetworkPlayerProfile } from "./player-profile.js";
-import { parseSourceWorldHostState } from "./source-world.js";
+import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
 import type { BattleTeam } from "@pokemon-z-battle/battle-engine";
@@ -211,6 +211,16 @@ export function parseClientMessage(payload: string): ClientMessage {
         return { ...value, world: parseSourceWorldHostState(value.world) } as unknown as ClientMessage;
       } catch {
         return invalid("setSourceWorld mal formé");
+      }
+    case "setSourceActors":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "mapId", "actors"])
+        || !isIdentifier(value.requestId) || !safeInteger(value.mapId, 1, 999_999)) {
+        return invalid("setSourceActors mal forme");
+      }
+      try {
+        return { ...value, actors: parseSourceWorldActors(value.actors, 512, 512) } as unknown as ClientMessage;
+      } catch {
+        return invalid("setSourceActors mal forme");
       }
     case "setSourceFollower":
       if (Object.keys(value).some((key) => !["type", "version", "requestId", "species", "appearance"].includes(key))

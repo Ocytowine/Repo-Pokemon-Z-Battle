@@ -1,5 +1,5 @@
 import type { Direction } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -14,6 +14,7 @@ import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, 
 import type { SourceBattleContext, SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom, activeBattleController, canCaptureSharedBattleTarget, replacementBattleController,
   type BattleTeam, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -191,6 +192,7 @@ function persistSourceEventState(): void {
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
   queueMicrotask(publishCurrentSourceWorld);
+  queueMicrotask(publishCurrentSourceActors);
   queueMicrotask(publishActiveSourceFollower);
 }
 
@@ -216,7 +218,8 @@ function sourceWorldHostState(): SourceWorldHostState | null {
     passages: map.collision.masks.map((mask) => Math.max(0, Math.min(15, mask)).toString(16)).join(""),
     terrain: Array.from({ length: map.width * map.height }, (_, index) => sourceTerrainAt(map,
       importedAssets!.tileset, index % map.width, Math.floor(index / map.width)).toString(36)).join(""),
-    blockedPoints: blockingDefaultEventPoints(sourceMapEvents(), map.id, sourceEventState),
+    blockedPoints: blockingNarrativeEventPoints(sourceMapEvents(), map.id, sourceEventState),
+    actors: currentSourceWorldActors(),
     host: { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
     follower: !sourceEventState.followerEnabled || member === null || followerPosition === null ? null
       : { ...followerPosition, species: member.species,
@@ -292,6 +295,16 @@ function guestCanRunSourceEvent(active: ActiveSourceAutorun): boolean {
 
 function startPendingSourceEncounter(): boolean {
   return sourceBattles.startPendingEncounter();
+}
+
+function currentSourceWorldActors(): readonly SourceWorldActorSnapshot[] {
+  return importedAssets === null ? [] : sourceNpcMotions.worldActors(
+    importedAssets.events, importedAssets.map.id, sourceEventState);
+}
+
+function publishCurrentSourceActors(): void {
+  if (importedAssets === null) return;
+  multiplayer.publishSourceActors(importedAssets.map.id, currentSourceWorldActors());
 }
 
 function resumePendingWildEncounter(): boolean {
@@ -869,6 +882,11 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onSourceWorldState: (world, animate, applyOwnAvatar) => {
     void applyNetworkSourceWorld(world, animate, applyOwnAvatar);
   },
+  onSourceActorsState: (mapId, actorRevision, actors) => {
+    if (!isNetworkGuest() || guestSourceExcursion || importedAssets?.map.id !== mapId) return;
+    sourceNpcMotions.applyNetworkWorldActors(actors, performance.now());
+    if (networkSourceWorld?.mapId === mapId) networkSourceWorld = { ...networkSourceWorld, actors, actorRevision };
+  },
   onSourceSceneState: () => undefined,
   onBattleStarted: beginNetworkBattlePresentation,
   onBattleTurnResolved: presentNetworkBattleTurn,
@@ -1044,6 +1062,8 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   const now = performance.now();
   const session = multiplayer.current;
   if (session === null) return;
+  const actorsChanged = previousWorld === null || previousWorld.mapId !== world.mapId
+    || previousWorld.actorRevision !== world.actorRevision;
   if (session.ticket.side === "opponent" && world.presence.opponent === "away") {
     guestSourceExcursion = true;
     networkSourceWorld = world;
@@ -1113,6 +1133,9 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     }
   }
   synchronizeNetworkRemoteFollowerAsset(world, remoteSide);
+  if (session.ticket.side === "opponent" && actorsChanged && importedAssets?.map.id === world.mapId) {
+    sourceNpcMotions.applyNetworkWorldActors(world.actors, performance.now());
+  }
   viewedMapId = SOURCE_MAP_ID;
   importedNotice = session.ticket.side === "player"
     ? "Session Coop active : votre monde narratif est partagé."
@@ -1206,6 +1229,7 @@ function animateImportedMap(now: number): void {
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
     const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState, importedAvatar);
+    publishCurrentSourceActors();
     if (contact !== null) {
       beginSourceSequence(contact, `Contact événement ${contact.event.id} · ${contact.event.name}`);
     }
@@ -1541,6 +1565,7 @@ function renderImportedView(): void {
   renderSourceShop();
   renderSourceRanch();
   renderSourcePokemonSummary();
+  publishCurrentSourceActors();
   publishCurrentSourceScene();
 }
 
@@ -1765,6 +1790,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
   queueMicrotask(publishCurrentSourceWorld);
+  queueMicrotask(publishCurrentSourceActors);
 }
 
 async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> {

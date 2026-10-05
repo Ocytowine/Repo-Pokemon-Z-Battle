@@ -1624,8 +1624,10 @@ Ordre convenu :
 - [x] `STAB-NET-1` : cycle PvP valide automatiquement et manuellement ;
 - [ ] `STAB-NET-2` : cycle de presence, grace, notifications, rendu et collisions
   implementes ; recette deux navigateurs encore a valider ;
-- [ ] `STAB-WORLD-1` : partager les blocages narratifs actifs ;
-- [ ] `STAB-WORLD-2` : rendre les positions et collisions des PNJ coherentes ;
+- [ ] `STAB-WORLD-1` : blocages narratifs actifs partages dans le code, y compris
+  les zones invisibles ; recette deux navigateurs encore a valider ;
+- [ ] `STAB-WORLD-2` : positions logiques, collisions, interpolation distante et
+  reconnexion implementees ; recette deux navigateurs encore a valider ;
 - [ ] `STAB-BATTLE-1` : ordonner transitions, textes, PV, KO, EXP et musiques ;
 - [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
 

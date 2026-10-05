@@ -3,7 +3,7 @@ import type { BattleJoinProposal, BattleSide, BattleTeam, SharedBattleLedger, Sh
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
 import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, SourceWorldHostState,
-  SourceWorldSnapshot } from "./source-world.js";
+  SourceWorldActorSnapshot, SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 import type { SourceBattleContext } from "./source-battle.js";
 import type { SourceBattleSettlement } from "./source-battle-settlement.js";
@@ -89,6 +89,8 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState;
       /** Autorise un déplacement scénarisé/une téléportation de l'hôte sur la carte courante. */
       readonly relocateHost?: boolean })
+  | (RequestedMessage & { readonly type: "setSourceActors"; readonly mapId: number;
+      readonly actors: readonly SourceWorldActorSnapshot[] })
   | (RequestedMessage & { readonly type: "setSourcePresence"; readonly attached: boolean;
       readonly avatar: SourceAvatarSnapshot | null })
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;
@@ -158,6 +160,9 @@ export type ServerMessage =
     })
   | (VersionedMessage & { readonly type: "sourceWorldUpdated"; readonly side: BattleSide;
       readonly sequence: number; readonly revision: number; readonly state: SourceWorldSnapshot })
+  | (VersionedMessage & { readonly type: "sourceActorsUpdated"; readonly mapId: number;
+      readonly actorRevision: number; readonly revision: number;
+      readonly actors: readonly SourceWorldActorSnapshot[] })
   | (VersionedMessage & { readonly type: "sourceSceneUpdated"; readonly revision: number;
       readonly state: SourceSceneSnapshot })
   | (VersionedMessage & {

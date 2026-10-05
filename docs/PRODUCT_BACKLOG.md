@@ -126,7 +126,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### STAB-WORLD-1 — Collisions narratives identiques
 
-- Priorite/statut : `P0` / `Pret`.
+- Priorite/statut : `P0` / `En validation`.
 - Constat : l'invite peut parfois franchir un blocage PNJ qui arrete l'hote.
 - Autorite : room, depuis l'histoire de l'hote et les pages actives.
 - Etat : `NARRATIVE_SHARED` en lecture seule pour l'invite.
@@ -136,22 +136,44 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Audience : joueurs presents sur la carte partagee.
 - Validation : avant/apres changement de page, switch et self-switch ; solo, hote,
   invite et reconnexion donnent la meme case finale.
+- Implementation : toute page active non traversable et visible contribue a
+  l'occupation, ainsi que les zones invisibles de contact `trigger 1/2`. Cela
+  couvre les zones que l'hote declenche avant son pas mais que l'invite, sans
+  autorite sur l'histoire, doit seulement voir comme un obstacle. Une page vide
+  d'action/autorun reste traversable comme dans RPG Maker. Les points calcules depuis
+  l'histoire de l'hote sont publies avec le snapshot de room ; le resolveur commun
+  les applique au solo, a l'hote et a l'invite.
+- Preuves automatiques : activation/desactivation d'une zone de contact par switch
+  et self-switch, refus autoritaire du pas invite, ouverture ulterieure de la case
+  et restauration des obstacles apres persistence de la room.
+- Reste avant `Termine` : recette deux navigateurs sur une zone narrative invisible
+  avant puis apres sa progression, avec reconnexion de l'invite.
 
 ### STAB-WORLD-2 — PNJ mobiles autoritaires
 
-- Priorite/statut : `P0` / `A qualifier` apres STAB-WORLD-1.
+- Priorite/statut : `P0` / `En validation`.
 - Constat : mouvement et collision des PNJ sont actuellement calcules localement,
   ce qui permet une divergence entre navigateurs.
 - Autorite : room pour position logique et occupation ; clients pour interpolation.
 - Etat : `WORLD_STATE`, sans progression personnelle.
 - Persistance : poses/positions necessaires aux scenes actives et a la reconnexion.
-- Intentions : tick ou resultat deterministe de route, jamais une position libre
-  choisie par un client invite.
+- Intentions : publication bornee de la position logique par l'hote ; l'invite ne
+  peut jamais choisir ni publier une position de PNJ.
 - Replication minimale : eventId, carte, position, direction, action, revision.
 - Audience : joueurs presents sur la carte.
-- Decision restante : choisir entre simulation complete cote room ou publication
-  hote validee pour les mouvements ambiants. Les routes narratives restent hote
-  autoritaire et visibles en lecture seule.
+- Implementation : l'hote execute le noyau existant des routes autonomes et
+  publie seulement `eventId`, position logique, direction, vitesse, occupation et
+  action `idle/step`. La room verifie l'hote, la carte, les bornes et les identifiants,
+  conserve une revision separee, utilise les acteurs bloquants dans les collisions,
+  les spawns et les reconnexions, puis diffuse le resultat. Les clients interpolent
+  sans recalculer la route. Les zones narratives invisibles de `STAB-WORLD-1`
+  restent dans `blockedPoints`; les PNJ visibles vivent uniquement dans `actors`,
+  ce qui supprime les obstacles fantomes a leur ancienne case.
+- Preuves automatiques : schema strict et deduplication, refus de publication par
+  l'invite, collision avant/apres un pas de PNJ, persistence de room, projection
+  des pages actives, interpolation distante et restauration sans rejouer un pas.
+- Reste avant `Termine` : recette deux navigateurs avec un PNJ autonome, collision
+  des deux cotes, changement de page et reconnexion pendant/apres son mouvement.
 
 ### STAB-BATTLE-1 — Sequenceur visuel de combat
 

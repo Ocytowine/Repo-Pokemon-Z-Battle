@@ -175,6 +175,20 @@ describe("multiplayer protocol", () => {
     expect(() => parseSourceWorldHostState({ ...world, passages: "fff" })).toThrow("Passages");
   });
 
+  it("validates bounded source actors and rejects duplicate or client-computed fields", () => {
+    const actors = [{ eventId: 7, x: 1, y: 2, direction: "left" as const, blocking: true,
+      moveSpeed: 3, action: "step" as const }];
+    const message: ClientMessage = { type: "setSourceActors", version: 12, requestId: "actors-1",
+      mapId: 3, actors };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message, actors: [...actors, actors[0]] })))
+      .toThrow("setSourceActors mal forme");
+    expect(() => parseClientMessage(JSON.stringify({ ...message,
+      actors: [{ ...actors[0], action: "teleport" }] }))).toThrow("setSourceActors mal forme");
+    expect(() => parseClientMessage(JSON.stringify({ ...message, actorRevision: 99 })))
+      .toThrow("setSourceActors mal forme");
+  });
+
   it("validates a read-only source scene without accepting arbitrary presentation commands", () => {
     const scene = { mapId: 3, sequenceActive: true,
       dialogue: { label: "Crisanto", text: "Regarde !", choices: [] },

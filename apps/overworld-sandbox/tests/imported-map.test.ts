@@ -4,6 +4,7 @@ import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLine
   parseImportedItems, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
   selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
+import { createSourceEventState } from "../src/source-event-state.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -82,6 +83,44 @@ describe("imported RPG Maker map", () => {
       { eventId: 1, pageIndex: 0, eventX: 2, eventY: 0, targetMapId: 4, targetX: 7, targetY: 13, direction: 8 },
     ] };
     expect(active === null ? null : transferForEvent(withTransfer, active)?.targetMapId).toBe(4);
+  });
+
+  it("shares collision for invisible narrative pages and follows their active switch page", () => {
+    const basePage: ImportedMapEvent["pages"][number] = {
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 1 },
+      commands: [],
+    };
+    const event: ImportedMapEvent = { id: 8, name: "Zone narrative", x: 2, y: 0, pages: [basePage, {
+      ...basePage,
+      condition: { ...basePage.condition, switch1Id: 10 },
+      settings: { ...basePage.settings, trigger: 0 },
+    }] };
+
+    expect(blockingDefaultEventPoints([event], 3)).toEqual([{ x: 2, y: 0 }]);
+    expect(blockingDefaultEventPoints([event], 3,
+      { ...createSourceEventState(), switches: { "10": true } })).toEqual([]);
+  });
+
+  it("updates invisible collision from the active self-switch page", () => {
+    const blockingPage: ImportedMapEvent["pages"][number] = {
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 1 },
+      commands: [],
+    };
+    const event: ImportedMapEvent = { id: 12, name: "Passage conditionnel", x: 1, y: 0, pages: [blockingPage, {
+      ...blockingPage,
+      condition: { ...blockingPage.condition, selfSwitch: "A" },
+      settings: { ...blockingPage.settings, trigger: 0 },
+    }] };
+
+    expect(blockingDefaultEventPoints([event], 3)).toEqual([{ x: 1, y: 0 }]);
+    expect(blockingDefaultEventPoints([event], 3,
+      { ...createSourceEventState(), selfSwitches: { "3:12:A": true } })).toEqual([]);
   });
 
   it("reassembles split source lines before applying the French translation", () => {

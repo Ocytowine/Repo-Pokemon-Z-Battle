@@ -1334,6 +1334,39 @@ annonce une seule fois la coupure/depart et le retour ; l'onglet Coop distingue
 champs de snapshot et d'une intention ; les donnees personnelles ne changent pas.
 La recette deux navigateurs reste ouverte avant cloture de `STAB-NET-2`.
 
+Premier jalon `STAB-WORLD-1` du 2026-10-05 : les obstacles narratifs publies par
+l'hote incluent maintenant les zones invisibles de contact `trigger 1/2`. L'hote
+continue de declencher une telle zone avant son pas ; l'invite, qui ne peut pas
+executer la narration, est arrete par le meme `blockedPoints` dans le resolveur
+commun et par la room autoritaire. Une page vide sans declencheur de contact reste
+traversable, conformement au comportement RPG Maker.
+
+Cette occupation est recalculee apres chaque mutation persistante, donc un switch,
+une variable ou un self-switch qui change de page publie simultanement la nouvelle
+histoire et sa geometrie. Le snapshot de room la conserve pour la reconnexion.
+Les tests couvrent une zone invisible, les changements par switch/self-switch, le
+refus puis l'autorisation d'un pas invite et la restauration de la room. La recette
+manuelle deux navigateurs reste ouverte avant de clore `STAB-WORLD-1`. Les positions
+des PNJ mobiles en dehors de ces publications restent le perimetre distinct de
+`STAB-WORLD-2`.
+
+Premier jalon `STAB-WORLD-2` du 2026-10-05 : les PNJ visibles possedent maintenant
+un contrat `SourceWorldActorSnapshot` distinct de la presentation de scene. L'hote
+reste l'autorite qui execute les pages et routes RPG Maker ; il publie une projection
+compacte (`eventId`, case, direction, vitesse, blocage, `idle/step`). La room refuse
+un emetteur invite, verifie carte/bornes/unicite, incremente `actorRevision`,
+persiste les acteurs et les utilise dans le resolveur de mouvement, les spawns de
+suiveur et les replacements de reconnexion.
+
+L'invite applique les positions logiques au meme `SourceNpcMotionController` et
+interpole un pas avec la vitesse source. Un snapshot restaure une pose `idle`
+directement, sans rejouer un ancien mouvement. Pour eviter les collisions fantomes,
+`blockedPoints` ne transporte plus les PNJ visibles : il conserve seulement les
+zones narratives invisibles de contact ; `actors` est l'unique occupation mobile.
+Les tests couvrent schema strict, deduplication client, refus invite, collision
+avant/apres mouvement, persistence/reconnexion et interpolation. La recette
+deux navigateurs reste ouverte avant de clore `STAB-WORLD-2`.
+
 Audit source cible du 2026-10-05 : `engine-support-report.json` confirme 19/19
 interactions de types, mais seulement 23/353 fonctions d'attaque, 13/255 talents,
 aucune famille d'objets complete et 0/18 methodes d'evolution. Les rapports de
@@ -1354,7 +1387,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 410 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 417 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

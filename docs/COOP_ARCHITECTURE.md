@@ -131,3 +131,18 @@ autorisations avant d'envoyer une intention. L'interrupteur de test est lui auss
 strictement local et ne modifie aucun de ces prerequis. Une validation serveur des
 droits de traversal exigera plus tard une preuve de capacites de session bornee,
 jamais la publication brute de l'inventaire ou de l'equipe.
+
+## Application aux PNJ mobiles source
+
+Les routes autonomes et narratives sont calculees une seule fois chez l'hote, qui
+possede deja les pages RPG Maker actives et l'histoire autoritaire. Il publie une
+projection bornee de chaque acteur visible : identifiant d'evenement, case logique,
+direction, vitesse, occupation et action `idle/step`. L'invite ne possede aucune
+intention permettant de deplacer un PNJ.
+
+La room valide la carte, les bornes et l'unicite des identifiants, persiste la liste
+avec sa revision et l'emploie pour les collisions, le choix des cases de spawn et
+la reconnexion. Les navigateurs ne font qu'interpoler entre deux cases. Les zones
+de contact invisibles restent dans la geometrie narrative `blockedPoints`, tandis
+que les PNJ visibles appartiennent exclusivement a `actors`; une ancienne case ne
+peut donc pas rester bloquee apres le deplacement de son acteur.

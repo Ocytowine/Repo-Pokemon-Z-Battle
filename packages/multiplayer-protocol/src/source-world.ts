@@ -30,6 +30,16 @@ export interface SourceFollowerSnapshot extends SourceAvatarSnapshot {
 
 export type SourcePlayerPresence = "shared" | "away";
 
+export type SourceWorldActorAction = "idle" | "step";
+
+export interface SourceWorldActorSnapshot extends GridPoint {
+  readonly eventId: number;
+  readonly direction: Direction;
+  readonly blocking: boolean;
+  readonly moveSpeed: number;
+  readonly action: SourceWorldActorAction;
+}
+
 export interface SourceStorySnapshot {
   readonly switches: Readonly<Record<string, boolean>>;
   readonly variables: Readonly<Record<string, number>>;
@@ -45,12 +55,16 @@ export interface SourceWorldHostState {
   /** Un chiffre base 36 par case pour le terrain source (eau, glace, corniche...). */
   readonly terrain?: string;
   readonly blockedPoints: readonly GridPoint[];
+  /** Positions logiques des PNJ visibles. La room les utilise pour les collisions. */
+  readonly actors?: readonly SourceWorldActorSnapshot[];
   readonly host: SourceAvatarSnapshot;
   readonly follower: SourceFollowerSnapshot | null;
   readonly story: SourceStorySnapshot;
 }
 
 export interface SourceWorldSnapshot extends Omit<SourceWorldHostState, "host" | "follower"> {
+  readonly actors: readonly SourceWorldActorSnapshot[];
+  readonly actorRevision: number;
   readonly avatars: Readonly<Record<BattleSide, SourceAvatarSnapshot>>;
   readonly followers: Readonly<Partial<Record<BattleSide, SourceFollowerSnapshot>>>;
   /** Un joueur `away` poursuit sa partie locale et ne collisionne plus avec la carte partagee. */
@@ -65,6 +79,7 @@ const MOVEMENT_ACTIONS = new Set<SourceMovementAction>([
 const MAX_MAP_DIMENSION = 512;
 const MAX_MAP_CELLS = 262_144;
 const MAX_BLOCKED_POINTS = 8_192;
+const MAX_SOURCE_ACTORS = 4_096;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -123,6 +138,31 @@ function parseFollower(value: unknown, width: number, height: number): SourceFol
     }) };
 }
 
+function parseActor(value: unknown, width: number, height: number): SourceWorldActorSnapshot {
+  if (!isRecord(value) || !exactKeys(value,
+    ["eventId", "x", "y", "direction", "blocking", "moveSpeed", "action"])
+    || !integer(value.eventId, 1, 999_999)
+    || !integer(value.x, 0, width - 1) || !integer(value.y, 0, height - 1)
+    || typeof value.direction !== "string" || !DIRECTIONS.has(value.direction as Direction)
+    || typeof value.blocking !== "boolean" || !integer(value.moveSpeed, 1, 6)
+    || value.action !== "idle" && value.action !== "step") {
+    throw new Error("Acteur de monde source invalide.");
+  }
+  return value as unknown as SourceWorldActorSnapshot;
+}
+
+export function parseSourceWorldActors(value: unknown, width: number,
+  height: number): readonly SourceWorldActorSnapshot[] {
+  if (!Array.isArray(value) || value.length > MAX_SOURCE_ACTORS) {
+    throw new Error("Acteurs de monde source invalides.");
+  }
+  const actors = value.map((actor) => parseActor(actor, width, height));
+  if (new Set(actors.map((actor) => actor.eventId)).size !== actors.length) {
+    throw new Error("Identifiants d'acteurs de monde source dupliques.");
+  }
+  return actors;
+}
+
 function parseBooleanRecord(value: unknown): Readonly<Record<string, boolean>> {
   if (!isRecord(value) || Object.keys(value).length > 16_384
     || Object.entries(value).some(([key, entry]) => !/^\d+(?::\d+:[A-D])?$/u.test(key) || typeof entry !== "boolean")) {
@@ -150,7 +190,7 @@ function parseStory(value: unknown): SourceStorySnapshot {
 export function parseSourceWorldHostState(value: unknown): SourceWorldHostState {
   if (!isRecord(value) || !["mapId", "width", "height", "passages", "blockedPoints", "host", "story"]
     .every((key) => key in value) || Object.keys(value).some((key) => ![
-      "mapId", "width", "height", "passages", "terrain", "blockedPoints", "host", "follower", "story",
+      "mapId", "width", "height", "passages", "terrain", "blockedPoints", "actors", "host", "follower", "story",
     ].includes(key))
     || !integer(value.mapId, 1, 999_999) || !integer(value.width, 1, MAX_MAP_DIMENSION)
     || !integer(value.height, 1, MAX_MAP_DIMENSION)) throw new Error("Monde source invalide.");
@@ -169,6 +209,9 @@ export function parseSourceWorldHostState(value: unknown): SourceWorldHostState 
   return { mapId: value.mapId, width: value.width, height: value.height, passages: value.passages,
     ...(value.terrain === undefined ? {} : { terrain: value.terrain }),
     blockedPoints: value.blockedPoints.map((point) => parsePoint(point, value.width as number, value.height as number)),
+    ...(value.actors === undefined ? {} : {
+      actors: parseSourceWorldActors(value.actors, value.width as number, value.height as number),
+    }),
     host: parseAvatar(value.host, value.width, value.height),
     follower: parseFollower(value.follower, value.width, value.height), story: parseStory(value.story) };
 }
@@ -177,7 +220,7 @@ export function sourceWorldSnapshot(hostState: SourceWorldHostState,
   opponent?: SourceAvatarSnapshot): SourceWorldSnapshot {
   return { mapId: hostState.mapId, width: hostState.width, height: hostState.height,
     passages: hostState.passages, ...(hostState.terrain === undefined ? {} : { terrain: hostState.terrain }),
-    blockedPoints: hostState.blockedPoints, story: hostState.story,
+    blockedPoints: hostState.blockedPoints, actors: hostState.actors ?? [], actorRevision: 0, story: hostState.story,
     avatars: { player: hostState.host, opponent: opponent ?? hostState.host },
     followers: hostState.follower === null ? {} : { player: hostState.follower },
     presence: { player: "shared", opponent: "shared" } };

@@ -128,4 +128,31 @@ describe("source NPC motion", () => {
       x: 2.5, y: 2, direction: 6, characterName: "npc-revealed", opacity: 128,
     });
   });
+
+  it("exports logical world actors and interpolates a host step on a guest", () => {
+    const host = new SourceNpcMotionController();
+    host.reset(map.id, [event], 0);
+    host.update(150, map, [event], createSourceEventState(), { x: 4, y: 4 });
+    const actors = host.worldActors([event], map.id, createSourceEventState());
+    expect(actors).toHaveLength(1);
+    expect(actors[0]).toMatchObject({ eventId: event.id, blocking: true, moveSpeed: 3, action: "step" });
+
+    const guest = new SourceNpcMotionController();
+    guest.reset(map.id, [event], 0);
+    guest.applyNetworkWorldActors(actors, 1_000);
+    const start = guest.poses(1_000).get(event.id)!;
+    const middle = guest.poses(1_125).get(event.id)!;
+    const end = guest.poses(1_250).get(event.id)!;
+    expect(start).toMatchObject({ x: event.x, y: event.y });
+    expect(Math.abs(middle.x - start.x) + Math.abs(middle.y - start.y)).toBeCloseTo(0.5);
+    expect(end).toMatchObject({ x: actors[0]!.x, y: actors[0]!.y });
+  });
+
+  it("restores a canonical actor position without replaying a stale step", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    controller.applyNetworkWorldActors([{ eventId: event.id, x: 3, y: 2, direction: "right",
+      blocking: true, moveSpeed: 3, action: "idle" }], 2_000);
+    expect(controller.poses(2_000).get(event.id)).toMatchObject({ x: 3, y: 2, direction: 6 });
+  });
 });

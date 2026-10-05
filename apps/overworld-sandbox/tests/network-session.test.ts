@@ -52,11 +52,14 @@ function callbacks(): NetworkSessionCallbacks {
     onConnectionFormChanged: vi.fn(),
     onPlayersChanged: vi.fn(),
     onSourceWorldState: vi.fn(),
+    onSourceActorsState: vi.fn(),
     onSourceSceneState: vi.fn(),
     onBattleStarted: vi.fn(),
     onBattleTurnResolved: vi.fn(),
     onBattleReplacementResolved: vi.fn(),
     onBattleEscaped: vi.fn(),
+    onBattleRestoredFinished: vi.fn(),
+    onBattleSettlement: vi.fn(() => true),
     onBattleClosed: vi.fn(),
     onRender: vi.fn(),
   };
@@ -94,6 +97,7 @@ describe("overworld network session", () => {
     expect(session.sendMovement("player", "right")).toBe(false);
     expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toMatchObject({ type: "moveAvatar", direction: "up", sequence: 1 });
     const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff", blockedPoints: [],
+      actors: [], actorRevision: 0,
       story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
       avatars: { player: { x: 1, y: 1, direction: "up" }, opponent: { x: 1, y: 2, direction: "left" } } } as const;
     sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 12, side: "opponent", sequence: 1,
@@ -107,13 +111,21 @@ describe("overworld network session", () => {
       dialogue: { label: "Crisanto", text: "Attention !", choices: [] }, actors: [], presentation: null });
     expect(JSON.parse(sockets[0]?.sent[1] ?? "{}")).toMatchObject({ type: "setSourceScene",
       scene: { mapId: 3, sequenceActive: true } });
+    const actors = [{ eventId: 7, x: 2, y: 1, direction: "left" as const, blocking: true,
+      moveSpeed: 3, action: "step" as const }];
+    session.publishSourceActors(3, actors);
+    session.publishSourceActors(3, actors);
+    expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceActors", mapId: 3, actors });
+    sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 12, mapId: 3, actorRevision: 1,
+      revision: 3, actors });
+    expect(handlers.onSourceActorsState).toHaveBeenLastCalledWith(3, 1, actors);
     const followerAppearance = { form: 1, shiny: true, gender: "female" as const };
     session.publishSourceFollower("FENNEKIN", followerAppearance);
     session.publishSourceFollower("FENNEKIN", followerAppearance);
-    expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceFollower", species: "FENNEKIN",
+    expect(JSON.parse(sockets[0]?.sent[3] ?? "{}")).toMatchObject({ type: "setSourceFollower", species: "FENNEKIN",
       appearance: followerAppearance });
     session.publishSourceFollower("FENNEKIN", { ...followerAppearance, shiny: false });
-    expect(JSON.parse(sockets[0]?.sent[3] ?? "{}")).toMatchObject({ appearance: { shiny: false } });
+    expect(JSON.parse(sockets[0]?.sent[4] ?? "{}")).toMatchObject({ appearance: { shiny: false } });
     const duelTeam = { activeIndex: 0, members: [{ id: "fennekin", species: "FENNEKIN", level: 5,
       maxHp: 20, hp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10,
       types: ["FIRE"], majorStatus: null, ability: null, heldItem: null,
@@ -121,14 +133,14 @@ describe("overworld network session", () => {
         power: 40, accuracy: 100, priority: 0, pp: 35 }] }] } as const;
     session.challengePlayer(duelTeam);
     session.respondPlayerChallenge(false, null);
-    expect(JSON.parse(sockets[0]?.sent[4] ?? "{}")).toMatchObject({ type: "challengePlayer", team: duelTeam });
-    expect(JSON.parse(sockets[0]?.sent[5] ?? "{}")).toMatchObject({ type: "respondPlayerChallenge", accept: false });
-    expect(sockets[0]?.sent).toHaveLength(6);
+    expect(JSON.parse(sockets[0]?.sent[5] ?? "{}")).toMatchObject({ type: "challengePlayer", team: duelTeam });
+    expect(JSON.parse(sockets[0]?.sent[6] ?? "{}")).toMatchObject({ type: "respondPlayerChallenge", accept: false });
+    expect(sockets[0]?.sent).toHaveLength(7);
 
     session.disconnect();
     expect(session.active).toBe(false);
     expect(storage.getItem("test-session")).toBeNull();
-    expect(JSON.parse(sockets[0]?.sent[6] ?? "{}")).toMatchObject({ type: "leaveRoom" });
+    expect(JSON.parse(sockets[0]?.sent[7] ?? "{}")).toMatchObject({ type: "leaveRoom" });
     expect(sockets[0]?.closed).toEqual([{ code: 1000, reason: "Retour au mode local" }]);
   });
 

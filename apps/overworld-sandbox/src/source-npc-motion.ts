@@ -4,7 +4,7 @@ import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type Impor
 import { selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { executeSourceMoveRouteStep, type SourceRouteActor } from "./source-move-route.js";
-import type { SourceSceneActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceSceneActorSnapshot, SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 
 interface NpcRuntime {
   x: number;
@@ -226,6 +226,21 @@ export class SourceNpcMotionController {
     });
   }
 
+  public worldActors(events: readonly ImportedMapEvent[], mapId: number,
+    state: SourceEventState): readonly SourceWorldActorSnapshot[] {
+    return events.flatMap((event) => {
+      const runtime = this.runtimes.get(event.id);
+      const selection = selectActiveEventPage(event, mapId, state);
+      if (runtime === undefined || selection === null) return [];
+      const page = selection.page;
+      const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
+      if (!visible) return [];
+      return [{ eventId: event.id, x: runtime.x, y: runtime.y, direction: runtime.direction,
+        blocking: !page.settings.through, moveSpeed: page.settings.moveSpeed,
+        action: runtime.motion === null ? "idle" as const : "step" as const }];
+    });
+  }
+
   public scriptedActor(eventId: number, mapId: number, events: readonly ImportedMapEvent[], state: SourceEventState,
     now: number): SourceRouteActor | null {
     if (this.mapId !== mapId) this.reset(mapId, events, now);
@@ -287,6 +302,23 @@ export class SourceNpcMotionController {
       else runtime.pattern = actor.pattern;
       runtime.motion = moved ? createSourceGridMotion(before, actor, actor.direction, now,
         { duration: sourceNpcStepDuration(3), walkingPattern: runtime.walkingPattern }) : null;
+      if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
+    }
+  }
+
+  public applyNetworkWorldActors(actors: readonly SourceWorldActorSnapshot[], now: number): void {
+    for (const actor of actors) {
+      const runtime = this.runtimes.get(actor.eventId);
+      if (runtime === undefined) continue;
+      const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
+      const moved = before.x !== actor.x || before.y !== actor.y;
+      runtime.x = actor.x;
+      runtime.y = actor.y;
+      runtime.direction = actor.direction;
+      runtime.motion = moved && actor.action === "step"
+        ? createSourceGridMotion(before, actor, actor.direction, now,
+          { duration: sourceNpcStepDuration(actor.moveSpeed), walkingPattern: runtime.walkingPattern })
+        : null;
       if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     }
   }
