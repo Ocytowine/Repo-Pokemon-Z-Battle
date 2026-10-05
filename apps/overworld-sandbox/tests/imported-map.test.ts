@@ -128,6 +128,16 @@ describe("imported RPG Maker map", () => {
     expect(playerTouchEventInDirection([event], { x: 6, y: 4, direction: "right" }, "up")?.event.id).toBe(8);
   });
 
+  it("starts an event-touch trainer when the player walks into the trainer", () => {
+    const event: ImportedMapEvent = { id: 22, name: "Trainer(4)", x: 4, y: 3, pages: [{
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "campesinow", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 2 }, commands: [],
+    }] };
+    expect(playerTouchEventInDirection([event], { x: 4, y: 4, direction: "up" }, "up")?.event.id).toBe(22);
+  });
+
   it("interacts with an event through one source counter tile", () => {
     const counterMap = map([15, 15, 15]);
     const counterPassages = Array.from({ length: 385 }, () => 0);

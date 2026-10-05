@@ -64,7 +64,7 @@ function ready(requestId: string) {
 function sourceBattleContext(ownerId: string) {
   return { origin: "source-wild", mapId: 3, format: "single", escapable: true,
     narrativeOwnerId: ownerId, presentation: { battlebackId: "forest", battleMusicId: "Battle wild",
-      victoryMusicId: "Victory", opponentTrainer: null }, rewards: { opponents: [{ memberId: "opponent",
+      victoryMusicId: "Victory", opponentTrainer: null, defeatText: null }, rewards: { opponents: [{ memberId: "opponent",
       species: "MEOWTH", level: 50, baseExperience: 58 }], trainerBaseMoney: null,
       experience: { levelCap: 17, experienceDisabled: false, boostTenPercent: false, boostTwentyPercent: false } },
     continuation: "pending-encounter" } as const;
@@ -104,6 +104,14 @@ describe("authoritative battle room", () => {
       requestId: "duel-leave", battleId: battle.id });
     expect(left.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().battle).toBeNull();
+
+    const reverseChallenge = room.receive("bob", { type: "challengePlayer", version: 12,
+      requestId: "duel-reverse", team: opponentTeam });
+    expect(reverseChallenge.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().duelChallenge).toEqual({ challenger: "opponent", challenged: "player" });
+    room.receive("bob", { type: "respondPlayerChallenge", version: 12,
+      requestId: "duel-cancel", accept: false, team: null });
+    expect(room.snapshot().duelChallenge).toBeNull();
   });
 
   it("hosts the source map, validates both movements and reserves story publication for the host", () => {
@@ -540,6 +548,10 @@ describe("authoritative battle room", () => {
     ]);
     expect(room.connect("alice").settlement).toMatchObject({ outcome: "won", ownerId: "alice" });
     expect(room.connect("bob").settlement).toMatchObject({ outcome: "won", ownerId: "bob" });
+    expect(room.receive("bob", { type: "closeSourceBattle", version: 12,
+      requestId: "settlement-guest-close", battleId })[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
+    expect(room.receive("alice", { type: "closeSourceBattle", version: 12,
+      requestId: "settlement-early-close", battleId })[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE" });
     room.receive("alice", { type: "ackBattleSettlement", version: 12,
       requestId: "settlement-host-ack", settlementId: `${battleId}-alice` });
     expect(room.connect("alice").settlement).toBeNull();
@@ -550,6 +562,11 @@ describe("authoritative battle room", () => {
     expect(room.receive("bob", { type: "ackBattleSettlement", version: 12,
       requestId: "settlement-wrong-owner", settlementId: `${battleId}-alice` })[0]?.message)
       .toMatchObject({ type: "error", code: "UNAUTHORIZED" });
+    const closed = room.receive("alice", { type: "closeSourceBattle", version: 12,
+      requestId: "settlement-host-close", battleId });
+    expect(closed.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toBeNull();
+    expect(room.connect("bob").settlement).toMatchObject({ ownerId: "bob", battleId });
   });
 
   it("suspends an owned active after disconnect and resumes the same turn", () => {

@@ -19,6 +19,7 @@ interface NpcRuntime {
   pattern?: number;
   pageIndex: number | null;
   routeIndex: number;
+  noticeCooldownUntil: number;
 }
 
 export interface SourceNpcEventContact {
@@ -28,6 +29,16 @@ export interface SourceNpcEventContact {
 }
 
 const DIRECTIONS: readonly Direction[] = ["down", "left", "right", "up"];
+const DIRECTION_DELTAS: Readonly<Record<Direction, GridPoint>> = {
+  down: { x: 0, y: 1 }, left: { x: -1, y: 0 }, right: { x: 1, y: 0 }, up: { x: 0, y: -1 },
+};
+
+export function sourceTrainerSightRange(eventName: string): number | null {
+  const match = /^Trainer\((\d+)\)$/u.exec(eventName.trim());
+  if (match === null) return null;
+  const range = Number(match[1]);
+  return Number.isSafeInteger(range) && range > 0 ? range : null;
+}
 
 function directionName(direction: number): Direction {
   if (direction === 4) return "left";
@@ -77,6 +88,7 @@ export class SourceNpcMotionController {
       walkingPattern: 1,
       pageIndex: null,
       routeIndex: 0,
+      noticeCooldownUntil: 0,
     }));
   }
 
@@ -102,6 +114,12 @@ export class SourceNpcMotionController {
           runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
         }
         continue;
+      }
+      const sightRange = page.settings.trigger === 2 ? sourceTrainerSightRange(event.name) : null;
+      if (sightRange !== null && now >= runtime.noticeCooldownUntil
+        && this.trainerSeesPlayer(runtime, event, sightRange, player, map, events, state)) {
+        runtime.noticeCooldownUntil = now + 1_000;
+        return { event, page, pageIndex: selection.pageIndex };
       }
       if ((page.settings.moveType !== 1 && page.settings.moveType !== 3) || now < runtime.nextMoveAt) continue;
       const actor = this.runtimeActor(runtime, page);
@@ -175,6 +193,30 @@ export class SourceNpcMotionController {
     if (destination.x === actor.x && destination.y === actor.y - 1) return "up";
     if (destination.x === actor.x && destination.y === actor.y + 1) return "down";
     return null;
+  }
+
+  private trainerSeesPlayer(runtime: NpcRuntime, event: ImportedMapEvent, range: number, player: GridPoint,
+    map: ImportedMap, events: readonly ImportedMapEvent[], state: SourceEventState): boolean {
+    const delta = DIRECTION_DELTAS[runtime.direction];
+    const offsetX = player.x - runtime.x;
+    const offsetY = player.y - runtime.y;
+    const distance = delta.x === 0 ? offsetY * delta.y : offsetX * delta.x;
+    if (distance < 1 || distance > range || delta.x === 0 && offsetX !== 0 || delta.y === 0 && offsetY !== 0) {
+      return false;
+    }
+    const occupied = events.flatMap((candidate) => {
+      if (candidate.id === event.id) return [];
+      const page = selectEventPage(candidate, map.id, state);
+      const other = this.runtimes.get(candidate.id);
+      return page === null || page.settings.through || other === undefined ? [] : [{ x: other.x, y: other.y }];
+    });
+    let probe = { x: runtime.x, y: runtime.y, direction: runtime.direction };
+    for (let step = 0; step < distance; step += 1) {
+      const next = moveImportedAvatar(map, probe, runtime.direction, occupied);
+      if (next.x === probe.x && next.y === probe.y) return false;
+      probe = next;
+    }
+    return probe.x === player.x && probe.y === player.y;
   }
 
   public logicalEvents(events: readonly ImportedMapEvent[]): readonly ImportedMapEvent[] {

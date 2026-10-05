@@ -215,6 +215,10 @@ export class SourceBattleVisuals {
     this.#battleMusic = null;
     if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
     if (winner === "player") {
+      if (outcome.trainerDefeatText !== undefined && outcome.trainerDefeatText !== "") {
+        this.message(outcome.trainerDefeatText);
+        await delay(1_100);
+      }
       this.message("Victoire !");
       await delay(700);
       const experiences = outcome.experiences ?? (outcome.experience === undefined ? [] : [outcome.experience]);

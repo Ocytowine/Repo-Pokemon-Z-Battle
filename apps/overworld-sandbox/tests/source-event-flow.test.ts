@@ -201,7 +201,33 @@ describe("source event choice and condition flow", () => {
     expect(result).toMatchObject({ complete: true, blockedReason: null });
     expect(result.page.commands).toEqual([
       expect.objectContaining({ kind: "request-trainer-battle",
-        data: expect.objectContaining({ trainerType: "CRISANTO1", trainerName: "Crisanto", version: 2 }) }),
+        data: expect.objectContaining({ trainerType: "CRISANTO1", trainerName: "Crisanto",
+          defeatText: "Perdu", format: "single", version: 2, canLose: true }) }),
+      expect.objectContaining({ kind: "end" }),
+    ]);
+  });
+
+  it("ports an ordinary route trainer including its presentation hooks and trailing outcome argument", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbTrainerIntro(:CAMPESINO)" }),
+      command("ruby-script", 0, { source: "Kernel.pbNoticePlayer(get_character(0))" }),
+      command("show-text", 0, { text: "Bienvenue !" }),
+      command("condition", 0, { kind: "ruby-script",
+        script: "pbTrainerBattle(PBTrainers::CAMPESINO,\"Jean\",_I(\"Perdu\"),false,0,false,0)" }),
+      command("set-self-switch", 1, { id: "A", value: true }), command("end", 1),
+      command("condition-end", 0), command("ruby-script", 0, { source: "pbTrainerEnd" }), command("end", 0),
+    ]), [], createSourceEventState(), 14, 22);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "runtime-noop", data: expect.objectContaining({ policy: "TRAINER_PRESENTATION" }) }),
+      expect.objectContaining({ kind: "trainer-notice",
+        data: expect.objectContaining({ animationId: 3, policy: "SHARED_PRESENTATION" }) }),
+      expect.objectContaining({ kind: "show-text" }),
+      expect.objectContaining({ kind: "request-trainer-battle",
+        data: expect.objectContaining({ trainerType: "CAMPESINO", trainerName: "Jean",
+          defeatText: "Perdu", format: "single", version: 0, canLose: false }) }),
+      expect.objectContaining({ kind: "set-self-switch" }), expect.objectContaining({ kind: "end" }),
+      expect.objectContaining({ kind: "runtime-noop", data: expect.objectContaining({ policy: "TRAINER_PRESENTATION" }) }),
       expect.objectContaining({ kind: "end" }),
     ]);
   });

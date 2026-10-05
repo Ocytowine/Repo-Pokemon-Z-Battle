@@ -347,6 +347,9 @@ export class AuthoritativeBattleRoom {
     if (message.type === "ackBattleSettlement") {
       return this.ackBattleSettlement(player, message.requestId, message.settlementId);
     }
+    if (message.type === "closeSourceBattle") {
+      return this.closeSourceBattle(player, message.requestId, message.battleId);
+    }
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "challengePlayer") return this.challengePlayer(player, message.requestId, message.team);
@@ -1291,6 +1294,42 @@ export class AuthoritativeBattleRoom {
   private pendingBattleSettlement(playerId: string): SourceBattleSettlement | null {
     return [...this.#pendingBattleSettlements.values()]
       .find((settlement) => settlement.ownerId === playerId) ?? null;
+  }
+
+  private closeSourceBattle(player: RoomPlayer, requestId: string,
+    battleId: string): readonly RoomDispatch[] {
+    if (this.#battleId !== battleId || this.#sourceBattleContext === null
+      || this.#battleSession?.lifecycle !== "settling") {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Ce combat source n'attend pas sa fermeture.")];
+    }
+    if (this.#battleSession.narrativeOwnerId !== player.playerId) {
+      return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul le propriétaire narratif peut fermer ce combat.")];
+    }
+    if (this.pendingBattleSettlement(player.playerId) !== null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "Le règlement personnel de l'hôte doit être enregistré avant la fermeture.")];
+    }
+    this.#battleSession = closeSharedBattleSession(this.#battleSession);
+    this.#battleState = null;
+    this.#battleId = null;
+    this.#battleEscaped = false;
+    this.#escapeAttempts = 0;
+    this.#activeEncounter = null;
+    this.#activeDuel = false;
+    this.#battleParticipation = null;
+    this.#battleJoinProposal = null;
+    this.#battleObserverIds = [];
+    this.#battleJoinRefusal = null;
+    this.#battleLedger = null;
+    this.#battleSession = null;
+    this.#sourceBattleContext = null;
+    this.#pendingActions.clear();
+    this.#pendingReplacements.clear();
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
   }
 
   private acknowledge(player: RoomPlayer, requestId: string): ServerMessage {

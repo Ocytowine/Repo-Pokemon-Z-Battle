@@ -2,11 +2,11 @@
 
 Date de decision : 2026-10-04.
 
-Etat au 2026-10-05 : les lots 0 a 4 sont termines dans le code. Le noyau couvre le
-journal exact par K.O., le cycle de session, le contexte source public et la
-jonction autoritaire avec observation, composition et boucle tactique. La recette
-locale a deux navigateurs, l'application idempotente et la reprise narrative
-restent a effectuer.
+Etat au 2026-10-05 : les lots 0 a 6 sont termines dans le code. Le noyau couvre le
+journal exact par K.O., le cycle de session, le contexte source public, la
+jonction autoritaire, les reglements personnels idempotents et la reprise
+narrative apres fermeture autoritaire. La recette locale complete a deux
+navigateurs et la robustesse du lot 7 restent a effectuer.
 
 Ce document decrit le raccord complet entre les combats issus de Pokemon Z, le
 moteur de combat commun et la Coop. Il complete `AI_HANDOFF.md`, la roadmap et
@@ -289,6 +289,29 @@ appartiennent toujours au lot 6.
 
 Sortie : post-Keunotor et combats de Dresseurs reprennent au bon curseur ; l'invite
 revient sur la carte avec sa propre equipe mise a jour.
+
+Etat code au 2026-10-05 : implemente, recette locale a deux navigateurs encore a
+effectuer. L'intention `closeSourceBattle` est reservee au proprietaire narratif et
+refusee tant que son reglement personnel n'est pas accuse. La room ferme alors le
+cycle `settling -> closed`, retire combat, participation et contexte du snapshot,
+mais conserve sans limite fonctionnelle les reglements non accuses des autres
+proprietaires. L'invite deconnecte ne bloque donc jamais la reprise de l'hote.
+
+Le client serialise introduction, tours et fin dans la meme file visuelle. La fin
+attend K.O., rendu final, liste d'EXP, argent personnel, arret audio et fondu avant
+de demander la fermeture. Un snapshot de reconnexion deja termine rejoue une fin
+coherente au lieu de rester bloque. Le snapshot ferme declenche ensuite une seule
+fois la continuation gardee par `SourceBattleController` : victoire applique la
+fin de rencontre, defaite conserve la rencontre disponible et fuite la purge en
+restaurant le compteur de pas. Les mutations suivantes empruntent les chemins
+narratifs existants et sont republiees par l'hote ; aucune sauvegarde invitee
+n'entre dans `SourceSceneSnapshot`.
+
+Protection explicite : une reconnexion WebSocket conserve le curseur narratif en
+memoire et reprend normalement. Un rechargement complet de la page pendant un
+combat de Dresseur ne ferme pas automatiquement la bataille si ce curseur n'existe
+plus ; le combat reste en `settling` plutot que de sauter l'histoire. La
+persistance/reconstruction d'un curseur de sequence appartient au lot 7.
 
 ### Lot 7 - Robustesse et validation
 

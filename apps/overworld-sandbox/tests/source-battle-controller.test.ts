@@ -177,10 +177,12 @@ describe("source battle controller", () => {
     const completed = vi.fn();
     expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
       pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
-    { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6 }, completed)).toBe(true);
+    { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6,
+      defeatText: "J'ai encore beaucoup à apprendre !" }, completed)).toBe(true);
     expect(controller.current?.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 2 });
     expect(visuals.startBattle).toHaveBeenCalledWith(controller.current,
       { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6,
+        defeatText: "J'ai encore beaucoup à apprendre !",
         battleback: "town", opponentTrainer: { id: 6, name: "Crisanto" } });
     expect(eventState.money).toBe(3000);
     for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
@@ -188,23 +190,25 @@ describe("source battle controller", () => {
     expect(completed).toHaveBeenCalledWith(true);
     expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
-    expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120 }));
+    expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120,
+      trainerDefeatText: "J'ai encore beaucoup à apprendre !" }));
   });
 
   it("hands a source battle draft to the room without starting a second local battle", () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
-    const eventState: SourceEventState = { ...createSourceEventState(), party,
-      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: {}, escapable: true },
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { "65": true }, escapable: true },
       switches: { "88": true, "252": true } };
     const openSharedBattle = vi.fn(() => true);
     const visuals = presentation();
+    const completed = vi.fn();
     const controller = new SourceBattleController(visuals, {
-      getEventState: () => eventState, updateEventState: vi.fn(),
+      getEventState: () => eventState, updateEventState: (nextState) => { eventState = nextState; },
       getResources: () => ({ catalog, mapId: 7, battleback: "forest", battleMusic: "wild.ogg",
         victoryMusic: "victory.ogg" }), setNotice: vi.fn(), render: vi.fn(), openSharedBattle,
     });
 
-    expect(controller.startPendingEncounter()).toBe(true);
+    expect(controller.startPendingEncounter(completed)).toBe(true);
     expect(controller.active).toBe(true);
     expect(controller.current).toBeNull();
     expect(visuals.startBattle).not.toHaveBeenCalled();
@@ -216,5 +220,29 @@ describe("source battle controller", () => {
     }));
     controller.acknowledgeSharedBattleOpened();
     expect(controller.active).toBe(false);
+    expect(controller.sharedContinuationReady).toBe(true);
+    expect(controller.completeSharedBattle("won", "pending-encounter")).toBe(true);
+    expect(eventState).toMatchObject({ pendingEncounter: null, switches: { "65": true } });
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed).toHaveBeenCalledWith(true);
+    expect(controller.completeSharedBattle("won", "pending-encounter")).toBe(false);
+  });
+
+  it("clears an escaped shared wild encounter and resumes its continuation only once", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party, wildEncounterSteps: 9,
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: {}, escapable: true } };
+    const completed = vi.fn();
+    const controller = new SourceBattleController(presentation(), {
+      getEventState: () => eventState, updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, mapId: 7, battleback: "forest", battleMusic: null, victoryMusic: null }),
+      setNotice: vi.fn(), render: vi.fn(), openSharedBattle: () => true,
+    });
+    expect(controller.startPendingEncounter(completed)).toBe(true);
+    controller.acknowledgeSharedBattleOpened();
+    expect(controller.completeSharedBattle("escaped", "pending-encounter")).toBe(true);
+    expect(eventState).toMatchObject({ pendingEncounter: null, wildEncounterSteps: 0 });
+    expect(completed).toHaveBeenCalledOnce();
+    expect(completed).toHaveBeenCalledWith(false);
   });
 });

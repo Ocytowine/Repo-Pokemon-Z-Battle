@@ -26,6 +26,7 @@ export interface SourceBattleContext {
     readonly battleMusicId: string | null;
     readonly victoryMusicId: string | null;
     readonly opponentTrainer: { readonly id: number; readonly name: string } | null;
+    readonly defeatText: string | null;
   };
   readonly rewards: {
     readonly opponents: readonly SourceBattleRewardOpponent[];
@@ -76,9 +77,13 @@ export function parseSourceBattleContext(value: unknown): SourceBattleContext {
   const presentation = value.presentation;
   const rewards = value.rewards;
   if (!record(presentation) || !exact(presentation,
-    ["battlebackId", "battleMusicId", "victoryMusicId", "opponentTrainer"])
+    ["battlebackId", "battleMusicId", "victoryMusicId", "opponentTrainer", "defeatText"])
     || !logicalAsset(presentation.battlebackId) || !optionalLogicalAsset(presentation.battleMusicId)
-    || !optionalLogicalAsset(presentation.victoryMusicId)) throw new Error("Présentation de combat source invalide.");
+    || !optionalLogicalAsset(presentation.victoryMusicId)
+    || presentation.defeatText !== null && (typeof presentation.defeatText !== "string"
+      || presentation.defeatText.length < 1 || presentation.defeatText.length > 500)) {
+    throw new Error("Présentation de combat source invalide.");
+  }
   const trainer = presentation.opponentTrainer;
   if (trainer !== null && (!record(trainer) || !exact(trainer, ["id", "name"])
     || !integer(trainer.id, 0, 999_999) || typeof trainer.name !== "string"

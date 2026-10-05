@@ -31,6 +31,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "set-pokedex-enabled": capability("state", "executed", "acces au Pokedex persistant"),
   "set-follower": capability("state", "executed", "activation persistante du Pokémon suiveur"),
   "move-route": capability("movement", "rendered", "route animee"),
+  "trainer-notice": capability("movement", "rendered", "alerte et approche d'un Dresseur"),
   "set-movement-mode": capability("movement", "executed", "monture temporaire de sequence"),
   "move-route-continuation": capability("movement", "absorbed", "etape deja incluse dans la route"),
   "wait-for-movement": capability("movement", "executed", "barriere de routes"),

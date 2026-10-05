@@ -5,7 +5,8 @@ import { isSourceStateCommand } from "./source-command-registry.js";
 import type { SourceShopItem } from "./source-economy.js";
 import { applySafeStateCommands, type SourceEventState } from "./source-event-state.js";
 import { sourceItemGains, type SourceItemGain } from "./source-item-presentation.js";
-import type { ImportedAvatar, ImportedEventPage, ImportedMapAssets, ImportedTransfer } from "./imported-map.js";
+import { localizedDialogueText, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets,
+  type ImportedTransfer } from "./imported-map.js";
 import type { SourceSequenceCommandResult, SourceSequenceSession } from "./source-sequence-controller.js";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 
@@ -20,7 +21,7 @@ export function sourceSequenceCommandFamily(command: SourceCommand): SourceSeque
   if (command.kind === "open-shop") return "shop";
   if (command.kind === "open-ranch") return "ranch";
   if (command.kind === "transfer-player") return "transfer";
-  if (command.kind === "move-route" || command.kind === "wait-for-movement"
+  if (command.kind === "move-route" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
     || command.kind === "set-movement-mode") return "movement";
   return "presentation";
 }
@@ -40,6 +41,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openRanch: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
+  readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
   readonly setMovementMode: (mode: SourceMovementMode) => void;
   readonly present: (command: SourceCommand, delay: (milliseconds: number) => Promise<void>) => Promise<boolean>;
   readonly isActive: (session: SourceSequenceSession) => boolean;
@@ -96,8 +98,12 @@ export class SourceSequenceEffects {
   private startTrainerBattle(session: SourceSequenceSession, command: SourceCommand): SourceSequenceCommandResult {
     const assets = this.dependencies.getAssets();
     if (command.kind !== "request-trainer-battle" || assets === null || typeof command.data.trainerType !== "string"
-      || typeof command.data.trainerName !== "string" || !Number.isInteger(command.data.version)) {
+      || typeof command.data.trainerName !== "string" || typeof command.data.defeatText !== "string"
+      || !Number.isInteger(command.data.version)) {
       return this.abort(session, "Séquence interrompue : combat de Dresseur invalide.");
+    }
+    if (command.data.format === "double") {
+      return this.abort(session, "Séquence interrompue : les combats de Dresseurs doubles restent à porter.");
     }
     const trainer = assets.trainers.find((candidate) => candidate.trainerType === command.data.trainerType
       && candidate.name === command.data.trainerName && candidate.version === command.data.version);
@@ -110,9 +116,10 @@ export class SourceSequenceEffects {
       victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
       baseMoney: trainerType.baseMoney,
       trainerTypeId: trainerType.id,
+      defeatText: localizedDialogueText(command.data.defeatText, session.translations),
     }, (won) => {
       if (!this.dependencies.isActive(session)) return;
-      if (!won) session.cursor = session.plan.steps.length;
+      if (!won && command.data.canLose !== true) session.cursor = session.plan.steps.length;
       this.dependencies.resume();
     });
     return started ? "pause"
@@ -144,7 +151,13 @@ export class SourceSequenceEffects {
   }
 
   private async move(session: SourceSequenceSession, command: SourceCommand): Promise<SourceSequenceCommandResult> {
-    if (command.kind === "move-route" && typeof command.data.target === "number") {
+    if (command.kind === "trainer-notice") {
+      const animationId = command.data.animationId;
+      if (!Number.isInteger(animationId) || (animationId as number) <= 0) {
+        return this.abort(session, "Séquence interrompue : présentation de Dresseur invalide.");
+      }
+      await this.dependencies.presentTrainerNotice(session, animationId as number);
+    } else if (command.kind === "move-route" && typeof command.data.target === "number") {
       this.dependencies.startMoveRoute(session, command.data.target, command.data.route);
     } else if (command.kind === "wait-for-movement") {
       await session.runner.waitForMovement();

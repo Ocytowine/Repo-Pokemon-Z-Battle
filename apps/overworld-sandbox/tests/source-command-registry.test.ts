@@ -18,6 +18,7 @@ describe("source command registry", () => {
     ["set-switches", "state", "executed", true],
     ["change-money", "state", "executed", true],
     ["move-route", "movement", "rendered", false],
+    ["trainer-notice", "movement", "rendered", false],
     ["screen-tone", "audiovisual", "rendered", false],
     ["scroll-map", "audiovisual", "rendered", false],
     ["show-animation", "audiovisual", "rendered", false],

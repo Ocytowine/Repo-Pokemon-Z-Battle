@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourcePlayersFaceForDuel,
+  sourceStateWithHostStory }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -30,6 +31,17 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },
     ] })).toBe("personal");
+  });
+
+  it("uses the authoritative shared avatars to offer a PvP challenge to either player", () => {
+    const world = { mapId: 14, width: 10, height: 10, passages: "f".repeat(100), blockedPoints: [],
+      story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
+      presence: { player: "shared", opponent: "shared" },
+      avatars: { player: { x: 4, y: 4, direction: "down" }, opponent: { x: 4, y: 5, direction: "up" } } } as const;
+    expect(sourcePlayersFaceForDuel(world, "player")).toBe(true);
+    expect(sourcePlayersFaceForDuel(world, "opponent")).toBe(true);
+    expect(sourcePlayersFaceForDuel({ ...world,
+      presence: { player: "shared", opponent: "away" } }, "player")).toBe(false);
   });
 
   it("rejoins the shared instance when the host reaches the guest's map", () => {

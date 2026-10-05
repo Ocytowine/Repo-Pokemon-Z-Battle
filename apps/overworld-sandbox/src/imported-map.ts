@@ -351,7 +351,7 @@ export function eventInInteractionRange(events: readonly ImportedMapEvent[], ava
 export function playerTouchEventInDirection(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
   direction: Direction, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
   const active = eventInFront(events, { ...avatar, direction }, mapId, state);
-  return active?.page.settings.trigger === 1 ? active : null;
+  return active !== null && (active.page.settings.trigger === 1 || active.page.settings.trigger === 2) ? active : null;
 }
 
 export function transferForEvent(map: ImportedMap, activeEvent: ActiveMapEvent): ImportedTransfer | null {

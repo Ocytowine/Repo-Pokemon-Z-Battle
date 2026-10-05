@@ -55,6 +55,8 @@ describe("multiplayer protocol", () => {
     expect(parseClientMessage('{"type":"ping","version":12,"nonce":"n1"}')).toMatchObject({ type: "ping" });
     expect(parseClientMessage('{"type":"ackBattleSettlement","version":12,"requestId":"r3","settlementId":"battle-1-player"}'))
       .toMatchObject({ type: "ackBattleSettlement", settlementId: "battle-1-player" });
+    expect(parseClientMessage('{"type":"closeSourceBattle","version":12,"requestId":"r4","battleId":"battle-1"}'))
+      .toMatchObject({ type: "closeSourceBattle", battleId: "battle-1" });
     expect(() => parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toThrow("version de protocole");
     expect(() => parseClientMessage('{"type":"setReady","version":12,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
     expect(() => parseClientMessage('{"type":"submitAction","version":12,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
@@ -112,16 +114,24 @@ describe("multiplayer protocol", () => {
   it("validates a bounded source battle opening without private save data", () => {
     const context = { origin: "source-wild", mapId: 3, format: "single", escapable: true,
       narrativeOwnerId: "host-1", presentation: { battlebackId: "forest",
-        battleMusicId: "Battle wild", victoryMusicId: "Victory", opponentTrainer: null },
+        battleMusicId: "Battle wild", victoryMusicId: "Victory", opponentTrainer: null, defeatText: null },
       rewards: { opponents: [{ memberId: "p1", species: "EEVEE", level: 10, baseExperience: 65 }],
         trainerBaseMoney: null, experience: { levelCap: 17, experienceDisabled: false,
           boostTenPercent: false, boostTwentyPercent: false } }, continuation: "pending-encounter" } as const;
     const message: ClientMessage = { type: "openSourceBattle", version: 12, requestId: "source-battle-1",
       context, playerTeam: duelTeam, opponentTeam: duelTeam };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    const trainerMessage: ClientMessage = { ...message, context: { ...context, origin: "source-trainer",
+      escapable: false, continuation: "trainer-sequence", presentation: { ...context.presentation,
+        opponentTrainer: { id: 6, name: "Jean" }, defeatText: "Je dois encore m'entraîner !" },
+      rewards: { ...context.rewards, trainerBaseMoney: 30 } } };
+    expect(parseClientMessage(serializeMessage(trainerMessage))).toEqual(trainerMessage);
     expect(() => parseClientMessage(JSON.stringify({ ...message,
       context: { ...context, presentation: { ...context.presentation, battlebackId: "../secret" } } })))
       .toThrow("openSourceBattle mal forme");
+    expect(() => parseClientMessage(JSON.stringify({ ...trainerMessage,
+      context: { ...trainerMessage.context, presentation: { ...trainerMessage.context.presentation,
+        defeatText: "x".repeat(501) } } }))).toThrow("openSourceBattle mal forme");
     expect(() => parseClientMessage(JSON.stringify({ ...message, privateParty: [] })))
       .toThrow("openSourceBattle mal forme");
   });

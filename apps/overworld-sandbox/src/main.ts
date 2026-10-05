@@ -11,6 +11,7 @@ import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerPr
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceBattleContext, SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom, activeBattleController, canCaptureSharedBattleTarget, replacementBattleController,
@@ -65,7 +66,8 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
 import { sourceBagEntries } from "./source-bag.js";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
+import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourcePlayersFaceForDuel,
+  sourceStateWithHostStory }
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
@@ -141,6 +143,8 @@ let networkServerUrl = "http://127.0.0.1:8787";
 let networkRoomCode = "";
 let networkPresentedBattle: { readonly id: string; readonly state: TeamBattleState } | null = null;
 const networkBattleOutcomes = new Map<string, SourceBattleOutcome>();
+const networkBattleContexts = new Map<string, SourceBattleContext>();
+const networkBattleSettlements = new Map<string, SourceBattleSettlement>();
 let networkBattleAnimating = false;
 let networkBattlePresentation = Promise.resolve();
 let networkSourceWorld: SourceWorldSnapshot | null = null;
@@ -561,6 +565,28 @@ function startSourceMoveRoute(sequence: SourceSequenceSession, target: number, r
   });
 }
 
+async function presentSourceTrainerNotice(sequence: SourceSequenceSession, animationId: number): Promise<void> {
+  const assets = importedAssets;
+  if (assets === null || assets.map.id !== sequence.mapId) return;
+  const actor = sourceNpcMotions.scriptedActor(sequence.eventId, sequence.mapId,
+    assets.events, sourceEventState, performance.now());
+  if (actor === null) return;
+  const faced = executeSourceMoveRouteStep(actor, { kind: "face-player", parameters: [] },
+    { player: importedAvatar });
+  sourceNpcMotions.applyScriptedActor(sequence.eventId, faced.actor, null, performance.now());
+  renderImportedView();
+  await presentSourceCommand({ kind: "show-animation", data: { parameters: [sequence.eventId, animationId] } },
+    (milliseconds) => sequence.runner.delay(milliseconds));
+  await sequence.runner.delay(500);
+  if (!sourceSequences.isActive(sequence)) return;
+  const distance = Math.abs(faced.actor.x - importedAvatar.x) + Math.abs(faced.actor.y - importedAvatar.y);
+  const steps = Array.from({ length: Math.max(0, distance - 1) }, () =>
+    ({ kind: "step-toward-player", parameters: [] as readonly unknown[] }));
+  if (steps.length === 0) return;
+  await runSourceMoveRoute(sequence, 0, { repeat: false, skippable: false,
+    steps: [...steps, { kind: "face-player", parameters: [] }, { kind: "end", parameters: [] }] });
+}
+
 function beginSourceSequenceChoice(sequence: SourceSequenceSession, choice: PendingEventChoice): void {
   const commands: ImportedEventPage["commands"] = [
     { kind: "show-choices", text: null, indent: 0,
@@ -782,6 +808,7 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   transferPlayer: executeSourceSequenceTransfer,
   startMoveRoute: startSourceMoveRoute,
+  presentTrainerNotice: presentSourceTrainerNotice,
   setMovementMode: applySourceSequenceMovementMode,
   present: presentSourceCommand,
   isActive: (sequence) => sourceSequences.isActive(sequence),
@@ -850,12 +877,15 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
       await sourceBattleVisuals.endBattle(null);
       networkBattleAnimating = false;
       render();
+      requestNetworkSourceBattleClose(battleId);
     });
   },
+  onBattleRestoredFinished: presentRestoredNetworkBattleEnd,
   onBattleSettlement: (settlement) => {
     const assets = importedAssets;
     const playerId = multiplayer.current?.ticket.playerId;
     if (assets === null || playerId === undefined) return false;
+    networkBattleSettlements.set(settlement.battleId, settlement);
     const previousParty = sourceEventState.party;
     const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog);
     sourceEventState = result.state;
@@ -888,6 +918,8 @@ function networkBattleViewerSide(): "player" | "opponent" {
 function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState): void {
   sourceBattles.acknowledgeSharedBattleOpened();
   const side = networkBattleViewerSide();
+  const sourceContext = multiplayer.current?.snapshot?.battle?.sourceContext ?? null;
+  if (sourceContext !== null) networkBattleContexts.set(battleId, sourceContext);
   networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
@@ -895,7 +927,7 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     if (networkPresentedBattle?.id !== battleId) return;
     const ownVisuals = networkPlayerVisuals[side] ?? sourcePlayerVisuals;
     const opponentSide = oppositeBattleSide(side);
-    const sourceContext = multiplayer.current?.snapshot?.battle?.sourceContext ?? null;
+    const sourceContext = networkBattleContexts.get(battleId) ?? null;
     sourceBattleVisuals.setPlayerTrainerImage(ownVisuals?.battleBack ?? null);
     sourceBattleVisuals.setOpponentTrainerImage(sourceContext === null
       ? networkPlayerVisuals[opponentSide]?.battleFront ?? null : null);
@@ -919,6 +951,14 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
   });
 }
 
+function networkBattleOutcome(battleId: string, state: TeamBattleState): SourceBattleOutcome | undefined {
+  const outcome = networkBattleOutcomes.get(battleId);
+  const defeatText = state.winner === "player"
+    ? networkBattleContexts.get(battleId)?.presentation.defeatText ?? null : null;
+  if (outcome === undefined && defeatText === null) return undefined;
+  return { ...outcome, ...(defeatText === null ? {} : { trainerDefeatText: defeatText }) };
+}
+
 function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, state: TeamBattleState,
   events: readonly TeamBattleEvent[]): void {
   const side = networkBattleViewerSide();
@@ -933,7 +973,8 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
     const presented = networkBattleForViewer(state, side);
     await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
     if (state.status === "finished") {
-      await sourceBattleVisuals.endBattle(presented.winner, networkBattleOutcomes.get(battleId));
+      await sourceBattleVisuals.endBattle(presented.winner, networkBattleOutcome(battleId, state));
+      requestNetworkSourceBattleClose(battleId);
     }
     if (networkPresentedBattle?.id === battleId) {
       networkBattleAnimating = false;
@@ -943,18 +984,55 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
     console.warn(`[network-battle] ${error instanceof Error ? error.message : "animation impossible"}`);
     networkPresentedBattle = { id: battleId, state };
     networkBattleAnimating = false;
+    if (state.status === "finished") requestNetworkSourceBattleClose(battleId);
     render();
   });
 }
 
+function presentRestoredNetworkBattleEnd(battleId: string, state: TeamBattleState, escaped: boolean): void {
+  const side = networkBattleViewerSide();
+  networkBattleAnimating = true;
+  networkBattlePresentation = networkBattlePresentation.then(async () => {
+    if (networkPresentedBattle?.id !== battleId) return;
+    networkPresentedBattle = { id: battleId, state };
+    const presented = networkBattleForViewer(state, side);
+    await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
+    await sourceBattleVisuals.endBattle(escaped ? null : presented.winner, networkBattleOutcome(battleId, state));
+    networkBattleAnimating = false;
+    render();
+    requestNetworkSourceBattleClose(battleId);
+  }).catch((error: unknown) => {
+    console.warn(`[network-battle] ${error instanceof Error ? error.message : "reprise de fin impossible"}`);
+    networkBattleAnimating = false;
+    render();
+    requestNetworkSourceBattleClose(battleId);
+  });
+}
+
+function requestNetworkSourceBattleClose(battleId: string): void {
+  const settlement = networkBattleSettlements.get(battleId);
+  const context = networkBattleContexts.get(battleId);
+  const playerId = multiplayer.current?.ticket.playerId;
+  if (!sourceBattles.sharedContinuationReady || settlement === undefined || context === undefined
+    || playerId === undefined || settlement.ownerId !== playerId || context.narrativeOwnerId !== playerId) return;
+  multiplayer.closeSourceBattle(battleId);
+}
+
 function closeNetworkBattlePresentation(battleId: string): void {
   if (networkPresentedBattle?.id !== battleId) return;
+  const settlement = networkBattleSettlements.get(battleId);
+  const context = networkBattleContexts.get(battleId);
+  const playerId = multiplayer.current?.ticket.playerId;
   networkPresentedBattle = null;
   networkBattleOutcomes.delete(battleId);
+  networkBattleContexts.delete(battleId);
+  networkBattleSettlements.delete(battleId);
   networkBattleAnimating = false;
   sourceBattleVisuals.setOpponentTrainerImage(null);
   sourceBattleVisuals.setPlayerTrainerImage(sourcePlayerVisuals?.battleBack ?? null);
-  void sourceBattleVisuals.endBattle(null);
+  if (settlement !== undefined && context !== undefined && playerId === context.narrativeOwnerId) {
+    sourceBattles.completeSharedBattle(settlement.outcome, context.continuation);
+  }
   render();
 }
 
@@ -1830,13 +1908,7 @@ function currentPlayerDuelTeam(): BattleTeam | null {
 
 function remotePlayerAhead(): boolean {
   const session = multiplayer.current;
-  const world = networkSourceWorld;
-  if (session === null || world === null || world.presence.player !== "shared" || world.presence.opponent !== "shared") return false;
-  const otherSide: AvatarId = session.ticket.side === "player" ? "opponent" : "player";
-  const remote = world.avatars[otherSide];
-  const delta = importedAvatar.direction === "up" ? { x: 0, y: -1 } : importedAvatar.direction === "down"
-    ? { x: 0, y: 1 } : importedAvatar.direction === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
-  return importedAvatar.x + delta.x === remote.x && importedAvatar.y + delta.y === remote.y;
+  return session !== null && sourcePlayersFaceForDuel(networkSourceWorld, session.ticket.side);
 }
 
 function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
@@ -1917,7 +1989,10 @@ function interact(playerId: AvatarId): void {
     if (interactionTarget === "player") {
       const team = currentPlayerDuelTeam();
       if (team === null) importedNotice = "Aucun Pokémon en état de combattre.";
-      else multiplayer.challengePlayer(team);
+      else {
+        multiplayer.challengePlayer(team);
+        importedNotice = "Défi PvP envoyé à l'autre Dresseur…";
+      }
       renderImportedView();
       return;
     }

@@ -832,6 +832,53 @@ donc pas rejouer un gain. Plusieurs reglements en retard sont remis l'un apres
 l'autre sans bloquer l'hote. La presentation de fin accepte desormais plusieurs
 gains d'EXP. Objets rares et continuation de l'histoire restent reserves au lot 6.
 
+Septieme increment du plan implemente le 2026-10-05 : le lot 6 ferme un combat
+source uniquement sur intention de l'hote et apres l'accuse de son reglement. La
+room retire alors la scene publique sans supprimer les gains encore dus a un
+invite absent. Introduction, tours, K.O., EXP, argent, audio et fondu utilisent la
+meme file d'animations ; une reconnexion sur un resultat deja termine repasse par
+une fin coherente. Le snapshot ferme reprend exactement une fois la continuation
+locale gardee par le controleur, puis les mutations narratives normales de l'hote
+sont republiees. Victoire, defaite et fuite suivent les branches solo. La recette
+deux navigateurs et la reconstruction du curseur narratif apres rechargement total
+restent au lot 7.
+
+Correctif transversal valide le 2026-10-05 avant le lot 7 : le premier Dresseur
+ordinaire de route a revele la signature longue de `pbTrainerBattle` et les hooks
+de presentation propres aux pages Dresseur. Le portage couvre maintenant ces
+formes de facon generique, ainsi que le contact initie par le joueur contre une
+page fixe `trigger 2`. Le scenario reel Jean/CAMPESINO version 0 atteint le combat
+et son self-switch de victoire. Le defi PvP classique est egalement repropose a
+partir des positions et orientations autoritaires de la room, que l'initiateur
+soit l'hote ou l'invite ; il ne touche pas a l'histoire de l'hote.
+
+Mise en scene Dresseur validee le 2026-10-05 : `Trainer(n)` pilote maintenant une
+ligne de vue bornee et respectueuse des collisions. `pbNoticePlayer` est porte par
+la commande auditee `trainer-notice` : bulle d'exclamation, orientation et marche
+jusqu'au joueur precedent le dialogue. La route est executee une seule fois par
+l'hote et replique ses poses et son effet aux invites presents. Ce lot reste
+generique pour les 258 appels `pbNoticePlayer` releves dans les cartes locales.
+
+Dialogue standard de victoire Dresseur valide le 2026-10-05 : le texte `_I`
+embarque dans `pbTrainerBattle` est extrait, localise et affiche dans la fin de
+combat avant l'EXP et l'argent, en solo et via le contexte de presentation de la
+room. La boucle standard couvre donc detection, dialogue avant combat, equipe,
+phrase de defaite, self-switch de victoire et dialogue d'apres-combat.
+
+Variantes Dresseur explicitement reportees a des lots ulterieurs, a traiter par
+capacites generiques lorsqu'elles apparaissent dans le parcours :
+
+- combats doubles source et compositions a plusieurs Dresseurs ;
+- revanche et remise a zero volontaire de l'etat vaincu ;
+- selection d'equipe ou de version par scripts conditionnels non encore portes ;
+- boss et scripts speciaux modifiant les regles pendant le combat ;
+- six appels a arguments implicites du Doppelganger Majara sur Map263.
+
+L'audit actuel extrait correctement texte, format, version et droit a la defaite
+sur 516 appels `pbTrainerBattle` parmi 522. `canLose` est deja respecte ; un format
+double est refuse explicitement tant que son vrai moteur n'est pas porte, afin de
+ne jamais le transformer silencieusement en combat simple.
+
 ### Increment 9.6 - Rencontres sauvages du monde
 
 - [x] exposer le terrain effectif de chaque case selon les trois couches et les
@@ -1291,6 +1338,11 @@ source auditee demarre. Cette capacite generique couvre notamment les 23 pages d
 contact a mouvement aleatoire et les 62 pages a route personnalisee observees dans
 les donnees locales ; les 189 pages fixes etaient deja joignables par le contact
 initie par le joueur.
+
+Correction du 2026-10-05 : le contact initie par le joueur accepte explicitement
+les deux semantiques source `trigger 1` (contact joueur) et `trigger 2` (contact
+evenement). Cela rend effectivement joignables les pages fixes annoncees
+ci-dessus, notamment les Dresseurs de route qui ne peuvent pas avancer eux-memes.
 
 Vingt-troisieme noyau 9.7 implemente le 2026-10-01 : la commande
 `play-background-sound` passe de reconnue a rendue. Elle lit `Audio/BGS`, boucle

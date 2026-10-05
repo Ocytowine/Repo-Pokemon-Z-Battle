@@ -1,6 +1,7 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import type { SourceStorySnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { portSourceRubyCommand } from "./source-script-ports.js";
 
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
@@ -38,4 +39,20 @@ export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEven
   if (commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all"
     || command.kind === "open-shop" || command.kind === "open-ranch")) return "personal";
   return "blocked";
+}
+
+/**
+ * Le client et la room prennent leur décision depuis le même snapshot
+ * autoritaire. Cela évite qu'une interpolation visuelle locale empêche un défi
+ * pourtant valide côté serveur.
+ */
+export function sourcePlayersFaceForDuel(world: SourceWorldSnapshot | null,
+  side: "player" | "opponent"): boolean {
+  if (world === null || world.presence.player !== "shared" || world.presence.opponent !== "shared") return false;
+  const otherSide = side === "player" ? "opponent" : "player";
+  const avatar = world.avatars[side];
+  const target = world.avatars[otherSide];
+  const delta = avatar.direction === "up" ? { x: 0, y: -1 } : avatar.direction === "down"
+    ? { x: 0, y: 1 } : avatar.direction === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
+  return avatar.x + delta.x === target.x && avatar.y + delta.y === target.y;
 }

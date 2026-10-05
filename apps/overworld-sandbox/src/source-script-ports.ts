@@ -37,6 +37,12 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });
   }
+  if (/^pbTrainerIntro\(\s*:[A-Z][A-Z0-9_]*\s*\)$/u.test(ruby) || /^pbTrainerEnd$/u.test(ruby)) {
+    return command(source, "runtime-noop", { policy: "TRAINER_PRESENTATION" });
+  }
+  if (/^(?:Kernel\.)?pbNoticePlayer\(\s*get_character\(\s*0\s*\)\s*\)$/u.test(ruby)) {
+    return command(source, "trainer-notice", { animationId: 3, policy: "SHARED_PRESENTATION" });
+  }
   if (/^\$Trainer\.pokedex\s*=\s*true$/u.test(ruby)) {
     return command(source, "set-pokedex-enabled", { value: true, policy: "PERSONAL" });
   }
@@ -89,10 +95,12 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
 
 export function portSourceRubyCondition(source: EventCommand): EventCommand | null {
   if (source.kind !== "condition" || source.data.kind !== "ruby-script" || typeof source.data.script !== "string") return null;
-  const match = /^pbTrainerBattle\(PBTrainers::([A-Z][A-Z0-9_]*),\s*"([^"]+)",[\s\S]*,\s*(\d+),\s*(?:true|false)\)$/u
+  const match = /^pbTrainerBattle\(PBTrainers::([A-Z][A-Z0-9_]*),\s*"((?:\\.|[^"\\])*)",\s*_I\("((?:\\.|[^"\\])*)"\),\s*(true|false),\s*(\d+),\s*(true|false)(?:,\s*[^)]*)?\)$/u
     .exec(source.data.script.trim());
   if (match === null) return null;
   return command(source, "request-trainer-battle", {
-    trainerType: match[1], trainerName: match[2], version: Number(match[3]), policy: "HOST_ONLY",
+    trainerType: match[1], trainerName: match[2]?.replaceAll(/\\(["\\])/gu, "$1"),
+    defeatText: match[3]?.replaceAll(/\\(["\\])/gu, "$1"), format: match[4] === "true" ? "double" : "single",
+    version: Number(match[5]), canLose: match[6] === "true", policy: "HOST_ONLY",
   });
 }

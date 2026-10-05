@@ -114,7 +114,16 @@ describe("overworld network session", () => {
       appearance: followerAppearance });
     session.publishSourceFollower("FENNEKIN", { ...followerAppearance, shiny: false });
     expect(JSON.parse(sockets[0]?.sent[3] ?? "{}")).toMatchObject({ appearance: { shiny: false } });
-    expect(sockets[0]?.sent).toHaveLength(4);
+    const duelTeam = { activeIndex: 0, members: [{ id: "fennekin", species: "FENNEKIN", level: 5,
+      maxHp: 20, hp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10,
+      types: ["FIRE"], majorStatus: null, ability: null, heldItem: null,
+      moves: [{ id: "SCRATCH", name: "Griffe", type: "NORMAL", category: "physical",
+        power: 40, accuracy: 100, priority: 0, pp: 35 }] }] } as const;
+    session.challengePlayer(duelTeam);
+    session.respondPlayerChallenge(false, null);
+    expect(JSON.parse(sockets[0]?.sent[4] ?? "{}")).toMatchObject({ type: "challengePlayer", team: duelTeam });
+    expect(JSON.parse(sockets[0]?.sent[5] ?? "{}")).toMatchObject({ type: "respondPlayerChallenge", accept: false });
+    expect(sockets[0]?.sent).toHaveLength(6);
 
     session.disconnect();
     expect(session.active).toBe(false);

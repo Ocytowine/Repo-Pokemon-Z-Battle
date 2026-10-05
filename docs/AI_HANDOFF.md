@@ -1186,9 +1186,77 @@ pas la sauvegarde de l'hote et retrouve son resultat a la reconnexion. La fin de
 combat sait afficher une liste de gains d'EXP personnels. Tests ajoutes : fusion
 des seules ressources possedees, preservation des metadonnees, doublon sans effet,
 fuite persistante, deux proprietaires, invite deconnecte et accuse independant.
-Le combat source reste volontairement en `settling` : le prochain travail est le
-lot 6 (continuation unique de l'hote, fermeture autoritaire, retour overworld et
-presentation finale complete).
+A l'issue du lot 5, le combat source restait volontairement en `settling` jusqu'au
+raccord de continuation et de fermeture decrit ci-dessous.
+
+Lot 6 implemente dans le code le 2026-10-05 : le protocole accepte maintenant
+`closeSourceBattle`. Seul le proprietaire narratif peut l'envoyer et la room la
+refuse jusqu'a l'accuse de son propre reglement. Une fermeture valide passe le
+cycle en `closed`, retire la bataille du snapshot et conserve tous les reglements
+d'invites encore absents. La fin visuelle est serialisee apres le dernier tour :
+K.O., etat final, gains d'EXP personnels, argent, audio et fondu precedent toujours
+la demande de fermeture. Une reconnexion sur un snapshot deja termine execute le
+meme chemin de fin.
+
+Lorsque le snapshot ferme arrive, `SourceBattleController` consomme une garde de
+continuation unique. Une victoire termine la rencontre en attente, une defaite la
+laisse disponible et une fuite la purge avec son compteur de pas ; la fermeture
+reprise ou dupliquee ne peut pas relancer la sequence. Un combat de Dresseur rend
+le controle a son `SourceSequenceSession`, qui poursuit alors les commandes source
+et leur publication narrative habituelle. L'invite ferme seulement sa presentation
+et ne peut ni appliquer ni publier cette continuation.
+
+Tests ajoutes : fermeture invite refusee, fermeture hote prematuree refusee,
+fermeture apres accuse, conservation du reglement invite, reprise de victoire et
+fuite exactement une fois. Limite protegee pour le lot 7 : une reconnexion socket
+conserve la session narrative, mais un rechargement complet de page au milieu d'un
+combat de Dresseur perd encore son curseur local. Dans ce cas la fermeture
+automatique est volontairement bloquee plutot que de sauter l'histoire.
+
+Correctif Dresseurs ordinaires et PvP du 2026-10-05 : les pages Dresseur fixes en
+`trigger 2` demarrent aussi lorsque le joueur tente d'entrer sur leur case, tandis
+que le contact autonome existant reste inchange. Les hooks generiques
+`pbTrainerIntro` et `pbTrainerEnd` sont absorbes sans bloquer, et
+`pbTrainerBattle` accepte desormais la
+signature longue terminee par l'argument de resultat. Le cas source reel
+Map014/EV022 (`CAMPESINO`, Jean, version 0) compile donc dialogue, combat et
+self-switch de victoire sans correctif lie au numero de carte ou d'evenement.
+
+`pbNoticePlayer(get_character(0))` est maintenant une vraie commande auditee
+`trainer-notice`. Le nom source `Trainer(n)` fournit la portee : un Dresseur fixe
+detecte le joueur seulement dans son axe, sa direction et une ligne praticable,
+affiche l'animation source 3 (bulle d'exclamation), se tourne puis avance jusqu'a
+la case adjacente avant le dialogue. L'approche reutilise le moteur generique de
+routes et publie effet et poses d'acteur dans `SourceSceneSnapshot`. L'hote est
+seul autoritaire sur le declenchement ; l'invite present recoit la meme mise en
+scene sans executer une seconde IA locale. Cette presentation n'est pas
+persistante : apres reconnexion, le snapshot de scene et les poses courantes de la
+room suffisent tant que la sequence est active.
+
+La phrase de defaite `_I("...")` de `pbTrainerBattle` est conservee dans
+`request-trainer-battle`, localisee avec le catalogue de la carte puis transmise
+comme `presentation.defeatText` dans le contexte public borne. Elle ne contient ni
+etat prive ni mutation narrative. En solo comme en combat autoritaire, elle est
+affichee une seule fois lorsque le camp du joueur gagne, avant « Victoire ! », les
+gains d'EXP et l'argent. Elle n'est pas affichee apres une defaite du joueur. Le
+self-switch source reste la seule autorite qui rend ensuite le Dresseur non
+recombattable et active son dialogue d'apres-combat.
+
+L'audit local reconnait 516 appels `pbTrainerBattle` sur 522. Le port conserve
+aussi `canLose` : une defaite ne coupe la suite de l'evenement que lorsque la
+source l'interdit. Le drapeau double est conserve mais provoque un arret explicite
+au lieu de lancer a tort un combat simple. Les six appels restants sont les formes
+a arguments par defaut du Doppelganger Majara sur Map263 ; ils restent documentes
+avec les variantes, sans incidence sur les premiers Dresseurs du parcours.
+
+Ces combats restent `HOST_ONLY` pour leur declenchement et leurs mutations
+narratives ; la room diffuse le combat aux participants avec les reglements
+personnels deja definis par les lots 2 a 6. Le duel PvP classique reste une
+intention de chaque joueur, autoritaire dans la room, transitoire dans son snapshot
+et presentee aux deux participants. Sa detection d'interaction lit maintenant les
+deux avatars du snapshot autoritaire, dans les deux sens, au lieu de comparer un
+avatar distant avec une position locale potentiellement interpolee. Les equipes
+et le reglement restent personnels ; aucune mutation narrative n'est produite.
 
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
@@ -1207,7 +1275,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 396 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 404 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

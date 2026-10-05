@@ -3,7 +3,7 @@ import { closeSharedBattleSession, createSharedBattleSession, SeededRandom, sett
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
-import type { SourceBattleContext } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   applyAutomaticReplacements,
   attemptSourceEncounterEscape,
@@ -53,6 +53,7 @@ export interface SourceBattleOutcome {
   readonly experience?: SourceBattleExperiencePresentation;
   readonly experiences?: readonly SourceBattleExperiencePresentation[];
   readonly money?: number;
+  readonly trainerDefeatText?: string;
 }
 
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
@@ -112,6 +113,7 @@ export interface SourceTrainerBattleAudio {
   readonly victoryMusic: string | null;
   readonly baseMoney: number;
   readonly trainerTypeId: number;
+  readonly defeatText: string;
 }
 
 function encounterSeed(species: string, level: number): number {
@@ -129,6 +131,7 @@ export class SourceBattleController {
   private trainerCompletion: ((won: boolean) => void) | null = null;
   private trainerAudio: SourceTrainerBattleAudio | null = null;
   private sharedOpening = false;
+  private sharedContinuationPending = false;
   private localSession: SharedBattleSession | null = null;
   private localSequence = 0;
 
@@ -149,6 +152,10 @@ export class SourceBattleController {
     return this.resolving;
   }
 
+  public get sharedContinuationReady(): boolean {
+    return this.sharedContinuationPending;
+  }
+
   public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null): boolean {
     const eventState = this.callbacks.getEventState();
     const encounter = eventState.pendingEncounter;
@@ -163,6 +170,7 @@ export class SourceBattleController {
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent }) === true) {
         this.sharedOpening = true;
+        this.sharedContinuationPending = true;
         this.encounterCompletion = onComplete;
         this.callbacks.setNotice(`Combat partagé demandé contre ${encounter.species} niveau ${encounter.level}.`);
         this.callbacks.render();
@@ -201,10 +209,11 @@ export class SourceBattleController {
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
-        battleMusic: audio.battleMusic, victoryMusic: audio.victoryMusic });
+        battleMusic: audio.battleMusic, victoryMusic: audio.victoryMusic, defeatText: audio.defeatText });
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent }) === true) {
         this.sharedOpening = true;
+        this.sharedContinuationPending = true;
         this.trainerCompletion = onComplete;
         this.trainerAudio = audio;
         this.callbacks.setNotice(`Combat partagé demandé contre ${trainer.name}.`);
@@ -294,6 +303,32 @@ export class SourceBattleController {
     this.sharedOpening = false;
   }
 
+  /** Resumes the locally retained source continuation once the authoritative room has closed the battle. */
+  public completeSharedBattle(outcome: SourceBattleSettlementOutcome,
+    continuation: SourceBattleContext["continuation"]): boolean {
+    if (!this.sharedContinuationPending) return false;
+    const won = outcome === "won";
+    const encounterCompletion = this.encounterCompletion;
+    const trainerCompletion = this.trainerCompletion;
+    if (continuation === "pending-encounter") {
+      const current = this.callbacks.getEventState();
+      if (outcome === "escaped") {
+        this.callbacks.updateEventState({ ...current, pendingEncounter: null, wildEncounterSteps: 0 });
+      } else if (won) {
+        this.callbacks.updateEventState(completePendingEncounter(current));
+      }
+    }
+    this.clear();
+    this.callbacks.setNotice(outcome === "escaped"
+      ? "Fuite réussie : retour à l'exploration, sur la même case."
+      : won ? "Combat partagé remporté : reprise de l'aventure."
+        : "Combat partagé perdu : retour à l'exploration.");
+    if (continuation === "trainer-sequence") trainerCompletion?.(won);
+    else encounterCompletion?.(won);
+    this.callbacks.render();
+    return true;
+  }
+
   public async switchPokemon(teamIndex: number): Promise<void> {
     await this.submitTurnAction({ kind: "switch", teamIndex });
   }
@@ -335,6 +370,8 @@ export class SourceBattleController {
         await this.presentation.endBattle(winner, {
           ...(experience === undefined ? {} : { experience }),
           ...(moneyDelta === 0 ? {} : { money: moneyDelta }),
+          ...(winner === "player" && trainerCompletion !== null && this.trainerAudio?.defeatText !== undefined
+            ? { trainerDefeatText: this.trainerAudio.defeatText } : {}),
         });
         if (trainerCompletion === null && settlement.completed) nextState = completePendingEncounter(nextState);
         this.callbacks.updateEventState(nextState);
@@ -366,6 +403,7 @@ export class SourceBattleController {
     this.trainerCompletion = null;
     this.trainerAudio = null;
     this.sharedOpening = false;
+    this.sharedContinuationPending = false;
     this.localSession = null;
   }
 
@@ -375,6 +413,7 @@ export class SourceBattleController {
     readonly trainerBaseMoney: number | null;
     readonly continuation: "pending-encounter" | "trainer-sequence";
     readonly opponentTrainer: { readonly id: number; readonly name: string } | null;
+    readonly defeatText?: string | null;
     readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null;
   }): Omit<SourceBattleContext, "narrativeOwnerId"> {
@@ -389,7 +428,8 @@ export class SourceBattleController {
       presentation: { battlebackId: resources.battleback,
         battleMusicId: input.battleMusic === undefined ? resources.battleMusic : input.battleMusic,
         victoryMusicId: input.victoryMusic === undefined ? resources.victoryMusic : input.victoryMusic,
-        opponentTrainer: input.opponentTrainer },
+        opponentTrainer: input.opponentTrainer,
+        defeatText: input.defeatText ?? null },
       rewards: { opponents, trainerBaseMoney: input.trainerBaseMoney,
         experience: sourceBattleExperiencePolicy(eventState) }, continuation: input.continuation };
   }

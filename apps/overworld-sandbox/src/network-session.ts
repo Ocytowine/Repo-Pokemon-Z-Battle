@@ -32,6 +32,7 @@ interface MutableNetworkSession {
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
   pendingSettlement: SourceBattleSettlement | null;
+  closingBattleId: string | null;
 }
 
 export interface NetworkSessionView {
@@ -61,6 +62,7 @@ export interface NetworkSessionCallbacks {
   readonly onBattleReplacementResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
     events: readonly TeamBattleEvent[]) => void;
   readonly onBattleEscaped: (battleId: string, state: TeamBattleState) => void;
+  readonly onBattleRestoredFinished: (battleId: string, state: TeamBattleState, escaped: boolean) => void;
   readonly onBattleSettlement: (settlement: SourceBattleSettlement) => boolean;
   readonly onBattleClosed: (battleId: string) => void;
   readonly onRender: () => void;
@@ -314,6 +316,16 @@ export class OverworldNetworkSession {
     this.callbacks.onRender();
   }
 
+  public closeSourceBattle(battleId: string): void {
+    const session = this.activeSession;
+    const battle = session?.snapshot?.battle;
+    if (session === null || battle?.id !== battleId || battle.sourceContext === null
+      || battle.session.lifecycle !== "settling" || session.ticket.playerId !== battle.session.narrativeOwnerId
+      || session.closingBattleId === battleId) return;
+    session.closingBattleId = battleId;
+    this.sendRequest({ type: "closeSourceBattle", battleId });
+  }
+
   private sendRequest(message: Record<string, unknown>): void {
     const socket = this.activeSession?.socket;
     if (socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return;
@@ -344,6 +356,7 @@ export class OverworldNetworkSession {
       profile,
       sourceFollowerSignature: undefined,
       pendingSettlement: null,
+      closingBattleId: null,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -368,7 +381,12 @@ export class OverworldNetworkSession {
       session.snapshot = snapshot;
       if (previousBattle === null && snapshot.battle !== null) {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
+        if (snapshot.battle.state.status === "finished" || snapshot.battle.escaped) {
+          this.callbacks.onBattleRestoredFinished(snapshot.battle.id, snapshot.battle.state,
+            snapshot.battle.escaped);
+        }
       } else if (previousBattle !== null && snapshot.battle === null) {
+        session.closingBattleId = null;
         this.callbacks.onBattleClosed(previousBattle.id);
       }
       if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) session.submittedTurn = null;

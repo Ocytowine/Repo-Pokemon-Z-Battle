@@ -91,6 +91,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "openSourceBattle"; readonly context: SourceBattleContext;
       readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam })
   | (RequestedMessage & { readonly type: "ackBattleSettlement"; readonly settlementId: string })
+  | (RequestedMessage & { readonly type: "closeSourceBattle"; readonly battleId: string })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 
 export type ProtocolErrorCode =

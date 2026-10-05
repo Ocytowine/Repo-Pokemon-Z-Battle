@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedMap, ImportedMapEvent } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
-import { SourceNpcMotionController, sourceNpcMoveDelay, sourceNpcStepDuration } from "../src/source-npc-motion.js";
+import { SourceNpcMotionController, sourceNpcMoveDelay, sourceNpcStepDuration, sourceTrainerSightRange }
+  from "../src/source-npc-motion.js";
 
 const map: ImportedMap = {
   id: 3, name: "Test", width: 5, height: 5, tilesetId: 1,
@@ -47,6 +48,40 @@ describe("source NPC motion", () => {
     controller.update(150, map, [event], createSourceEventState(), occupiedByPlayer);
     const logical = controller.logicalEvents([event])[0]!;
     expect(logical).toMatchObject({ x: 2, y: 2 });
+  });
+
+  it("recognizes trainer sight ranges and starts a fixed trainer on line of sight", () => {
+    expect(sourceTrainerSightRange("Trainer(4)")).toBe(4);
+    expect(sourceTrainerSightRange("Promeneur")).toBeNull();
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer], 0);
+    expect(controller.update(1, map, [trainer], createSourceEventState(), { x: 2, y: 4 }))
+      .toMatchObject({ event: { id: trainer.id }, pageIndex: 0 });
+    expect(controller.logicalEvents([trainer])[0]).toMatchObject({ x: 2, y: 1 });
+  });
+
+  it("does not notice a player outside the trainer direction or range", () => {
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(2)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer], 0);
+    expect(controller.update(1, map, [trainer], createSourceEventState(), { x: 3, y: 1 })).toBeNull();
+    expect(controller.update(2, map, [trainer], createSourceEventState(), { x: 2, y: 4 })).toBeNull();
+  });
+
+  it("does not notice a player through another blocking event", () => {
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
+    const blocker: ImportedMapEvent = { ...event, id: 7, name: "Obstacle", x: 2, y: 2,
+      pages: [{ ...event.pages[0]!, settings: { ...event.pages[0]!.settings, moveType: 0 } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer, blocker], 0);
+    expect(controller.update(1, map, [trainer, blocker], createSourceEventState(), { x: 2, y: 4 })).toBeNull();
   });
 
   it("starts an event-touch sequence when a random autonomous step reaches the player", () => {
