@@ -2,6 +2,7 @@ import { MAX_CLIENT_MESSAGE_BYTES, PROTOCOL_VERSION, type ClientMessage } from "
 import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
+import { parseSourceBattleContext } from "./source-battle.js";
 import type { BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
@@ -246,6 +247,13 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("respondBattleJoin mal forme");
       }
       return value as unknown as ClientMessage;
+    case "observeBattle":
+    case "closeBattleJoinWindow":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) {
+        return invalid(`${value.type} mal forme`);
+      }
+      return value as unknown as ClientMessage;
     case "leaveBattle":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) return invalid("leaveBattle mal forme");
@@ -266,6 +274,16 @@ export function parseClientMessage(payload: string): ClientMessage {
         return { ...value, scene: parseSourceSceneSnapshot(value.scene) } as unknown as ClientMessage;
       } catch {
         return invalid("setSourceScene mal forme");
+      }
+    case "openSourceBattle":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam"])
+        || !isIdentifier(value.requestId) || !isBattleTeam(value.playerTeam) || !isBattleTeam(value.opponentTeam)) {
+        return invalid("openSourceBattle mal forme");
+      }
+      try {
+        return { ...value, context: parseSourceBattleContext(value.context) } as unknown as ClientMessage;
+      } catch {
+        return invalid("openSourceBattle mal forme");
       }
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");

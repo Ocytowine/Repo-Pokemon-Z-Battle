@@ -2,6 +2,12 @@
 
 Date de decision : 2026-10-04.
 
+Etat au 2026-10-05 : les lots 0 a 3 sont termines dans le code. Le noyau couvre le
+journal exact par K.O., le cycle de session, le contexte source public et la
+jonction autoritaire avec observation et composition. La recette locale a deux
+navigateurs, la boucle tactique complete, l'application idempotente et la reprise
+narrative restent a effectuer.
+
 Ce document decrit le raccord complet entre les combats issus de Pokemon Z, le
 moteur de combat commun et la Coop. Il complete `AI_HANDOFF.md`, la roadmap et
 `COOP_ARCHITECTURE.md`. Une meme session doit fonctionner avec une autorite locale
@@ -105,6 +111,12 @@ de proposition et d'accord deja presentes sont reutilisees.
 
 Sortie : la base actuelle reste verte et les regressions futures sont localisables.
 
+Etat : termine le 2026-10-05. Les identifiants de Pokemon sont uniques entre les
+camps, un Dresseur ne peut appartenir aux deux camps, chaque proprietaire doit etre
+declare dans son camp et l'actif doit appartenir a sa composition. Une proposition
+alteree ou devenue obsolete est refusee. Refuser une jonction ne supprime plus le
+journal du combat en cours.
+
 ### Lot 1 - Unifier session et reglement
 
 - Ajouter origine, contexte, cycle de vie et identifiant stable de reglement.
@@ -119,6 +131,24 @@ Sortie : la base actuelle reste verte et les regressions futures sont localisabl
 
 Sortie : une fonction pure produit les `BattleSettlement` individuels depuis
 l'etat final, la participation, les credits et le contexte.
+
+Etat : en cours. `SharedBattleLedger` conserve desormais les engagements contre
+chaque adversaire et fige, au moment du K.O., les participants encore conscients.
+Les changements volontaires et les remplacements forces passent par le meme
+enregistreur. `sharedBattleOwnerSettlement` filtre ensuite ressources et credits
+pour un seul proprietaire. Les anciens journaux du protocole v9 sont migres a la
+restauration. Le calcul d'EXP utilise maintenant le nombre total de participants
+du camp, puis `applySharedBattleExperience` ne modifie que l'equipe du proprietaire
+vise. Il reproduit les troncatures de l'override final, le bonus Dresseur, les
+coefficients de niveau propres a Z, les switches 661/252/624, l'Oeuf Chance et le
+plafond lie aux badges. Le Partage Exp et l'Exp Tous concernent des
+non-participants et restent reportes avec le futur noyau d'objets.
+
+`SharedBattleSession` formalise `join-window -> active -> settling -> closed` et
+conserve un identifiant de reglement stable jusque dans l'etat ferme. Les
+transitions refusent un reglement avant le resultat tactique. Ce contrat est encore
+pur : sa publication dans le protocole et sa consommation par la room appartiennent
+au lot 2, afin de ne pas creer un second cycle propre au reseau.
 
 ### Lot 2 - Publier les combats Pokemon Z
 
@@ -135,6 +165,22 @@ l'etat final, la participation, les credits et le contexte.
 Sortie : Keunotor, une rencontre d'herbe et un Dresseur s'affichent dans les deux
 navigateurs, avant distribution des gains.
 
+Etat code au 2026-10-05 : implemente, recette locale a deux navigateurs encore a
+effectuer. Le protocole v10 expose `SourceBattleContext`, `openSourceBattle`, le
+cycle et le contexte dans le snapshot. Le contexte borne la carte, l'origine, la
+presentation logique, les adversaires/recompenses, la politique d'EXP et la
+continuation sans publier de sauvegarde privee. `SourceBattleController` construit
+le meme brouillon pour le solo et la Coop ; en presence d'une room valide, il le
+cede sans lancer une resolution locale concurrente. La room reserve cette ouverture
+a l'hote, verifie le manifeste face a l'equipe adverse, cree tactique,
+participation, journal et session atomiquement, puis conserve le resultat en
+`settling` a travers export/restauration. Le solo traverse le meme cycle pur,
+y compris lors d'une fuite sauvage.
+
+Dette volontaire : le reglement personnel, les accuses idempotents, la fermeture
+du combat source et la reprise de sa continuation appartiennent aux lots 5 et 6.
+La fuite reseau et l'IA autre que la premiere capacite appartiennent au lot 4.
+
 ### Lot 3 - Finaliser jonction et composition
 
 - Proposer `Observer`, `Rejoindre l'hote` et `Rejoindre l'adversaire` uniquement en
@@ -148,6 +194,16 @@ navigateurs, avant distribution des gains.
 
 Sortie : les trois choix fonctionnent sur tout combat source simple ; les combats
 doubles et compositions invalides sont refuses proprement.
+
+Etat code au 2026-10-05 : implemente, validation manuelle encore ouverte. Le
+protocole v11 ajoute `observeBattle` et `closeBattleJoinWindow`; le choix
+d'observer est persiste dans la room. L'invite ne peut proposer une equipe que
+depuis la carte partagee et avant le premier tour. Les deux camps sont composes
+dans la limite de six, avec au moins un Pokemon de chaque joueur pour une jonction
+alliee ; les identifiants sont revalides entre camps. L'interface indique camp,
+proprietaire, actif et membres retenus. Seul l'hote ferme explicitement la fenetre,
+et il doit d'abord accepter ou refuser toute proposition. Une action invalide d'un
+observateur ne peut plus fermer la fenetre.
 
 ### Lot 4 - Boucle tactique autoritaire complete
 

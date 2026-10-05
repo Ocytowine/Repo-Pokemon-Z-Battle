@@ -770,6 +770,47 @@ boucle tactique autoritaire, resultats personnels, reprise narrative et E2E. Le
 jalon ne sera coche qu'apres un sauvage et un Dresseur reels valides en solo, chez
 l'hote, chez l'invite et apres reconnexion.
 
+Premier increment du plan implemente le 2026-10-05 : le lot de stabilisation est
+termine. Le noyau refuse les participations et propositions incoherentes ; un refus
+de jonction ne perd plus le journal. Les engagements sont desormais suivis par
+adversaire et chaque K.O. fige ses participants eligibles. Une projection pure
+filtre ces credits par proprietaire et les anciens journaux v9 sont migres lors de
+la restauration.
+
+Deuxieme increment du plan implemente le 2026-10-05 : `SharedBattleSession`
+formalise le cycle irreversible `join-window -> active -> settling -> closed`,
+exige un resultat tactique avant le reglement et conserve un identifiant de
+reglement stable. La projection de chaque K.O. expose aussi le nombre total de
+participants conscients du camp. `player-state` reproduit la branche participant
+de l'override final `repexp.rb` (partage, bonus Dresseur, coefficients Z, switches
+661/252/624, Oeuf Chance, plafond de badges et troncatures) puis applique uniquement
+les gains du proprietaire concerne dans l'ordre des K.O. Le lot 1 reste ouvert
+pour l'idempotence persistante ; Partage Exp/Exp Tous attendent le noyau d'objets.
+La publication de ce cycle et du contexte source dans la room commence au lot 2.
+
+Troisieme increment du plan implemente le 2026-10-05 : le protocole v10 publie un
+`SourceBattleContext` strict et l'intention host-only `openSourceBattle`. Le
+controleur source remet a la room le meme brouillon que celui utilise localement,
+sans demarrer un second combat client. Carte, presentation logique, adversaires,
+faits de recompense, politique d'EXP et continuation sont bornes ; aucune sauvegarde
+privee n'est transmise. La room valide la carte et le manifeste, initialise combat,
+participation, journal et cycle atomiquement, ferme la jonction au premier tour et
+persiste le resultat en `settling`. Le chemin solo utilise aussi ce cycle, fuite
+sauvage comprise. La recette manuelle a deux navigateurs reste ouverte ; reglement
+personnel, fermeture/reprise narrative, fuite reseau et IA source complete restent
+dans leurs lots suivants.
+
+Quatrieme increment du plan implemente le 2026-10-05 : le protocole v11 finalise
+la fenetre de jonction. L'invite present sur la carte choisit explicitement
+Observer, Rejoindre l'hote ou Rejoindre l'adversaire. Sa decision d'observer, les
+proprietaires et la composition survivent a la reconnexion. La composition finale
+est revalidee par la room : six membres au maximum, identifiants uniques entre
+camps et au moins un Pokemon de chaque joueur lors d'une jonction alliee. L'hote
+voit les membres retenus et doit traiter toute proposition avant de fermer la
+fenetre ; le premier tour autorise la ferme aussi. Une intention d'observateur ne
+peut pas avancer le cycle. La recette deux navigateurs reste a effectuer avant de
+valider visuellement ce lot.
+
 ### Increment 9.6 - Rencontres sauvages du monde
 
 - [x] exposer le terrain effectif de chaque case selon les trois couches et les

@@ -1,9 +1,15 @@
 import type { SourceEventState } from "./source-event-state.js";
+import type { SourceBattleExperiencePolicy } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_MAX_MONEY } from "./source-event-state.js";
 
 export const SOURCE_BAG_SLOT_LIMIT = 999;
 export const SOURCE_NO_MONEY_LOSS_SWITCH = 33;
 export const SOURCE_BADGE_SWITCHES = [88, 97, 150, 211, 326, 502, 503, 504] as const;
+const SOURCE_EXPERIENCE_CAPS = [{ switchId: null, level: 17 }, { switchId: 88, level: 27 },
+  { switchId: 97, level: 36 }, { switchId: 150, level: 42 }, { switchId: 211, level: 50 },
+  { switchId: 326, level: 56 }, { switchId: 502, level: 70 }, { switchId: 503, level: 75 },
+  { switchId: 504, level: 80 }, { switchId: 505, level: 85 }, { switchId: 506, level: 94 },
+  { switchId: 744, level: 100 }] as const;
 const DEFEAT_MULTIPLIERS = [8, 16, 24, 36, 48, 60, 80, 100, 120] as const;
 
 export interface SourceShopItem {
@@ -46,6 +52,16 @@ export function sourceDefeatLoss(state: SourceEventState): number {
   const maximumLevel = Math.max(0, ...state.party.members.map((member) => member.level));
   const multiplier = DEFEAT_MULTIPLIERS[Math.min(DEFEAT_MULTIPLIERS.length - 1, sourceBadgeCount(state))] ?? 0;
   return Math.min(state.money, maximumLevel * multiplier);
+}
+
+/** Translates Pokemon Z story switches without exposing the whole save to the room. */
+export function sourceBattleExperiencePolicy(state: SourceEventState): SourceBattleExperiencePolicy {
+  let levelCap: number = SOURCE_EXPERIENCE_CAPS[0].level;
+  for (const entry of SOURCE_EXPERIENCE_CAPS.slice(1)) {
+    if (entry.switchId !== null && state.switches[String(entry.switchId)] === true) levelCap = entry.level;
+  }
+  return { levelCap, experienceDisabled: state.switches["661"] === true,
+    boostTenPercent: state.switches["252"] === true, boostTwentyPercent: state.switches["624"] === true };
 }
 
 export function addSourceMoney(state: SourceEventState, amount: number): SourceEventState {

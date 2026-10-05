@@ -1,9 +1,12 @@
 export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
-export { activeBattleController, applyBattleJoin, approveBattleJoin, battleJoinApproved, createSharedBattleLedger,
-  proposeBattleJoin, recordSharedBattleTurn } from "./battle-participation.js";
+export { activeBattleController, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
+  battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
+  restoreSharedBattleLedger, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
 export { resolveTurn } from "./resolve-turn.js";
 export { SeededRandom } from "./rng.js";
+export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
+  settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";
 export { MAX_TEAM_SIZE, activeBattlers, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn } from "./team-battle.js";
 export { isKnownType, typeEffectiveness } from "./type-chart.js";
 export type {
@@ -38,5 +41,7 @@ export type {
   TurnResult,
   WaitAction,
 } from "./types.js";
-export type { BattleJoinProposal, OwnedBattleMember, SharedBattleCamp, SharedBattleFormat,
-  SharedBattleLedger, SharedBattleParticipation } from "./battle-participation.js";
+export type { BattleJoinProposal, OwnedBattleMember, SharedBattleCamp, SharedBattleDefeatCredit,
+  SharedBattleEngagement, SharedBattleFormat, SharedBattleLedger, SharedBattleOwnerDefeatCredit,
+  SharedBattleOwnerSettlement, SharedBattleParticipation } from "./battle-participation.js";
+export type { SharedBattleLifecycle, SharedBattleOrigin, SharedBattleSession } from "./shared-battle-session.js";

@@ -1,11 +1,15 @@
-import { activeBattleController, applyBattleJoin, approveBattleJoin, createSharedBattleLedger, createTeamBattleState,
-  proposeBattleJoin, recordSharedBattleTurn, replaceFaintedPokemon, resolveTeamTurn, type BattleJoinProposal,
+import { activateSharedBattleSession, activeBattleController, applyBattleJoin, approveBattleJoin,
+  closeSharedBattleSession, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
+  proposeBattleJoin, recordSharedBattleTurn, replaceFaintedPokemon, resolveTeamTurn, settleSharedBattleSession,
+  type BattleJoinProposal,
+  restoreSharedBattleLedger,
   type BattleSide, type BattleTeam, type BattlerState, type SharedBattleCamp, type SharedBattleLedger,
-  type SharedBattleParticipation, type StatefulRandomSource, type TeamBattleAction,
+  type SharedBattleParticipation, type SharedBattleSession, type StatefulRandomSource, type TeamBattleAction,
   type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
-  type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceBattleContext, type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState,
+  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -29,7 +33,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 9;
+  readonly version: 9 | 10 | 11;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -54,7 +58,11 @@ export interface PersistedRoomState {
   readonly activeDuel?: boolean;
   readonly battleParticipation?: SharedBattleParticipation | null;
   readonly battleJoinProposal?: BattleJoinProposal | null;
+  readonly battleJoinRefusal?: { readonly playerId: string; readonly reason: string } | null;
+  readonly battleObserverIds?: readonly string[];
   readonly battleLedger?: SharedBattleLedger | null;
+  readonly battleSession?: SharedBattleSession | null;
+  readonly sourceBattleContext?: SourceBattleContext | null;
 }
 
 export interface EncounterContext {
@@ -103,7 +111,11 @@ export class AuthoritativeBattleRoom {
   #activeDuel = false;
   #battleParticipation: SharedBattleParticipation | null = null;
   #battleJoinProposal: BattleJoinProposal | null = null;
+  #battleJoinRefusal: { readonly playerId: string; readonly reason: string } | null = null;
+  #battleObserverIds: readonly string[] = [];
   #battleLedger: SharedBattleLedger | null = null;
+  #battleSession: SharedBattleSession | null = null;
+  #sourceBattleContext: SourceBattleContext | null = null;
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
@@ -123,7 +135,25 @@ export class AuthoritativeBattleRoom {
       this.#activeDuel = persisted.activeDuel ?? false;
       this.#battleParticipation = persisted.battleParticipation ?? null;
       this.#battleJoinProposal = persisted.battleJoinProposal ?? null;
-      this.#battleLedger = persisted.battleLedger ?? null;
+      this.#battleJoinRefusal = persisted.battleJoinRefusal ?? null;
+      this.#battleObserverIds = persisted.battleObserverIds ?? [];
+      this.#battleLedger = persisted.battleLedger === null || persisted.battleLedger === undefined
+        || persisted.battleState === null ? null : restoreSharedBattleLedger(persisted.battleLedger, persisted.battleState);
+      this.#sourceBattleContext = persisted.sourceBattleContext ?? null;
+      if (persisted.battleSession !== undefined && persisted.battleSession !== null) {
+        this.#battleSession = persisted.battleSession;
+      } else if (persisted.battleId !== null && persisted.battleState !== null) {
+        const owner = persisted.battleParticipation?.battleOwnerId
+          ?? persisted.players.find((candidate) => candidate.side === "player")?.playerId ?? "player";
+        let session = createSharedBattleSession({ battleId: persisted.battleId,
+          origin: persisted.activeDuel === true ? "player-duel" : "room-encounter",
+          narrativeOwnerId: owner, allowJoin: persisted.activeEncounter !== null && persisted.battleState.turn === 1 });
+        if (persisted.battleState.status === "finished") {
+          if (session.lifecycle === "join-window") session = activateSharedBattleSession(session);
+          session = settleSharedBattleSession(session, persisted.battleState);
+        }
+        this.#battleSession = session;
+      }
       this.#worldState = persisted.worldState;
       this.#sourceWorldState = persisted.sourceWorldState === null ? null
         : { ...persisted.sourceWorldState, followers: persisted.sourceWorldState.followers ?? {},
@@ -190,7 +220,10 @@ export class AuthoritativeBattleRoom {
     const phase = this.#battleState === null ? "waiting" : this.#battleState.status === "finished" ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null
       : { id: this.#battleId, state: this.#battleState, duel: this.#activeDuel,
-        participation: this.#battleParticipation, joinProposal: this.#battleJoinProposal, ledger: this.#battleLedger };
+        participation: this.#battleParticipation, joinProposal: this.#battleJoinProposal,
+        joinRefusal: this.#battleJoinRefusal,
+        observerIds: this.#battleObserverIds, ledger: this.#battleLedger,
+        session: this.#battleSession!, sourceContext: this.#sourceBattleContext };
     return {
       revision: this.#revision,
       roomCode: this.#roomCode,
@@ -212,7 +245,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 9,
+      version: 11,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -232,7 +265,11 @@ export class AuthoritativeBattleRoom {
       activeDuel: this.#activeDuel,
       battleParticipation: this.#battleParticipation,
       battleJoinProposal: this.#battleJoinProposal,
+      battleJoinRefusal: this.#battleJoinRefusal,
+      battleObserverIds: this.#battleObserverIds,
       battleLedger: this.#battleLedger,
+      battleSession: this.#battleSession,
+      sourceBattleContext: this.#sourceBattleContext,
     };
   }
 
@@ -260,6 +297,7 @@ export class AuthoritativeBattleRoom {
       return this.setSourceFollower(player, message.requestId, message.species, message.appearance);
     }
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
+    if (message.type === "openSourceBattle") return this.openSourceBattle(player, message);
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "challengePlayer") return this.challengePlayer(player, message.requestId, message.team);
@@ -269,6 +307,10 @@ export class AuthoritativeBattleRoom {
     if (message.type === "proposeBattleJoin") return this.proposeBattleJoin(player, message);
     if (message.type === "respondBattleJoin") {
       return this.respondBattleJoin(player, message.requestId, message.battleId, message.accept);
+    }
+    if (message.type === "observeBattle") return this.observeBattle(player, message.requestId, message.battleId);
+    if (message.type === "closeBattleJoinWindow") {
+      return this.closeBattleJoinWindow(player, message.requestId, message.battleId);
     }
     if (message.type === "leaveBattle") return this.leaveBattle(player, message.requestId, message.battleId);
     if (message.type === "submitReplacement") return this.submitReplacement(player, message);
@@ -380,6 +422,12 @@ export class AuthoritativeBattleRoom {
       this.#battleState = this.#createBattle();
       this.#battleSequence += 1;
       this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
+      const owner = [...this.#players.values()].find((candidate) => candidate.side === "player")?.playerId ?? player.playerId;
+      this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
+        origin: "room-encounter", narrativeOwnerId: owner, allowJoin: false });
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
+      this.#sourceBattleContext = null;
       this.#revision += 1;
     }
     output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -387,7 +435,7 @@ export class AuthoritativeBattleRoom {
   }
 
   private submitAction(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitAction" }>): readonly RoomDispatch[] {
-    if (this.#activeEncounter !== null) return this.submitEncounterAction(player, message);
+    if (this.#activeEncounter !== null || this.#sourceBattleContext !== null) return this.submitEncounterAction(player, message);
     if (this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun combat actif.")];
     }
@@ -410,6 +458,9 @@ export class AuthoritativeBattleRoom {
     const actions: TeamTurnActions = { player: playerAction, opponent: opponentAction };
     const result = resolveTeamTurn(this.#battleState, actions, this.#rng);
     this.#battleState = result.state;
+    if (result.state.status === "finished" && this.#battleSession !== null) {
+      this.#battleSession = settleSharedBattleSession(this.#battleSession, result.state);
+    }
     this.#pendingActions.clear();
     this.#revision += 1;
     output.push({
@@ -429,7 +480,9 @@ export class AuthoritativeBattleRoom {
 
   private submitEncounterAction(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitAction" }>): readonly RoomDispatch[] {
     const encounter = this.#activeEncounter;
-    if (encounter === null || this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
+    const source = this.#sourceBattleContext;
+    if (encounter === null && source === null || this.#battleState === null || this.#battleId === null
+      || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucune rencontre active.")];
     }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
@@ -438,10 +491,13 @@ export class AuthoritativeBattleRoom {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "La proposition de participation doit d'abord être traitée.")];
     }
     const controlledSide = (["player", "opponent"] as const).find((side) => this.#battleParticipation === null
-      ? side === encounter.ownerSide && player.side === encounter.ownerSide
+      ? encounter !== null && side === encounter.ownerSide && player.side === encounter.ownerSide
       : activeBattleController(this.#battleParticipation, side) === player.playerId);
     if (controlledSide === undefined) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le Pokémon actif appartient à l'autre Dresseur.")];
+    }
+    if (this.#battleSession?.lifecycle === "join-window") {
+      this.#battleSession = activateSharedBattleSession(this.#battleSession);
     }
     if (this.#pendingActions.has(controlledSide)) {
       return [this.error(player.playerId, message.requestId, "ACTION_ALREADY_SUBMITTED", "Une action est déjà enregistrée pour ce camp.")];
@@ -475,7 +531,11 @@ export class AuthoritativeBattleRoom {
     output.push({ audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
       battleId, turn: resolvedTurn, state: result.state, events: result.events } });
 
-    if (result.state.status === "finished" && result.state.winner !== null) {
+    if (result.state.status === "finished" && result.state.winner !== null && source !== null) {
+      if (this.#battleSession === null) throw new Error("Session de combat source absente.");
+      this.#battleSession = settleSharedBattleSession(this.#battleSession, result.state);
+      this.#revision += 1;
+    } else if (result.state.status === "finished" && result.state.winner !== null && encounter !== null) {
       this.#worldState = {
         ...this.#worldState,
         session: {
@@ -490,7 +550,11 @@ export class AuthoritativeBattleRoom {
       this.#activeEncounter = null;
       this.#battleParticipation = null;
       this.#battleJoinProposal = null;
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
       this.#battleLedger = null;
+      this.#battleSession = null;
+      this.#sourceBattleContext = null;
       this.#battleState = null;
       this.#battleId = null;
       for (const roomPlayer of this.#players.values()) roomPlayer.ready = false;
@@ -502,7 +566,7 @@ export class AuthoritativeBattleRoom {
 
   private moveAvatar(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "moveAvatar" }>): readonly RoomDispatch[] {
     if (this.#activeDuel || this.#duelChallenge !== null
-      || this.#activeEncounter !== null && this.#battleState?.status === "active") {
+      || (this.#activeEncounter !== null || this.#sourceBattleContext !== null) && this.#battleState?.status === "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Les déplacements sont verrouillés pendant la rencontre.")];
     }
     const previousSequence = this.#movementSequences.get(player.side) ?? 0;
@@ -635,7 +699,14 @@ export class AuthoritativeBattleRoom {
         },
       };
       this.#battleJoinProposal = null;
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
       this.#battleLedger = createSharedBattleLedger(this.#battleState);
+      const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
+        && candidate.connected);
+      this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
+        origin: "room-encounter", narrativeOwnerId: player.playerId, allowJoin: guestAvailable });
+      this.#sourceBattleContext = null;
     }
     this.#revision += 1;
     const output: RoomDispatch[] = [
@@ -676,13 +747,24 @@ export class AuthoritativeBattleRoom {
 
   private proposeBattleJoin(player: RoomPlayer,
     message: Extract<ClientMessage, { readonly type: "proposeBattleJoin" }>): readonly RoomDispatch[] {
-    if (this.#battleId !== message.battleId || this.#battleState === null || this.#activeEncounter === null
+    if (this.#battleId !== message.battleId || this.#battleState === null
+      || this.#activeEncounter === null && this.#sourceBattleContext === null
       || this.#battleParticipation === null || this.#battleState.status !== "active" || this.#battleState.turn !== 1
-      || this.#activeDuel || this.#pendingActions.size > 0) {
+      || this.#battleJoinProposal !== null
+      || this.#activeDuel || this.#pendingActions.size > 0 || this.#battleSession?.lifecycle !== "join-window") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce combat n'accepte plus de participant.")];
     }
     if (player.playerId === this.#battleParticipation.battleOwnerId) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le meneur participe déjà à ce combat.")];
+    }
+    if (this.#battleObserverIds.includes(player.playerId)) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce joueur a choisi d'observer ce combat.")];
+    }
+    if (!player.connected || this.#sourceBattleContext !== null && (this.#sourceWorldState === null
+      || this.#sourceWorldState.mapId !== this.#sourceBattleContext.mapId
+      || this.#sourceWorldState.presence[player.side] !== "shared")) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
+        "L'invite doit etre present sur la carte partagee pour rejoindre le combat.")];
     }
     try {
       this.#battleJoinProposal = proposeBattleJoin(this.#battleParticipation, {
@@ -691,6 +773,7 @@ export class AuthoritativeBattleRoom {
         members: message.team.members,
         finalMemberIds: message.finalMemberIds,
       });
+      this.#battleJoinRefusal = null;
     } catch (error) {
       return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
         error instanceof Error ? error.message : "Proposition de composition invalide.")];
@@ -702,9 +785,77 @@ export class AuthoritativeBattleRoom {
     ];
   }
 
+  private openSourceBattle(player: RoomPlayer,
+    message: Extract<ClientMessage, { readonly type: "openSourceBattle" }>): readonly RoomDispatch[] {
+    const world = this.#sourceWorldState;
+    if (player.side !== "player") {
+      return [this.error(player.playerId, message.requestId, "HOST_ONLY", "Seul l'hote peut ouvrir un combat narratif.")];
+    }
+    if (world === null || world.mapId !== message.context.mapId || world.presence.player !== "shared") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le combat ne correspond pas au monde partage.")];
+    }
+    if (this.#battleState !== null || this.#duelChallenge !== null || message.context.narrativeOwnerId !== player.playerId) {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Un combat ou un defi est deja en cours.")];
+    }
+    if (message.context.format !== "single") {
+      return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", "Les combats source doubles ne sont pas encore pris en charge.")];
+    }
+    const rewardById = new Map(message.context.rewards.opponents.map((opponent) => [opponent.memberId, opponent]));
+    if (rewardById.size !== message.opponentTeam.members.length
+      || message.opponentTeam.members.some((member) => {
+        const reward = rewardById.get(member.id);
+        return reward === undefined || reward.species !== member.species || reward.level !== member.level;
+      })) {
+      return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", "Le manifeste de recompense ne correspond pas aux adversaires.")];
+    }
+    try {
+      this.#battleState = createTeamBattleState({ player: message.playerTeam.members,
+        opponent: message.opponentTeam.members }, { player: message.playerTeam.activeIndex,
+        opponent: message.opponentTeam.activeIndex });
+      this.#battleSequence += 1;
+      this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
+      this.#battleParticipation = { battleOwnerId: player.playerId, format: message.context.format, camps: {
+        player: { trainerIds: [player.playerId], members: this.#battleState.teams.player.members.map((battler) => ({
+          ownerId: player.playerId, battler })), activeMemberId: this.#battleState.teams.player.members[this.#battleState.teams.player.activeIndex]!.id },
+        opponent: { trainerIds: [], members: this.#battleState.teams.opponent.members.map((battler) => ({
+          ownerId: null, battler })), activeMemberId: this.#battleState.teams.opponent.members[this.#battleState.teams.opponent.activeIndex]!.id },
+      } };
+      this.#battleLedger = createSharedBattleLedger(this.#battleState);
+      this.#battleJoinProposal = null;
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
+      this.#sourceBattleContext = message.context;
+      const guestAvailable = [...this.#players.values()].some((candidate) => candidate.side === "opponent"
+        && candidate.connected && world.presence.opponent === "shared");
+      this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
+        origin: message.context.origin, narrativeOwnerId: player.playerId, allowJoin: guestAvailable });
+      this.#activeEncounter = null;
+      this.#activeDuel = false;
+      this.#pendingActions.clear();
+      this.#pendingReplacements.clear();
+    } catch (error) {
+      this.#battleState = null;
+      this.#battleId = null;
+      this.#battleParticipation = null;
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
+      this.#battleLedger = null;
+      this.#battleSession = null;
+      this.#sourceBattleContext = null;
+      return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        error instanceof Error ? error.message : "Combat source invalide.")];
+    }
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
   private respondBattleJoin(player: RoomPlayer, requestId: string, battleId: string,
     accept: boolean): readonly RoomDispatch[] {
     if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
+      || this.#battleSession?.lifecycle !== "join-window"
       || this.#battleJoinProposal === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune proposition de participation active.")];
     }
@@ -713,8 +864,9 @@ export class AuthoritativeBattleRoom {
       return [this.error(player.playerId, requestId, "UNAUTHORIZED", "Ce joueur ne peut pas répondre à cette proposition.")];
     }
     if (!accept) {
+      this.#battleJoinRefusal = { playerId: this.#battleJoinProposal.joinerId,
+        reason: "La composition a ete refusee par l'hote." };
       this.#battleJoinProposal = null;
-      this.#battleLedger = null;
     } else {
       try {
         const approved = approveBattleJoin(this.#battleJoinProposal, player.playerId);
@@ -733,11 +885,62 @@ export class AuthoritativeBattleRoom {
         this.#battleState = createTeamBattleState(teams, activeIndices);
         this.#battleLedger = createSharedBattleLedger(this.#battleState);
         this.#battleJoinProposal = null;
+        this.#battleJoinRefusal = null;
       } catch (error) {
         return [this.error(player.playerId, requestId, "INVALID_MESSAGE",
           error instanceof Error ? error.message : "Accord de participation invalide.")];
       }
     }
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private observeBattle(player: RoomPlayer, requestId: string, battleId: string): readonly RoomDispatch[] {
+    if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
+      || this.#battleSession?.lifecycle !== "join-window") {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "La fenetre de participation est fermee.")];
+    }
+    if (this.#battleParticipation.camps.player.trainerIds.includes(player.playerId)
+      || this.#battleParticipation.camps.opponent.trainerIds.includes(player.playerId)) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Ce joueur participe deja au combat.")];
+    }
+    if (this.#battleJoinProposal?.joinerId === player.playerId) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "La proposition de participation doit d'abord etre traitee.")];
+    }
+    if (this.#sourceBattleContext !== null && (this.#sourceWorldState === null
+      || this.#sourceWorldState.mapId !== this.#sourceBattleContext.mapId
+      || this.#sourceWorldState.presence[player.side] !== "shared")) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "L'invite doit etre present sur la carte partagee pour observer ce combat.")];
+    }
+    if (!this.#battleObserverIds.includes(player.playerId)) {
+      this.#battleObserverIds = [...this.#battleObserverIds, player.playerId];
+      this.#battleJoinRefusal = null;
+      this.#revision += 1;
+    }
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
+  private closeBattleJoinWindow(player: RoomPlayer, requestId: string,
+    battleId: string): readonly RoomDispatch[] {
+    if (this.#battleId !== battleId || this.#battleSession?.lifecycle !== "join-window") {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "La fenetre de participation est deja fermee.")];
+    }
+    if (this.#battleSession.narrativeOwnerId !== player.playerId) {
+      return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul l'hote peut fermer cette fenetre.")];
+    }
+    if (this.#battleJoinProposal !== null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "La proposition de participation doit d'abord etre acceptee ou refusee.")];
+    }
+    this.#battleSession = activateSharedBattleSession(this.#battleSession);
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
@@ -768,8 +971,15 @@ export class AuthoritativeBattleRoom {
       this.#activeDuel = true;
       this.#battleParticipation = null;
       this.#battleJoinProposal = null;
+      this.#battleObserverIds = [];
+      this.#battleJoinRefusal = null;
       this.#battleSequence += 1;
       this.#battleId = `${this.#roomCode}-${this.#battleSequence}`;
+      const owner = [...this.#players.values()].find((candidate) => candidate.side === challenge.challenger)?.playerId
+        ?? player.playerId;
+      this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
+        origin: "player-duel", narrativeOwnerId: owner, allowJoin: false });
+      this.#sourceBattleContext = null;
       this.#pendingActions.clear();
       this.#pendingReplacements.clear();
       for (const roomPlayer of this.#players.values()) roomPlayer.ready = false;
@@ -785,12 +995,17 @@ export class AuthoritativeBattleRoom {
     if (this.#battleId !== battleId || this.#battleState?.status !== "finished" || !this.#activeDuel) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Ce combat ne peut pas être quitté.")];
     }
+    if (this.#battleSession !== null) this.#battleSession = closeSharedBattleSession(this.#battleSession);
     this.#battleState = null;
     this.#battleId = null;
     this.#activeDuel = false;
     this.#battleParticipation = null;
     this.#battleJoinProposal = null;
+    this.#battleObserverIds = [];
+    this.#battleJoinRefusal = null;
     this.#battleLedger = null;
+    this.#battleSession = null;
+    this.#sourceBattleContext = null;
     this.#pendingActions.clear();
     this.#pendingReplacements.clear();
     this.#revision += 1;
@@ -824,8 +1039,12 @@ export class AuthoritativeBattleRoom {
     if (!this.#battleState.replacementRequired.every((side) => this.#pendingReplacements.has(side))) return output;
 
     const replacements = Object.fromEntries(this.#pendingReplacements) as Partial<Record<BattleSide, number>>;
-    const result = replaceFaintedPokemon(this.#battleState, replacements);
+    const beforeState = this.#battleState;
+    const result = replaceFaintedPokemon(beforeState, replacements);
     this.#battleState = result.state;
+    if (this.#battleLedger !== null) {
+      this.#battleLedger = recordSharedBattleTurn(this.#battleLedger, beforeState, result.state, result.events);
+    }
     this.synchronizeBattleParticipation();
     this.#pendingReplacements.clear();
     this.#revision += 1;

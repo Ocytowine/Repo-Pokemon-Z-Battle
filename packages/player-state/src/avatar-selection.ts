@@ -30,9 +30,12 @@ function uint32(value: unknown): value is number {
 }
 
 function randomUint32(): number {
-  if (globalThis.crypto !== undefined) {
+  const cryptoProvider = (globalThis as unknown as {
+    readonly crypto?: { getRandomValues(values: Uint32Array): Uint32Array };
+  }).crypto;
+  if (cryptoProvider !== undefined) {
     const values = new Uint32Array(1);
-    globalThis.crypto.getRandomValues(values);
+    cryptoProvider.getRandomValues(values);
     return values[0]!;
   }
   return Math.floor(Math.random() * 0x1_0000_0000);

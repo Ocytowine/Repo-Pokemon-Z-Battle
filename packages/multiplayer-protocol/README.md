@@ -9,11 +9,11 @@ pour un combat et un tour précis. Il ne peut transmettre ni coordonnées overwo
 ni PV, dégâts, vainqueur ou résultat RNG. Ces données appartiennent exclusivement
 aux messages produits par le serveur autoritaire.
 
-Le protocole v7 transporte l'état complet du monde et des équipes, y compris les
+Le protocole v11 transporte l'état complet du monde et des équipes, y compris les
 statuts, talents et objets persistants, et distingue la résolution d'un tour de
 celle d'un remplacement obligatoire. Les mouvements utilisent un numéro de
 séquence croissant afin d'écarter les intentions anciennes. Les messages sont limités à
-4 Kio et validés avec des champs stricts.
+512 Kio et validés avec des champs stricts.
 Les identifiants de requête permettent au serveur d'acquitter une intention sans
 l'appliquer deux fois après une reconnexion. Chaque snapshot expose aussi la
 dernière séquence acceptée pour que le client reprenne sans repartir de zéro.
@@ -26,3 +26,14 @@ les pronoms, les choix cosmétiques sémantiques et un identifiant de preset vis
 jamais un chemin de fichier, l'équipe, l'inventaire ou la progression. Chaque place
 publie ce profil a la creation de la room et peut le mettre a jour par l'intention
 `setProfile`; le serveur le valide, le persiste et le diffuse dans les snapshots.
+
+`openSourceBattle` publie uniquement les équipes tactiques bornées et un
+`SourceBattleContext` strict : origine, carte, présentation par identifiants
+logiques, faits de récompense et continuation. Aucun chemin local, Ranch, IV/EV,
+inventaire ou sauvegarde narrative n'entre dans ce contrat. Le snapshot expose le
+cycle partagé et conserve le contexte jusqu'au règlement.
+
+La fenêtre de jonction possède aussi des intentions bornées : `observeBattle`
+enregistre le choix explicite de l'invité et `closeBattleJoinWindow` est réservé au
+propriétaire narratif. Le snapshot conserve les observateurs, la composition et
+les propriétaires ; une reconnexion ne rouvre donc pas une décision déjà prise.

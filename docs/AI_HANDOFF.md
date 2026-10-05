@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-02.
+Derniere mise a jour : 2026-10-05.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -1051,6 +1051,63 @@ credits d'EXP par K.O., les reglements personnels idempotents et la reprise
 narrative. Cette planification ne declare pas le raccord termine : les combats de
 `SourceBattleController` restent locaux jusqu'au lot de publication dans la room.
 
+Premier increment du plan implemente le 2026-10-05 : les invariants de
+`SharedBattleParticipation` sont controles dans le noyau pur et une proposition
+alteree ne peut plus etre appliquee. Refuser une jonction conserve le journal du
+combat. `SharedBattleLedger` suit maintenant les engagements par adversaire, puis
+fige a chaque K.O. les participants eligibles encore conscients ; les changements
+volontaires et remplacements forces alimentent le meme chemin. La projection
+`sharedBattleOwnerSettlement` ne restitue que les membres et credits d'un
+proprietaire. Une migration restaure les anciens journaux v9 sans casser une room
+hibernee. L'override final `repexp.rb` a ete controle : participants par adversaire
+et Pokemon conscients alimentent maintenant `pokemonZParticipantExperience` et
+`applySharedBattleExperience`. La conversion reproduit les arrondis, le partage
+entre tous les participants du camp, le bonus Dresseur, les coefficients de niveau
+propres a Z, les switches 661/252/624, l'Oeuf Chance et le plafond lie aux badges,
+puis applique seulement la part du proprietaire vise. Partage Exp et Exp Tous
+restent reportes avec les effets d'objets car ils creditent des non-participants.
+
+`SharedBattleSession` porte le cycle pur `join-window -> active -> settling ->
+closed`. Le premier tour ferme irreversiblement la fenetre, un resultat tactique
+termine est requis avant `settling` et l'identifiant `${battleId}:settlement` reste
+stable apres fermeture pour la future idempotence/reconnexion. Ce cycle n'est pas
+encore publie dans le protocole v9 ni consomme par la room : le lot 2 devra brancher
+les adaptateurs solo et reseau sur ces transitions sans les dupliquer.
+
+Lot 2 implemente dans le code le 2026-10-05 : le protocole passe a v10 et ajoute
+`SourceBattleContext` ainsi que l'intention host-only `openSourceBattle`. Le
+contexte public contient origine, carte, format, fuite, presentation par
+identifiants logiques, adversaires/recompenses bornes, politique d'EXP et type de
+continuation. Il exclut chemins locaux, sauvegarde, Ranch, IV/EV et inventaire.
+La room exige la carte partagee de l'hote, compare le manifeste a l'equipe adverse,
+puis cree dans une seule mutation l'etat tactique, la participation, le journal et
+`SharedBattleSession`. Le premier tour ferme `join-window`; un resultat source
+reste en `settling` avec son contexte et survit a export/restauration.
+
+`SourceBattleController` construit ce brouillon aussi bien pour le sauvage que le
+Dresseur. Si la room l'accepte, aucun combat local concurrent n'est lance et le
+snapshot pilote la presentation des deux clients ; sans room, le solo suit le meme
+cycle pur, y compris la transition de fuite sauvage. Le code est couvert, mais la
+recette Keunotor/herbes/Crisanto dans deux navigateurs reste a effectuer. Le combat
+source reseau reste volontairement affiche en `settling` apres sa fin : application
+personnelle idempotente, fermeture et reprise narrative sont les lots 5 et 6 ; IA
+source avancee et fuite reseau sont au lot 4.
+
+Lot 3 implemente dans le code le 2026-10-05 : le protocole passe a v11. Pendant
+`join-window`, l'invite present sur la carte choisit Observer, le camp de l'hote ou
+le camp adverse. Le choix d'observer est autoritaire et persiste ; la reconnexion
+ne repropose pas une participation. L'interface expose proprietaire, actif et
+membres retenus. Le noyau et la room imposent six Pokemon maximum, des identifiants
+uniques entre camps, au moins un Pokemon de l'invite et, cote allie, au moins un
+Pokemon du meneur. Seul l'hote peut fermer explicitement la fenetre et une
+proposition en attente doit etre acceptee ou refusee auparavant. La premiere action
+valide la ferme aussi, mais une action envoyee par un observateur ne le peut pas.
+
+La recette manuelle a deux navigateurs reste ouverte : verifier successivement
+Observer, jonction alliee, jonction adverse, refus, composition pleine et
+reconnexion pendant la fenetre. Le prochain lot est la boucle tactique autoritaire
+complete (IA source, deconnexion de l'actif et fuite reservee a l'hote).
+
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
 l'acceptation et le refus, puis jouer un combat complet depuis les deux onglets,
@@ -1068,7 +1125,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 369 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 385 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

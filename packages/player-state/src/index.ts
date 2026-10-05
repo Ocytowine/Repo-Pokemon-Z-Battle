@@ -1,5 +1,5 @@
 import type { BattleAbility, BattleMove, BattleSide, BattleStats, BattleTeam, BattlerState, HeldItem,
-  MajorStatusState, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+  MajorStatusState, SharedBattleOwnerSettlement, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
 
@@ -198,6 +198,33 @@ function parseStatus(value: unknown): MajorStatusState | null {
     return { kind: "poison", toxicCounter: value.toxicCounter as number | null };
   }
   throw new Error("Statut majeur invalide.");
+}
+
+/** Story switches are translated into this save-agnostic policy by the solo or Coop adapter. */
+export interface PokemonZExperiencePolicy {
+  readonly trainerBattle: boolean;
+  readonly levelCap: number;
+  readonly noSplitExperience?: boolean;
+  readonly experienceDisabled?: boolean;
+  readonly boostTenPercent?: boolean;
+  readonly boostTwentyPercent?: boolean;
+}
+
+export interface SharedBattleExperienceGain {
+  readonly turn: number;
+  readonly defeatedMemberId: string;
+  readonly recipientMemberId: string;
+  readonly calculated: number;
+  readonly gained: number;
+  readonly previousLevel: number;
+  readonly nextLevel: number;
+  readonly learnedMoves: readonly string[];
+  readonly skippedMoves: readonly string[];
+}
+
+export interface SharedBattleExperienceSettlement {
+  readonly party: PlayerPartyState;
+  readonly gains: readonly SharedBattleExperienceGain[];
 }
 
 function stableUint32(value: string): number {
@@ -678,6 +705,77 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
     appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
+}
+
+/** Exact participant branch of the final Pokemon Z `repexp.rb` override, including its rounding order. */
+export function pokemonZParticipantExperience(input: {
+  readonly defeatedLevel: number;
+  readonly defeatedBaseExperience: number;
+  readonly recipientLevel: number;
+  readonly participantCount: number;
+  readonly luckyEgg: boolean;
+}, policy: PokemonZExperiencePolicy): number {
+  if (!integer(input.defeatedLevel, 1, 100) || !integer(input.defeatedBaseExperience, 1)
+    || !integer(input.recipientLevel, 1, 100) || !integer(input.participantCount, 1)) {
+    throw new Error("Données de calcul d'expérience invalides.");
+  }
+  if (!integer(policy.levelCap, 1, 100)) throw new Error("Plafond de niveau invalide.");
+  let experience = Math.floor(input.defeatedLevel * input.defeatedBaseExperience
+    / (policy.noSplitExperience === true ? 1 : input.participantCount));
+  if (policy.trainerBattle) experience = Math.floor(experience * 3 / 2);
+  experience = Math.floor(experience / 5);
+  const denominator = input.defeatedLevel + input.recipientLevel + 10;
+  let adjustment: number;
+  if (input.defeatedLevel + 5 <= input.recipientLevel) {
+    adjustment = (input.defeatedLevel + 10) / denominator;
+  } else if (input.defeatedLevel < input.recipientLevel) {
+    adjustment = (1.5 * input.defeatedLevel + 10) / denominator;
+  } else if (input.recipientLevel <= input.defeatedLevel - 2) {
+    adjustment = (2.2 * input.defeatedLevel + 10) / denominator;
+  } else if (input.recipientLevel <= input.defeatedLevel - 5) {
+    adjustment = (2.5 * input.defeatedLevel + 10) / denominator;
+  } else if (input.recipientLevel <= input.defeatedLevel - 10) {
+    adjustment = (3 * input.defeatedLevel + 10) / denominator;
+  } else {
+    adjustment = (2 * input.defeatedLevel + 10) / denominator;
+  }
+  experience = Math.floor(experience * Math.sqrt(adjustment ** 5)) + 1;
+  if (policy.experienceDisabled === true) experience = 0;
+  if (policy.boostTenPercent === true) experience = Math.floor(experience * 1.1);
+  if (policy.boostTwentyPercent === true) experience = Math.floor(experience * 1.2);
+  if (input.luckyEgg) experience = Math.floor(experience * 3 / 2);
+  // Pokemon Z applies this after switch 661, so an over-cap participant still receives exactly one point.
+  if (input.recipientLevel > policy.levelCap) experience = 1;
+  return experience;
+}
+
+/** Applies only one owner's immutable K.O. credits; callers persist the returned party atomically. */
+export function applySharedBattleExperience(party: PlayerPartyState, settlement: SharedBattleOwnerSettlement,
+  catalog: PlayerCreationCatalog, policy: PokemonZExperiencePolicy): SharedBattleExperienceSettlement {
+  let members = [...party.members];
+  const gains: SharedBattleExperienceGain[] = [];
+  for (const credit of settlement.defeatCredits) {
+    if (!integer(credit.participantCount, 1) || credit.recipientMemberIds.length > credit.participantCount) {
+      throw new Error("Crédit d'expérience partagé invalide.");
+    }
+    const defeated = catalog.pokemon.find((candidate) => candidate.internalName === credit.defeatedBattler.species);
+    if (defeated === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${credit.defeatedBattler.species}.`);
+    for (const recipientId of credit.recipientMemberIds) {
+      const memberIndex = members.findIndex((pokemon) => pokemon.id === recipientId);
+      if (memberIndex < 0) throw new Error(`Pokémon bénéficiaire absent de l'équipe : ${recipientId}.`);
+      const pokemon = members[memberIndex]!;
+      const calculated = pokemonZParticipantExperience({ defeatedLevel: credit.defeatedBattler.level,
+        defeatedBaseExperience: defeated.baseExperience, recipientLevel: pokemon.level,
+        participantCount: credit.participantCount, luckyEgg: pokemon.heldItem === "LUCKYEGG" }, policy);
+      const result = grantPokemonExperience(pokemon, calculated, catalog);
+      members[memberIndex] = result.pokemon;
+      gains.push({ turn: credit.turn, defeatedMemberId: credit.defeatedBattler.id,
+        recipientMemberId: recipientId, calculated, gained: result.gained,
+        previousLevel: pokemon.level, nextLevel: result.pokemon.level,
+        learnedMoves: result.learnedMoves, skippedMoves: result.skippedMoves });
+    }
+  }
+  return { party: { ...party, members }, gains };
 }
 
 export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: PlayerBattleCatalog): BattleTeam {

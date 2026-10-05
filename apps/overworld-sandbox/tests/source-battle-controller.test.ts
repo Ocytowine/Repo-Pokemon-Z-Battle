@@ -44,6 +44,7 @@ describe("source battle controller", () => {
     };
     const resources: SourceBattleResources = {
       catalog,
+      mapId: 7,
       battleback: "grass",
       battleMusic: "wild.ogg",
       victoryMusic: "victory.ogg",
@@ -107,7 +108,7 @@ describe("source battle controller", () => {
     const callbacks: SourceBattleCallbacks = {
       getEventState: () => eventState,
       updateEventState: (nextState) => { eventState = nextState; },
-      getResources: () => ({ catalog, battleback: "grass", battleMusic: null, victoryMusic: null }),
+      getResources: () => ({ catalog, mapId: 7, battleback: "grass", battleMusic: null, victoryMusic: null }),
       setNotice: vi.fn(), render: vi.fn(),
     };
     const visuals = presentation();
@@ -127,7 +128,7 @@ describe("source battle controller", () => {
     const callbacks: SourceBattleCallbacks = {
       getEventState: () => eventState,
       updateEventState: (nextState) => { eventState = nextState; },
-      getResources: () => ({ catalog, battleback: "town", battleMusic: null, victoryMusic: null }),
+      getResources: () => ({ catalog, mapId: 2, battleback: "town", battleMusic: null, victoryMusic: null }),
       setNotice: vi.fn(), render: vi.fn(),
     };
     const controller = new SourceBattleController(presentation(), callbacks);
@@ -144,7 +145,7 @@ describe("source battle controller", () => {
     const callbacks: SourceBattleCallbacks = {
       getEventState: () => eventState,
       updateEventState: (nextState) => { eventState = nextState; },
-      getResources: () => ({ catalog, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "victory.ogg" }),
+      getResources: () => ({ catalog, mapId: 2, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "victory.ogg" }),
       setNotice: vi.fn(), render: vi.fn(),
     };
     const visuals = presentation();
@@ -169,7 +170,7 @@ describe("source battle controller", () => {
     const callbacks: SourceBattleCallbacks = {
       getEventState: () => eventState,
       updateEventState: (nextState) => { eventState = nextState; },
-      getResources: () => ({ catalog, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "wild-win.ogg" }),
+      getResources: () => ({ catalog, mapId: 3, battleback: "town", battleMusic: "wild.ogg", victoryMusic: "wild-win.ogg" }),
       setNotice: vi.fn(), render: vi.fn(),
     };
     const controller = new SourceBattleController(visuals, callbacks);
@@ -188,5 +189,32 @@ describe("source battle controller", () => {
     expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
     expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120 }));
+  });
+
+  it("hands a source battle draft to the room without starting a second local battle", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: {}, escapable: true },
+      switches: { "88": true, "252": true } };
+    const openSharedBattle = vi.fn(() => true);
+    const visuals = presentation();
+    const controller = new SourceBattleController(visuals, {
+      getEventState: () => eventState, updateEventState: vi.fn(),
+      getResources: () => ({ catalog, mapId: 7, battleback: "forest", battleMusic: "wild.ogg",
+        victoryMusic: "victory.ogg" }), setNotice: vi.fn(), render: vi.fn(), openSharedBattle,
+    });
+
+    expect(controller.startPendingEncounter()).toBe(true);
+    expect(controller.active).toBe(true);
+    expect(controller.current).toBeNull();
+    expect(visuals.startBattle).not.toHaveBeenCalled();
+    expect(openSharedBattle).toHaveBeenCalledWith(expect.objectContaining({
+      context: expect.objectContaining({ origin: "source-wild", mapId: 7,
+        rewards: expect.objectContaining({ experience: expect.objectContaining({ levelCap: 27,
+          boostTenPercent: true }) }) }),
+      opponentTeam: expect.objectContaining({ members: [expect.objectContaining({ species: "BIDOOF" })] }),
+    }));
+    controller.acknowledgeSharedBattleOpened();
+    expect(controller.active).toBe(false);
   });
 });

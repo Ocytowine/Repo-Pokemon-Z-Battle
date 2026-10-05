@@ -731,12 +731,14 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   },
   getResources: () => importedAssets === null ? null : {
     catalog: importedAssets.battleCatalog,
+    mapId: importedAssets.map.id,
     battleback: importedAssets.battleback ?? "snow",
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
   },
   setNotice: (notice) => { importedNotice = notice; },
   render,
+  openSharedBattle: (draft) => multiplayer.openSourceBattle(draft),
 });
 sourceSequenceEffects = new SourceSequenceEffects({
   getEventState: () => sourceEventState,
@@ -804,6 +806,8 @@ const sourceBattleJoinView = new SourceBattleJoinView({
     if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds);
   },
   onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
+  onObserve: () => { multiplayer.observeBattle(); },
+  onClose: () => { multiplayer.closeBattleJoinWindow(); },
 });
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onStatus: setNetworkText,
@@ -837,6 +841,7 @@ function networkBattleViewerSide(): "player" | "opponent" {
 }
 
 function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState): void {
+  sourceBattles.acknowledgeSharedBattleOpened();
   const side = networkBattleViewerSide();
   networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
@@ -845,14 +850,18 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     if (networkPresentedBattle?.id !== battleId) return;
     const ownVisuals = networkPlayerVisuals[side] ?? sourcePlayerVisuals;
     const opponentSide = oppositeBattleSide(side);
+    const sourceContext = multiplayer.current?.snapshot?.battle?.sourceContext ?? null;
     sourceBattleVisuals.setPlayerTrainerImage(ownVisuals?.battleBack ?? null);
-    sourceBattleVisuals.setOpponentTrainerImage(networkPlayerVisuals[opponentSide]?.battleFront ?? null);
+    sourceBattleVisuals.setOpponentTrainerImage(sourceContext === null
+      ? networkPlayerVisuals[opponentSide]?.battleFront ?? null : null);
     const opponentName = networkPlayerProfiles[opponentSide]?.profile.displayName ?? "L'autre Dresseur";
     await sourceBattleVisuals.startBattle(networkBattleForViewer(state, side), {
-      battleback: importedAssets?.battleback ?? "snow",
-      battleMusic: importedAssets?.wildBattleBgm ?? null,
-      victoryMusic: importedAssets?.wildVictoryMe ?? null,
-      opponentTrainer: { id: 0, name: opponentName },
+      battleback: sourceContext?.presentation.battlebackId ?? importedAssets?.battleback ?? "snow",
+      battleMusic: sourceContext?.presentation.battleMusicId ?? importedAssets?.wildBattleBgm ?? null,
+      victoryMusic: sourceContext?.presentation.victoryMusicId ?? importedAssets?.wildVictoryMe ?? null,
+      ...(sourceContext?.presentation.opponentTrainer !== null
+        ? { opponentTrainer: sourceContext?.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
+        : sourceContext === null ? { opponentTrainer: { id: 0, name: opponentName } } : {}),
     });
     if (networkPresentedBattle?.id === battleId) {
       networkBattleAnimating = false;
@@ -1704,7 +1713,8 @@ function renderEncounter(): void {
   sourcePlayerDuelView.render({ challenge: duel, side, players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
   sourceBattleJoinView.render({ battle: networkBattle, playerId: network?.ticket.playerId ?? null,
-    team: currentPlayerDuelTeam() });
+    team: currentPlayerDuelTeam(), available: networkBattle?.sourceContext === null || side === null
+      ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared" });
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
     sourceEventState = { ...sourceEventState,

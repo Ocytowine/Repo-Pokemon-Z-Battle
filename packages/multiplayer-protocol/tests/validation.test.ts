@@ -39,7 +39,7 @@ describe("multiplayer protocol", () => {
   it("round-trips a move intent without accepting a computed result", () => {
     const message: ClientMessage = {
       type: "submitAction",
-      version: 9,
+      version: 11,
       requestId: "request-7",
       battleId: "battle-1",
       turn: 3,
@@ -50,65 +50,86 @@ describe("multiplayer protocol", () => {
   });
 
   it("validates every client message shape strictly", () => {
-    expect(parseClientMessage('{"type":"setReady","version":9,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
-    expect(parseClientMessage('{"type":"requestSnapshot","version":9,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
-    expect(parseClientMessage('{"type":"ping","version":9,"nonce":"n1"}')).toMatchObject({ type: "ping" });
+    expect(parseClientMessage('{"type":"setReady","version":11,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
+    expect(parseClientMessage('{"type":"requestSnapshot","version":11,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
+    expect(parseClientMessage('{"type":"ping","version":11,"nonce":"n1"}')).toMatchObject({ type: "ping" });
     expect(() => parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toThrow("version de protocole");
-    expect(() => parseClientMessage('{"type":"setReady","version":9,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
-    expect(() => parseClientMessage('{"type":"submitAction","version":9,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
+    expect(() => parseClientMessage('{"type":"setReady","version":11,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
+    expect(() => parseClientMessage('{"type":"submitAction","version":11,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
   });
 
   it("accepts team switches and forced replacements", () => {
-    expect(parseClientMessage('{"type":"submitAction","version":9,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
-    expect(parseClientMessage('{"type":"submitReplacement","version":9,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
-    expect(() => parseClientMessage('{"type":"submitReplacement","version":9,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");
+    expect(parseClientMessage('{"type":"submitAction","version":11,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
+    expect(parseClientMessage('{"type":"submitReplacement","version":11,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
+    expect(() => parseClientMessage('{"type":"submitReplacement","version":11,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");
   });
 
   it("accepts only directional overworld intentions with a positive sequence", () => {
-    expect(parseClientMessage('{"type":"moveAvatar","version":9,"requestId":"w1","direction":"left","sequence":3}')).toMatchObject({ type: "moveAvatar", direction: "left", sequence: 3 });
-    expect(parseClientMessage('{"type":"interact","version":9,"requestId":"i1"}')).toMatchObject({ type: "interact" });
-    expect(() => parseClientMessage('{"type":"interact","version":9,"requestId":"i1","interactionId":"secret"}')).toThrow("interact mal formé");
-    expect(() => parseClientMessage('{"type":"moveAvatar","version":9,"requestId":"w1","direction":"teleport","sequence":3}')).toThrow("moveAvatar mal formé");
-    expect(() => parseClientMessage('{"type":"moveAvatar","version":9,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
-    expect(parseClientMessage('{"type":"setSourceFollower","version":9,"requestId":"f1","species":"FENNEKIN"}'))
+    expect(parseClientMessage('{"type":"moveAvatar","version":11,"requestId":"w1","direction":"left","sequence":3}')).toMatchObject({ type: "moveAvatar", direction: "left", sequence: 3 });
+    expect(parseClientMessage('{"type":"interact","version":11,"requestId":"i1"}')).toMatchObject({ type: "interact" });
+    expect(() => parseClientMessage('{"type":"interact","version":11,"requestId":"i1","interactionId":"secret"}')).toThrow("interact mal formé");
+    expect(() => parseClientMessage('{"type":"moveAvatar","version":11,"requestId":"w1","direction":"teleport","sequence":3}')).toThrow("moveAvatar mal formé");
+    expect(() => parseClientMessage('{"type":"moveAvatar","version":11,"requestId":"w1","direction":"left","sequence":0}')).toThrow("moveAvatar mal formé");
+    expect(parseClientMessage('{"type":"setSourceFollower","version":11,"requestId":"f1","species":"FENNEKIN"}'))
       .toMatchObject({ type: "setSourceFollower", species: "FENNEKIN" });
-    expect(parseClientMessage('{"type":"setSourceFollower","version":9,"requestId":"f2","species":"FENNEKIN","appearance":{"form":1,"shiny":true,"gender":"female"}}'))
+    expect(parseClientMessage('{"type":"setSourceFollower","version":11,"requestId":"f2","species":"FENNEKIN","appearance":{"form":1,"shiny":true,"gender":"female"}}'))
       .toMatchObject({ type: "setSourceFollower", appearance: { form: 1, shiny: true, gender: "female" } });
-    expect(() => parseClientMessage('{"type":"setSourceFollower","version":9,"requestId":"f1","species":"../secret"}'))
+    expect(() => parseClientMessage('{"type":"setSourceFollower","version":11,"requestId":"f1","species":"../secret"}'))
       .toThrow("setSourceFollower mal formé");
-    expect(() => parseClientMessage('{"type":"setSourceFollower","version":9,"requestId":"f3","species":"FENNEKIN","appearance":{"form":0,"shiny":false,"gender":"male","trainerId":42}}'))
+    expect(() => parseClientMessage('{"type":"setSourceFollower","version":11,"requestId":"f3","species":"FENNEKIN","appearance":{"form":0,"shiny":false,"gender":"male","trainerId":42}}'))
       .toThrow("setSourceFollower mal formé");
   });
 
   it("validates player challenges and never accepts a fainted active Pokémon", () => {
-    const challenge = { type: "challengePlayer", version: 9, requestId: "duel-1", team: duelTeam };
+    const challenge = { type: "challengePlayer", version: 11, requestId: "duel-1", team: duelTeam };
     expect(parseClientMessage(JSON.stringify(challenge))).toMatchObject({ type: "challengePlayer", team: { activeIndex: 0 } });
-    expect(parseClientMessage(JSON.stringify({ type: "respondPlayerChallenge", version: 9,
+    expect(parseClientMessage(JSON.stringify({ type: "respondPlayerChallenge", version: 11,
       requestId: "duel-2", accept: true, team: duelTeam }))).toMatchObject({ type: "respondPlayerChallenge", accept: true });
     expect(() => parseClientMessage(JSON.stringify({ ...challenge,
       team: { ...duelTeam, members: [{ ...duelTeam.members[0], hp: 0 }] } }))).toThrow("challengePlayer mal forme");
   });
 
   it("validates battle join proposals and responses", () => {
-    expect(parseClientMessage(JSON.stringify({ type: "proposeBattleJoin", version: 9, requestId: "join-1",
+    expect(parseClientMessage(JSON.stringify({ type: "proposeBattleJoin", version: 11, requestId: "join-1",
       battleId: "battle-1", side: "opponent", team: duelTeam, finalMemberIds: ["p1"] })))
       .toMatchObject({ type: "proposeBattleJoin", side: "opponent" });
-    expect(parseClientMessage(JSON.stringify({ type: "respondBattleJoin", version: 9, requestId: "join-2",
+    expect(parseClientMessage(JSON.stringify({ type: "respondBattleJoin", version: 11, requestId: "join-2",
       battleId: "battle-1", accept: true }))).toMatchObject({ type: "respondBattleJoin", accept: true });
+    expect(parseClientMessage(JSON.stringify({ type: "observeBattle", version: 11, requestId: "join-3",
+      battleId: "battle-1" }))).toMatchObject({ type: "observeBattle", battleId: "battle-1" });
+    expect(parseClientMessage(JSON.stringify({ type: "closeBattleJoinWindow", version: 11, requestId: "join-4",
+      battleId: "battle-1" }))).toMatchObject({ type: "closeBattleJoinWindow", battleId: "battle-1" });
+  });
+
+  it("validates a bounded source battle opening without private save data", () => {
+    const context = { origin: "source-wild", mapId: 3, format: "single", escapable: true,
+      narrativeOwnerId: "host-1", presentation: { battlebackId: "forest",
+        battleMusicId: "Battle wild", victoryMusicId: "Victory", opponentTrainer: null },
+      rewards: { opponents: [{ memberId: "p1", species: "EEVEE", level: 10, baseExperience: 65 }],
+        trainerBaseMoney: null, experience: { levelCap: 17, experienceDisabled: false,
+          boostTenPercent: false, boostTwentyPercent: false } }, continuation: "pending-encounter" } as const;
+    const message: ClientMessage = { type: "openSourceBattle", version: 11, requestId: "source-battle-1",
+      context, playerTeam: duelTeam, opponentTeam: duelTeam };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message,
+      context: { ...context, presentation: { ...context.presentation, battlebackId: "../secret" } } })))
+      .toThrow("openSourceBattle mal forme");
+    expect(() => parseClientMessage(JSON.stringify({ ...message, privateParty: [] })))
+      .toThrow("openSourceBattle mal forme");
   });
 
   it("validates source-map presence changes", () => {
-    expect(parseClientMessage('{"type":"setSourcePresence","version":9,"requestId":"p1","attached":false,"avatar":null}'))
+    expect(parseClientMessage('{"type":"setSourcePresence","version":11,"requestId":"p1","attached":false,"avatar":null}'))
       .toMatchObject({ type: "setSourcePresence", attached: false });
-    expect(parseClientMessage('{"type":"setSourcePresence","version":9,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"}}'))
+    expect(parseClientMessage('{"type":"setSourcePresence","version":11,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"}}'))
       .toMatchObject({ type: "setSourcePresence", attached: true, avatar: { x: 1, y: 2 } });
-    expect(() => parseClientMessage('{"type":"setSourcePresence","version":9,"requestId":"p3","attached":true,"avatar":null}'))
+    expect(() => parseClientMessage('{"type":"setSourcePresence","version":11,"requestId":"p3","attached":true,"avatar":null}'))
       .toThrow("setSourcePresence mal forme");
   });
 
   it("validates a cosmetic profile update without gameplay data", () => {
     const profile = createNetworkPlayerProfile("legacy-2", { ...createDefaultPlayerProfile(), displayName: "Lina" });
-    const message: ClientMessage = { type: "setProfile", version: 9, requestId: "profile-1", profile };
+    const message: ClientMessage = { type: "setProfile", version: 11, requestId: "profile-1", profile };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseClientMessage(JSON.stringify({ ...message, profile: { ...profile, party: [] } })))
       .toThrow("setProfile mal formé");
@@ -121,7 +142,7 @@ describe("multiplayer protocol", () => {
       story: { switches: { "67": true }, variables: { "20": 3 },
         selfSwitches: { "3:7:A": true } } } as const;
     expect(parseSourceWorldHostState(world)).toEqual(world);
-    const message: ClientMessage = { type: "setSourceWorld", version: 9, requestId: "source-1", world };
+    const message: ClientMessage = { type: "setSourceWorld", version: 11, requestId: "source-1", world };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseClientMessage(JSON.stringify({ ...message, world: { ...world, avatars: {} } })))
       .toThrow("setSourceWorld mal formé");
@@ -134,7 +155,7 @@ describe("multiplayer protocol", () => {
       actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255 }],
       presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
     expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
-    const message: ClientMessage = { type: "setSourceScene", version: 9, requestId: "scene-1", scene };
+    const message: ClientMessage = { type: "setSourceScene", version: 11, requestId: "scene-1", scene };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseSourceSceneSnapshot({ ...scene,
       presentation: { id: 2, kind: "execute-ruby", data: {} } })).toThrow("Commande visuelle");

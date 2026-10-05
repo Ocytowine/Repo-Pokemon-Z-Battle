@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { addPokemonToParty, addPokemonToStorage, calculatePokemonStats, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
+import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, calculatePokemonStats, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
   createEmptyPlayerPokemonStorage,
   createPersistentPokemon, createPersistentPokemonMetadata, createPlayerTrainerIdentity, experienceAtLevel, grantPokemonExperience,
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
-  movePokemonToPartyFront, playerPartyToBattleTeam, publicPokemonIdentity, recalculatePersistentPokemonStats,
+  movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience, publicPokemonIdentity, recalculatePersistentPokemonStats,
   reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
-import { createTeamBattleState, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
+import { createTeamBattleState, type SharedBattleOwnerSettlement, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
   id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
@@ -264,5 +264,43 @@ describe("persistent player party", () => {
     const result = grantPokemonExperience(damaged, experienceAtLevel(6, "Parabolic") - created.experience, creationCatalog);
     expect(result).toMatchObject({ gained: 44, levelsGained: 1, pokemon: { level: 6, experience: 179 } });
     expect(result.pokemon.stats.maxHp - result.pokemon.hp).toBe(4);
+  });
+});
+
+describe("Pokemon Z shared battle experience", () => {
+  const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+    baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+    abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+    levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
+
+  it("reproduces the final repexp participant formula and switch ordering", () => {
+    const base = { defeatedLevel: 5, defeatedBaseExperience: 112, recipientLevel: 5,
+      participantCount: 1, luckyEgg: false };
+    expect(pokemonZParticipantExperience(base, { trainerBattle: false, levelCap: 17 })).toBe(113);
+    expect(pokemonZParticipantExperience(base, { trainerBattle: true, levelCap: 17 })).toBe(169);
+    expect(pokemonZParticipantExperience({ ...base, luckyEgg: true }, { trainerBattle: true, levelCap: 17 })).toBe(253);
+    expect(pokemonZParticipantExperience(base, { trainerBattle: false, levelCap: 17,
+      boostTenPercent: true, boostTwentyPercent: true })).toBe(148);
+    expect(pokemonZParticipantExperience(base, { trainerBattle: false, levelCap: 17,
+      experienceDisabled: true })).toBe(0);
+    expect(pokemonZParticipantExperience({ ...base, recipientLevel: 18 }, { trainerBattle: false, levelCap: 17,
+      experienceDisabled: true })).toBe(1);
+  });
+
+  it("uses the whole camp participant count while updating only the current owner's party", () => {
+    const first = createPersistentPokemon("host-a", "PIKACHU", 5, creationCatalog);
+    const second = createPersistentPokemon("host-b", "PIKACHU", 5, creationCatalog);
+    const defeated = { ...playerPartyToBattleTeam({ schemaVersion: 1, activeIndex: 0, members: [first] }, creationCatalog)
+      .members[0]!, id: "wild-pikachu" };
+    const settlement: SharedBattleOwnerSettlement = { ownerId: "host", side: "player", won: true,
+      resourceMemberIds: [first.id, second.id], defeatCredits: [{ turn: 2, defeatedBattler: defeated,
+        participantCount: 2, recipientMemberIds: [first.id, second.id] }] };
+    const applied = applySharedBattleExperience({ schemaVersion: 1, activeIndex: 0, members: [first, second] },
+      settlement, creationCatalog, { trainerBattle: false, levelCap: 17 });
+    expect(applied.gains).toEqual([
+      expect.objectContaining({ recipientMemberId: "host-a", calculated: 57, gained: 57 }),
+      expect.objectContaining({ recipientMemberId: "host-b", calculated: 57, gained: 57 }),
+    ]);
+    expect(applied.party.members.map((pokemon) => pokemon.experience)).toEqual([182, 182]);
   });
 });

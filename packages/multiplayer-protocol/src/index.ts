@@ -7,6 +7,8 @@ export { parseSourceWorldHostState, resolveSourceMovement, sourceWorldSnapshot, 
   type SourceWorldHostState, type SourceWorldSnapshot } from "./source-world.js";
 export { parseSourceSceneSnapshot, type SourceSceneActorSnapshot, type SourceSceneDialogueSnapshot,
   type SourceScenePresentationCue, type SourceSceneSnapshot } from "./source-scene.js";
+export { parseSourceBattleContext, type SourceBattleContext, type SourceBattleExperiencePolicy,
+  type SourceBattleRewardOpponent } from "./source-battle.js";
 export {
   MAX_CLIENT_MESSAGE_BYTES,
   PROTOCOL_VERSION,

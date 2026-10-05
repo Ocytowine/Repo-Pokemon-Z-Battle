@@ -1,7 +1,7 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
-  type SourceFollowerSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceBattleContext, type SourceFollowerSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
@@ -36,6 +36,12 @@ export interface NetworkSessionView {
   readonly ticket: MultiplayerTicket;
   readonly snapshot: RoomSnapshot | null;
   readonly submittedTurn: number | null;
+}
+
+export interface SourceBattleNetworkDraft {
+  readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
+  readonly playerTeam: BattleTeam;
+  readonly opponentTeam: BattleTeam;
 }
 
 export interface NetworkSessionCallbacks {
@@ -202,6 +208,19 @@ export class OverworldNetworkSession {
     this.sendRequest({ type: "respondPlayerChallenge", accept, team });
   }
 
+  /** Returns true only when the host handed this source battle to the authoritative room. */
+  public openSourceBattle(draft: SourceBattleNetworkDraft): boolean {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    if (session === null || session.ticket.side !== "player" || session.snapshot?.battle !== null
+      || session.snapshot?.sourceWorld?.mapId !== draft.context.mapId || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify({ type: "openSourceBattle", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), context: { ...draft.context, narrativeOwnerId: session.ticket.playerId },
+      playerTeam: draft.playerTeam, opponentTeam: draft.opponentTeam }));
+    return true;
+  }
+
   public proposeBattleJoin(side: "player" | "opponent", team: BattleTeam,
     finalMemberIds: readonly string[]): void {
     const battleId = this.activeSession?.snapshot?.battle?.id;
@@ -211,6 +230,16 @@ export class OverworldNetworkSession {
   public respondBattleJoin(accept: boolean): void {
     const battleId = this.activeSession?.snapshot?.battle?.id;
     if (battleId !== undefined) this.sendRequest({ type: "respondBattleJoin", battleId, accept });
+  }
+
+  public observeBattle(): void {
+    const battleId = this.activeSession?.snapshot?.battle?.id;
+    if (battleId !== undefined) this.sendRequest({ type: "observeBattle", battleId });
+  }
+
+  public closeBattleJoinWindow(): void {
+    const battleId = this.activeSession?.snapshot?.battle?.id;
+    if (battleId !== undefined) this.sendRequest({ type: "closeBattleJoinWindow", battleId });
   }
 
   public leaveBattle(): void {

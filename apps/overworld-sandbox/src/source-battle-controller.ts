@@ -1,5 +1,8 @@
-import { SeededRandom, type BattleSide, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { closeSharedBattleSession, createSharedBattleSession, SeededRandom, settleEscapedSharedBattleSession,
+  settleSharedBattleSession, type BattleSide, type SharedBattleSession, type TeamBattleAction,
+  type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+import type { SourceBattleContext } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   applyAutomaticReplacements,
   attemptSourceEncounterEscape,
@@ -11,10 +14,11 @@ import {
   type SourceTrainerDefinition,
 } from "./source-encounter.js";
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
-import { addSourceMoney, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
+import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 
 export interface SourceBattleResources {
   readonly catalog: PlayerCreationCatalog;
+  readonly mapId: number;
   readonly battleback: string;
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
@@ -77,6 +81,9 @@ export interface SourceBattleCallbacks {
   readonly getResources: () => SourceBattleResources | null;
   readonly setNotice: (notice: string) => void;
   readonly render: () => void;
+  readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
+    readonly playerTeam: TeamBattleState["teams"]["player"];
+    readonly opponentTeam: TeamBattleState["teams"]["opponent"] }) => boolean;
 }
 
 export interface SourceTrainerBattleAudio {
@@ -100,6 +107,9 @@ export class SourceBattleController {
   private encounterCompletion: ((won: boolean) => void) | null = null;
   private trainerCompletion: ((won: boolean) => void) | null = null;
   private trainerAudio: SourceTrainerBattleAudio | null = null;
+  private sharedOpening = false;
+  private localSession: SharedBattleSession | null = null;
+  private localSequence = 0;
 
   public constructor(
     private readonly presentation: SourceBattlePresentation,
@@ -111,7 +121,7 @@ export class SourceBattleController {
   }
 
   public get active(): boolean {
-    return this.battle !== null;
+    return this.battle !== null || this.sharedOpening;
   }
 
   public get animating(): boolean {
@@ -122,10 +132,23 @@ export class SourceBattleController {
     const eventState = this.callbacks.getEventState();
     const encounter = eventState.pendingEncounter;
     const resources = this.callbacks.getResources();
-    if (encounter === null || resources === null || this.battle !== null) return false;
+    if (encounter === null || resources === null || this.active) return false;
     try {
-      this.battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
+      const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
         `wild-${encounter.species.toLowerCase()}`);
+      const context = this.sharedContext(battle, resources, { origin: "source-wild",
+        escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
+        opponentTrainer: null });
+      if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
+        opponentTeam: battle.teams.opponent }) === true) {
+        this.sharedOpening = true;
+        this.encounterCompletion = onComplete;
+        this.callbacks.setNotice(`Combat partagé demandé contre ${encounter.species} niveau ${encounter.level}.`);
+        this.callbacks.render();
+        return true;
+      }
+      this.battle = battle;
+      this.localSession = this.createLocalSession("source-wild", resources.mapId);
       this.rng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
@@ -151,9 +174,24 @@ export class SourceBattleController {
     onComplete: (won: boolean) => void): boolean {
     const eventState = this.callbacks.getEventState();
     const resources = this.callbacks.getResources();
-    if (resources === null || this.battle !== null) return false;
+    if (resources === null || this.active) return false;
     try {
-      this.battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog);
+      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog);
+      const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
+        trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
+        opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
+        battleMusic: audio.battleMusic, victoryMusic: audio.victoryMusic });
+      if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
+        opponentTeam: battle.teams.opponent }) === true) {
+        this.sharedOpening = true;
+        this.trainerCompletion = onComplete;
+        this.trainerAudio = audio;
+        this.callbacks.setNotice(`Combat partagé demandé contre ${trainer.name}.`);
+        this.callbacks.render();
+        return true;
+      }
+      this.battle = battle;
+      this.localSession = this.createLocalSession("source-trainer", resources.mapId);
       this.rng = new SeededRandom(encounterSeed(`${trainer.trainerType}:${trainer.name}`, trainer.version));
       this.escapeAttempts = 0;
       this.trainerCompletion = onComplete;
@@ -195,6 +233,9 @@ export class SourceBattleController {
           pendingEncounter: null,
           wildEncounterSteps: 0,
         });
+        if (this.localSession !== null) {
+          this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
+        }
         await this.presentation.endBattle(null);
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
@@ -207,6 +248,7 @@ export class SourceBattleController {
           const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
+          this.closeFinishedLocalSession(this.battle);
           await this.presentation.endBattle(this.battle.winner, { ...(loss > 0 ? { money: -loss } : {}) });
           this.clear();
           this.callbacks.setNotice(`Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.${loss > 0 ? ` · -${loss.toLocaleString("fr-FR")} ₽` : ""}`);
@@ -225,6 +267,10 @@ export class SourceBattleController {
 
   public async submitAction(moveIndex: number): Promise<void> {
     await this.submitTurnAction({ kind: "move", moveIndex });
+  }
+
+  public acknowledgeSharedBattleOpened(): void {
+    this.sharedOpening = false;
   }
 
   public async switchPokemon(teamIndex: number): Promise<void> {
@@ -264,6 +310,7 @@ export class SourceBattleController {
         }
         const experience = settlement.experience === null || resources === null ? undefined
           : battleExperiencePresentation(eventState.party, settlement.party, settlement.experience, resources.catalog);
+        this.closeFinishedLocalSession(this.battle);
         await this.presentation.endBattle(winner, {
           ...(experience === undefined ? {} : { experience }),
           ...(moneyDelta === 0 ? {} : { money: moneyDelta }),
@@ -297,5 +344,43 @@ export class SourceBattleController {
     this.encounterCompletion = null;
     this.trainerCompletion = null;
     this.trainerAudio = null;
+    this.sharedOpening = false;
+    this.localSession = null;
+  }
+
+  private sharedContext(state: TeamBattleState, resources: SourceBattleResources, input: {
+    readonly origin: "source-wild" | "source-trainer";
+    readonly escapable: boolean;
+    readonly trainerBaseMoney: number | null;
+    readonly continuation: "pending-encounter" | "trainer-sequence";
+    readonly opponentTrainer: { readonly id: number; readonly name: string } | null;
+    readonly battleMusic?: string | null;
+    readonly victoryMusic?: string | null;
+  }): Omit<SourceBattleContext, "narrativeOwnerId"> {
+    const eventState = this.callbacks.getEventState();
+    const opponents = state.teams.opponent.members.map((member) => {
+      const definition = resources.catalog.pokemon.find((candidate) => candidate.internalName === member.species);
+      if (definition === undefined) throw new Error(`Espèce adverse absente du catalogue : ${member.species}.`);
+      return { memberId: member.id, species: member.species, level: member.level,
+        baseExperience: definition.baseExperience };
+    });
+    return { origin: input.origin, mapId: resources.mapId, format: "single", escapable: input.escapable,
+      presentation: { battlebackId: resources.battleback,
+        battleMusicId: input.battleMusic === undefined ? resources.battleMusic : input.battleMusic,
+        victoryMusicId: input.victoryMusic === undefined ? resources.victoryMusic : input.victoryMusic,
+        opponentTrainer: input.opponentTrainer },
+      rewards: { opponents, trainerBaseMoney: input.trainerBaseMoney,
+        experience: sourceBattleExperiencePolicy(eventState) }, continuation: input.continuation };
+  }
+
+  private createLocalSession(origin: "source-wild" | "source-trainer", mapId: number): SharedBattleSession {
+    this.localSequence += 1;
+    return createSharedBattleSession({ battleId: `local-${mapId}-${this.localSequence}`, origin,
+      narrativeOwnerId: "local", allowJoin: false });
+  }
+
+  private closeFinishedLocalSession(state: TeamBattleState): void {
+    if (this.localSession === null) throw new Error("Session locale de combat absente.");
+    this.localSession = closeSharedBattleSession(settleSharedBattleSession(this.localSession, state));
   }
 }
