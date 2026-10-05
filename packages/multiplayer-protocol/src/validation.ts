@@ -237,6 +237,11 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("respondPlayerChallenge mal forme");
       }
       return value as unknown as ClientMessage;
+    case "leaveRoom":
+      if (!hasExactKeys(value, ["type", "version", "requestId"]) || !isIdentifier(value.requestId)) {
+        return invalid("leaveRoom mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "attemptBattleEscape":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId) || !isSafePositiveInteger(value.turn)) {

@@ -18,6 +18,7 @@ export {
   type ClientMessage,
   type ProtocolErrorCode,
   type PlayerDuelChallenge,
+  type PlayerConnectionState,
   type RoomPhase,
   type RoomPlayerSnapshot,
   type RoomSnapshot,

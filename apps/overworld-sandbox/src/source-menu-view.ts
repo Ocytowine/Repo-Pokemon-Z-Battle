@@ -5,7 +5,7 @@ import type { SourceEventState } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
 import type { SourceWorldSave } from "./source-world-save.js";
-import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
+import type { PlayerConnectionState, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
@@ -56,7 +56,7 @@ export interface SourceMenuCoopModel {
   readonly roomCode: string;
   readonly profileName: string;
   readonly players: readonly { readonly side: "player" | "opponent"; readonly name: string;
-    readonly connected: boolean }[];
+    readonly connected: boolean; readonly connectionState: PlayerConnectionState }[];
 }
 
 export interface SourceMenuViewCallbacks {
@@ -198,7 +198,7 @@ export class SourceMenuView {
   }
 
   private renderCoop(content: HTMLElement, coop: SourceMenuCoopModel): void {
-    const players = coop.players.map((player) => `<article class="source-coop-player"><i class="${player.connected ? "online" : ""}"></i><span><strong>${escapeSourceHtml(player.name)}</strong><small>${player.side === "player" ? "HÔTE" : "INVITÉ"}</small></span><em>${player.connected ? "Connecté" : "Absent"}</em></article>`).join("");
+    const players = coop.players.map((player) => `<article class="source-coop-player"><i class="${player.connected ? "online" : ""}"></i><span><strong>${escapeSourceHtml(player.name)}</strong><small>${player.side === "player" ? "HÔTE" : "INVITÉ"}</small></span><em>${player.connectionState === "connected" ? "Connecté" : player.connectionState === "reconnecting" ? "Reconnexion…" : "Parti"}</em></article>`).join("");
     content.innerHTML = `<div class="source-menu-title"><div><small>AVENTURE PARTAGÉE</small><h3>Coopération</h3></div><span>${escapeSourceHtml(coop.state)}</span></div>
       <div class="source-coop-profile"><div><small>PROFIL PUBLIÉ</small><strong>${escapeSourceHtml(coop.profileName)}</strong></div><button type="button" id="source-coop-profile">Personnaliser</button></div>
       ${coop.active

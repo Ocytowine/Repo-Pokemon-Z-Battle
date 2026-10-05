@@ -85,9 +85,11 @@ export class BattleRoom extends DurableObject<Env> {
     }
     try {
       if (typeof payload !== "string") throw new ProtocolValidationError("Les messages binaires ne sont pas acceptés.");
-      const dispatches = this.#room.receive(attachment.playerId, parseClientMessage(payload));
+      const message = parseClientMessage(payload);
+      const dispatches = this.#room.receive(attachment.playerId, message);
       await this.persist();
       this.dispatch(dispatches);
+      if (message.type === "leaveRoom") socket.close(1000, "Session quittée");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Message invalide.";
       this.send(socket, { type: "error", version: PROTOCOL_VERSION, requestId: null, code: "INVALID_MESSAGE", message });
@@ -100,6 +102,17 @@ export class BattleRoom extends DurableObject<Env> {
 
   public override async webSocketError(socket: WebSocket): Promise<void> {
     await this.disconnectSocket(socket);
+  }
+
+  public override async alarm(): Promise<void> {
+    await this.#initialized;
+    if (this.#room === null) return;
+    const snapshot = this.#room.expireDisconnectedPlayers();
+    if (snapshot !== null) {
+      await this.persist();
+      this.broadcast({ type: "snapshot", version: PROTOCOL_VERSION, snapshot });
+    }
+    await this.schedulePresenceAlarm();
   }
 
   private async createRoom(body: unknown): Promise<Response> {
@@ -174,6 +187,7 @@ export class BattleRoom extends DurableObject<Env> {
     this.ctx.acceptWebSocket(server, [`player:${playerId}`]);
     const connection = this.#room.connect(playerId);
     await this.persist();
+    await this.schedulePresenceAlarm();
     this.send(server, {
       type: "welcome",
       version: PROTOCOL_VERSION,
@@ -197,6 +211,7 @@ export class BattleRoom extends DurableObject<Env> {
     const snapshot = this.#room.disconnect(attachment.playerId);
     await this.persist();
     this.broadcast({ type: "snapshot", version: PROTOCOL_VERSION, snapshot });
+    await this.schedulePresenceAlarm();
   }
 
   private dispatch(dispatches: readonly RoomDispatch[]): void {
@@ -223,6 +238,12 @@ export class BattleRoom extends DurableObject<Env> {
     if (this.#room === null || this.#roomCode === null) return;
     const identities = [...this.#identities].map(([playerId, tokenHash]) => ({ playerId, tokenHash }));
     await this.ctx.storage.put("room", { roomCode: this.#roomCode, room: this.#room.exportState(), identities } satisfies PersistedRoomBundle);
+  }
+
+  private async schedulePresenceAlarm(): Promise<void> {
+    const expiry = this.#room?.nextReconnectExpiry() ?? null;
+    if (expiry === null) await this.ctx.storage.deleteAlarm();
+    else await this.ctx.storage.setAlarm(expiry);
   }
 }
 

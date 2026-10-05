@@ -128,6 +128,7 @@ describe("overworld network session", () => {
     session.disconnect();
     expect(session.active).toBe(false);
     expect(storage.getItem("test-session")).toBeNull();
+    expect(JSON.parse(sockets[0]?.sent[6] ?? "{}")).toMatchObject({ type: "leaveRoom" });
     expect(sockets[0]?.closed).toEqual([{ code: 1000, reason: "Retour au mode local" }]);
   });
 

@@ -91,7 +91,8 @@ let importedWalkingPattern: 1 | 3 = 1;
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
-let coopHudNotice: { readonly text: string; readonly kind: "info" | "error" } | null = null;
+let coopHudNotice: { readonly text: string; readonly kind: "info" | "error";
+  readonly source: "duel" | "general" | "presence" } | null = null;
 let sourceSceneAuditNotice: string | null = null;
 let sourceParallelAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
@@ -134,6 +135,7 @@ let sourcePlayerVisuals: SourcePlayerVisuals | null = null;
 let sourcePlayerCharacterName = "player";
 let playerProfileApplication = 0;
 let networkPlayerProfiles: Partial<Record<AvatarId, NetworkPlayerProfile>> = {};
+let networkPlayerConnections: Partial<Record<AvatarId, RoomPlayerSnapshot["connectionState"]>> = {};
 let networkAvatarImages: Partial<Record<AvatarId, HTMLImageElement>> = {};
 let networkPlayerVisuals: Partial<Record<AvatarId, SourcePlayerVisuals>> = {};
 let networkProfileSignatures: Partial<Record<AvatarId, string>> = {};
@@ -1141,6 +1143,27 @@ function synchronizeNetworkRemoteFollowerAsset(world: SourceWorldSnapshot, remot
 }
 
 function synchronizeNetworkPlayerProfiles(players: readonly RoomPlayerSnapshot[]): void {
+  const previousConnections = networkPlayerConnections;
+  const connectionState = (player: RoomPlayerSnapshot) => player.connectionState
+    ?? (player.connected ? "connected" : "reconnecting");
+  networkPlayerConnections = Object.fromEntries(players.map((player) => [player.side, connectionState(player)]));
+  const ownSide = multiplayer.current?.ticket.side ?? null;
+  for (const player of players) {
+    if (player.side === ownSide) continue;
+    const previous = previousConnections[player.side];
+    const current = connectionState(player);
+    if (previous === undefined || previous === current) continue;
+    const name = player.profile.profile.displayName;
+    if (current === "connected") {
+      coopHudNotice = { text: `${name} est revenu dans la session.`, kind: "info", source: "presence" };
+    } else if (previous === "connected") {
+      networkRemoteSourceMotion = null;
+      networkRemoteFollowerMotion = null;
+      coopHudNotice = { text: current === "left"
+        ? `${name} a quitté la session.`
+        : `${name} a perdu la connexion · reconnexion en attente.`, kind: "info", source: "presence" };
+    }
+  }
   networkPlayerProfiles = Object.fromEntries(players.map((player) => [player.side, player.profile]));
   const presentSides = new Set(players.map((player) => player.side));
   for (const side of ["player", "opponent"] as const) {
@@ -1192,7 +1215,8 @@ function animateImportedMap(now: number): void {
   const remoteSide: AvatarId | null = multiplayer.current?.ticket.side === "player" ? "opponent"
     : multiplayer.current?.ticket.side === "opponent" ? "player" : null;
   const remotePresent = !guestSourceExcursion
-    && (remoteSide === null || networkSourceWorld?.presence[remoteSide] !== "away");
+    && (remoteSide === null || networkSourceWorld?.presence[remoteSide] !== "away"
+      && networkPlayerConnections[remoteSide] === "connected");
   const remoteMotion = networkRemoteSourceMotion;
   const sampledRemotePose = remoteMotion === null ? null : sampleSourceGridMotion(remoteMotion, now);
   const remotePose = remoteSide === null || !remotePresent ? null : sampledRemotePose === null
@@ -1345,7 +1369,8 @@ function renderSourceMenu(): void {
       serverUrl: networkServerUrl, roomCode: networkRoomCode,
       profileName: activePlayerSelection.profile.displayName,
       players: (network?.snapshot?.players ?? []).map((player) => ({ side: player.side,
-        name: player.profile.profile.displayName, connected: player.connected })) } });
+        name: player.profile.profile.displayName, connected: player.connected,
+        connectionState: player.connectionState ?? (player.connected ? "connected" : "reconnecting") })) } });
 }
 
 function closeSourceShop(): void {
@@ -1497,9 +1522,11 @@ function renderImportedView(): void {
     const otherName = networkSnapshot?.players.find((player) => player.side === otherSide)
       ?.profile.profile.displayName ?? "l'autre Dresseur";
     coopHudNotice = challenged
-      ? { text: `${otherName} vous défie : acceptez ou refusez le combat.`, kind: "info" }
-      : { text: `Défi enregistré par le serveur · attente de la réponse de ${otherName}.`, kind: "info" };
+      ? { text: `${otherName} vous défie : acceptez ou refusez le combat.`, kind: "info", source: "duel" }
+      : { text: `Défi enregistré par le serveur · attente de la réponse de ${otherName}.`, kind: "info",
+          source: "duel" };
   }
+  else if (coopHudNotice?.source === "duel") coopHudNotice = null;
   const activeSequence = sourceSequences.current;
   const sequenceStatus = activeSequence === null ? "aucune"
     : `${activeSequence.label} · étape ${activeSequence.cursor}/${activeSequence.plan.steps.length}`
@@ -1895,7 +1922,8 @@ function renderEncounter(): void {
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
-  sourcePlayerDuelView.render({ challenge: duel, side, players: network?.snapshot?.players ?? [],
+  sourcePlayerDuelView.render({ challenge: duel, battleActive: networkBattle !== null, side,
+    players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
   sourceBattleJoinView.render({ battle: networkBattle, playerId: network?.ticket.playerId ?? null,
     team: currentPlayerDuelTeam(), available: networkBattle?.sourceContext === null || side === null
@@ -1923,7 +1951,10 @@ function currentPlayerDuelTeam(): BattleTeam | null {
 
 function remotePlayerAhead(): boolean {
   const session = multiplayer.current;
-  return session !== null && sourcePlayersFaceForDuel(networkSourceWorld, session.ticket.side);
+  const remoteSide: AvatarId | null = session?.ticket.side === "player" ? "opponent"
+    : session?.ticket.side === "opponent" ? "player" : null;
+  return session !== null && remoteSide !== null && networkPlayerConnections[remoteSide] === "connected"
+    && sourcePlayersFaceForDuel(networkSourceWorld, session.ticket.side);
 }
 
 function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
@@ -1954,8 +1985,10 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
       { mode: requestedMode, waterfall })) return;
     const remoteSide: AvatarId | null = networkSide === null ? null
       : networkSide === "player" ? "opponent" : "player";
-    const remote = remoteSide === null ? undefined : networkSourceWorld?.avatars[remoteSide];
-    const remoteFollower = remoteSide === null ? undefined : networkSourceWorld?.followers?.[remoteSide];
+    const remoteConnected = remoteSide !== null && networkPlayerConnections[remoteSide] === "connected";
+    const remote = !remoteConnected || remoteSide === null ? undefined : networkSourceWorld?.avatars[remoteSide];
+    const remoteFollower = !remoteConnected || remoteSide === null
+      ? undefined : networkSourceWorld?.followers?.[remoteSide];
     const occupied = [...blockingDefaultEventPoints(events, importedAssets.map.id, renderedSourceEventState()),
       ...(remote === undefined ? [] : [remote]), ...(remoteFollower === undefined ? [] : [remoteFollower])];
     const world = networkSide === null ? sourceWorldHostState() : networkSourceWorld;
@@ -2005,12 +2038,11 @@ function interact(playerId: AvatarId): void {
       const team = currentPlayerDuelTeam();
       if (team === null) {
         importedNotice = "Aucun Pokémon en état de combattre.";
-        coopHudNotice = { text: importedNotice, kind: "error" };
+        coopHudNotice = { text: importedNotice, kind: "error", source: "general" };
       }
       else {
         multiplayer.challengePlayer(team);
         importedNotice = "Défi PvP envoyé à l'autre Dresseur…";
-        coopHudNotice = { text: importedNotice, kind: "info" };
       }
       renderImportedView();
       return;
@@ -2070,7 +2102,7 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
   networkNotice = notice;
   if (stateText === "Erreur" || stateText === "Erreur réseau" || stateText === "Remplacé") {
     importedNotice = `Coop · ${notice}`;
-    coopHudNotice = { text: importedNotice, kind: "error" };
+    coopHudNotice = { text: importedNotice, kind: "error", source: "general" };
     if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) renderImportedView();
   }
   if (sourceScenes.menuOpen) renderSourceMenu();
@@ -2115,6 +2147,7 @@ function disconnectMultiplayer(): void {
   multiplayer.disconnect();
   networkRoomCode = "";
   networkPlayerProfiles = {};
+  networkPlayerConnections = {};
   networkAvatarImages = {};
   networkPlayerVisuals = {};
   networkPresentedBattle = null;

@@ -130,6 +130,10 @@ export class OverworldNetworkSession {
     if (session !== null) {
       session.userDisconnected = true;
       if (session.reconnectTimer !== null) window.clearTimeout(session.reconnectTimer);
+      if (session.socket?.readyState === WebSocket.OPEN) {
+        session.socket.send(JSON.stringify({ type: "leaveRoom", version: PROTOCOL_VERSION,
+          requestId: crypto.randomUUID() }));
+      }
       session.socket?.close(1000, "Retour au mode local");
     }
     sessionStorage.removeItem(this.storageKey);

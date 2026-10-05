@@ -12,12 +12,15 @@ export const PROTOCOL_VERSION = 12 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
+export type PlayerConnectionState = "connected" | "reconnecting" | "left";
 
 export interface RoomPlayerSnapshot {
   readonly playerId: string;
   readonly side: BattleSide;
   readonly ready: boolean;
   readonly connected: boolean;
+  readonly connectionState: PlayerConnectionState;
+  readonly reconnectUntil: number | null;
   readonly profile: NetworkPlayerProfile;
 }
 
@@ -72,6 +75,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number;
       readonly mode?: SourceMovementMode; readonly waterfall?: boolean })
   | (RequestedMessage & { readonly type: "interact" })
+  | (RequestedMessage & { readonly type: "leaveRoom" })
   | (RequestedMessage & { readonly type: "challengePlayer"; readonly team: BattleTeam })
   | (RequestedMessage & { readonly type: "respondPlayerChallenge"; readonly accept: boolean;
       readonly team: BattleTeam | null })

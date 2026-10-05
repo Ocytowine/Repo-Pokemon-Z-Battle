@@ -14,8 +14,16 @@
 | 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
 | 8 - Prototype coop | Terminee | Interactions et evenements classes |
 | 9 - Import progressif du monde | En cours | Cartes compatibles importees par lots |
+| 10 - Stabilisation du vertical jouable | Planifiee, lots P0 ouverts | Combat lisible, collisions et presence Coop coherentes |
+| 11 - Mecanismes solo structurants | Planifiee | Objets, capture, evolution et Pokedex raccordes au noyau commun |
+| 12 - Extensions Coop | Planifiee | Capture, loot, Ranch et chat selon contrats autoritaires |
+| 13 - Plateforme et ergonomie | A qualifier | Cloud, import de sauvegarde, responsive et Android cadres |
 
 Le rapport de reference de la Phase 0 est `docs/POKEMON_Z_ANALYSIS.md`.
+Les constats produit ajoutes le 2026-10-05 sont normalises dans
+`docs/PRODUCT_BACKLOG.md`. `docs/note importantes.md` reste la note d'origine ; le
+backlog est la reference de travail pour les priorites, dependances et contrats
+solo/Coop.
 
 ## Phase 0 - Analyse terminee
 
@@ -1604,6 +1612,61 @@ jusqu'a la resolution de l'intention Surf afin de produire l'arc d'entree. La so
 ignore le masque directionnel de la tuile d'eau et valide uniquement l'entree sur
 la rive, ce qui evite de rester bloque sur une berge franchissable. Le meme
 resolveur couvre le solo, l'hote et l'invite.
+
+### Increment 9.8 - Stabilisation du vertical jouable
+
+Decision du 2026-10-05 : les regressions observees pendant la recette manuelle
+sont traitees avant l'empilement de nouvelles fonctions. Les identifiants et
+contrats complets vivent dans `docs/PRODUCT_BACKLOG.md`.
+
+Ordre convenu :
+
+- [x] `STAB-NET-1` : cycle PvP valide automatiquement et manuellement ;
+- [ ] `STAB-NET-2` : cycle de presence, grace, notifications, rendu et collisions
+  implementes ; recette deux navigateurs encore a valider ;
+- [ ] `STAB-WORLD-1` : partager les blocages narratifs actifs ;
+- [ ] `STAB-WORLD-2` : rendre les positions et collisions des PNJ coherentes ;
+- [ ] `STAB-BATTLE-1` : ordonner transitions, textes, PV, KO, EXP et musiques ;
+- [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
+
+Condition de sortie : aucun avatar ou defi orphelin, meme geometrie autoritaire
+pour les deux joueurs, presentation de combat lisible et musique coherente du lieu
+au retour de combat. La validation couvre solo, hote, invite et reconnexion.
+
+## Phases produit planifiees
+
+### Phase 10 - Stabilisation du vertical jouable
+
+La phase 10 formalise la sortie de l'increment 9.8 et peut etre menee en parallele
+des validations narratives sans modifier leur ordre. Aucun ajout produit lourd ne
+doit masquer un P0 ouvert.
+
+### Phase 11 - Mecanismes solo structurants
+
+L'audit source cible du 2026-10-05 confirme que les donnees importees masquent un
+ecart de comportement important : 23/353 fonctions d'attaque, 13/255 talents,
+aucune famille d'objets complete et aucune des 18 methodes d'evolution sont
+executees. L'ordre de dependance devient donc : fidelite du combat par lots
+verticaux, utilisation des objets, capture, evolution, Pokedex, puis rencontres
+de terrain avancees, apprentissage/rappel, Mega-Evolution, Pokévial, oeufs/Pension,
+Carte/Boussole, Alchimie et Succes. DexNav, Nuzlocke/Monotype, Échange Miracle et
+Tour de Combat sont inventories dans `docs/PRODUCT_BACKLOG.md` sans devancer les
+P0. Chaque mecanique est concue une fois pour l'adaptateur local et la room
+autoritaire.
+
+### Phase 12 - Extensions Coop
+
+La capture invitee depend de la capture solo ; le loot delegue depend de la
+classification des objets ; le Ranch partage reste en lecture seule ; le chat est
+un etat de session borne. Les permissions et transactions sont explicites et
+idempotentes.
+
+### Phase 13 - Plateforme et ergonomie
+
+Les sauvegardes cloud exigent authentification et politique de conflit. L'import
+de sauvegarde exige des echantillons v2.12 FR. Les menus plein canvas, le Sac
+avance, les echelles de sprites et les controles Android reutilisent les noyaux
+existants et ne creent pas de logique de gameplay parallele.
 
 ## Regles transversales
 

@@ -4,7 +4,9 @@ Derniere mise a jour : 2026-10-05.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
-`docs/ROADMAP.md`.
+`docs/ROADMAP.md`. Les nouveaux constats et fonctionnalites planifiees sont classes
+par priorite, dependances et contrat solo/Coop dans `docs/PRODUCT_BACKLOG.md` ; ne
+consulter ce backlog qu'apres avoir compris l'etat reel decrit ici.
 
 ## Intention du projet
 
@@ -1306,6 +1308,42 @@ restent locales et les donnees de combat utiles continuent d'etre partagees avec
 les participants. Un test emploie desormais une definition detaillee pour eviter
 la regression.
 
+Durcissement `STAB-NET-1` du 2026-10-05 : la room couvre maintenant par test le
+refus par le joueur cible, l'annulation par le demandeur et la deconnexion de
+chacun des deux participants, en plus de l'acceptation et de la fermeture d'un
+duel termine. Toute reponse tardive vise un defi deja supprime et recoit
+`INVALID_PHASE`. La vue du defi efface aussi son ancien contenu et se masque des
+qu'un combat est actif ; le HUD retire son message d'attente quand le snapshot ne
+porte plus de defi, sans effacer une erreur reseau utile. Autorite et persistance
+restent celles de la room ; l'UI ne conserve aucun etat parallele. Le porteur a
+valide le cycle PvP dans deux navigateurs le 2026-10-05 ; `STAB-NET-1` est termine.
+
+Premier jalon `STAB-NET-2` du 2026-10-05 : la connexion d'un participant possede
+desormais un etat autoritaire explicite `connected`, `reconnecting` ou `left` et
+une echeance publique. Une coupure WebSocket retire immediatement son avatar et
+son suiveur du rendu et des collisions, puis conserve sa place pendant une grace
+de 15 secondes. Une alarme du Durable Object confirme ensuite `left` et diffuse
+un nouveau snapshot, meme sans autre intention. Le bouton de deconnexion envoie
+l'intention stricte `leaveRoom` et saute directement la grace.
+
+Profil, position, mode et suiveur restent dans l'etat de room pour la reconnexion.
+Si l'autre joueur a occupe l'ancienne case pendant l'absence, la room choisit une
+case cardinale praticable et replace le suiveur sans perdre son apparence. Le HUD
+annonce une seule fois la coupure/depart et le retour ; l'onglet Coop distingue
+`Connecté`, `Reconnexion…` et `Parti`. Le schema v12 reste compatible par ajout de
+champs de snapshot et d'une intention ; les donnees personnelles ne changent pas.
+La recette deux navigateurs reste ouverte avant cloture de `STAB-NET-2`.
+
+Audit source cible du 2026-10-05 : `engine-support-report.json` confirme 19/19
+interactions de types, mais seulement 23/353 fonctions d'attaque, 13/255 talents,
+aucune famille d'objets complete et 0/18 methodes d'evolution. Les rapports de
+cartes sont structurellement complets (507 cartes et 2 613 transferts simples sans
+cible invalide) ; le prochain goulet n'est donc pas une nouvelle extraction des
+maps. `docs/PRODUCT_BACKLOG.md` inventorie desormais les systemes Ruby de Z jusque
+la sous-representes : Pokévial, Incubateur, DexNav, peche/Eclate-Roc, Maître des
+capacites, Nuzlocke/Monotype, Échange Miracle, drops/craft et Tour de Combat. Les
+statuts CADUCO et HEMORRAGIA sont deja portes et ne font pas partie de cette dette.
+
 ## Strategie de tests
 
 Ne pas creer un gros test propre a chaque cinematique. Privilegier :
@@ -1316,7 +1354,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 407 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 410 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

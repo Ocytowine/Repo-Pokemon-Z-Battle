@@ -21,6 +21,8 @@ interface RoomPlayer {
   readonly side: BattleSide;
   ready: boolean;
   connected: boolean;
+  disconnectedAt: number | null;
+  departed: boolean;
   profile: NetworkPlayerProfile;
   readonly acknowledged: Map<string, ServerMessage>;
 }
@@ -49,6 +51,8 @@ export interface PersistedRoomState {
     readonly side: BattleSide;
     readonly ready: boolean;
     readonly connected: boolean;
+    readonly disconnectedAt?: number | null;
+    readonly departed?: boolean;
     readonly profile: NetworkPlayerProfile;
     readonly acknowledged: readonly (readonly [string, ServerMessage])[];
   }[];
@@ -98,6 +102,7 @@ export interface RoomWorldDefinition {
 const SOURCE_OPPOSITE = { down: "up", left: "right", right: "left", up: "down" } as const;
 const SOURCE_DELTAS = { down: { x: 0, y: 1 }, left: { x: -1, y: 0 },
   right: { x: 1, y: 0 }, up: { x: 0, y: -1 } } as const;
+export const PLAYER_RECONNECT_GRACE_MS = 15_000;
 
 export class AuthoritativeBattleRoom {
   readonly #players = new Map<string, RoomPlayer>();
@@ -129,12 +134,16 @@ export class AuthoritativeBattleRoom {
   #escapeAttempts = 0;
   readonly #pendingBattleSettlements = new Map<string, SourceBattleSettlement>();
   readonly #acknowledgedBattleSettlements = new Map<string, string>();
+  readonly #now: () => number;
 
-  public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
+  public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState,
+    rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState,
+    now: () => number = Date.now) {
     this.#roomCode = roomCode;
     this.#createBattle = createBattle;
     this.#rng = rng;
     this.#worldCatalog = world.catalog;
+    this.#now = now;
     this.#worldState = world.initialState;
     this.#sourceWorldState = world.sourceWorld === null || world.sourceWorld === undefined
       ? null : sourceWorldSnapshot(world.sourceWorld);
@@ -181,7 +190,8 @@ export class AuthoritativeBattleRoom {
           presence: persisted.sourceWorldState.presence ?? { player: "shared", opponent: "shared" } };
       this.#sourceSceneState = persisted.sourceSceneState ?? null;
       for (const entry of persisted.players) {
-        this.#players.set(entry.playerId, { ...entry, acknowledged: new Map(entry.acknowledged) });
+        this.#players.set(entry.playerId, { ...entry, disconnectedAt: entry.disconnectedAt ?? null,
+          departed: entry.departed ?? false, acknowledged: new Map(entry.acknowledged) });
       }
       for (const [side, action] of persisted.pendingActions) this.#pendingActions.set(side, action);
       for (const [side, teamIndex] of persisted.pendingReplacements) this.#pendingReplacements.set(side, teamIndex);
@@ -196,7 +206,8 @@ export class AuthoritativeBattleRoom {
     const usedSides = new Set([...this.#players.values()].map((player) => player.side));
     const side: BattleSide | undefined = usedSides.has("player") ? (usedSides.has("opponent") ? undefined : "opponent") : "player";
     if (side === undefined) throw new Error("ROOM_FULL");
-    this.#players.set(playerId, { playerId, side, ready: false, connected: false, profile, acknowledged: new Map() });
+    this.#players.set(playerId, { playerId, side, ready: false, connected: false,
+      disconnectedAt: null, departed: false, profile, acknowledged: new Map() });
     if (side === "opponent" && this.#sourceWorldState !== null) {
       const current = this.#sourceWorldState;
       const hostState: SourceWorldHostState = { mapId: current.mapId, width: current.width, height: current.height,
@@ -213,7 +224,10 @@ export class AuthoritativeBattleRoom {
     const existing = this.#players.get(playerId);
     if (existing !== undefined) {
       if (!existing.connected) {
+        this.restoreSourceAvatar(existing);
         existing.connected = true;
+        existing.disconnectedAt = null;
+        existing.departed = false;
         this.#revision += 1;
       }
       return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
@@ -226,33 +240,43 @@ export class AuthoritativeBattleRoom {
   public disconnect(playerId: string): RoomSnapshot {
     const player = this.#players.get(playerId);
     if (player !== undefined && player.connected) {
-      player.connected = false;
-      if (this.#duelChallenge?.challenger === player.side || this.#duelChallenge?.challenged === player.side) {
-        this.#duelChallenge = null;
-      }
-      if (this.#battleJoinProposal?.requiredApprovals.includes(player.playerId)) this.#battleJoinProposal = null;
-      if (this.#battleState !== null) {
-        for (const side of ["player", "opponent"] as const) {
-          const controller = this.#battleParticipation === null
-            ? ([...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? null)
-            : this.#battleState.replacementRequired.includes(side)
-              ? replacementBattleController(this.#battleParticipation, this.#battleState, side)
-              : activeBattleController(this.#battleParticipation, side);
-          if (controller === playerId) {
-            this.#pendingActions.delete(side);
-            this.#pendingReplacements.delete(side);
-          }
-        }
-      }
-      this.#revision += 1;
+      this.markPlayerDisconnected(player, false);
     }
+    return this.snapshot();
+  }
+
+  public nextReconnectExpiry(): number | null {
+    const expiries = [...this.#players.values()].flatMap((player) => !player.connected && !player.departed
+      && player.disconnectedAt !== null ? [player.disconnectedAt + PLAYER_RECONNECT_GRACE_MS] : []);
+    return expiries.length === 0 ? null : Math.min(...expiries);
+  }
+
+  public expireDisconnectedPlayers(): RoomSnapshot | null {
+    const now = this.#now();
+    let changed = false;
+    for (const player of this.#players.values()) {
+      if (!player.connected && !player.departed && player.disconnectedAt !== null
+        && now >= player.disconnectedAt + PLAYER_RECONNECT_GRACE_MS) {
+        player.departed = true;
+        player.disconnectedAt = null;
+        changed = true;
+      }
+    }
+    if (!changed) return null;
+    this.#revision += 1;
     return this.snapshot();
   }
 
   public snapshot(): RoomSnapshot {
     const players: RoomPlayerSnapshot[] = [...this.#players.values()]
       .sort((left, right) => left.side === "player" ? -1 : right.side === "player" ? 1 : 0)
-      .map(({ playerId, side, ready, connected, profile }) => ({ playerId, side, ready, connected, profile }));
+      .map(({ playerId, side, ready, connected, disconnectedAt, departed, profile }) => ({
+        playerId, side, ready, connected,
+        connectionState: connected ? "connected" as const : departed ? "left" as const : "reconnecting" as const,
+        reconnectUntil: !connected && !departed && disconnectedAt !== null
+          ? disconnectedAt + PLAYER_RECONNECT_GRACE_MS : null,
+        profile,
+      }));
     const phase = this.#battleState === null ? "waiting"
       : this.#battleState.status === "finished" || this.#battleEscaped ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null
@@ -289,8 +313,10 @@ export class AuthoritativeBattleRoom {
       battleId: this.#battleId,
       battleState: this.#battleState,
       rngState: this.#rng.snapshot(),
-      players: [...this.#players.values()].map(({ playerId, side, ready, connected, profile, acknowledged }) => ({
-        playerId, side, ready, connected, profile, acknowledged: [...acknowledged.entries()].slice(-128),
+      players: [...this.#players.values()].map(({ playerId, side, ready, connected, disconnectedAt, departed,
+        profile, acknowledged }) => ({
+        playerId, side, ready, connected, disconnectedAt, departed, profile,
+        acknowledged: [...acknowledged.entries()].slice(-128),
       })),
       pendingActions: [...this.#pendingActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
@@ -323,6 +349,14 @@ export class AuthoritativeBattleRoom {
     }
     const previous = player.acknowledged.get(message.requestId);
     if (previous !== undefined) return [{ audience: { playerId }, message: previous }];
+    if (message.type === "leaveRoom") {
+      const acknowledgement = this.acknowledge(player, message.requestId);
+      this.markPlayerDisconnected(player, true);
+      return [
+        { audience: { playerId }, message: acknowledgement },
+        { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+      ];
+    }
     if (message.type === "requestSnapshot") {
       const acknowledgement = this.acknowledge(player, message.requestId);
       return [
@@ -749,8 +783,11 @@ export class AuthoritativeBattleRoom {
     }
     const avatar = world.avatars[player.side];
     const otherSide: BattleSide = player.side === "player" ? "opponent" : "player";
-    const other = world.presence[otherSide] === "shared" ? world.avatars[otherSide] : undefined;
-    const otherFollower = world.presence[otherSide] === "shared" ? world.followers[otherSide] : undefined;
+    const otherConnected = [...this.#players.values()].some((candidate) => candidate.side === otherSide
+      && candidate.connected);
+    const other = otherConnected && world.presence[otherSide] === "shared" ? world.avatars[otherSide] : undefined;
+    const otherFollower = otherConnected && world.presence[otherSide] === "shared"
+      ? world.followers[otherSide] : undefined;
     const resolution = resolveSourceMovement(world, avatar, { direction: message.direction,
       ...(message.mode === undefined ? {} : { mode: message.mode }),
       ...(message.waterfall === undefined ? {} : { waterfall: message.waterfall }) },
@@ -789,6 +826,56 @@ export class AuthoritativeBattleRoom {
     return world.host;
   }
 
+  private markPlayerDisconnected(player: RoomPlayer, departed: boolean): void {
+    player.connected = false;
+    player.disconnectedAt = departed ? null : this.#now();
+    player.departed = departed;
+    if (this.#duelChallenge?.challenger === player.side || this.#duelChallenge?.challenged === player.side) {
+      this.#duelChallenge = null;
+    }
+    if (this.#battleJoinProposal?.requiredApprovals.includes(player.playerId)) this.#battleJoinProposal = null;
+    if (this.#battleState !== null) {
+      for (const side of ["player", "opponent"] as const) {
+        const controller = this.#battleParticipation === null
+          ? ([...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? null)
+          : this.#battleState.replacementRequired.includes(side)
+            ? replacementBattleController(this.#battleParticipation, this.#battleState, side)
+            : activeBattleController(this.#battleParticipation, side);
+        if (controller === player.playerId) {
+          this.#pendingActions.delete(side);
+          this.#pendingReplacements.delete(side);
+        }
+      }
+    }
+    this.#revision += 1;
+  }
+
+  private restoreSourceAvatar(player: RoomPlayer): void {
+    const world = this.#sourceWorldState;
+    if (world === null || world.presence[player.side] !== "shared") return;
+    const otherSide: BattleSide = player.side === "player" ? "opponent" : "player";
+    const otherPlayer = [...this.#players.values()].find((candidate) => candidate.side === otherSide);
+    if (otherPlayer?.connected !== true || world.presence[otherSide] !== "shared") return;
+    const preferred = world.avatars[player.side];
+    const occupied = [world.avatars[otherSide], ...(world.followers[otherSide] === undefined
+      ? [] : [world.followers[otherSide]])];
+    const available = (candidate: SourceAvatarSnapshot): boolean => candidate.x >= 0 && candidate.y >= 0
+      && candidate.x < world.width && candidate.y < world.height
+      && !world.blockedPoints.some((point) => point.x === candidate.x && point.y === candidate.y)
+      && Number.parseInt(world.passages[candidate.y * world.width + candidate.x] ?? "0", 16) !== 0
+      && !occupied.some((point) => point.x === candidate.x && point.y === candidate.y);
+    const candidates = [preferred, ...(["down", "left", "right", "up"] as const).map((direction) => ({
+      ...preferred, x: preferred.x + SOURCE_DELTAS[direction].x,
+      y: preferred.y + SOURCE_DELTAS[direction].y,
+    }))];
+    const avatar = candidates.find(available) ?? preferred;
+    const follower = world.followers[player.side];
+    this.#sourceWorldState = { ...world, avatars: { ...world.avatars, [player.side]: avatar },
+      followers: follower === undefined ? world.followers : { ...world.followers,
+        [player.side]: { ...this.sourceFollowerSpawn(world, player.side, follower.species, [...occupied, avatar]),
+          ...(follower.appearance === undefined ? {} : { appearance: follower.appearance }) } } };
+  }
+
   private sourceJoinAvailable(world: SourceWorldSnapshot, avatar: SourceAvatarSnapshot): boolean {
     if (avatar.x < 0 || avatar.y < 0 || avatar.x >= world.width || avatar.y >= world.height) return false;
     if (world.blockedPoints.some((point) => point.x === avatar.x && point.y === avatar.y)) return false;
@@ -809,7 +896,8 @@ export class AuthoritativeBattleRoom {
     return candidates.find((candidate) => this.sourceJoinAvailable(world, candidate)) ?? null;
   }
 
-  private sourceFollowerSpawn(world: SourceWorldSnapshot, side: BattleSide, species: string): SourceFollowerSnapshot {
+  private sourceFollowerSpawn(world: SourceWorldSnapshot, side: BattleSide, species: string,
+    occupied: readonly SourceAvatarSnapshot[] = []): SourceFollowerSnapshot {
     const avatar = world.avatars[side];
     const preferredDirection = SOURCE_OPPOSITE[avatar.direction];
     const directions = [preferredDirection, "left", "right", "up", "down"] as const;
@@ -819,7 +907,9 @@ export class AuthoritativeBattleRoom {
       const y = avatar.y + delta.y;
       if (x < 0 || y < 0 || x >= world.width || y >= world.height) continue;
       const mask = Number.parseInt(world.passages[y * world.width + x] ?? "0", 16);
-      if (mask !== 0) return { species, x, y, direction: avatar.direction };
+      if (mask !== 0 && !occupied.some((point) => point.x === x && point.y === y)) {
+        return { species, x, y, direction: avatar.direction };
+      }
     }
     return { species, ...avatar };
   }

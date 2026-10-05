@@ -4,6 +4,7 @@ import { escapeSourceHtml } from "./source-menu-view.js";
 
 export interface SourcePlayerDuelModel {
   readonly challenge: PlayerDuelChallenge | null;
+  readonly battleActive: boolean;
   readonly side: BattleSide | null;
   readonly players: readonly RoomPlayerSnapshot[];
   readonly canAccept: boolean;
@@ -16,8 +17,12 @@ export class SourcePlayerDuelView {
     const panel = document.querySelector<HTMLElement>("#player-duel-prompt");
     if (panel === null) return;
     const challenge = model.challenge;
-    panel.hidden = challenge === null || model.side === null;
-    if (challenge === null || model.side === null) return;
+    const hidden = challenge === null || model.side === null || model.battleActive;
+    panel.hidden = hidden;
+    if (challenge === null || model.side === null || model.battleActive) {
+      panel.replaceChildren();
+      return;
+    }
     const challenged = model.side === challenge.challenged;
     const otherSide = challenged ? challenge.challenger : challenge.challenged;
     const other = model.players.find((player) => player.side === otherSide);

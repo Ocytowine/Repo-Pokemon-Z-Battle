@@ -145,6 +145,13 @@ describe("multiplayer protocol", () => {
       .toThrow("setSourcePresence mal forme");
   });
 
+  it("accepts an explicit room departure without client-owned state", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "leaveRoom", version: 12,
+      requestId: "leave-1" }))).toMatchObject({ type: "leaveRoom", requestId: "leave-1" });
+    expect(() => parseClientMessage(JSON.stringify({ type: "leaveRoom", version: 12,
+      requestId: "leave-2", side: "opponent" }))).toThrow("leaveRoom mal formé");
+  });
+
   it("validates a cosmetic profile update without gameplay data", () => {
     const profile = createNetworkPlayerProfile("legacy-2", { ...createDefaultPlayerProfile(), displayName: "Lina" });
     const message: ClientMessage = { type: "setProfile", version: 12, requestId: "profile-1", profile };

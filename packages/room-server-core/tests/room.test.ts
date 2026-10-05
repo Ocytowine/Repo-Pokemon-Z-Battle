@@ -114,6 +114,71 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().duelChallenge).toBeNull();
   });
 
+  it("clears a player challenge after refusal, cancellation or either participant disconnecting", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const playerTeam = initialBattle().teams.player;
+
+    room.receive("alice", { type: "challengePlayer", version: 12,
+      requestId: "duel-refused", team: playerTeam });
+    const refused = room.receive("bob", { type: "respondPlayerChallenge", version: 12,
+      requestId: "duel-refuse", accept: false, team: null });
+    expect(refused.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().duelChallenge).toBeNull();
+
+    room.receive("alice", { type: "challengePlayer", version: 12,
+      requestId: "duel-cancelled", team: playerTeam });
+    room.receive("alice", { type: "respondPlayerChallenge", version: 12,
+      requestId: "duel-cancel", accept: false, team: null });
+    expect(room.snapshot().duelChallenge).toBeNull();
+
+    room.receive("alice", { type: "challengePlayer", version: 12,
+      requestId: "duel-challenged-disconnect", team: playerTeam });
+    room.disconnect("bob");
+    expect(room.snapshot().duelChallenge).toBeNull();
+    expect(room.receive("alice", { type: "respondPlayerChallenge", version: 12,
+      requestId: "duel-stale", accept: false, team: null })[0]?.message)
+      .toMatchObject({ type: "error", code: "INVALID_PHASE" });
+
+    room.connect("bob");
+    room.receive("alice", { type: "challengePlayer", version: 12,
+      requestId: "duel-challenger-disconnect", team: playerTeam });
+    room.disconnect("alice");
+    expect(room.snapshot().duelChallenge).toBeNull();
+  });
+
+  it("removes a disconnected avatar from collisions, expires its grace and restores it safely", () => {
+    let now = 1_000;
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource,
+      undefined, () => now);
+    room.connect("alice");
+    room.connect("bob");
+
+    room.disconnect("bob");
+    expect(room.snapshot().players[1]).toMatchObject({ playerId: "bob", connected: false,
+      connectionState: "reconnecting", reconnectUntil: 16_000 });
+    room.receive("alice", { type: "moveAvatar", version: 12, requestId: "occupy-guest-cell",
+      direction: "down", sequence: 1 });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 1, y: 2 });
+
+    now = 15_999;
+    expect(room.expireDisconnectedPlayers()).toBeNull();
+    now = 16_000;
+    expect(room.expireDisconnectedPlayers()?.players[1]).toMatchObject({ connectionState: "left",
+      reconnectUntil: null });
+    expect(room.nextReconnectExpiry()).toBeNull();
+
+    const restored = room.connect("bob");
+    expect(restored.snapshot.players[1]).toMatchObject({ connected: true, connectionState: "connected" });
+    expect(restored.snapshot.sourceWorld?.avatars.opponent).toMatchObject({ x: 0, y: 2 });
+
+    const left = room.receive("bob", { type: "leaveRoom", version: 12, requestId: "leave-now" });
+    expect(left.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().players[1]).toMatchObject({ connected: false, connectionState: "left",
+      reconnectUntil: null });
+  });
+
   it("hosts the source map, validates both movements and reserves story publication for the host", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");
