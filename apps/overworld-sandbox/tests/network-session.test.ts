@@ -143,4 +143,20 @@ describe("overworld network session", () => {
     expect(storage.getItem("test-session")).toBeNull();
     expect(handlers.onStatus).toHaveBeenCalledWith("Local", "La session mémorisée était invalide et a été supprimée.", false);
   });
+
+  it("rejects an invalid source map before contacting the Worker", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const handlers = callbacks();
+    const session = new OverworldNetworkSession("test-session", handlers);
+    const invalidWorld = { mapId: 3, width: 2, height: 2, passages: "fff", blockedPoints: [],
+      host: { x: 0, y: 0, direction: "down" }, follower: null,
+      story: { switches: {}, variables: {}, selfSwitches: {} } } as never;
+
+    await session.createOrJoin("create", "http://127.0.0.1:8787", "",
+      createDefaultNetworkPlayerProfile(), invalidWorld);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(handlers.onStatus).toHaveBeenCalledWith("Erreur", "Passages de carte source invalides.", false);
+  });
 });

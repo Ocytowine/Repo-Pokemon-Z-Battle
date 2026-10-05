@@ -370,12 +370,16 @@ const [sourceAwayHost, sourceAwayGuest] = await Promise.all([
 assert(sourceAwayHost.snapshot.revision === sourceAwayGuest.snapshot.revision, "La presence source diverge entre les clients.");
 
 sourceHost.send({ type: "moveAvatar", requestId: "source-host-through-away", direction: "down", sequence: 1 });
-const sourceHostMove = await sourceHost.next(
-  (message) => message.type === "sourceWorldUpdated" && message.side === "player" && message.sequence === 1,
-  "passage de l'hote sur l'ancienne case invite",
-);
+const [sourceHostMove, sourceGuestObservedMove] = await Promise.all([
+  sourceHost.next((message) => message.type === "sourceWorldUpdated" && message.side === "player"
+    && message.sequence === 1, "passage de l'hote sur l'ancienne case invite"),
+  sourceGuest.next((message) => message.type === "sourceWorldUpdated" && message.side === "player"
+    && message.sequence === 1, "diffusion du deplacement source a l'invite"),
+]);
 assert(sourceHostMove.state.avatars.player.x === 1 && sourceHostMove.state.avatars.player.y === 2,
   "L'invite absent bloque encore l'hote.");
+assert(JSON.stringify(sourceHostMove.state) === JSON.stringify(sourceGuestObservedMove.state),
+  "Le mouvement source diffuse diverge entre l'hote et l'invite.");
 sourceGuest.send({ type: "moveAvatar", requestId: "source-away-move", direction: "left", sequence: 1 });
 await sourceGuest.next(
   (message) => message.type === "error" && message.requestId === "source-away-move" && message.code === "INVALID_PHASE",
@@ -394,6 +398,23 @@ assert(sourceReturn.snapshot.sourceWorld.avatars.opponent.x === 0
   && sourceReturn.snapshot.sourceWorld.avatars.opponent.y === 2, "La position de retour invite est incorrecte.");
 assert(sourceReturn.snapshot.players.find((player) => player.side === "player")?.profile.profile.displayName
   === "Source Hote", "Le retour de l'invite a modifie le profil hote.");
+
+sourceHost.send({ type: "moveAvatar", requestId: "source-host-up-2", direction: "up", sequence: 2 });
+await sourceHost.next((message) => message.type === "sourceWorldUpdated" && message.side === "player"
+  && message.sequence === 2, "premier mouvement autoritaire avant republication");
+sourceHost.send({ type: "moveAvatar", requestId: "source-host-up-3", direction: "up", sequence: 3 });
+await sourceHost.next((message) => message.type === "sourceWorldUpdated" && message.side === "player"
+  && message.sequence === 3, "second mouvement autoritaire avant republication");
+sourceHost.send({ type: "setSourceWorld", requestId: "source-story-refresh", world: sourceWorld,
+  relocateHost: false });
+const [preservedHost, preservedGuest] = await Promise.all([
+  sourceHost.next((message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.avatars.player.y === 0,
+    "position hote preservee apres publication narrative"),
+  sourceGuest.next((message) => message.type === "snapshot" && message.snapshot?.sourceWorld?.avatars.player.y === 0,
+    "position hote preservee chez l'invite"),
+]);
+assert(preservedHost.snapshot.revision === preservedGuest.snapshot.revision,
+  "La republication narrative diverge entre les clients.");
 await Promise.all([sourceHost.close(), sourceGuest.close()]);
 
 process.stdout.write(`${JSON.stringify({
@@ -420,4 +441,6 @@ process.stdout.write(`${JSON.stringify({
   sourceGuestExcursionTested: true,
   sourceGuestReturnTested: true,
   distinctSourceProfilesTested: true,
+  sourceMovementBroadcastTested: true,
+  sourcePositionRollbackProtected: true,
 }, null, 2)}\n`);

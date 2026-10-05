@@ -1,5 +1,5 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
-import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
+import { PROTOCOL_VERSION, normalizeRoomCode, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
   type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
@@ -74,6 +74,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export class OverworldNetworkSession {
   private activeSession: MutableNetworkSession | null = null;
+  private connectionPending = false;
 
   public constructor(
     private readonly storageKey: string,
@@ -90,16 +91,24 @@ export class OverworldNetworkSession {
 
   public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string,
     profile: NetworkPlayerProfile, sourceWorld: SourceWorldHostState | null = null): Promise<void> {
+    if (this.connectionPending) {
+      this.setStatus("Connexion…", "Une demande de connexion est déjà en cours.");
+      return;
+    }
+    this.connectionPending = true;
     try {
       const serverUrl = normalizeServerUrl(rawServerUrl);
       const path = kind === "create" ? "/api/rooms" : `/api/rooms/${normalizeRoomCode(rawRoomCode)}/join`;
+      const validatedSourceWorld = sourceWorld === null ? null : parseSourceWorldHostState(sourceWorld);
       const response = await fetch(`${serverUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(kind === "create" ? { profile, sourceWorld } : { profile }) });
+        body: JSON.stringify(kind === "create" ? { profile, sourceWorld: validatedSourceWorld } : { profile }) });
       const value: unknown = await response.json();
       if (!response.ok) throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
       this.connect(serverUrl, parseTicket(value), profile);
     } catch (error) {
       this.setStatus("Erreur", error instanceof Error ? error.message : "Connexion impossible.");
+    } finally {
+      this.connectionPending = false;
     }
   }
 
@@ -168,13 +177,13 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), profile }));
   }
 
-  public publishSourceWorld(world: SourceWorldHostState): void {
+  public publishSourceWorld(world: SourceWorldHostState, relocateHost = false): void {
     const session = this.activeSession;
     const socket = session?.socket;
     if (session === null || session.ticket.side !== "player" || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "setSourceWorld", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), world }));
+      requestId: crypto.randomUUID(), world, relocateHost }));
   }
 
   public setSourcePresence(attached: boolean, avatar: SourceAvatarSnapshot | null): void {

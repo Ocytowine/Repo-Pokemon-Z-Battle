@@ -692,7 +692,14 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
   if (!FUNCTIONS.has(definition.functionCode as BattleMove["functionCode"])) {
     throw new Error(`Fonction de capacité non supportée : ${definition.internalName} (${definition.functionCode}).`);
   }
-  return { ...definition, functionCode: definition.functionCode as BattleMove["functionCode"], pp: slot.maxPp };
+  // Le catalogue détaillé contient aussi description/targetCode. Ces données
+  // d'interface ne font pas partie de l'état de combat public et le protocole
+  // réseau rejette volontairement tout champ supplémentaire.
+  return { id: definition.id, internalName: definition.internalName, name: definition.name,
+    functionCode: definition.functionCode as BattleMove["functionCode"], power: definition.power,
+    type: definition.type, category: definition.category, accuracy: definition.accuracy,
+    pp: slot.maxPp, priority: definition.priority, effectChance: definition.effectChance,
+    ...(definition.flags === undefined ? {} : { flags: definition.flags }) };
 }
 
 function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): BattlerState {

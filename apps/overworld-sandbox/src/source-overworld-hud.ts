@@ -9,6 +9,7 @@ export interface SourceOverworldHudModel {
   readonly battleActive: boolean;
   readonly sequenceStatus: string;
   readonly notice: string;
+  readonly hudNotice?: { readonly text: string; readonly kind: "info" | "error" } | null;
   readonly parallelAuditNotice: string | null;
   readonly sceneAuditNotice: string | null;
 }
@@ -23,6 +24,12 @@ export class SourceOverworldHud {
     this.renderProgress(model);
     const log = document.querySelector<HTMLElement>("#events");
     if (log !== null) log.textContent = model.notice;
+    const hudNotice = document.querySelector<HTMLElement>("#source-hud-notice");
+    if (hudNotice !== null) {
+      hudNotice.hidden = model.hudNotice === null || model.hudNotice === undefined;
+      hudNotice.textContent = model.hudNotice?.text ?? "";
+      hudNotice.dataset.kind = model.hudNotice?.kind ?? "info";
+    }
   }
 
   private renderProgress(model: SourceOverworldHudModel): void {

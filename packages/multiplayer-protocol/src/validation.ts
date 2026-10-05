@@ -201,7 +201,10 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("setProfile mal formé");
       }
     case "setSourceWorld":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "world"]) || !isIdentifier(value.requestId)) {
+      if (Object.keys(value).some((key) => !["type", "version", "requestId", "world", "relocateHost"].includes(key))
+        || !["type", "version", "requestId", "world"].every((key) => key in value)
+        || !isIdentifier(value.requestId)
+        || value.relocateHost !== undefined && typeof value.relocateHost !== "boolean") {
         return invalid("setSourceWorld mal formé");
       }
       try {

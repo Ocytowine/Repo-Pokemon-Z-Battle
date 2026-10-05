@@ -82,7 +82,9 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "closeBattleJoinWindow"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "leaveBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
-  | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState })
+  | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState;
+      /** Autorise un déplacement scénarisé/une téléportation de l'hôte sur la carte courante. */
+      readonly relocateHost?: boolean })
   | (RequestedMessage & { readonly type: "setSourcePresence"; readonly attached: boolean;
       readonly avatar: SourceAvatarSnapshot | null })
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;

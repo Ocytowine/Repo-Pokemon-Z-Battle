@@ -143,6 +143,13 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().sourceWorld).toMatchObject({ avatars: { player: { x: 0, y: 1 } },
       followers: { player: { species: "FENNEKIN", x: 1, y: 1 } } });
 
+    room.receive("alice", { type: "setSourceWorld", version: 12, requestId: "source-story-refresh",
+      world: sourceWorld, relocateHost: false });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 0, y: 1 });
+    room.receive("alice", { type: "setSourceWorld", version: 12, requestId: "source-scripted-relocation",
+      world: sourceWorld, relocateHost: true });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 1, y: 1 });
+
     const forbidden = room.receive("bob", { type: "setSourceWorld", version: 12,
       requestId: "source-guest-map", world: sourceWorld });
     expect(forbidden[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });

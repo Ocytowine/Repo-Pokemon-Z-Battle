@@ -332,7 +332,9 @@ export class AuthoritativeBattleRoom {
     }
     if (message.type === "setReady") return this.setReady(player, message.requestId, message.ready);
     if (message.type === "setProfile") return this.setProfile(player, message.requestId, message.profile);
-    if (message.type === "setSourceWorld") return this.setSourceWorld(player, message.requestId, message.world);
+    if (message.type === "setSourceWorld") {
+      return this.setSourceWorld(player, message.requestId, message.world, message.relocateHost ?? false);
+    }
     if (message.type === "setSourcePresence") return this.setSourcePresence(player, message.requestId,
       message.attached, message.avatar);
     if (message.type === "setSourceFollower") {
@@ -379,13 +381,22 @@ export class AuthoritativeBattleRoom {
     ];
   }
 
-  private setSourceWorld(player: RoomPlayer, requestId: string, world: SourceWorldHostState): readonly RoomDispatch[] {
+  private setSourceWorld(player: RoomPlayer, requestId: string, world: SourceWorldHostState,
+    relocateHost: boolean): readonly RoomDispatch[] {
     if (player.side !== "player") {
       return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul l'hôte peut publier la carte narrative.")];
     }
     const sameMap = this.#sourceWorldState?.mapId === world.mapId;
+    const previousHost = sameMap ? this.#sourceWorldState?.avatars.player : undefined;
     const previousGuest = sameMap ? this.#sourceWorldState?.avatars.opponent : undefined;
-    const nextWorld = sourceWorldSnapshot(world, this.sourceSpawn(world, previousGuest));
+    // Une publication narrative ou visuelle ne doit jamais pouvoir remettre l'hôte
+    // à une ancienne position. Seuls un changement de carte ou un déplacement
+    // scénarisé explicitement déclaré peuvent remplacer la position autoritaire.
+    const publishedHost = previousHost === undefined || relocateHost ? world.host : {
+      ...world.host, x: previousHost.x, y: previousHost.y, direction: previousHost.direction,
+    };
+    const publishedWorld = publishedHost === world.host ? world : { ...world, host: publishedHost };
+    const nextWorld = sourceWorldSnapshot(publishedWorld, this.sourceSpawn(publishedWorld, previousGuest));
     const previousGuestFollower = this.#sourceWorldState?.followers.opponent;
     // Un changement de carte de l'hote ne deplace jamais l'invite. Celui-ci reste
     // sur sa carte locale jusqu'a ce que les deux mapId coincident de nouveau.

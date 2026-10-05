@@ -191,6 +191,19 @@ describe("persistent player party", () => {
     expect(addPokemonToParty(createEmptyPlayerParty(), pokemon)).toMatchObject({ activeIndex: 0, members: [{ species: "PIKACHU" }] });
   });
 
+  it("projects a detailed move catalog to the strict public battle shape", () => {
+    const detailedCatalog = { ...catalog, moves: [{ ...catalog.moves[0]!, flags: "ab",
+      targetCode: "SingleNonUser", description: "Une description locale." }] };
+    const move = playerPartyToBattleTeam(party, detailedCatalog).members[0]!.moves[0]!.move;
+
+    expect(Object.keys(move).sort()).toEqual([
+      "accuracy", "category", "effectChance", "flags", "functionCode", "id", "internalName", "name",
+      "power", "pp", "priority", "type",
+    ]);
+    expect(move).not.toHaveProperty("targetCode");
+    expect(move).not.toHaveProperty("description");
+  });
+
   it("restores only one owner's resources from a mixed shared camp", () => {
     const hostTeam = playerPartyToBattleTeam(party, catalog);
     const guest = { ...hostTeam.members[0]!, id: "guest-mon", hp: 18 };

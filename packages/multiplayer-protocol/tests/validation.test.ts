@@ -160,7 +160,8 @@ describe("multiplayer protocol", () => {
       story: { switches: { "67": true }, variables: { "20": 3 },
         selfSwitches: { "3:7:A": true } } } as const;
     expect(parseSourceWorldHostState(world)).toEqual(world);
-    const message: ClientMessage = { type: "setSourceWorld", version: 12, requestId: "source-1", world };
+    const message: ClientMessage = { type: "setSourceWorld", version: 12, requestId: "source-1", world,
+      relocateHost: false };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseClientMessage(JSON.stringify({ ...message, world: { ...world, avatars: {} } })))
       .toThrow("setSourceWorld mal formé");

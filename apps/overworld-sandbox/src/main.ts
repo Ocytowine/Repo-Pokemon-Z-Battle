@@ -91,6 +91,7 @@ let importedWalkingPattern: 1 | 3 = 1;
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
+let coopHudNotice: { readonly text: string; readonly kind: "info" | "error" } | null = null;
 let sourceSceneAuditNotice: string | null = null;
 let sourceParallelAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
@@ -222,9 +223,9 @@ function sourceWorldHostState(): SourceWorldHostState | null {
       selfSwitches: sourceEventState.selfSwitches } };
 }
 
-function publishCurrentSourceWorld(): void {
+function publishCurrentSourceWorld(relocateHost = false): void {
   const world = sourceWorldHostState();
-  if (world !== null) multiplayer.publishSourceWorld(world);
+  if (world !== null) multiplayer.publishSourceWorld(world, relocateHost);
 }
 
 function sourceActorDirection(direction: number): Direction {
@@ -550,7 +551,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
     } else duration = Math.max(duration,
       sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now()));
     renderImportedView();
-    if (playerTarget) publishCurrentSourceWorld();
+    if (playerTarget) publishCurrentSourceWorld(true);
     if (duration > 0) await sequence.runner.delay(duration);
     if (result.complete) return;
   }
@@ -1057,8 +1058,9 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   if (session.ticket.side === "opponent") guestSourceExcursion = false;
   const mapChanged = previousWorld !== null && previousWorld.mapId !== world.mapId;
   const synchronizeOwnAvatar = applyOwnAvatar || mapChanged;
-  networkSourceWorld = synchronizeOwnAvatar ? world : { ...world,
-    avatars: { ...world.avatars, [session.ticket.side]: importedAvatar } };
+  // Le cache réseau reste une copie exacte de l'état autoritaire. La position
+  // optimiste locale n'est utilisée que pour le rendu jusqu'à son acquittement.
+  networkSourceWorld = world;
   publishActiveSourceFollower();
   const own = synchronizeOwnAvatar ? world.avatars[session.ticket.side] : importedAvatar;
   if (synchronizeOwnAvatar) {
@@ -1485,13 +1487,26 @@ function renderImportedView(): void {
   const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
+  const network = multiplayer.current;
+  const networkSnapshot = network?.snapshot ?? null;
+  const duelChallenge = networkSnapshot?.duelChallenge ?? null;
+  const networkSide = network?.ticket.side ?? null;
+  if (duelChallenge !== null && networkSide !== null) {
+    const challenged = duelChallenge.challenged === networkSide;
+    const otherSide = challenged ? duelChallenge.challenger : duelChallenge.challenged;
+    const otherName = networkSnapshot?.players.find((player) => player.side === otherSide)
+      ?.profile.profile.displayName ?? "l'autre Dresseur";
+    coopHudNotice = challenged
+      ? { text: `${otherName} vous défie : acceptez ou refusez le combat.`, kind: "info" }
+      : { text: `Défi enregistré par le serveur · attente de la réponse de ${otherName}.`, kind: "info" };
+  }
   const activeSequence = sourceSequences.current;
   const sequenceStatus = activeSequence === null ? "aucune"
     : `${activeSequence.label} · étape ${activeSequence.cursor}/${activeSequence.plan.steps.length}`
       + ` · ${activeSequence.plan.steps[activeSequence.cursor]?.command.kind ?? "finalisation"}`
       + ` · ${activeSequence.runner.pendingRoutes} route(s)`;
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
-    battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice,
+    battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice, hudNotice: coopHudNotice,
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice });
   renderSourceDialogue();
   renderEncounter();
@@ -1764,7 +1779,7 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
     guestSourceExcursion = false;
     multiplayer.setSourcePresence(true, importedAvatar);
   }
-  publishCurrentSourceWorld();
+  publishCurrentSourceWorld(true);
 }
 
 async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -1924,7 +1939,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
       sourceInteractionState());
     if (eventAhead !== null && (!isNetworkGuest() || guestCanRunSourceEvent(eventAhead))) {
       importedAvatar = facingAvatar;
-      publishCurrentSourceWorld();
+      publishCurrentSourceWorld(true);
       beginSourceSequence(eventAhead, `Événement de contact ${eventAhead.event.id} · ${eventAhead.event.name}`);
       return;
     }
@@ -1988,10 +2003,14 @@ function interact(playerId: AvatarId): void {
       multiplayer.active && !guestSourceExcursion && remotePlayerAhead());
     if (interactionTarget === "player") {
       const team = currentPlayerDuelTeam();
-      if (team === null) importedNotice = "Aucun Pokémon en état de combattre.";
+      if (team === null) {
+        importedNotice = "Aucun Pokémon en état de combattre.";
+        coopHudNotice = { text: importedNotice, kind: "error" };
+      }
       else {
         multiplayer.challengePlayer(team);
         importedNotice = "Défi PvP envoyé à l'autre Dresseur…";
+        coopHudNotice = { text: importedNotice, kind: "info" };
       }
       renderImportedView();
       return;
@@ -2049,6 +2068,11 @@ function trySourceTraversalInteraction(): boolean {
 function setNetworkText(stateText: string, notice: string, _active: boolean): void {
   networkStateText = stateText;
   networkNotice = notice;
+  if (stateText === "Erreur" || stateText === "Erreur réseau" || stateText === "Remplacé") {
+    importedNotice = `Coop · ${notice}`;
+    coopHudNotice = { text: importedNotice, kind: "error" };
+    if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) renderImportedView();
+  }
   if (sourceScenes.menuOpen) renderSourceMenu();
 }
 

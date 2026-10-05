@@ -1265,6 +1265,47 @@ avec au moins un changement et un remplacement force. Verifier enfin que les deu
 equipes conservent leurs PV/PP au retour sur la carte et qu'un joueur sans Pokemon
 conscient ne peut ni lancer ni accepter un defi.
 
+Correctif de synchronisation Coop du 2026-10-05 : `SourceWorldSnapshot` reste
+desormais sur chaque client une copie exacte de l'etat autoritaire de la room. La
+position optimiste du joueur local n'est plus reinjectee dans ce cache pendant
+l'attente d'un acquittement ; elle ne sert qu'au rendu local. Cote room, une
+publication ordinaire de `setSourceWorld` met a jour carte, collisions, histoire,
+mode de deplacement et presentation sans pouvoir ecraser les coordonnees deja
+validees de l'hote. Les seuls remplacements de position sur une carte identique
+sont marques explicitement par `relocateHost` pour les routes scenarisees, les
+transferts et l'orientation necessaire au contact. Un changement de carte reste
+autoritaire sans ce marqueur. Le champ est optionnel au decodage afin de ne pas
+casser les clients v12 deja ouverts, et vaut `false` par defaut.
+
+La creation de room valide aussi la carte source cote client avant le POST et
+refuse les doubles demandes simultanees. Une carte mal formee produit donc une
+erreur locale precise au lieu d'une rafale de `POST /api/rooms` en 400. La recette
+E2E verifie maintenant que le meme mouvement source arrive aux deux sockets et
+qu'une republication narrative obsolete ne provoque aucun rollback. Autorite :
+room pour les positions ; domaine et persistance : snapshot partage et restaure ;
+intention : direction/mode ou relocalisation scenarisee explicite ; audience :
+tous les participants presents sur la carte.
+
+Diagnostic PvP du 2026-10-05 : les retours de demande Coop sont maintenant
+visibles directement dans le HUD du canvas, sans devoir rouvrir l'onglet Coop ou
+le panneau Moteur. Le demandeur voit successivement l'envoi puis la confirmation
+que la room a enregistre le defi ; l'invite voit le nom du demandeur lorsque le
+snapshot lui parvient. Tout refus autoritaire (`INTERACTION_UNAVAILABLE`, phase
+invalide, joueur absent, orientation ou position refusee), erreur reseau ou ticket
+remplace est affiche avec son code et son message. Ce retour est seulement visuel,
+non persiste et adresse au joueur concerne ; il ne modifie ni la narration ni le
+combat partage.
+
+Correctif du payload PvP du 2026-10-05 : `playerPartyToBattleTeam` projetait une
+capacite avec un spread de son entree de catalogue. Le catalogue detaille reel de
+Pokemon Z ajoutait donc `targetCode` et `description` au message
+`challengePlayer`, contrairement aux fixtures minimales et au schema public
+strict ; le Worker repondait `INVALID_MESSAGE`. La projection enumere maintenant
+explicitement les seuls champs de `BattleMove` autorises. Les metadonnees d'UI
+restent locales et les donnees de combat utiles continuent d'etre partagees avec
+les participants. Un test emploie desormais une definition detaillee pour eviter
+la regression.
+
 ## Strategie de tests
 
 Ne pas creer un gros test propre a chaque cinematique. Privilegier :
@@ -1275,7 +1316,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 404 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 407 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
