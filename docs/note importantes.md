@@ -12,6 +12,8 @@ Probleme constaté :
 
 - durant l'exploration, les musiques des lieux ne sont pas lancées.
 
+- en co-op, quand un joueur quitte, l'hote ne recois pas de notification, et le sprite reste en place. il faudrait faire ca proprement.
+
 Ajout propre à la co-op : 
     -  l'invité peut lancé des captures de pokemon, et peut décider d'offrir le pokemon capturé à l'hôte.
     - l'hote peut autoriser l'invité à prendre les objets dans l'underworld, pour le compte de l'hote. et si il veut, il peut aussi lui laisser (hors objet rare).
@@ -21,7 +23,7 @@ Ajout propre à la co-op :
 Ajout des sauvegarde en cloud pour permettre de synchroniser les sauvegardes entre différents appareils.
 
 Ajout des transfert de sauvegardes de la version d'origine (pokemon Z en emmulateur).
-    prenant en compte les pokemon, badges, avancer narative, objets...
+    prenant en compte les pokemonS, badges, avancer narrative, objets...
 
 Ajout manquant (importante mécanique solo).
     Pokodex : à rendre plus simple et plus intuitif pour le joueur.
@@ -44,6 +46,6 @@ Améliorations :
 
     Les sprites du fangames sont un peu trops grosses, il faudrait les redimensionner pour qu'ils s'intègrent mieux à l'interface et à l'écran de jeu.
 
-    
+
 
 
