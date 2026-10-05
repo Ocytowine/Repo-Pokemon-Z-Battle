@@ -482,6 +482,7 @@ describe("authoritative battle room", () => {
     room.receive("alice", { type: "respondBattleJoin", version: 11, requestId: "refuse-join",
       battleId: battle.id, accept: false });
     expect(room.snapshot().battle).toMatchObject({ joinProposal: null,
+      joinRefusal: { playerId: "bob", reason: expect.stringContaining("refusee") },
       ledger: { engagedMemberIds: { player: ["player"], opponent: ["opponent"] } } });
   });
 

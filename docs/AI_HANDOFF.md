@@ -1102,6 +1102,8 @@ uniques entre camps, au moins un Pokemon de l'invite et, cote allie, au moins un
 Pokemon du meneur. Seul l'hote peut fermer explicitement la fenetre et une
 proposition en attente doit etre acceptee ou refusee auparavant. La premiere action
 valide la ferme aussi, mais une action envoyee par un observateur ne le peut pas.
+Un refus est conserve dans le snapshot et affiche au joueur concerne jusqu'a sa
+prochaine decision.
 
 La recette manuelle a deux navigateurs reste ouverte : verifier successivement
 Observer, jonction alliee, jonction adverse, refus, composition pleine et

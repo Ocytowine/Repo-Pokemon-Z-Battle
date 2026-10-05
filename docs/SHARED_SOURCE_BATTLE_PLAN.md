@@ -203,7 +203,8 @@ dans la limite de six, avec au moins un Pokemon de chaque joueur pour une joncti
 alliee ; les identifiants sont revalides entre camps. L'interface indique camp,
 proprietaire, actif et membres retenus. Seul l'hote ferme explicitement la fenetre,
 et il doit d'abord accepter ou refuser toute proposition. Une action invalide d'un
-observateur ne peut plus fermer la fenetre.
+observateur ne peut plus fermer la fenetre. Le motif d'un refus est conserve et
+presente au joueur concerne.
 
 ### Lot 4 - Boucle tactique autoritaire complete
 

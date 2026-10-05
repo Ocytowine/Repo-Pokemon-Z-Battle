@@ -2,6 +2,7 @@ import process from "node:process";
 
 const baseUrl = new URL(process.argv[2] ?? "http://127.0.0.1:8787");
 const timeoutMs = 8_000;
+const protocolVersion = 11;
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -53,7 +54,7 @@ class SocketInbox {
   }
 
   send(message) {
-    this.socket.send(JSON.stringify({ version: 8, ...message }));
+    this.socket.send(JSON.stringify({ version: protocolVersion, ...message }));
   }
 
   #take(predicate) {
