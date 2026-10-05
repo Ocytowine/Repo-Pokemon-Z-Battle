@@ -1,4 +1,4 @@
-import { createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
+import { attemptSourceBattleEscape, chooseSourceBattleAction, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
   type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
@@ -51,19 +51,14 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
   rng: RandomSource): TeamTurnResult {
   const player = state.teams.player.members[state.teams.player.activeIndex];
-  const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
   if (player === undefined) throw new Error("Combattant actif introuvable.");
   if (playerAction.kind === "move") {
     const playerMove = player.moves[playerAction.moveIndex];
     if (playerMove === undefined || playerMove.pp <= 0) throw new Error("Cette capacité n'est pas disponible.");
   }
-  const opponentMoves = opponent?.moves.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.pp > 0) ?? [];
-  if (opponentMoves.length === 0) throw new Error("L'adversaire n'a plus de capacité disponible.");
-  const opponentMove = opponentMoves[rng.nextInt(opponentMoves.length)];
-  if (opponentMove === undefined) throw new Error("Choix de capacité adverse impossible.");
   return resolveTeamTurn(state, {
     player: playerAction,
-    opponent: { kind: "move", moveIndex: opponentMove.index },
+    opponent: chooseSourceBattleAction(state, "opponent", rng),
   }, rng);
 }
 
@@ -76,18 +71,7 @@ export type SourceEscapeResult = { readonly escaped: true } | { readonly escaped
 
 export function attemptSourceEncounterEscape(state: TeamBattleState, attempts: number,
   rng: RandomSource): SourceEscapeResult {
-  if (!Number.isSafeInteger(attempts) || attempts < 0) throw new Error("Nombre de tentatives de fuite invalide.");
-  const player = state.teams.player.members[state.teams.player.activeIndex];
-  const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
-  if (player === undefined || opponent === undefined) throw new Error("Combattant actif introuvable.");
-  const rate = player.stats.speed > opponent.stats.speed ? 256
-    : (Math.floor((player.stats.speed * 128) / Math.max(1, opponent.stats.speed)) + attempts * 30) & 0xff;
-  if (rate === 256 || rng.nextInt(256) < rate) return { escaped: true };
-  const opponentMoves = opponent.moves.map((slot, index) => ({ slot, index })).filter(({ slot }) => slot.pp > 0);
-  const opponentMove = opponentMoves[rng.nextInt(opponentMoves.length)];
-  if (opponentMove === undefined) throw new Error("Choix de capacité adverse impossible.");
-  return { escaped: false, turn: resolveTeamTurn(state,
-    { player: { kind: "wait" }, opponent: { kind: "move", moveIndex: opponentMove.index } }, rng) };
+  return attemptSourceBattleEscape(state, attempts, rng);
 }
 
 export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleState {

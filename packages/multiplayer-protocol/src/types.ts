@@ -7,7 +7,7 @@ import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, 
 import type { SourceSceneSnapshot } from "./source-scene.js";
 import type { SourceBattleContext } from "./source-battle.js";
 
-export const PROTOCOL_VERSION = 11 as const;
+export const PROTOCOL_VERSION = 12 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
@@ -35,7 +35,8 @@ export interface RoomSnapshot {
     readonly joinRefusal: { readonly playerId: string; readonly reason: string } | null;
     readonly observerIds: readonly string[];
     readonly ledger: SharedBattleLedger | null; readonly session: SharedBattleSession;
-    readonly sourceContext: SourceBattleContext | null } | null;
+    readonly sourceContext: SourceBattleContext | null; readonly escaped: boolean;
+    readonly escapeAttempts: number } | null;
   readonly duelChallenge: PlayerDuelChallenge | null;
   readonly world: OverworldState;
   readonly sourceWorld: SourceWorldSnapshot | null;
@@ -65,6 +66,7 @@ export type ClientMessage =
       readonly turn: number;
       readonly teamIndex: number;
     })
+  | (RequestedMessage & { readonly type: "attemptBattleEscape"; readonly battleId: string; readonly turn: number })
   | (RequestedMessage & { readonly type: "requestSnapshot" })
   | (RequestedMessage & { readonly type: "moveAvatar"; readonly direction: Direction; readonly sequence: number;
       readonly mode?: SourceMovementMode; readonly waterfall?: boolean })
@@ -127,6 +129,7 @@ export type ServerMessage =
       readonly state: TeamBattleState;
       readonly events: readonly TeamBattleEvent[];
     })
+  | (VersionedMessage & { readonly type: "battleEscaped"; readonly battleId: string; readonly turn: number })
   | (VersionedMessage & {
       readonly type: "worldUpdated";
       readonly side: BattleSide;

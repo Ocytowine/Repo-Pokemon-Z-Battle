@@ -2,6 +2,8 @@ import {
   MAX_TEAM_SIZE,
   MINIMAL_MOVE_CATALOG,
   activeBattlers,
+  attemptSourceBattleEscape,
+  chooseSourceBattleAction,
   createTeamBattleState,
   replaceFaintedPokemon,
   resolveTeamTurn,
@@ -45,6 +47,18 @@ function pokemon(id: string, side: BattleSide, overrides: Partial<BattlerState> 
 }
 
 describe("team battles", () => {
+  it("shares source AI and escape decisions between adapters", () => {
+    const scratch = MINIMAL_MOVE_CATALOG.SCRATCH;
+    const tackle = MINIMAL_MOVE_CATALOG.TACKLE;
+    const opponent = pokemon("foe", "opponent", { moves: [
+      { move: scratch, pp: scratch.pp }, { move: tackle, pp: tackle.pp },
+    ] });
+    const state = createTeamBattleState({ player: [pokemon("hero", "player")], opponent: [opponent] });
+    expect(chooseSourceBattleAction(state, "opponent", new ScriptedRandom([1])))
+      .toEqual({ kind: "move", moveIndex: 1 });
+    expect(attemptSourceBattleEscape(state, 0, new ScriptedRandom([]))).toEqual({ escaped: true });
+  });
+
   it("accepts teams from one to six members and owns an immutable copy", () => {
     const source = Array.from({ length: MAX_TEAM_SIZE }, (_, index) => pokemon(`player-${index}`, "player"));
     const state = createTeamBattleState({ player: source, opponent: [pokemon("opponent-0", "opponent")] });

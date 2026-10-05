@@ -1,8 +1,11 @@
 export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
 export { activeBattleController, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
+  battleMemberIndicesOwnedBy, canCaptureSharedBattleTarget, replacementBattleController,
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
   restoreSharedBattleLedger, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
+export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,
+  chooseSourceBattleReplacement } from "./battle-tactics.js";
 export { resolveTurn } from "./resolve-turn.js";
 export { SeededRandom } from "./rng.js";
 export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
@@ -45,3 +48,4 @@ export type { BattleJoinProposal, OwnedBattleMember, SharedBattleCamp, SharedBat
   SharedBattleEngagement, SharedBattleFormat, SharedBattleLedger, SharedBattleOwnerDefeatCredit,
   SharedBattleOwnerSettlement, SharedBattleParticipation } from "./battle-participation.js";
 export type { SharedBattleLifecycle, SharedBattleOrigin, SharedBattleSession } from "./shared-battle-session.js";
+export type { BattleEscapeResult } from "./battle-tactics.js";

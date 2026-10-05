@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { activeBattleController, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
+  canCaptureSharedBattleTarget, createTeamBattleState, replacementBattleController,
   createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
   restoreSharedBattleLedger, sharedBattleOwnerSettlement,
   type BattlerState, type SharedBattleParticipation } from "../src/index.js";
@@ -19,6 +20,29 @@ function battle(format: "single" | "double" = "single"): SharedBattleParticipati
 }
 
 describe("shared battle participation", () => {
+  it("keeps capture on an unowned wild target and routes forced replacement by ownership", () => {
+    const source = battle();
+    const tactical = createTeamBattleState({ player: [pokemon("starter")], opponent: [pokemon("wild")] });
+    expect(canCaptureSharedBattleTarget(source, tactical, "source-wild")).toBe(true);
+    expect(canCaptureSharedBattleTarget(source, tactical, "source-trainer")).toBe(false);
+
+    const guestWild = { ...source, camps: { ...source.camps, opponent: {
+      trainerIds: ["guest"], members: [{ ownerId: "guest", battler: pokemon("wild") }], activeMemberId: "wild",
+    } } };
+    expect(canCaptureSharedBattleTarget(guestWild, tactical, "source-wild")).toBe(false);
+
+    const reserve = pokemon("guest-reserve");
+    const beforeReplacement = createTeamBattleState({ player: [pokemon("starter")],
+      opponent: [pokemon("wild"), reserve] });
+    const replacementState = { ...beforeReplacement, replacementRequired: ["opponent"] as const,
+      teams: { ...beforeReplacement.teams, opponent: { ...beforeReplacement.teams.opponent,
+        members: [{ ...pokemon("wild"), hp: 0 }, reserve] } } };
+    const joined = { ...guestWild, camps: { ...guestWild.camps, opponent: { trainerIds: ["guest"],
+      members: [{ ownerId: null, battler: pokemon("wild") }, { ownerId: "guest", battler: reserve }],
+      activeMemberId: "wild" } } };
+    expect(replacementBattleController(joined, replacementState, "opponent")).toBe("guest");
+  });
+
   it("merges an allied proposal only after both trainers approve it", () => {
     let proposal = proposeBattleJoin(battle(), { joinerId: "guest", side: "player", members: [pokemon("guest-mon")],
       finalMemberIds: ["starter", "guest-mon"] });

@@ -26,6 +26,45 @@ manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
 
 ## Ordre de travail convenu
 
+### 0. Nouvelle partie et prologue condense — fonctionnel dans le code
+
+Jalon du 2026-10-05 : le lancement distingue maintenant une aventure existante
+(`source-event-state` ou sauvegarde de position) d'une
+installation sans sauvegarde. Sans aventure, une introduction legere restitue les
+trois points utiles de Map001/Map170/Map171/Map065 : admission par la Professeure
+Olivier, objet de ses recherches en alchimie Pokemon et voyage depuis Paldea avec
+deux autres apprentis. Le bouton `Abreger le prologue` rejoint immediatement les
+decisions sans supprimer leurs effets.
+
+L'ecran conserve les trois choix structurants observes dans les sources : difficulte
+classique/difficile/heroique, aventure normale/Nuzlocke et region des starters.
+Il ouvre le laboratoire de personnage existant pour le nom, le modele, la palette
+et les pronoms. Le profil actif alimente aussi les variables source 51 (silhouette)
+et 88 (palette), afin que les branches genre/apparence des scenes restent coherentes.
+Le choix Nuzlocke est persiste et clairement presente comme une preparation : les
+regles Nuzlocke non encore portees ne sont pas simulees.
+
+La validation cree ensuite la premiere sauvegarde en Map002 `(37,71)`, arme son
+autorun original et laisse le moteur generique jouer le conducteur, la recherche
+de Christian, les socles de starters, Keunotor et la revelation de Christian. Un
+rechargement avant la fin du dialogue du conducteur rearme cet autorun tant que le
+switch source 61 n'a pas ete applique. Une sauvegarde existante ne voit jamais le
+prologue se relancer.
+
+Autorite et Coop : la preparation est personnelle et precede toute room. Une fois
+une room creee, les switches/variables du choix de l'hote rejoignent l'etat narratif
+autoritaire deja replique ; le profil cosmetique suit le contrat public existant.
+Il n'existe donc aucune seconde implementation de ce flux cote serveur ni aucune
+publication des donnees privees du profil. Persistance : choix, etat narratif,
+profil et position initiale sont restaures localement apres rechargement.
+
+Recette manuelle : supprimer les cles d'aventure, recharger, parcourir puis abreger
+le resume, choisir une configuration, appliquer un personnage et commencer. Verifier
+la scene du conducteur, le choix d'un starter de la region retenue, le combat contre
+Keunotor puis la scene de Christian. Recharger pendant le premier dialogue pour
+controler sa reprise, puis recharger apres le switch 61 pour verifier l'absence de
+double lancement.
+
 ### 1. Progression des starters — fonctionnel
 
 Etat : termine dans le code, validation manuelle principale effectuee.
@@ -1107,8 +1146,25 @@ prochaine decision.
 
 La recette manuelle a deux navigateurs reste ouverte : verifier successivement
 Observer, jonction alliee, jonction adverse, refus, composition pleine et
-reconnexion pendant la fenetre. Le prochain lot est la boucle tactique autoritaire
-complete (IA source, deconnexion de l'actif et fuite reservee a l'hote).
+reconnexion pendant la fenetre.
+
+Lot 4 implemente dans le code le 2026-10-05 : le protocole passe a v12. La room
+route attaque, changement volontaire et remplacement force vers le proprietaire
+concerne. Une deconnexion supprime son intention en attente et suspend le combat au
+meme tour ; la reconnexion ne declenche aucun pilote automatique. Les Pokemon
+source sans proprietaire choisissent leur capacite et leur remplacement avec la
+RNG autoritaire. Ces decisions et la formule de fuite ont ete extraites dans
+`battle-engine` et sont aussi consommees par l'adaptateur solo. Seul le
+proprietaire narratif peut demander la fuite globale ; son resultat et le nombre
+de tentatives sont persistables. La regle preparatoire des Balls ne rend capturable
+qu'un adversaire sauvage sans proprietaire, jamais le Pokemon d'un invite. Le duel
+direct reste sur deux intentions humaines et n'emprunte pas l'IA source.
+
+Tests ajoutes : selection IA non figee sur l'index zero, controle des remplacements,
+capture selon origine/proprietaire, fuite host-only, persistance de la fuite,
+remplacement source automatique et suspension/reprise apres deconnexion. La recette
+manuelle a deux navigateurs reste ouverte. Le prochain lot est le reglement
+personnel idempotent (lot 5), avant la fermeture et la reprise narrative du lot 6.
 
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
@@ -1127,7 +1183,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 385 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 394 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

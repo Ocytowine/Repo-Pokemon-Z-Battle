@@ -811,6 +811,17 @@ fenetre ; le premier tour autorise la ferme aussi. Une intention d'observateur n
 peut pas avancer le cycle. La recette deux navigateurs reste a effectuer avant de
 valider visuellement ce lot.
 
+Cinquieme increment du plan implemente le 2026-10-05 : le protocole v12 termine la
+boucle tactique autoritaire du lot 4. Le noyau commun choisit les capacites et les
+remplacements des Pokemon source sans proprietaire avec la RNG autoritaire ; le
+solo utilise les memes fonctions. Attaque, changement et remplacement sont routes
+vers le proprietaire de l'actif ou du reserve eligible, sans permettre d'envoyer
+le Pokemon d'un autre joueur. Une deconnexion annule l'intention de ce proprietaire
+et conserve le meme tour jusqu'a sa reconnexion. Seul le proprietaire narratif
+peut demander une fuite sauvage ; tentative, resultat et compteur survivent a la
+restauration de room. La regle de capture future refuse deja toute cible possedee
+par un invite. La validation manuelle a deux navigateurs reste ouverte.
+
 ### Increment 9.6 - Rencontres sauvages du monde
 
 - [x] exposer le terrain effectif de chaque case selon les trois couches et les
@@ -873,7 +884,18 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] afficher overworld, menus et combat dans une seule scene de jeu avec transitions ;
 - [x] ajouter le menu en jeu : equipe, sac, sauvegarde et options ;
 - [x] sauvegarder la carte et la position courantes ;
+- [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
+
+Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
+passable des cartes d'introduction avant trois choix issus des sources (difficulte,
+mode normal/Nuzlocke et region des starters) et la personnalisation partagee du
+heros. Le resultat initialise les switches et variables source, cree la premiere
+sauvegarde en Map002 puis lance son autorun original. La recherche de Christian,
+les starters, Keunotor et la rencontre avec Christian ne sont pas remplaces par un
+resume. La preparation est personnelle avant la Coop ; dans une room, l'etat
+narratif de l'hote et le profil public reprennent les contrats autoritaires deja en
+place. Les regles Nuzlocke completes restent une dette explicite.
 
 Premier garde-fou 9.7 valide le 2026-09-29 : une page est reconnue comme choix de
 starter par sa sequence source (ajout d'un Pokemon, interrupteur de type et combat

@@ -234,6 +234,12 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("respondPlayerChallenge mal forme");
       }
       return value as unknown as ClientMessage;
+    case "attemptBattleEscape":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.battleId) || !isSafePositiveInteger(value.turn)) {
+        return invalid("attemptBattleEscape mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "proposeBattleJoin":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "side", "team", "finalMemberIds"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)

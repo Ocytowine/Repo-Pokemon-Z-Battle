@@ -13,7 +13,8 @@ import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, 
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
-import { SeededRandom, activeBattleController, type BattleTeam, type TeamBattleEvent,
+import { SeededRandom, activeBattleController, canCaptureSharedBattleTarget, replacementBattleController,
+  type BattleTeam, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController } from "./source-battle-controller.js";
@@ -54,6 +55,10 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   type SourceWorldSave } from "./source-world-save.js";
+import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGameSetup, sourceAdventureSaveExists,
+  sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_DESTINATION,
+  type SourceNewGameChoices } from "./source-new-game.js";
+import { SourceNewGameView } from "./source-new-game-view.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMovement,
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
@@ -67,10 +72,10 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
 import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
-const SOURCE_EVENT_STATE_KEY = "pokemon-z-battle.source-event-state.v1";
 
 let viewedMapId = SOURCE_MAP_ID;
 let avatarLabReturnMapId = viewedMapId;
+let avatarLabReturnContext: "menu" | "prologue" = "menu";
 let importedAssets: ImportedMapAssets | null = null;
 let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
 let sourceMovementMode: SourceMovementMode = "walk";
@@ -88,6 +93,7 @@ let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
+let sourceNewGameActive = !sourceAdventureSaveExists(localStorage);
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
 const sourceFollowerMotion = new SourceFollowerMotionController();
@@ -162,16 +168,16 @@ function activePokemonCreationContext(mapId: number): PokemonCreationContext {
 
 function loadSourceEventState(): SourceEventState {
   try {
-    const stored = localStorage.getItem(SOURCE_EVENT_STATE_KEY);
+    const stored = localStorage.getItem(SOURCE_EVENT_STATE_STORAGE_KEY);
     return stored === null ? createSourceEventState() : parseSourceEventState(JSON.parse(stored) as unknown);
   } catch {
-    localStorage.removeItem(SOURCE_EVENT_STATE_KEY);
+    localStorage.removeItem(SOURCE_EVENT_STATE_STORAGE_KEY);
     return createSourceEventState();
   }
 }
 
 function persistSourceEventState(): void {
-  localStorage.setItem(SOURCE_EVENT_STATE_KEY, JSON.stringify(sourceEventState));
+  localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
   queueMicrotask(publishCurrentSourceWorld);
@@ -627,6 +633,10 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceNewGameView = new SourceNewGameView(requiredAppElement("source-new-game"), {
+  onCustomize: openPrologueCustomization,
+  onStart: startSourceNewGame,
+});
 const avatarLabView = new AvatarLabView(requiredAppElement("embedded-avatar-lab"), applyActivePlayerProfile,
   closePlayerCustomization);
 void avatarLabView.load().then(() => { if (viewedMapId === AVATAR_LAB_MAP_ID) render(); }).catch((error: unknown) => {
@@ -790,7 +800,10 @@ const sourceBattleOverlay = new SourceBattleOverlay({
   },
   onReplacement: (teamIndex) => { multiplayer.submitBattleReplacement(teamIndex); },
   onLeave: () => { multiplayer.leaveBattle(); },
-  onEscape: () => { void sourceBattles.escape(); },
+  onEscape: (local) => {
+    if (local) void sourceBattles.escape();
+    else multiplayer.attemptBattleEscape();
+  },
   onDetails: (pokemonId) => openSourcePokemonSummary("battle", pokemonId),
 });
 const sourcePlayerDuelView = new SourcePlayerDuelView({
@@ -827,6 +840,15 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onBattleStarted: beginNetworkBattlePresentation,
   onBattleTurnResolved: presentNetworkBattleTurn,
   onBattleReplacementResolved: presentNetworkBattleTurn,
+  onBattleEscaped: (battleId, state) => {
+    if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
+    networkBattleAnimating = true;
+    networkBattlePresentation = networkBattlePresentation.then(async () => {
+      await sourceBattleVisuals.endBattle(null);
+      networkBattleAnimating = false;
+      render();
+    });
+  },
   onBattleClosed: closeNetworkBattlePresentation,
   onRender: render,
 });
@@ -1552,6 +1574,7 @@ async function applyActivePlayerProfile(selection: PlayerAvatarSelection): Promi
   sourcePlayerVisuals = visuals;
   sourceBattleVisuals.setPlayerTrainerImage(visuals.battleBack);
   multiplayer.updateProfile(activeNetworkPlayerProfile());
+  sourceNewGameView.updatePlayerName(selection.profile.displayName);
   importedNotice = `Profil de ${selection.profile.displayName} appliqué au monde et aux combats.`;
   render();
 }
@@ -1595,6 +1618,27 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
   queueMicrotask(publishCurrentSourceWorld);
+}
+
+async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> {
+  const destination = SOURCE_NEW_GAME_DESTINATION;
+  const world = await loadSourceWorldAt(destination.mapId, destination);
+  sourceEventState = applySourceNewGameAvatar(
+    applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId);
+  persistSourceEventState();
+  persistSourceNewGameSetup(localStorage, choices);
+  sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction);
+  persistSourceWorldSave(localStorage, sourceWorldSave);
+  activateSourceWorld(world);
+  sourceMovementMode = "walk";
+  sourceMovementAction = "idle";
+  sourceNewGameActive = false;
+  sourceNewGameView.hide();
+  viewedMapId = SOURCE_MAP_ID;
+  pendingSourceMapEntryAutorun = destination.mapId;
+  importedNotice = "Prologue condensé terminé. La scène originale de la calèche commence.";
+  render();
+  queueMicrotask(beginPendingSourceMapEntryAutorun);
 }
 
 async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -1672,6 +1716,12 @@ function render(): void {
     return;
   }
   avatarLabView.hide();
+  if (sourceNewGameActive) {
+    if (importedAnimationFrame !== null) { cancelAnimationFrame(importedAnimationFrame); importedAnimationFrame = null; }
+    sourceNewGameView.show(activePlayerSelection.profile.displayName);
+    return;
+  }
+  sourceNewGameView.hide();
   if (importedAssets !== null) {
     renderImportedView();
     return;
@@ -1692,6 +1742,13 @@ function renderEncounter(): void {
   const canonicalNetworkState = networkBattle !== null && networkPresentedBattle?.id === networkBattle.id
     ? networkPresentedBattle.state : networkBattle?.state ?? null;
   const viewerSide = networkBattleViewerSide();
+  const networkController = networkBattle?.participation === null || networkBattle?.participation === undefined
+    ? null : networkBattle.state.replacementRequired.includes(viewerSide)
+      ? replacementBattleController(networkBattle.participation, networkBattle.state, viewerSide)
+      : activeBattleController(networkBattle.participation, viewerSide);
+  const controllableMemberIds = networkBattle?.participation === null || networkBattle?.participation === undefined
+    || network === null ? null : networkBattle.participation.camps[viewerSide].members
+      .filter((member) => member.ownerId === network.ticket.playerId).map((member) => member.battler.id);
   const presentedNetworkState = canonicalNetworkState !== null && networkBattle !== null
     ? networkBattleForViewer(canonicalNetworkState, viewerSide) : canonicalNetworkState;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : presentedNetworkState;
@@ -1702,11 +1759,19 @@ function renderEncounter(): void {
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     networkSide: networkBattle !== null && network !== null
       && (networkBattle.duel || networkBattle.participation !== null
-        && activeBattleController(networkBattle.participation, viewerSide) === network.ticket.playerId)
+        && networkController === network.ticket.playerId)
       ? "player" : null,
+    controllableMemberIds,
     networkSubmittedTurn: network?.submittedTurn ?? null,
-    escapable: localSourceBattle && sourceEventState.pendingEncounter?.escapable === true,
-    capturable: localSourceBattle && sourceEventState.pendingEncounter !== null,
+    escapable: localSourceBattle ? sourceEventState.pendingEncounter?.escapable === true
+      : networkBattle?.sourceContext?.escapable === true
+        && networkBattle.session.narrativeOwnerId === network?.ticket.playerId && !networkBattle.escaped,
+    capturable: localSourceBattle ? sourceEventState.pendingEncounter !== null
+      : networkBattle?.participation !== null && networkBattle?.participation !== undefined
+        && networkBattle.sourceContext !== null
+        && canCaptureSharedBattleTarget(networkBattle.participation, networkBattle.state,
+          networkBattle.sourceContext.origin),
+    escaped: networkBattle?.escaped === true,
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
@@ -1895,14 +1960,26 @@ async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode
 }
 
 function openPlayerCustomization(): void {
+  avatarLabReturnContext = "menu";
   avatarLabReturnMapId = viewedMapId;
   sourceScenes.closeMenu();
   viewedMapId = AVATAR_LAB_MAP_ID;
   render();
 }
 
+function openPrologueCustomization(): void {
+  avatarLabReturnContext = "prologue";
+  avatarLabReturnMapId = viewedMapId;
+  viewedMapId = AVATAR_LAB_MAP_ID;
+  render();
+}
+
 function closePlayerCustomization(): void {
   viewedMapId = avatarLabReturnMapId;
+  if (avatarLabReturnContext === "prologue") {
+    render();
+    return;
+  }
   sourceScenes.openMenu(sourceSceneActivity());
   sourceScenes.selectMenuTab("coop");
   render();
@@ -2017,6 +2094,8 @@ async function initializeSourceWorld(): Promise<void> {
       importedNotice = "Sauvegarde de position ignorée car elle était inaccessible ; retour à Bourg Canvas.";
     }
     activateSourceWorld(world);
+    const resumeOpeningScene = sourceNewGameOpeningScenePending(localStorage, requestedSave, sourceEventState);
+    if (resumeOpeningScene) pendingSourceMapEntryAutorun = world.assets.map.id;
     if (world.saveStatus === "restored") {
       sourceMovementMode = requestedSave?.movementMode === "run" ? "walk" : requestedSave?.movementMode ?? "walk";
       importedNotice = `Partie reprise dans ${world.assets.map.name}, en ${world.avatar.x},${world.avatar.y}.`;
@@ -2027,12 +2106,14 @@ async function initializeSourceWorld(): Promise<void> {
       viewedMapId = SOURCE_MAP_ID;
       render();
     }
+    if (resumeOpeningScene) queueMicrotask(beginPendingSourceMapEntryAutorun);
   } catch (error) {
     importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
     setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
   }
 }
 
-void initializeSourceWorld();
-
-multiplayer.restore(activeNetworkPlayerProfile());
+if (!sourceNewGameActive) {
+  void initializeSourceWorld();
+  multiplayer.restore(activeNetworkPlayerProfile());
+}

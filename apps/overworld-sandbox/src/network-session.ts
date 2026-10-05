@@ -58,6 +58,7 @@ export interface NetworkSessionCallbacks {
     events: readonly TeamBattleEvent[]) => void;
   readonly onBattleReplacementResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
     events: readonly TeamBattleEvent[]) => void;
+  readonly onBattleEscaped: (battleId: string, state: TeamBattleState) => void;
   readonly onBattleClosed: (battleId: string) => void;
   readonly onRender: () => void;
 }
@@ -277,6 +278,18 @@ export class OverworldNetworkSession {
     this.callbacks.onRender();
   }
 
+  public attemptBattleEscape(): void {
+    const session = this.activeSession;
+    const battle = session?.snapshot?.battle;
+    const socket = session?.socket;
+    if (session === null || battle === null || battle === undefined || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return;
+    session.submittedTurn = battle.state.turn;
+    socket.send(JSON.stringify({ type: "attemptBattleEscape", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn }));
+    this.callbacks.onRender();
+  }
+
   private sendRequest(message: Record<string, unknown>): void {
     const socket = this.activeSession?.socket;
     if (socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return;
@@ -439,6 +452,15 @@ export class OverworldNetworkSession {
             battle: { ...snapshot.battle, state: message.state } };
           session.submittedTurn = null;
           this.callbacks.onBattleReplacementResolved(message.battleId, before, message.state, message.events);
+          this.callbacks.onRender();
+        } else if (message.type === "battleEscaped") {
+          const snapshot = session.snapshot;
+          if (snapshot?.battle?.id !== message.battleId) return;
+          session.snapshot = { ...snapshot, phase: "finished",
+            battle: { ...snapshot.battle, escaped: true } };
+          session.submittedTurn = null;
+          this.callbacks.onBattleEscaped(message.battleId, snapshot.battle.state);
+          this.setStatus("Fuite réussie", "Retour au monde de l'hôte en préparation.");
           this.callbacks.onRender();
         } else if (message.type === "error") {
           session.submittedTurn = null;

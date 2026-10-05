@@ -2,11 +2,11 @@
 
 Date de decision : 2026-10-04.
 
-Etat au 2026-10-05 : les lots 0 a 3 sont termines dans le code. Le noyau couvre le
+Etat au 2026-10-05 : les lots 0 a 4 sont termines dans le code. Le noyau couvre le
 journal exact par K.O., le cycle de session, le contexte source public et la
-jonction autoritaire avec observation et composition. La recette locale a deux
-navigateurs, la boucle tactique complete, l'application idempotente et la reprise
-narrative restent a effectuer.
+jonction autoritaire avec observation, composition et boucle tactique. La recette
+locale a deux navigateurs, l'application idempotente et la reprise narrative
+restent a effectuer.
 
 Ce document decrit le raccord complet entre les combats issus de Pokemon Z, le
 moteur de combat commun et la Coop. Il complete `AI_HANDOFF.md`, la roadmap et
@@ -223,6 +223,18 @@ presente au joueur concerne.
 
 Sortie : changements, K.O., remplacement et reconnexion ne divergent jamais entre
 clients.
+
+Etat code au 2026-10-05 : implemente, recette locale a deux navigateurs encore a
+effectuer. Le protocole v12 ajoute l'intention `attemptBattleEscape` et publie le
+resultat de fuite ainsi que son compteur persistable. L'IA source, sa selection de
+capacite, les remplacements sans proprietaire et la formule de fuite vivent dans
+le noyau commun utilise par le solo et la room. Une action, un changement ou un
+remplacement est accepte uniquement du proprietaire concerne ; un changement ne
+peut pas envoyer le Pokemon d'un autre joueur. La deconnexion retire l'intention
+du proprietaire et suspend le tour jusqu'a sa reconnexion, sans pilote automatique.
+La fuite globale est reservee au proprietaire narratif. La future capture est
+bornee a un adversaire sauvage sans proprietaire et refuse donc un Pokemon invite.
+Le duel direct conserve son chemin a deux intentions sans IA source.
 
 ### Lot 5 - Resultats et recompenses par proprietaire
 

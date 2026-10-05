@@ -3,7 +3,7 @@ import { OverworldNetworkSession, type NetworkSessionCallbacks } from "../src/ne
 import { createDefaultNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
-  protocolVersion: 11,
+  protocolVersion: 12,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",
@@ -56,6 +56,7 @@ function callbacks(): NetworkSessionCallbacks {
     onBattleStarted: vi.fn(),
     onBattleTurnResolved: vi.fn(),
     onBattleReplacementResolved: vi.fn(),
+    onBattleEscaped: vi.fn(),
     onBattleClosed: vi.fn(),
     onRender: vi.fn(),
   };
@@ -95,11 +96,11 @@ describe("overworld network session", () => {
     const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff", blockedPoints: [],
       story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
       avatars: { player: { x: 1, y: 1, direction: "up" }, opponent: { x: 1, y: 2, direction: "left" } } } as const;
-    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 11, side: "opponent", sequence: 1,
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 12, side: "opponent", sequence: 1,
       revision: 1, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, false);
     expect(session.sendMovement("player", "right")).toBe(false);
-    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 11, side: "player", sequence: 1,
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 12, side: "player", sequence: 1,
       revision: 2, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, true);
     session.publishSourceScene({ mapId: 3, sequenceActive: true,

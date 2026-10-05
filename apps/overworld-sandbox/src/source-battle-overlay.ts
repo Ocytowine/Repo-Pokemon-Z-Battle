@@ -16,9 +16,11 @@ export interface SourceBattleOverlayModel {
   readonly local: boolean;
   readonly animating: boolean;
   readonly networkSide: BattleSide | null;
+  readonly controllableMemberIds: readonly string[] | null;
   readonly networkSubmittedTurn: number | null;
   readonly escapable: boolean;
   readonly capturable: boolean;
+  readonly escaped: boolean;
   readonly bag: {
     readonly balls: readonly SourceBattleBagEntry[];
     readonly medicine: readonly SourceBattleBagEntry[];
@@ -32,7 +34,7 @@ export interface SourceBattleOverlayCallbacks {
   readonly onSwitch: (teamIndex: number, local: boolean) => void;
   readonly onReplacement: (teamIndex: number) => void;
   readonly onLeave: () => void;
-  readonly onEscape: () => void;
+  readonly onEscape: (local: boolean) => void;
   readonly onDetails: (pokemonId: string) => void;
 }
 
@@ -101,6 +103,10 @@ export class SourceBattleOverlay {
       actions.querySelector<HTMLButtonElement>("#leave-player-duel")?.addEventListener("click", this.callbacks.onLeave);
       return;
     }
+    if (!model.local && model.escaped) {
+      actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>Fuite réussie</p><small>Retour au monde en préparation…</small></div>';
+      return;
+    }
     const submitted = !model.local && model.networkSubmittedTurn === model.state.turn;
     const blocked = submitted || model.animating || !model.local && model.networkSide === null;
     const replacement = !model.local && model.networkSide !== null && model.state.replacementRequired.includes("player");
@@ -124,7 +130,8 @@ export class SourceBattleOverlay {
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
       <button data-battle-menu="pokemon" class="pokemon"${disabled(blocked)}><b>●</b><span>Pokémon</span><small>${reserves} remplaçant${reserves > 1 ? "s" : ""}</small></button>
       <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
-      <button id="escape-source-encounter" class="escape"${disabled(blocked || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
+      <button id="escape-source-encounter" class="escape"${disabled(model.animating
+        || !model.local && model.networkSubmittedTurn === model.state?.turn || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
@@ -132,7 +139,7 @@ export class SourceBattleOverlay {
     }));
     actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => {
       this.menu = "root";
-      this.callbacks.onEscape();
+      this.callbacks.onEscape(model.local);
     });
   }
 
@@ -154,7 +161,8 @@ export class SourceBattleOverlay {
     blocked: boolean, replacement: boolean): void {
     const rows = team.members.map((member, index) => {
       const active = index === team.activeIndex;
-      const cannotSwitch = blocked || active || member.hp <= 0;
+      const cannotSwitch = blocked || active || member.hp <= 0
+        || model.controllableMemberIds !== null && !model.controllableMemberIds.includes(member.id);
       return `<article class="source-battle-team-row${active ? " active" : ""}"><div><strong>${escapeSourceHtml(member.name)}</strong><small>N.${member.level}${active ? " · AU COMBAT" : member.hp <= 0 ? " · K.O." : ""}</small></div><span class="source-battle-team-hp"><i><b style="width:${hpPercent(member.hp, member.stats.maxHp)}%"></b></i><em>${member.hp}/${member.stats.maxHp} PV</em></span><nav><button data-battle-details="${escapeSourceHtml(member.id)}"${disabled(model.animating)}>Détails</button><button data-${replacement ? "encounter-replacement" : "encounter-switch"}="${index}"${disabled(cannotSwitch)}>${replacement ? "Envoyer" : "Changer"}</button></nav></article>`;
     }).join("");
     actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-team"><header>${replacement ? "" : '<button data-battle-back aria-label="Retour">‹</button>'}<div><small>POKÉMON</small><strong>${replacement ? "Choisissez un remplaçant" : "Équipe et détails"}</strong></div></header><div class="source-battle-team-list">${rows}</div></div>`;

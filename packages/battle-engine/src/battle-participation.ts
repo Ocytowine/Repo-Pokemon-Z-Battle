@@ -220,6 +220,44 @@ export function activeBattleController(state: SharedBattleParticipation, side: B
   return camp.members.find((member) => member.battler.id === camp.activeMemberId)?.ownerId ?? null;
 }
 
+/**
+ * The owner of the fainted active keeps the replacement decision when they have
+ * a usable reserve. Otherwise control passes to the first trainer that can
+ * actually provide one; an unowned source reserve remains controlled by the AI.
+ */
+export function replacementBattleController(state: SharedBattleParticipation,
+  battle: TeamBattleState, side: BattleSide): string | null {
+  assertSharedBattleParticipation(state);
+  if (!battle.replacementRequired.includes(side)) throw new Error(`Aucun remplacement n'est requis pour ${side}.`);
+  const camp = state.camps[side];
+  const team = battle.teams[side];
+  const activeId = team.members[team.activeIndex]?.id;
+  const activeOwner = camp.members.find((member) => member.battler.id === activeId)?.ownerId ?? null;
+  const livingOwners = team.members.flatMap((member, index) => {
+    if (index === team.activeIndex || member.hp <= 0) return [];
+    return [camp.members.find((owned) => owned.battler.id === member.id)?.ownerId ?? null];
+  });
+  if (livingOwners.includes(activeOwner)) return activeOwner;
+  if (livingOwners.includes(null)) return null;
+  return camp.trainerIds.find((trainerId) => livingOwners.includes(trainerId)) ?? null;
+}
+
+export function battleMemberIndicesOwnedBy(state: SharedBattleParticipation, battle: TeamBattleState,
+  side: BattleSide, ownerId: string | null): readonly number[] {
+  assertSharedBattleParticipation(state);
+  const owners = new Map(state.camps[side].members.map((member) => [member.battler.id, member.ownerId]));
+  return battle.teams[side].members.flatMap((member, index) => owners.get(member.id) === ownerId ? [index] : []);
+}
+
+/** Capture is reserved for an unowned target in a source-wild battle. */
+export function canCaptureSharedBattleTarget(state: SharedBattleParticipation, battle: TeamBattleState,
+  origin: "source-wild" | "source-trainer" | "player-duel" | "room-encounter"): boolean {
+  if (origin !== "source-wild" || battle.status !== "active") return false;
+  const opponent = battle.teams.opponent.members[battle.teams.opponent.activeIndex];
+  return opponent !== undefined
+    && state.camps.opponent.members.find((member) => member.battler.id === opponent.id)?.ownerId === null;
+}
+
 export function createSharedBattleLedger(state: TeamBattleState): SharedBattleLedger {
   const player = state.teams.player.members[state.teams.player.activeIndex];
   const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];

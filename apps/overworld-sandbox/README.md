@@ -12,8 +12,12 @@ corepack pnpm prepare:local
 corepack pnpm sandbox:overworld
 ```
 
-Ouvrez `http://127.0.0.1:5174`. Bourg Canvas est sélectionnée automatiquement si
-les données locales sont prêtes. Les flèches ou ZQSD contrôlent le joueur 1 ;
+Ouvrez `http://127.0.0.1:5174`. Sans sauvegarde d'aventure, le jeu présente un
+prologue condensé et passable, les choix de difficulté/mode/région des starters et
+la personnalisation du héros. Il enchaîne ensuite sur la scène source de la calèche
+en Map002, la recherche de Christian, le choix du starter et Keunotor. Avec une
+sauvegarde, la carte et la position enregistrées sont restaurées directement.
+Les flèches ou ZQSD contrôlent le joueur 1 ;
 IJKL contrôle le joueur 2. Espace fait interagir le joueur 1 et O le joueur 2.
 
 Dans Bourg Canvas, seul le joueur 1 est actif. Son sprite et les personnages visibles

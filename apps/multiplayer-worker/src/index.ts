@@ -60,7 +60,7 @@ export class BattleRoom extends DurableObject<Env> {
       if (bundle === undefined) return;
       // Room state has explicit migrations in room-server-core. Keep accepting
       // the two persisted schemas preceding the live wire protocol.
-      if (![9, 10, PROTOCOL_VERSION].includes(bundle.room.version)) return;
+      if (![9, 10, 11, PROTOCOL_VERSION].includes(bundle.room.version)) return;
       this.#roomCode = bundle.roomCode;
       this.#identities = new Map(bundle.identities.map((entry) => [entry.playerId, entry.tokenHash]));
       this.#room = new AuthoritativeBattleRoom(bundle.roomCode, createDemoBattle, new SeededRandom(bundle.room.rngState), { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState() }, bundle.room);
