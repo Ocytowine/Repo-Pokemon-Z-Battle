@@ -42,4 +42,8 @@ Améliorations :
 
     UI sac : améliorer le rangements, créer des sous catégories pour les baies, pierre evolutives, famille d'objets, pouvoir trier les CT et CS par types, effets, puissances...
 
+    Les sprites du fangames sont un peu trops grosses, il faudrait les redimensionner pour qu'ils s'intègrent mieux à l'interface et à l'écran de jeu.
+
+    
+
 
