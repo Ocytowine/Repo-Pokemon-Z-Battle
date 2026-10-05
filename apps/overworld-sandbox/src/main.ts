@@ -17,7 +17,8 @@ import { SeededRandom, activeBattleController, canCaptureSharedBattleTarget, rep
   type BattleTeam, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
-import { SourceBattleController } from "./source-battle-controller.js";
+import { SourceBattleController, sharedBattleExperiencePresentations,
+  type SourceBattleOutcome } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
@@ -62,6 +63,7 @@ import { SourceNewGameView } from "./source-new-game-view.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMovement,
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
+import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
 import { sourceBagEntries } from "./source-bag.js";
 import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourceStateWithHostStory }
   from "./source-coop-policy.js";
@@ -138,6 +140,7 @@ let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une
 let networkServerUrl = "http://127.0.0.1:8787";
 let networkRoomCode = "";
 let networkPresentedBattle: { readonly id: string; readonly state: TeamBattleState } | null = null;
+const networkBattleOutcomes = new Map<string, SourceBattleOutcome>();
 let networkBattleAnimating = false;
 let networkBattlePresentation = Promise.resolve();
 let networkSourceWorld: SourceWorldSnapshot | null = null;
@@ -849,6 +852,26 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
       render();
     });
   },
+  onBattleSettlement: (settlement) => {
+    const assets = importedAssets;
+    const playerId = multiplayer.current?.ticket.playerId;
+    if (assets === null || playerId === undefined) return false;
+    const previousParty = sourceEventState.party;
+    const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog);
+    sourceEventState = result.state;
+    persistSourceEventState();
+    if (result.applied) networkBattleOutcomes.set(settlement.battleId, {
+      experiences: sharedBattleExperiencePresentations(previousParty, result.state.party,
+        result.gains, assets.battleCatalog),
+      ...(result.moneyDelta === 0 ? {} : { money: result.moneyDelta }),
+    });
+    const experience = result.gains.reduce((total, gain) => total + gain.gained, 0);
+    importedNotice = result.applied
+      ? `Combat réglé · ${experience} EXP${result.moneyDelta === 0 ? "" : ` · ${result.moneyDelta > 0 ? "+" : ""}${result.moneyDelta} ₽`}.`
+      : "Résultat de combat déjà enregistré.";
+    render();
+    return true;
+  },
   onBattleClosed: closeNetworkBattlePresentation,
   onRender: render,
 });
@@ -909,7 +932,9 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
     networkPresentedBattle = { id: battleId, state };
     const presented = networkBattleForViewer(state, side);
     await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
-    if (state.status === "finished") await sourceBattleVisuals.endBattle(presented.winner);
+    if (state.status === "finished") {
+      await sourceBattleVisuals.endBattle(presented.winner, networkBattleOutcomes.get(battleId));
+    }
     if (networkPresentedBattle?.id === battleId) {
       networkBattleAnimating = false;
       render();
@@ -925,6 +950,7 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
 function closeNetworkBattlePresentation(battleId: string): void {
   if (networkPresentedBattle?.id !== battleId) return;
   networkPresentedBattle = null;
+  networkBattleOutcomes.delete(battleId);
   networkBattleAnimating = false;
   sourceBattleVisuals.setOpponentTrainerImage(null);
   sourceBattleVisuals.setPlayerTrainerImage(sourcePlayerVisuals?.battleBack ?? null);
@@ -1610,6 +1636,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
     sourceEventState = { ...sourceEventState, party: reconciled.party, ranch: reconciled.storage };
     persistSourceEventState();
   }
+  multiplayer.retryBattleSettlement();
   importedAvatar = world.avatar;
   importedPlayerMotion = null;
   heldMovementKeys.clear();

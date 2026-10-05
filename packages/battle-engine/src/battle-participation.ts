@@ -366,11 +366,10 @@ export function recordSharedBattleTurn(ledger: SharedBattleLedger, before: TeamB
 }
 
 /** Produces the tactical, non-persistent part of one participant's final settlement. */
-export function sharedBattleOwnerSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
-  ledger: SharedBattleLedger, ownerId: string): SharedBattleOwnerSettlement {
+function ownerSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
+  ledger: SharedBattleLedger, ownerId: string, won: boolean): SharedBattleOwnerSettlement {
   assertSharedBattleParticipation(participation);
   requireIdentifier(ownerId, "Le propriétaire du règlement");
-  if (state.status !== "finished" || state.winner === null) throw new Error("Le combat doit être terminé avant son règlement.");
   const ownerSides = BATTLE_SIDES.filter((side) => participation.camps[side].trainerIds.includes(ownerId));
   if (ownerSides.length !== 1) throw new Error("Le propriétaire du règlement doit appartenir à un seul camp.");
   const side = ownerSides[0]!;
@@ -394,5 +393,19 @@ export function sharedBattleOwnerSettlement(participation: SharedBattleParticipa
       participantCount: credit.eligibleMemberIds.length,
       recipientMemberIds: credit.eligibleMemberIds.filter((id) => ownedIds.includes(id)) };
   }).filter((credit) => credit.recipientMemberIds.length > 0);
-  return { ownerId, side, won: state.winner === side, resourceMemberIds: ownedIds, defeatCredits };
+  return { ownerId, side, won, resourceMemberIds: ownedIds, defeatCredits };
+}
+
+export function sharedBattleOwnerSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
+  ledger: SharedBattleLedger, ownerId: string): SharedBattleOwnerSettlement {
+  if (state.status !== "finished" || state.winner === null) throw new Error("Le combat doit être terminé avant son règlement.");
+  const side = BATTLE_SIDES.find((candidate) => participation.camps[candidate].trainerIds.includes(ownerId));
+  return ownerSettlement(participation, state, ledger, ownerId, side !== undefined && state.winner === side);
+}
+
+/** Produces the same owner-scoped resources and K.O. credits when a wild battle ends by escape. */
+export function sharedBattleOwnerEscapeSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
+  ledger: SharedBattleLedger, ownerId: string): SharedBattleOwnerSettlement {
+  if (state.status !== "active") throw new Error("La fuite doit être réglée depuis un combat actif.");
+  return ownerSettlement(participation, state, ledger, ownerId, false);
 }

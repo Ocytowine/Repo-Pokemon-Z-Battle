@@ -9,6 +9,9 @@ export { parseSourceSceneSnapshot, type SourceSceneActorSnapshot, type SourceSce
   type SourceScenePresentationCue, type SourceSceneSnapshot } from "./source-scene.js";
 export { parseSourceBattleContext, type SourceBattleContext, type SourceBattleExperiencePolicy,
   type SourceBattleRewardOpponent } from "./source-battle.js";
+export { type SourceBattleItemSettlement, type SourceBattleMoneySettlement,
+  type SourceBattleSettlement, type SourceBattleSettlementExperiencePolicy,
+  type SourceBattleSettlementOutcome } from "./source-battle-settlement.js";
 export {
   MAX_CLIENT_MESSAGE_BYTES,
   PROTOCOL_VERSION,

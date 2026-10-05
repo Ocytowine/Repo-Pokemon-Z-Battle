@@ -217,7 +217,8 @@ export class SourceBattleVisuals {
     if (winner === "player") {
       this.message("Victoire !");
       await delay(700);
-      if (outcome.experience !== undefined) await this.playExperience(outcome.experience, session);
+      const experiences = outcome.experiences ?? (outcome.experience === undefined ? [] : [outcome.experience]);
+      for (const experience of experiences) await this.playExperience(experience, session);
       if (outcome.money !== undefined && outcome.money > 0) {
         this.message(`Vous remportez ${outcome.money.toLocaleString("fr-FR")} ₽ !`);
         await delay(850);

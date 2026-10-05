@@ -6,6 +6,7 @@ import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, 
   SourceWorldSnapshot } from "./source-world.js";
 import type { SourceSceneSnapshot } from "./source-scene.js";
 import type { SourceBattleContext } from "./source-battle.js";
+import type { SourceBattleSettlement } from "./source-battle-settlement.js";
 
 export const PROTOCOL_VERSION = 12 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
@@ -89,6 +90,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (RequestedMessage & { readonly type: "openSourceBattle"; readonly context: SourceBattleContext;
       readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam })
+  | (RequestedMessage & { readonly type: "ackBattleSettlement"; readonly settlementId: string })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
 
 export type ProtocolErrorCode =
@@ -113,6 +115,7 @@ export type ServerMessage =
       readonly side: BattleSide;
       readonly reconnectToken: string;
       readonly snapshot: RoomSnapshot;
+      readonly settlement: SourceBattleSettlement | null;
     })
   | (VersionedMessage & { readonly type: "snapshot"; readonly snapshot: RoomSnapshot })
   | (VersionedMessage & { readonly type: "ack"; readonly requestId: string; readonly revision: number })
@@ -130,6 +133,7 @@ export type ServerMessage =
       readonly events: readonly TeamBattleEvent[];
     })
   | (VersionedMessage & { readonly type: "battleEscaped"; readonly battleId: string; readonly turn: number })
+  | (VersionedMessage & { readonly type: "battleSettlement"; readonly settlement: SourceBattleSettlement })
   | (VersionedMessage & {
       readonly type: "worldUpdated";
       readonly side: BattleSide;

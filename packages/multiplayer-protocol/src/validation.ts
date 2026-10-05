@@ -291,6 +291,12 @@ export function parseClientMessage(payload: string): ClientMessage {
       } catch {
         return invalid("openSourceBattle mal forme");
       }
+    case "ackBattleSettlement":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "settlementId"])
+        || !isIdentifier(value.requestId) || !isIdentifier(value.settlementId)) {
+        return invalid("ackBattleSettlement mal forme");
+      }
+      return value as unknown as ClientMessage;
     case "ping":
       if (!hasExactKeys(value, ["type", "version", "nonce"]) || !isIdentifier(value.nonce)) return invalid("ping mal formé");
       return value as unknown as ClientMessage;

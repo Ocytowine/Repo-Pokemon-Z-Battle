@@ -1,7 +1,8 @@
 import { closeSharedBattleSession, createSharedBattleSession, SeededRandom, settleEscapedSharedBattleSession,
   settleSharedBattleSession, type BattleSide, type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState,
+  type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   applyAutomaticReplacements,
@@ -50,7 +51,27 @@ export interface SourceBattleExperiencePresentation {
 
 export interface SourceBattleOutcome {
   readonly experience?: SourceBattleExperiencePresentation;
+  readonly experiences?: readonly SourceBattleExperiencePresentation[];
   readonly money?: number;
+}
+
+export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
+  gains: readonly SharedBattleExperienceGain[], catalog: PlayerCreationCatalog,
+): readonly SourceBattleExperiencePresentation[] {
+  return gains.flatMap((gain) => {
+    const previous = before.members.find((pokemon) => pokemon.id === gain.recipientMemberId);
+    const next = after.members.find((pokemon) => pokemon.id === gain.recipientMemberId);
+    const definition = next === undefined ? undefined
+      : catalog.pokemon.find((pokemon) => pokemon.internalName === next.species);
+    if (previous === undefined || next === undefined || definition === undefined) return [];
+    const moveName = (internalName: string): string => catalog.moves
+      .find((move) => move.internalName === internalName)?.name ?? internalName;
+    return [{ pokemonName: next.nickname ?? definition.name, amount: gain.gained,
+      beforeLevel: gain.previousLevel, afterLevel: gain.nextLevel,
+      beforeExperience: Math.max(previous.experience, experienceAtLevel(previous.level, definition.growthRate)),
+      afterExperience: next.experience, growthRate: definition.growthRate,
+      learnedMoves: gain.learnedMoves.map(moveName), skippedMoves: gain.skippedMoves.map(moveName) }];
+  });
 }
 
 function battleExperiencePresentation(before: PlayerPartyState, after: PlayerPartyState,

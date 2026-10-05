@@ -1166,6 +1166,30 @@ remplacement source automatique et suspension/reprise apres deconnexion. La rece
 manuelle a deux navigateurs reste ouverte. Le prochain lot est le reglement
 personnel idempotent (lot 5), avant la fermeture et la reprise narrative du lot 6.
 
+Lot 5 implemente dans le code le 2026-10-05 : la room genere un
+`SourceBattleSettlement` immuable et autoportant par proprietaire lors d'une fin
+ou d'une fuite source. Son audience est strictement personnelle. Il contient
+l'etat tactique final, la participation, les credits de K.O., la politique d'EXP,
+l'argent autorise et un emplacement borne pour les objets. Le client applique
+d'abord `storeOwnedBattleResults`, puis `applySharedBattleExperience` sur les
+Pokemon persistants existants ; il ne reconstruit jamais une creature depuis le
+reseau. Le proprietaire narratif recoit seul l'argent de Dresseur ou sa politique
+de perte/soin apres defaite. Les objets restent vides : les raretes appartiennent
+a la continuation narrative de l'hote et les gains `PERSONAL_EACH` attendent un
+manifeste source explicite.
+
+`SourceEventState.appliedBattleSettlementIds` garde un journal compact de 128
+entrees, migre les anciennes sauvegardes et rend application puis accuse
+idempotents. La room persiste tous les reglements non accuses, en joint un au
+`welcome` et remet le suivant apres chaque accuse. Un invite absent ne bloque donc
+pas la sauvegarde de l'hote et retrouve son resultat a la reconnexion. La fin de
+combat sait afficher une liste de gains d'EXP personnels. Tests ajoutes : fusion
+des seules ressources possedees, preservation des metadonnees, doublon sans effet,
+fuite persistante, deux proprietaires, invite deconnecte et accuse independant.
+Le combat source reste volontairement en `settling` : le prochain travail est le
+lot 6 (continuation unique de l'hote, fermeture autoritaire, retour overworld et
+presentation finale complete).
+
 Recette manuelle : connecter deux onglets possedant chacun une equipe, placer les
 avatars sur deux cases adjacentes et orienter l'un vers l'autre. Interagir, verifier
 l'acceptation et le refus, puis jouer un combat complet depuis les deux onglets,
@@ -1183,7 +1207,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 394 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 396 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

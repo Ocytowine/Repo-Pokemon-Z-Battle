@@ -822,6 +822,16 @@ peut demander une fuite sauvage ; tentative, resultat et compteur survivent a la
 restauration de room. La regle de capture future refuse deja toute cible possedee
 par un invite. La validation manuelle a deux navigateurs reste ouverte.
 
+Sixieme increment du plan implemente le 2026-10-05 : le lot 5 regle chaque
+participant separement. La room fige un resultat autoportant par proprietaire,
+adresse seulement au joueur concerne et le conserve jusqu'a son accuse, y compris
+apres export/restauration et deconnexion. Le client fusionne ressources puis EXP
+dans ses Pokemon persistants, applique l'argent narratif autorise et journalise les
+128 derniers identifiants avant l'accuse. Un doublon ou une reconnexion ne peut
+donc pas rejouer un gain. Plusieurs reglements en retard sont remis l'un apres
+l'autre sans bloquer l'hote. La presentation de fin accepte desormais plusieurs
+gains d'EXP. Objets rares et continuation de l'histoire restent reserves au lot 6.
+
 ### Increment 9.6 - Rencontres sauvages du monde
 
 - [x] exposer le terrain effectif de chaque case selon les trois couches et les

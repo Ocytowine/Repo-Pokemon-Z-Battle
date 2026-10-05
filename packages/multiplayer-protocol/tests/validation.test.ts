@@ -53,9 +53,13 @@ describe("multiplayer protocol", () => {
     expect(parseClientMessage('{"type":"setReady","version":12,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
     expect(parseClientMessage('{"type":"requestSnapshot","version":12,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
     expect(parseClientMessage('{"type":"ping","version":12,"nonce":"n1"}')).toMatchObject({ type: "ping" });
+    expect(parseClientMessage('{"type":"ackBattleSettlement","version":12,"requestId":"r3","settlementId":"battle-1-player"}'))
+      .toMatchObject({ type: "ackBattleSettlement", settlementId: "battle-1-player" });
     expect(() => parseClientMessage('{"type":"ping","version":1,"nonce":"n1"}')).toThrow("version de protocole");
     expect(() => parseClientMessage('{"type":"setReady","version":12,"requestId":"r1","ready":1}')).toThrow("setReady mal formé");
     expect(() => parseClientMessage('{"type":"submitAction","version":12,"requestId":"r1","battleId":"b1","turn":1,"action":{"kind":"move","moveIndex":4}}')).toThrow("submitAction mal formé");
+    expect(() => parseClientMessage('{"type":"ackBattleSettlement","version":12,"requestId":"r3","settlementId":"bad id"}'))
+      .toThrow("ackBattleSettlement mal forme");
   });
 
   it("accepts team switches and forced replacements", () => {

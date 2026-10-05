@@ -2,7 +2,7 @@ export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
 export { activeBattleController, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
   battleMemberIndicesOwnedBy, canCaptureSharedBattleTarget, replacementBattleController,
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
-  restoreSharedBattleLedger, sharedBattleOwnerSettlement } from "./battle-participation.js";
+  restoreSharedBattleLedger, sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
 export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,
   chooseSourceBattleReplacement } from "./battle-tactics.js";

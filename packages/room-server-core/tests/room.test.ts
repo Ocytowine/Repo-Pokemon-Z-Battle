@@ -498,13 +498,58 @@ describe("authoritative battle room", () => {
       battleId: battle.id, turn: 1 })[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
     const escaped = room.receive("alice", { type: "attemptBattleEscape", version: 12,
       requestId: "escape-host", battleId: battle.id, turn: 1 });
-    expect(escaped.map((entry) => entry.message.type)).toEqual(["ack", "battleEscaped", "snapshot"]);
+    expect(escaped.map((entry) => entry.message.type)).toEqual(["ack", "battleSettlement", "battleEscaped", "snapshot"]);
+    const settlement = escaped.find((entry) => entry.message.type === "battleSettlement")?.message;
+    expect(settlement).toMatchObject({ type: "battleSettlement", settlement: { ownerId: "alice",
+      battleId: battle.id, outcome: "escaped", money: { kind: "none" }, healParty: false } });
     expect(room.snapshot()).toMatchObject({ phase: "finished", battle: { escaped: true, escapeAttempts: 1,
       session: { lifecycle: "settling", settlementId: `${battle.id}:settlement` } } });
     const persisted = room.exportState();
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle,
       new SeededRandom(persisted.rngState), worldWithSource, persisted);
     expect(restored.snapshot().battle).toMatchObject({ escaped: true, escapeAttempts: 1 });
+    expect(restored.connect("alice").settlement).toMatchObject({ battleId: battle.id, ownerId: "alice" });
+    expect(restored.receive("alice", { type: "ackBattleSettlement", version: 12,
+      requestId: "escape-settlement-ack", settlementId: `${battle.id}-alice` })[0]?.message).toMatchObject({ type: "ack" });
+    expect(restored.connect("alice").settlement).toBeNull();
+  });
+
+  it("keeps one private settlement per owner while a disconnected guest catches up", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(4), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    const opponentTeam = { ...initial.teams.opponent,
+      members: initial.teams.opponent.members.map((member) => ({ ...member, hp: 1 })) };
+    room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "settlement-open",
+      context: sourceBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam });
+    const battleId = room.snapshot().battle!.id;
+    const guest = { ...battler("player"), id: "guest-mon" };
+    room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "settlement-join", battleId,
+      side: "player", team: { activeIndex: 0, members: [guest] }, finalMemberIds: ["player", guest.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 12, requestId: "settlement-accept",
+      battleId, accept: true });
+    room.receive("alice", { type: "closeBattleJoinWindow", version: 12, requestId: "settlement-close", battleId });
+    room.disconnect("bob");
+    const resolved = room.receive("alice", { type: "submitAction", version: 12,
+      requestId: "settlement-win", battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const settlements = resolved.filter((entry) => entry.message.type === "battleSettlement");
+    expect(settlements).toHaveLength(2);
+    expect(settlements.map((entry) => entry.audience)).toEqual([
+      { playerId: "alice" }, { playerId: "bob" },
+    ]);
+    expect(room.connect("alice").settlement).toMatchObject({ outcome: "won", ownerId: "alice" });
+    expect(room.connect("bob").settlement).toMatchObject({ outcome: "won", ownerId: "bob" });
+    room.receive("alice", { type: "ackBattleSettlement", version: 12,
+      requestId: "settlement-host-ack", settlementId: `${battleId}-alice` });
+    expect(room.connect("alice").settlement).toBeNull();
+    expect(room.connect("bob").settlement).not.toBeNull();
+    expect(room.receive("alice", { type: "ackBattleSettlement", version: 12,
+      requestId: "settlement-host-ack-again", settlementId: `${battleId}-alice` })[0]?.message)
+      .toMatchObject({ type: "ack" });
+    expect(room.receive("bob", { type: "ackBattleSettlement", version: 12,
+      requestId: "settlement-wrong-owner", settlementId: `${battleId}-alice` })[0]?.message)
+      .toMatchObject({ type: "error", code: "UNAUTHORIZED" });
   });
 
   it("suspends an owned active after disconnect and resumes the same turn", () => {

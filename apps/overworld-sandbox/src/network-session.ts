@@ -1,7 +1,8 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
-  type SourceBattleContext, type SourceFollowerSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
+  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
@@ -30,6 +31,7 @@ interface MutableNetworkSession {
   submittedTurn: number | null;
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
+  pendingSettlement: SourceBattleSettlement | null;
 }
 
 export interface NetworkSessionView {
@@ -59,6 +61,7 @@ export interface NetworkSessionCallbacks {
   readonly onBattleReplacementResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
     events: readonly TeamBattleEvent[]) => void;
   readonly onBattleEscaped: (battleId: string, state: TeamBattleState) => void;
+  readonly onBattleSettlement: (settlement: SourceBattleSettlement) => boolean;
   readonly onBattleClosed: (battleId: string) => void;
   readonly onRender: () => void;
 }
@@ -209,6 +212,27 @@ export class OverworldNetworkSession {
     this.sendRequest({ type: "respondPlayerChallenge", accept, team });
   }
 
+  public retryBattleSettlement(): void {
+    const session = this.activeSession;
+    if (session?.pendingSettlement !== null && session?.pendingSettlement !== undefined) {
+      this.applyBattleSettlement(session, session.pendingSettlement);
+    }
+  }
+
+  private applyBattleSettlement(session: MutableNetworkSession, settlement: SourceBattleSettlement): void {
+    if (settlement.ownerId !== session.ticket.playerId) throw new Error("Règlement de combat destiné à un autre joueur.");
+    session.pendingSettlement = settlement;
+    if (!this.callbacks.onBattleSettlement(settlement)) {
+      this.setStatus("Règlement en attente", "Les données Pokémon locales ne sont pas encore disponibles.");
+      return;
+    }
+    session.pendingSettlement = null;
+    const socket = session.socket;
+    if (socket === null || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify({ type: "ackBattleSettlement", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), settlementId: settlement.settlementId }));
+  }
+
   /** Returns true only when the host handed this source battle to the authoritative room. */
   public openSourceBattle(draft: SourceBattleNetworkDraft): boolean {
     const session = this.activeSession;
@@ -319,6 +343,7 @@ export class OverworldNetworkSession {
       submittedTurn: null,
       profile,
       sourceFollowerSignature: undefined,
+      pendingSettlement: null,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -389,6 +414,7 @@ export class OverworldNetworkSession {
           }
           session.reconnectAttempt = 0;
           this.applySnapshot(message.snapshot, false);
+          if (message.settlement !== null) this.applyBattleSettlement(session, message.settlement);
           this.updateProfile(session.profile);
           this.setStatus(session.ticket.side === "player" ? "Joueur 1" : "Joueur 2", `Room ${session.ticket.roomCode} restaurée. Le serveur contrôle les déplacements.`);
         } else if (message.type === "snapshot") {
@@ -462,6 +488,8 @@ export class OverworldNetworkSession {
           this.callbacks.onBattleEscaped(message.battleId, snapshot.battle.state);
           this.setStatus("Fuite réussie", "Retour au monde de l'hôte en préparation.");
           this.callbacks.onRender();
+        } else if (message.type === "battleSettlement") {
+          this.applyBattleSettlement(session, message.settlement);
         } else if (message.type === "error") {
           session.submittedTurn = null;
           session.pendingMovementSequence = null;

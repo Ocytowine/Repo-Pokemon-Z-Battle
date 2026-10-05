@@ -1,0 +1,46 @@
+import { applySharedBattleExperience, healPlayerParty, storeOwnedBattleResults,
+  type PlayerCreationCatalog, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
+import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
+import { SOURCE_BAG_SLOT_LIMIT, addSourceMoney, sourceDefeatLoss } from "./source-economy.js";
+import type { SourceEventState } from "./source-event-state.js";
+
+export interface AppliedSourceBattleSettlement {
+  readonly state: SourceEventState;
+  readonly applied: boolean;
+  readonly gains: readonly SharedBattleExperienceGain[];
+  readonly moneyDelta: number;
+}
+
+const SETTLEMENT_JOURNAL_LIMIT = 128;
+
+/** Applies one owner-scoped settlement atomically and at most once to the personal save. */
+export function applySourceBattleSettlement(state: SourceEventState, settlement: SourceBattleSettlement,
+  playerId: string, catalog: PlayerCreationCatalog): AppliedSourceBattleSettlement {
+  if (settlement.ownerId !== playerId || settlement.tactical.ownerId !== playerId) {
+    throw new Error("Le règlement de combat appartient à un autre joueur.");
+  }
+  if (state.appliedBattleSettlementIds.includes(settlement.settlementId)) {
+    return { state, applied: false, gains: [], moneyDelta: 0 };
+  }
+  let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId);
+  const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience);
+  party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
+  let next = { ...state, party };
+  const previousMoney = next.money;
+  if (settlement.money.kind === "fixed") next = addSourceMoney(next, settlement.money.amount);
+  else if (settlement.money.kind === "source-defeat") {
+    next = { ...next, money: Math.max(0, next.money - sourceDefeatLoss(next)) };
+  }
+  const inventory = { ...next.inventory };
+  for (const reward of settlement.items) {
+    if (!Number.isSafeInteger(reward.quantity) || reward.quantity < 1 || reward.itemId.length === 0) {
+      throw new Error("Récompense d'objet invalide.");
+    }
+    inventory[reward.itemId] = Math.min(SOURCE_BAG_SLOT_LIMIT,
+      (inventory[reward.itemId] ?? 0) + reward.quantity);
+  }
+  const appliedBattleSettlementIds = [...next.appliedBattleSettlementIds, settlement.settlementId]
+    .slice(-SETTLEMENT_JOURNAL_LIMIT);
+  next = { ...next, inventory, appliedBattleSettlementIds };
+  return { state: next, applied: true, gains: experience.gains, moneyDelta: next.money - previousMoney };
+}

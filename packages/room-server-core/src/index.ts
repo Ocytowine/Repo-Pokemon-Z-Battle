@@ -4,6 +4,7 @@ import { activateSharedBattleSession, activeBattleController, applyBattleJoin, a
   closeSharedBattleSession, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
   proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedPokemon, resolveTeamTurn,
   settleEscapedSharedBattleSession, settleSharedBattleSession,
+  sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement,
   type BattleJoinProposal,
   restoreSharedBattleLedger,
   type BattleSide, type BattleTeam, type BattlerState, type SharedBattleCamp, type SharedBattleLedger,
@@ -12,7 +13,7 @@ import { activateSharedBattleSession, activeBattleController, applyBattleJoin, a
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
   type SourceBattleContext, type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState,
-  type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+  type SourceBattleSettlement, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
 interface RoomPlayer {
@@ -33,6 +34,7 @@ export interface RoomConnection {
   readonly side: BattleSide;
   readonly snapshot: RoomSnapshot;
   readonly reconnected: boolean;
+  readonly settlement: SourceBattleSettlement | null;
 }
 
 export interface PersistedRoomState {
@@ -68,6 +70,8 @@ export interface PersistedRoomState {
   readonly sourceBattleContext?: SourceBattleContext | null;
   readonly battleEscaped?: boolean;
   readonly escapeAttempts?: number;
+  readonly pendingBattleSettlements?: readonly SourceBattleSettlement[];
+  readonly acknowledgedBattleSettlements?: readonly (readonly [string, string])[];
 }
 
 export interface EncounterContext {
@@ -123,6 +127,8 @@ export class AuthoritativeBattleRoom {
   #sourceBattleContext: SourceBattleContext | null = null;
   #battleEscaped = false;
   #escapeAttempts = 0;
+  readonly #pendingBattleSettlements = new Map<string, SourceBattleSettlement>();
+  readonly #acknowledgedBattleSettlements = new Map<string, string>();
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState, rng: StatefulRandomSource, world: RoomWorldDefinition, persisted?: PersistedRoomState) {
     this.#roomCode = roomCode;
@@ -149,6 +155,12 @@ export class AuthoritativeBattleRoom {
       this.#sourceBattleContext = persisted.sourceBattleContext ?? null;
       this.#battleEscaped = persisted.battleEscaped ?? false;
       this.#escapeAttempts = persisted.escapeAttempts ?? 0;
+      for (const settlement of persisted.pendingBattleSettlements ?? []) {
+        this.#pendingBattleSettlements.set(settlement.settlementId, settlement);
+      }
+      for (const [settlementId, ownerId] of persisted.acknowledgedBattleSettlements ?? []) {
+        this.#acknowledgedBattleSettlements.set(settlementId, ownerId);
+      }
       if (persisted.battleSession !== undefined && persisted.battleSession !== null) {
         this.#battleSession = persisted.battleSession;
       } else if (persisted.battleId !== null && persisted.battleState !== null) {
@@ -179,7 +191,8 @@ export class AuthoritativeBattleRoom {
 
   public reserve(playerId: string, profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile()): RoomConnection {
     const existing = this.#players.get(playerId);
-    if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true };
+    if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
+      settlement: this.pendingBattleSettlement(existing.playerId) };
     const usedSides = new Set([...this.#players.values()].map((player) => player.side));
     const side: BattleSide | undefined = usedSides.has("player") ? (usedSides.has("opponent") ? undefined : "opponent") : "player";
     if (side === undefined) throw new Error("ROOM_FULL");
@@ -193,7 +206,7 @@ export class AuthoritativeBattleRoom {
         avatars: { ...current.avatars, opponent: this.sourceSpawn(hostState) } };
     }
     this.#revision += 1;
-    return { side, snapshot: this.snapshot(), reconnected: false };
+    return { side, snapshot: this.snapshot(), reconnected: false, settlement: null };
   }
 
   public connect(playerId: string): RoomConnection {
@@ -203,7 +216,8 @@ export class AuthoritativeBattleRoom {
         existing.connected = true;
         this.#revision += 1;
       }
-      return { side: existing.side, snapshot: this.snapshot(), reconnected: true };
+      return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
+        settlement: this.pendingBattleSettlement(existing.playerId) };
     }
     this.reserve(playerId);
     return this.connect(playerId);
@@ -296,6 +310,8 @@ export class AuthoritativeBattleRoom {
       sourceBattleContext: this.#sourceBattleContext,
       battleEscaped: this.#battleEscaped,
       escapeAttempts: this.#escapeAttempts,
+      pendingBattleSettlements: [...this.#pendingBattleSettlements.values()],
+      acknowledgedBattleSettlements: [...this.#acknowledgedBattleSettlements.entries()].slice(-128),
     };
   }
 
@@ -328,6 +344,9 @@ export class AuthoritativeBattleRoom {
     }
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "openSourceBattle") return this.openSourceBattle(player, message);
+    if (message.type === "ackBattleSettlement") {
+      return this.ackBattleSettlement(player, message.requestId, message.settlementId);
+    }
     if (message.type === "moveAvatar") return this.moveAvatar(player, message);
     if (message.type === "interact") return this.interact(player, message.requestId);
     if (message.type === "challengePlayer") return this.challengePlayer(player, message.requestId, message.team);
@@ -594,6 +613,7 @@ export class AuthoritativeBattleRoom {
     if (this.#battleState.status === "finished" && this.#battleState.winner !== null && source !== null) {
       if (this.#battleSession === null) throw new Error("Session de combat source absente.");
       this.#battleSession = settleSharedBattleSession(this.#battleSession, this.#battleState);
+      this.createSourceBattleSettlements(false, output);
       this.#revision += 1;
     } else if (this.#battleState.status === "finished" && this.#battleState.winner !== null && encounter !== null) {
       this.#worldState = {
@@ -662,6 +682,7 @@ export class AuthoritativeBattleRoom {
       this.#battleEscaped = true;
       this.#pendingActions.clear();
       this.#battleSession = settleEscapedSharedBattleSession(activeSession);
+      this.createSourceBattleSettlements(true, output);
       this.#revision += 1;
       output.push({ audience: "all", message: { type: "battleEscaped", version: PROTOCOL_VERSION,
         battleId: this.#battleId, turn: state.turn } });
@@ -1189,6 +1210,87 @@ export class AuthoritativeBattleRoom {
     this.#revision += 1;
     output.push({ audience: "all", message: { type: "replacementResolved", version: PROTOCOL_VERSION,
       battleId: this.#battleId, state: result.state, events: result.events } });
+  }
+
+  private createSourceBattleSettlements(escaped: boolean, output: RoomDispatch[]): void {
+    const battleId = this.#battleId;
+    const state = this.#battleState;
+    const participation = this.#battleParticipation;
+    const ledger = this.#battleLedger;
+    const context = this.#sourceBattleContext;
+    if (battleId === null || state === null || participation === null || ledger === null || context === null) return;
+    const owners = [...new Set([...participation.camps.player.trainerIds,
+      ...participation.camps.opponent.trainerIds])];
+    const narrativeSide = (["player", "opponent"] as const).find((side) =>
+      participation.camps[side].trainerIds.includes(context.narrativeOwnerId));
+    const trainerReward = context.origin !== "source-trainer" || context.rewards.trainerBaseMoney === null ? 0
+      : Math.max(0, ...context.rewards.opponents.map((opponent) => opponent.level))
+        * context.rewards.trainerBaseMoney;
+    for (const ownerId of owners) {
+      const tactical = escaped
+        ? sharedBattleOwnerEscapeSettlement(participation, state, ledger, ownerId)
+        : sharedBattleOwnerSettlement(participation, state, ledger, ownerId);
+      const ownerIsNarrative = ownerId === context.narrativeOwnerId;
+      const narrativeWon = !escaped && narrativeSide !== undefined && state.winner === narrativeSide;
+      const money = !ownerIsNarrative || escaped ? { kind: "none" as const }
+        : narrativeWon && trainerReward > 0 ? { kind: "fixed" as const, amount: trainerReward }
+          : !narrativeWon ? { kind: "source-defeat" as const } : { kind: "none" as const };
+      const settlement: SourceBattleSettlement = {
+        settlementId: `${battleId}-${ownerId}`,
+        battleId,
+        ownerId,
+        narrativeOwnerId: context.narrativeOwnerId,
+        outcome: escaped ? "escaped" : tactical.won ? "won" : "lost",
+        tactical,
+        participation,
+        state,
+        experience: { ...context.rewards.experience, trainerBattle: context.origin === "source-trainer" },
+        money,
+        items: [],
+        healParty: ownerIsNarrative && !escaped && !narrativeWon,
+      };
+      this.#pendingBattleSettlements.set(settlement.settlementId, settlement);
+      output.push({ audience: { playerId: ownerId },
+        message: { type: "battleSettlement", version: PROTOCOL_VERSION, settlement } });
+    }
+  }
+
+  private ackBattleSettlement(player: RoomPlayer, requestId: string,
+    settlementId: string): readonly RoomDispatch[] {
+    const pending = this.#pendingBattleSettlements.get(settlementId);
+    if (pending === undefined) {
+      const acknowledgedOwnerId = this.#acknowledgedBattleSettlements.get(settlementId);
+      if (acknowledgedOwnerId === undefined) {
+        return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucun règlement personnel en attente.")];
+      }
+      if (acknowledgedOwnerId !== player.playerId) {
+        return [this.error(player.playerId, requestId, "UNAUTHORIZED", "Ce règlement appartient à un autre joueur.")];
+      }
+    } else {
+      if (pending.settlementId !== settlementId || pending.ownerId !== player.playerId) {
+        return [this.error(player.playerId, requestId, "UNAUTHORIZED", "Ce règlement appartient à un autre joueur.")];
+      }
+      this.#pendingBattleSettlements.delete(settlementId);
+      this.#acknowledgedBattleSettlements.set(settlementId, player.playerId);
+      while (this.#acknowledgedBattleSettlements.size > 128) {
+        const oldest = this.#acknowledgedBattleSettlements.keys().next().value as string | undefined;
+        if (oldest === undefined) break;
+        this.#acknowledgedBattleSettlements.delete(oldest);
+      }
+      this.#revision += 1;
+    }
+    const output: RoomDispatch[] = [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+    ];
+    const next = this.pendingBattleSettlement(player.playerId);
+    if (next !== null) output.push({ audience: { playerId: player.playerId },
+      message: { type: "battleSettlement", version: PROTOCOL_VERSION, settlement: next } });
+    return output;
+  }
+
+  private pendingBattleSettlement(playerId: string): SourceBattleSettlement | null {
+    return [...this.#pendingBattleSettlements.values()]
+      .find((settlement) => settlement.ownerId === playerId) ?? null;
   }
 
   private acknowledge(player: RoomPlayer, requestId: string): ServerMessage {

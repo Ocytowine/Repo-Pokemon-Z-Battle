@@ -177,9 +177,9 @@ participation, journal et session atomiquement, puis conserve le resultat en
 `settling` a travers export/restauration. Le solo traverse le meme cycle pur,
 y compris lors d'une fuite sauvage.
 
-Dette volontaire : le reglement personnel, les accuses idempotents, la fermeture
-du combat source et la reprise de sa continuation appartiennent aux lots 5 et 6.
-La fuite reseau et l'IA autre que la premiere capacite appartiennent au lot 4.
+Dette volontaire : la fermeture du combat source et la reprise de sa continuation
+appartiennent au lot 6. Les objets de combat, raretes narratives et recompenses
+`PERSONAL_EACH` seront raccordes lorsque leur manifeste source existera.
 
 ### Lot 3 - Finaliser jonction et composition
 
@@ -252,6 +252,27 @@ Le duel direct conserve son chemin a deux intentions sans IA source.
 
 Sortie : chaque sauvegarde conserve uniquement ses changements, meme apres
 rechargement ou message repete.
+
+Etat code au 2026-10-05 : implemente, recette locale a deux navigateurs encore a
+effectuer. La room produit a la fin ou a la fuite un `SourceBattleSettlement`
+immuable et autoportant pour chaque proprietaire participant. Ce message cible
+uniquement le joueur concerne et contient l'etat tactique final, la participation,
+ses credits de K.O., la politique d'EXP et les seules recompenses autorisees. Les
+PV/statuts/PP sont fusionnes avec `storeOwnedBattleResults`, puis l'EXP est
+appliquee aux Pokemon persistants existants ; aucune copie reseau ne reconstruit
+un Pokemon. L'argent de Dresseur ou la perte personnelle du proprietaire narratif
+suit la politique source. Les objets sont prevus par le contrat mais restent vides
+tant qu'aucune recompense de combat publique ne les decrit ; les objets rares
+continuent donc par la narration de l'hote au lot 6.
+
+`SourceEventState` conserve les 128 derniers identifiants appliques. Un message
+repete est accuse sans rejouer ressources, EXP, argent ou objets. La room persiste
+tous les reglements non accuses, en remet un au `welcome`, puis envoie le suivant
+apres chaque accuse : un invite deconnecte ne bloque pas l'hote et rattrape sa
+sauvegarde a la reconnexion. La presentation accepte maintenant une liste de gains
+d'EXP et l'adaptateur reseau la construit par Pokemon. Le combat reste en
+`settling` : fermeture, continuation narrative et publication finale du monde
+appartiennent toujours au lot 6.
 
 ### Lot 6 - Reprise de l'histoire et presentation
 
