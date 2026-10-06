@@ -899,6 +899,11 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
       networkBattleAnimating = false;
       render();
       requestNetworkSourceBattleClose(battleId);
+    }).catch((error: unknown) => {
+      console.warn(`[network-battle] ${error instanceof Error ? error.message : "sortie de fuite impossible"}`);
+      networkBattleAnimating = false;
+      render();
+      requestNetworkSourceBattleClose(battleId);
     });
   },
   onBattleRestoredFinished: presentRestoredNetworkBattleEnd,
@@ -1060,7 +1065,7 @@ function requestNetworkSourceBattleClose(battleId: string): void {
   const settlement = networkBattleSettlements.get(battleId);
   const context = networkBattleContexts.get(battleId);
   const playerId = multiplayer.current?.ticket.playerId;
-  if (!sourceBattles.sharedContinuationReady || settlement === undefined || context === undefined
+  if (settlement === undefined || context === undefined
     || playerId === undefined || settlement.ownerId !== playerId || context.narrativeOwnerId !== playerId) return;
   multiplayer.closeSourceBattle(battleId);
 }

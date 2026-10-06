@@ -390,9 +390,11 @@ export class OverworldNetworkSession {
   public closeSourceBattle(battleId: string): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
+    const socket = session?.socket;
     if (session === null || battle?.id !== battleId || battle.sourceContext === null
       || battle.session.lifecycle !== "settling" || session.ticket.playerId !== battle.session.narrativeOwnerId
-      || session.closingBattleId === battleId) return;
+      || session.closingBattleId === battleId || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return;
     session.closingBattleId = battleId;
     this.sendRequest({ type: "closeSourceBattle", battleId });
   }
@@ -624,6 +626,7 @@ export class OverworldNetworkSession {
           session.submittedTurn = null;
           session.submittedActiveSlots = [];
           session.pendingMovementSequence = null;
+          session.closingBattleId = null;
           this.setStatus("Erreur", `${message.code} · ${message.message}`);
         }
       } catch (error) {
@@ -633,6 +636,7 @@ export class OverworldNetworkSession {
     socket.addEventListener("close", (event) => {
       if (this.activeSession !== session || session.socket !== socket) return;
       session.socket = null;
+      session.closingBattleId = null;
       if (event.code === 4001) {
         session.userDisconnected = true;
         this.setStatus("Remplacé", "Ce ticket a été ouvert dans une autre page.");

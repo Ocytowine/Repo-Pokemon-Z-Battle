@@ -1561,6 +1561,14 @@ En solo, la confirmation unique conserve le comportement existant. La recette
 manuelle doit encore verifier les placements avec plusieurs tailles de sprites,
 l'arrivee vue des deux navigateurs et une fuite acceptee puis annulee.
 
+Correctif de sortie de fuite du 2026-10-06 : la fermeture autoritaire de la room
+n'est plus bloquee par l'absence d'un curseur de continuation locale. Une fois le
+reglement personnel applique, le proprietaire narratif peut fermer le combat et
+liberer les deux clients. La branche `battleEscaped` possede maintenant un repli
+qui arrete l'etat d'animation et demande quand meme la fermeture si le fondu ou un
+asset echoue. Une requete de fermeture non envoyee sur socket ferme ne verrouille
+plus les tentatives suivantes, et une erreur/reconnexion libere aussi ce verrou.
+
 ## Commandes utiles
 
 ```powershell
