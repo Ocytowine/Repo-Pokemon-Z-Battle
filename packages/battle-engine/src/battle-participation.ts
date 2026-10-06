@@ -1,4 +1,4 @@
-import type { BattleSide, BattlerState, TeamBattleEvent, TeamBattleState } from "./types.js";
+import type { BattlePosition, BattleSide, BattlerState, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "./types.js";
 import { MAX_TEAM_SIZE } from "./team-battle.js";
 
 export type SharedBattleFormat = "single" | "double";
@@ -12,6 +12,7 @@ export interface SharedBattleCamp {
   readonly trainerIds: readonly string[];
   readonly members: readonly OwnedBattleMember[];
   readonly activeMemberId: string;
+  readonly activeMemberIds?: readonly string[];
 }
 
 export interface SharedBattleParticipation {
@@ -109,6 +110,12 @@ export function assertSharedBattleParticipation(state: SharedBattleParticipation
     if (!camp.members.some((member) => member.battler.id === camp.activeMemberId)) {
       throw new Error("Le Pokémon actif doit appartenir à la composition de son camp.");
     }
+    if (camp.activeMemberIds !== undefined && (camp.activeMemberIds.length < 1 || camp.activeMemberIds.length > 2
+      || camp.activeMemberIds[0] !== camp.activeMemberId
+      || unique(camp.activeMemberIds).length !== camp.activeMemberIds.length
+      || camp.activeMemberIds.some((id) => !camp.members.some((member) => member.battler.id === id)))) {
+      throw new Error("Les Pokemon actifs du camp sont incoherents.");
+    }
   }
   if (!trainerSides.has(state.battleOwnerId)) {
     throw new Error("Le propriétaire narratif doit participer à l'un des camps.");
@@ -123,7 +130,6 @@ export function proposeBattleJoin(state: SharedBattleParticipation, input: {
 }): BattleJoinProposal {
   assertSharedBattleParticipation(state);
   requireIdentifier(input.joinerId, "Le Dresseur invité");
-  if (state.format === "double") throw new Error("Un combat double n'accepte pas de participant supplémentaire.");
   if (Object.values(state.camps).some((camp) => camp.trainerIds.includes(input.joinerId))) {
     throw new Error("Ce Dresseur participe déjà au combat.");
   }
@@ -144,8 +150,16 @@ export function proposeBattleJoin(state: SharedBattleParticipation, input: {
     || finalIds.some((id) => !candidateIds.has(id))) {
     throw new Error("La composition finale doit contenir un à six Pokémon proposés, sans doublon.");
   }
+  const existingIds = camp.members.filter((member) => member.ownerId !== null).map((member) => member.battler.id);
+  if (existingIds.some((id) => !finalIds.includes(id))) {
+    throw new Error("Un Dresseur ne peut pas retirer les Pokemon appartenant deja a l'autre participant.");
+  }
   if (!candidates.some((member) => member.ownerId === input.joinerId && finalIds.includes(member.battler.id))) {
     throw new Error("La composition finale doit conserver au moins un Pokémon de l'invité.");
+  }
+  if (candidates.filter((member) => member.ownerId === input.joinerId
+    && finalIds.includes(member.battler.id)).length > 3) {
+    throw new Error("Chaque Dresseur peut engager au maximum trois Pokemon.");
   }
   if (!candidates.some((member) => finalIds.includes(member.battler.id) && member.battler.hp > 0)) {
     throw new Error("La composition finale doit contenir au moins un Pokemon apte au combat.");
@@ -202,6 +216,10 @@ export function applyBattleJoin(state: SharedBattleParticipation, proposal: Batt
     && proposal.finalMemberIds.includes(member.battler.id))) {
     throw new Error("La composition finale doit conserver au moins un Pokémon de l'invité.");
   }
+  if (proposal.members.filter((member) => member.ownerId === proposal.joinerId
+    && proposal.finalMemberIds.includes(member.battler.id)).length > 3) {
+    throw new Error("Chaque Dresseur peut engager au maximum trois Pokemon.");
+  }
   if (!proposal.members.some((member) => proposal.finalMemberIds.includes(member.battler.id)
     && member.battler.hp > 0)) {
     throw new Error("La composition finale doit contenir au moins un Pokemon apte au combat.");
@@ -216,8 +234,10 @@ export function applyBattleJoin(state: SharedBattleParticipation, proposal: Batt
     && member.battler.hp > 0);
   const activeMemberId = currentActive?.battler.id
     ?? members.find((member) => member.battler.hp > 0)!.battler.id;
-  const joined = { ...state, camps: { ...state.camps, [proposal.side]: {
-    trainerIds: [...camp.trainerIds, proposal.joinerId], members, activeMemberId,
+  const arrivingActive = members.find((member) => member.ownerId === proposal.joinerId && member.battler.hp > 0);
+  const activeMemberIds = unique([activeMemberId, ...(arrivingActive === undefined ? [] : [arrivingActive.battler.id])]);
+  const joined = { ...state, format: "double" as const, camps: { ...state.camps, [proposal.side]: {
+    trainerIds: [...camp.trainerIds, proposal.joinerId], members, activeMemberId, activeMemberIds,
   } } };
   assertSharedBattleParticipation(joined);
   return joined;
@@ -227,6 +247,13 @@ export function activeBattleController(state: SharedBattleParticipation, side: B
   assertSharedBattleParticipation(state);
   const camp = state.camps[side];
   return camp.members.find((member) => member.battler.id === camp.activeMemberId)?.ownerId ?? null;
+}
+
+export function activeBattleControllerAt(state: SharedBattleParticipation, position: BattlePosition): string | null {
+  assertSharedBattleParticipation(state);
+  const camp = state.camps[position.side];
+  const id = (camp.activeMemberIds ?? [camp.activeMemberId])[position.slot];
+  return id === undefined ? null : camp.members.find((member) => member.battler.id === id)?.ownerId ?? null;
 }
 
 /**
@@ -268,6 +295,16 @@ export function canCaptureSharedBattleTarget(state: SharedBattleParticipation, b
 }
 
 export function createSharedBattleLedger(state: TeamBattleState): SharedBattleLedger {
+  if (state.format === "double") {
+    const activeIds = (side: BattleSide): string[] => (state.teams[side].activeIndices ?? [state.teams[side].activeIndex])
+      .map((index) => state.teams[side].members[index]!.id);
+    const player = activeIds("player");
+    const opponent = activeIds("opponent");
+    return { engagedMemberIds: { player, opponent }, defeatedMembers: [], defeatCredits: [], engagements: {
+      player: opponent.map((opponentMemberId) => ({ opponentMemberId, memberIds: player })),
+      opponent: player.map((opponentMemberId) => ({ opponentMemberId, memberIds: opponent })),
+    } };
+  }
   const player = state.teams.player.members[state.teams.player.activeIndex];
   const opponent = state.teams.opponent.members[state.teams.opponent.activeIndex];
   if (player === undefined || opponent === undefined) throw new Error("Combat partagé sans Pokémon actif.");
@@ -325,7 +362,8 @@ function battlerById(state: TeamBattleState, side: BattleSide, id: string): Batt
 }
 
 export function recordSharedBattleTurn(ledger: SharedBattleLedger, before: TeamBattleState,
-  after: TeamBattleState, events: readonly TeamBattleEvent[]): SharedBattleLedger {
+  after: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): SharedBattleLedger {
+  if (before.format === "double") return recordSharedDoubleBattleTurn(ledger, before, after, events);
   const engaged: Record<BattleSide, string[]> = {
     player: [...ledger.engagedMemberIds.player], opponent: [...ledger.engagedMemberIds.opponent],
   };
@@ -371,6 +409,45 @@ export function recordSharedBattleTurn(ledger: SharedBattleLedger, before: TeamB
     if (active !== undefined) activeIds[side] = active.id;
   }
   engageActivePair();
+  return { engagedMemberIds: engaged, defeatedMembers: defeated, engagements, defeatCredits };
+}
+
+function recordSharedDoubleBattleTurn(ledger: SharedBattleLedger, before: TeamBattleState,
+  after: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): SharedBattleLedger {
+  const engaged: Record<BattleSide, string[]> = { player: [...ledger.engagedMemberIds.player],
+    opponent: [...ledger.engagedMemberIds.opponent] };
+  const engagements: Record<BattleSide, SharedBattleEngagement[]> = {
+    player: ledger.engagements.player.map((entry) => ({ ...entry, memberIds: [...entry.memberIds] })),
+    opponent: ledger.engagements.opponent.map((entry) => ({ ...entry, memberIds: [...entry.memberIds] })),
+  };
+  const defeated = [...ledger.defeatedMembers];
+  const defeatCredits = [...ledger.defeatCredits];
+  const memberAt = (state: TeamBattleState, position: BattlePosition): BattlerState | undefined => {
+    const index = (state.teams[position.side].activeIndices ?? [state.teams[position.side].activeIndex])[position.slot];
+    return index === undefined ? undefined : state.teams[position.side].members[index];
+  };
+  for (const event of events) {
+    if (event.type !== "positionedActionResolved") continue;
+    const actor = memberAt(before, event.actor) ?? memberAt(after, event.actor);
+    if (actor === undefined) continue;
+    if (!engaged[event.actor.side].includes(actor.id)) engaged[event.actor.side].push(actor.id);
+    for (const position of event.targets) {
+      const target = memberAt(before, position) ?? memberAt(after, position);
+      if (target === undefined || position.side === event.actor.side) continue;
+      addEngagement(engagements, event.actor.side, actor.id, target.id);
+      addEngagement(engagements, position.side, target.id, actor.id);
+      if (!engaged[position.side].includes(target.id)) engaged[position.side].push(target.id);
+      const fainted = event.events.some((inner) => inner.type === "fainted" && inner.side === position.side)
+        && (battlerById(after, position.side, target.id)?.hp ?? 0) === 0;
+      if (!fainted || defeated.some((entry) => entry.side === position.side && entry.battler.id === target.id)) continue;
+      const defeatedBattler = battlerById(after, position.side, target.id) ?? target;
+      defeated.push({ side: position.side, battler: defeatedBattler });
+      const eligible = (engagements[event.actor.side].find((entry) => entry.opponentMemberId === target.id)?.memberIds ?? [])
+        .filter((id) => (battlerById(after, event.actor.side, id)?.hp ?? 0) > 0);
+      defeatCredits.push({ turn: before.turn, defeatedSide: position.side, defeatedBattler,
+        recipientSide: event.actor.side, eligibleMemberIds: eligible });
+    }
+  }
   return { engagedMemberIds: engaged, defeatedMembers: defeated, engagements, defeatCredits };
 }
 

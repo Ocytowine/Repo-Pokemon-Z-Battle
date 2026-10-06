@@ -104,7 +104,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### STAB-NET-2 — Depart et retour d'un participant
 
-- Priorite/statut : `P0` / `En validation`.
+- Priorite/statut : `P0` / `Termine` (recette manuelle validee le 2026-10-06).
 - Constat : l'hote ne recoit pas de notification et le sprite distant peut rester
   affiche apres le depart de l'invite.
 - Autorite : room a partir de l'etat de connexion du socket.
@@ -125,12 +125,13 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   invitee pour une nouvelle identite et revoque l'ancien ticket. La place reste
   reservee pendant `reconnecting`, ainsi que pendant un combat actif ou tant qu'un
   reglement personnel attend son proprietaire.
-- Reste avant `Termine` : recette deux navigateurs pour fermeture volontaire,
-  coupure brutale, retour avant/apres 15 secondes et occupation de l'ancienne case.
+- Validation manuelle : fermeture volontaire, coupure brutale, retour avant/apres
+  le delai, liberation de la place et reprise manuelle ont ete valides dans deux
+  navigateurs par le porteur le 2026-10-06.
 
 ### STAB-WORLD-1 — Collisions narratives identiques
 
-- Priorite/statut : `P0` / `En validation`.
+- Priorite/statut : `P0` / `Termine` (recette manuelle validee le 2026-10-06).
 - Constat : l'invite peut parfois franchir un blocage PNJ qui arrete l'hote.
 - Autorite : room, depuis l'histoire de l'hote et les pages actives.
 - Etat : `NARRATIVE_SHARED` en lecture seule pour l'invite.
@@ -172,8 +173,10 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Les snapshots de cinematique et de PNJ de l'hote attendent tous deux la
   confirmation du `mapId` par la room ; une publication differee reste eligible
   apres la transition et ne produit plus d'erreur HUD.
-- Reste avant `Termine` : recette deux navigateurs sur une zone narrative invisible
-  avant puis apres sa progression, avec reconnexion de l'invite.
+- Validation manuelle : les blocages narratifs, l'autorite exclusive de l'hote,
+  les excursions et combats simultanes, le retour sur la carte partagee, la fin
+  de combat et le soin personnel de l'invite ont ete valides dans deux navigateurs
+  par le porteur le 2026-10-06, sans erreur HUD persistante.
 
 ### STAB-WORLD-2 — PNJ mobiles autoritaires
 
@@ -203,7 +206,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### STAB-BATTLE-1 — Sequenceur visuel de combat
 
-- Priorite/statut : `P0` / `Pret`.
+- Priorite/statut : `P0` / `En validation`.
 - Constat : transitions grise/noire, textes trop rapides, PV non visibles avant le
   KO, disparition acceleree et musique declenchee au mauvais moment.
 - Autorite : moteur de combat pour le resultat ; sequenceur de presentation local
@@ -219,6 +222,50 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   `prefers-reduced-motion` raccourcit les animations sans supprimer les messages.
 - Validation : rate, immunite, peu/tres efficace, critique, statut, soin, KO avec
   et sans reserve, victoire, defaite et fuite en solo/PvP/Coop.
+- Implementation du 2026-10-06 : une file pure derive les phases visuelles des
+  `TeamBattleEvent` sans recalculer le combat. Elle applique impact, PV, messages
+  de critique/efficacite, statuts, KO et remplacement dans cet ordre, pour le
+  chemin local comme pour les snapshots autoritaires de la room. Les remplacements
+  automatiques locaux conservent maintenant leurs evenements au lieu de sauter
+  directement au nouveau Pokemon.
+- Accessibilite : les animations suivent `prefers-reduced-motion`, mais les textes
+  gardent un delai lisible et peuvent etre avances par clic, Entree ou Espace. La
+  boite de combat est annoncee comme statut accessible. La transition d'entree
+  utilise un fondu noir coherent plutot que des flashs gris.
+- Fin de combat : les PV a zero et le KO sont lus avant la disparition ; EXP,
+  niveaux, capacites et argent precedent la musique de victoire puis la sortie.
+  Une fuite possede son propre message avant le retour a l'overworld.
+- Preuves automatiques : rate, immunite, efficacite, critique, statut, soin,
+  degats residuels, KO avec/sans reserve, remplacement et fuite sont couverts.
+- Ralliement Coop : le joueur non engage reste sur la carte jusqu'a une interaction
+  face au meneur. Un sauvage declenche par l'hote ou l'invite `shared` peut etre
+  rejoint pour aider entre deux tours sans remise a zero du combat ; le Pokemon
+  arrivant prend la releve au tour suivant. Un combat
+  de Dresseur attend avant l'animation d'envoi, puis propose `Aider l'hote` ou
+  `Se rallier au Dresseur adverse`. La room conserve l'autorite sur la proximite,
+  la composition, le tour, les credits et la restauration apres reconnexion.
+- Une rencontre sauvage de l'invite `away` est publiee sur sa carte personnelle :
+  l'hote peut voyager jusqu'a ce `mapId`, rattacher les avatars puis proposer son
+  aide. La composition de l'autre joueur reste immuable ; chacun selectionne et
+  restaure uniquement ses propres Pokemon.
+- Combat double reel : un ralliement ajoute un second actif au lieu de remplacer
+  celui du meneur. Chaque Dresseur engage au maximum trois Pokemon et controle
+  seulement son actif, sa cible et ses remplacements ; un camp reste limite a six.
+  Un sauvage seul produit un 2 contre 1. Un Dresseur source aligne deux actifs s'il
+  le peut, et un invite rallie au camp adverse controle son propre Pokemon.
+- Le noyau commun resout jusqu'a quatre actions par tour, les cibles `PBTargets`,
+  attaques de zone, PP, effets de fin de tour, K.O. et remplacements par slot. La
+  room attend toutes les intentions possedees, complete celles de l'IA et persiste
+  les slots actifs pour la reconnexion. L'interface projette jusqu'a quatre
+  battlers et demande une cible lorsque plusieurs adversaires sont valides.
+- Correctif de presentation : sprites et HUD doubles emploient les coordonnees
+  exactes du moteur source ; types et statuts sont visibles en simple comme en
+  double. Le second envoi est anime au moment de l'acceptation. Une fuite sauvage
+  rejointe attend maintenant la confirmation persistante des deux Dresseurs.
+- Reste avant `Termine` : recette manuelle solo et deux navigateurs sur une
+  victoire, une defaite, une fuite, un KO avec reserve et les deux parcours de
+  ralliement Coop, puis sauvage 2 contre 1, Dresseur 2 contre 2, ralliement au camp
+  adverse, ciblage, remplacements multiples et reconnexion en combat double.
 
 ### STAB-AUDIO-1 — Musique des lieux
 

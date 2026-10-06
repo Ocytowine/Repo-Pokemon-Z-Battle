@@ -46,17 +46,22 @@ function isSourceAvatar(value: unknown): boolean {
 
 function isBattleAction(value: unknown): boolean {
   const move = isRecord(value)
-    && hasExactKeys(value, ["kind", "moveIndex"])
+    && ["kind", "moveIndex"].every((key) => key in value)
+    && Object.keys(value).every((key) => ["kind", "moveIndex", "target"].includes(key))
     && value.kind === "move"
     && Number.isInteger(value.moveIndex)
     && Number(value.moveIndex) >= 0
-    && Number(value.moveIndex) <= 3;
+    && Number(value.moveIndex) <= 3
+    && (value.target === undefined || isRecord(value.target) && hasExactKeys(value.target, ["side", "slot"])
+      && ["player", "opponent"].includes(String(value.target.side)) && safeInteger(value.target.slot, 0, 1));
   const switching = isRecord(value)
-    && hasExactKeys(value, ["kind", "teamIndex"])
+    && ["kind", "teamIndex"].every((key) => key in value)
+    && Object.keys(value).every((key) => ["kind", "teamIndex", "activeSlot"].includes(key))
     && value.kind === "switch"
     && Number.isInteger(value.teamIndex)
     && Number(value.teamIndex) >= 0
-    && Number(value.teamIndex) <= 5;
+    && Number(value.teamIndex) <= 5
+    && (value.activeSlot === undefined || safeInteger(value.activeSlot, 0, 1));
   return move || switching;
 }
 
@@ -88,9 +93,15 @@ function isMajorStatus(value: unknown): boolean {
 }
 
 function isBattleTeam(value: unknown): value is BattleTeam {
-  if (!isRecord(value) || !hasExactKeys(value, ["activeIndex", "members"])
+  if (!isRecord(value) || !["activeIndex", "members"].every((key) => key in value)
+    || !Object.keys(value).every((key) => ["activeIndex", "activeIndices", "members"].includes(key))
     || !Array.isArray(value.members) || value.members.length < 1 || value.members.length > 6
-    || !safeInteger(value.activeIndex, 0, value.members.length - 1)) return false;
+    || !safeInteger(value.activeIndex, 0, (value.members as unknown[]).length - 1)) return false;
+  if (value.activeIndices !== undefined && (!Array.isArray(value.activeIndices)
+    || value.activeIndices.length < 1 || value.activeIndices.length > 2
+    || !value.activeIndices.every((index) => safeInteger(index, 0, (value.members as unknown[]).length - 1))
+    || new Set(value.activeIndices).size !== value.activeIndices.length
+    || value.activeIndices[0] !== value.activeIndex)) return false;
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
@@ -117,13 +128,14 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       const move = slot.move;
       return ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance"]
         .every((key) => key in move)
-        && Object.keys(move).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags"].includes(key))
+        && Object.keys(move).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags", "targetCode"].includes(key))
         && safeInteger(move.id, 0, 999_999) && boundedString(move.internalName) && boundedString(move.name, 128)
         && MOVE_FUNCTIONS.has(String(move.functionCode)) && safeInteger(move.power, 0, 999)
         && boundedString(move.type) && ["Physical", "Special", "Status"].includes(String(move.category))
         && safeInteger(move.accuracy, 0, 100) && safeInteger(move.pp, 1, 99)
         && safeInteger(move.priority, -10, 10) && safeInteger(move.effectChance, 0, 100)
         && (move.flags === undefined || typeof move.flags === "string")
+        && (move.targetCode === undefined || /^[0-9A-F]{1,3}$/u.test(String(move.targetCode)))
         && safeInteger(slot.pp, 0, Number(move.pp));
     });
   });
@@ -160,17 +172,21 @@ export function parseClientMessage(payload: string): ClientMessage {
       }
       return value as unknown as ClientMessage;
     case "submitAction":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn", "action"])
+      if (!["type", "version", "requestId", "battleId", "turn", "action"].every((key) => key in value)
+        || Object.keys(value).some((key) => !["type", "version", "requestId", "battleId", "turn", "activeSlot", "action"].includes(key))
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
-        || !isSafePositiveInteger(value.turn) || !isBattleAction(value.action)) {
+        || !isSafePositiveInteger(value.turn) || !isBattleAction(value.action)
+        || value.activeSlot !== undefined && !safeInteger(value.activeSlot, 0, 1)) {
         return invalid("submitAction mal formé");
       }
       return value as unknown as ClientMessage;
     case "submitReplacement":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "turn", "teamIndex"])
+      if (!["type", "version", "requestId", "battleId", "turn", "teamIndex"].every((key) => key in value)
+        || Object.keys(value).some((key) => !["type", "version", "requestId", "battleId", "turn", "teamIndex", "activeSlot"].includes(key))
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
         || !isSafePositiveInteger(value.turn) || !Number.isInteger(value.teamIndex)
-        || Number(value.teamIndex) < 0 || Number(value.teamIndex) > 5) {
+        || Number(value.teamIndex) < 0 || Number(value.teamIndex) > 5
+        || value.activeSlot !== undefined && !safeInteger(value.activeSlot, 0, 1)) {
         return invalid("submitReplacement mal formé");
       }
       return value as unknown as ClientMessage;

@@ -730,25 +730,24 @@ victoire, texte et jauge d'EXP sur chaque seuil de niveau, annonces de niveau et
 capacite, argent, puis fondu final. Defaite et fuite n'emploient pas le ME de
 victoire. Le noyau calcule et persiste toujours le resultat avant sa presentation.
 
-Prochain contrat combat Coop/PvP valide : rejoindre signifie apporter ses propres
-Pokemon dans un combat simple, sans le convertir en combat double. Chaque camp
-conserve un seul Pokemon actif, six membres au maximum et jusqu'a deux Dresseurs.
-L'entree est refusee si la bataille source est deja double ou si les deux camps ont
-deja deux Dresseurs. La room reste autoritaire ; equipe, EXP, objets et recompenses
-restent personnels ; l'issue narrative appartient a l'hote ; une reconnexion
-restaure camp, place, proprietaires et battlers. Dans le camp adverse, l'invite
-choisit sa contribution dans la limite des six places. Dans le camp de l'hote, la
-composition finale est une proposition que les deux Dresseurs doivent accepter.
-Le controle de l'action courante appartient au proprietaire du Pokemon actif.
+Contrat combat Coop/PvP revise le 2026-10-06 : rejoindre convertit le combat en
+vrai combat double. Chaque Dresseur choisit et controle uniquement ses propres
+Pokemon, trois au maximum ; un camp contient au plus deux Dresseurs et six Pokemon.
+Chaque actif choisit son action et, lorsque la capacite le permet, sa cible. Un
+sauvage seul reste une cible unique en 2 contre 1. Un camp de Dresseur emploie deux
+actifs s'il dispose d'assez de Pokemon. La room reste autoritaire ; equipe, EXP,
+objets et recompenses restent personnels ; l'issue narrative appartient a l'hote ;
+une reconnexion restaure camp, places actives, proprietaires, actions encore dues
+et battlers. Le controle de chaque action et remplacement appartient au
+proprietaire du slot actif concerne.
 
-Premier noyau de ce contrat implemente le 2026-10-04 dans `battle-engine` :
-`SharedBattleParticipation` separe format, camps, Dresseurs, proprietaire de chaque
-Pokemon et actif. Une proposition de jonction valide les identifiants, refuse les
-combats doubles et camps pleins, impose un a six membres, exige au moins un Pokemon
-de l'invite et recueille les accords requis avant de modifier la composition. Le
-resolveur indique ensuite quel joueur a autorite sur l'actif. Ce premier noyau
-etait initialement sans protocole ni interface ; le deuxieme lot ci-dessous les
-raccorde.
+Premier noyau de ce contrat implemente le 2026-10-04 puis etendu le 2026-10-06 dans
+`battle-engine` : `SharedBattleParticipation` separe format, camps, Dresseurs,
+proprietaire de chaque Pokemon et actifs. Une proposition de jonction valide les
+identifiants, camps pleins et compositions, exige au moins un Pokemon de l'invite,
+limite chaque Dresseur a trois Pokemon et recueille les accords requis. Son
+acceptation passe le combat en double et active un Pokemon de chaque participant.
+Le resolveur indique ensuite quel joueur a autorite sur chaque slot.
 
 Deuxieme noyau implemente le 2026-10-04 : le protocole v9 transporte la
 participation et la proposition dans chaque snapshot. L'invite choisit le camp et
@@ -876,16 +875,15 @@ phrase de defaite, self-switch de victoire et dialogue d'apres-combat.
 Variantes Dresseur explicitement reportees a des lots ulterieurs, a traiter par
 capacites generiques lorsqu'elles apparaissent dans le parcours :
 
-- combats doubles source et compositions a plusieurs Dresseurs ;
 - revanche et remise a zero volontaire de l'etat vaincu ;
 - selection d'equipe ou de version par scripts conditionnels non encore portes ;
 - boss et scripts speciaux modifiant les regles pendant le combat ;
 - six appels a arguments implicites du Doppelganger Majara sur Map263.
 
 L'audit actuel extrait correctement texte, format, version et droit a la defaite
-sur 516 appels `pbTrainerBattle` parmi 522. `canLose` est deja respecte ; un format
-double est refuse explicitement tant que son vrai moteur n'est pas porte, afin de
-ne jamais le transformer silencieusement en combat simple.
+sur 516 appels `pbTrainerBattle` parmi 522. `canLose` est deja respecte. Les formats
+doubles source sont maintenant transmis au moteur double commun ; leur recette
+manuelle sur les cartes concernees reste necessaire avant cloture du lot.
 
 ### Increment 9.6 - Rencontres sauvages du monde
 
@@ -1622,13 +1620,19 @@ contrats complets vivent dans `docs/PRODUCT_BACKLOG.md`.
 Ordre convenu :
 
 - [x] `STAB-NET-1` : cycle PvP valide automatiquement et manuellement ;
-- [ ] `STAB-NET-2` : cycle de presence, grace, notifications, rendu et collisions
-  implementes ; recette deux navigateurs encore a valider ;
-- [ ] `STAB-WORLD-1` : blocages narratifs actifs partages dans le code, y compris
-  les zones invisibles ; recette deux navigateurs encore a valider ;
+- [x] `STAB-NET-2` : cycle de presence, grace, notifications, rendu et collisions
+  valide dans deux navigateurs le 2026-10-06 ;
+- [x] `STAB-WORLD-1` : blocages narratifs, autorite de l'hote, excursions et
+  services personnels invites valides dans deux navigateurs le 2026-10-06 ;
 - [x] `STAB-WORLD-2` : positions logiques, collisions, interpolation distante et
   reconnexion validees dans deux navigateurs le 2026-10-06 ;
-- [ ] `STAB-BATTLE-1` : ordonner transitions, textes, PV, KO, EXP et musiques ;
+- [ ] `STAB-BATTLE-1` : sequenceur commun transitions, textes, PV, KO, EXP et
+  musiques implemente, avec ralliement Coop explicite aux combats sauvages ou de
+  Dresseur et ouverture sauvage symetrique hote/invite sur la carte partagee ;
+  vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
+  placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
+  implementes ;
+  recette solo et deux navigateurs a valider ;
 - [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
 
 Condition de sortie : aucun avatar ou defi orphelin, meme geometrie autoritaire

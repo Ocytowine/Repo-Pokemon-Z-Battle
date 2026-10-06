@@ -1,4 +1,4 @@
-import type { BattleSide, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleSide, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 
 export function oppositeBattleSide(side: BattleSide): BattleSide {
   return side === "player" ? "opponent" : "player";
@@ -11,10 +11,12 @@ export function networkBattleForViewer(state: TeamBattleState, viewer: BattleSid
     winner: state.winner === null ? null : oppositeBattleSide(state.winner),
     teams: { player: state.teams.opponent, opponent: state.teams.player },
     replacementRequired: state.replacementRequired.map(oppositeBattleSide),
+    ...(state.slotReplacements === undefined ? {} : { slotReplacements: state.slotReplacements.map((position) =>
+      ({ ...position, side: oppositeBattleSide(position.side) })) }),
   };
 }
 
-export function networkBattleEventsForViewer(events: readonly TeamBattleEvent[], viewer: BattleSide): readonly TeamBattleEvent[] {
+export function networkBattleEventsForViewer(events: readonly (TeamBattleEvent | DoubleBattleEvent)[], viewer: BattleSide): readonly (TeamBattleEvent | DoubleBattleEvent)[] {
   if (viewer === "player") return events;
   return events.map((event) => {
     const mapped: Record<string, unknown> = { ...event };
@@ -25,6 +27,11 @@ export function networkBattleEventsForViewer(events: readonly TeamBattleEvent[],
     if (event.type === "teamActionOrdered") {
       mapped.order = event.order.map((entry) => ({ ...entry, side: oppositeBattleSide(entry.side) }));
     }
-    return mapped as unknown as TeamBattleEvent;
+    if (event.type === "positionedActionResolved") {
+      mapped.actor = { ...event.actor, side: oppositeBattleSide(event.actor.side) };
+      mapped.targets = event.targets.map((position) => ({ ...position, side: oppositeBattleSide(position.side) }));
+      mapped.events = networkBattleEventsForViewer(event.events, viewer);
+    }
+    return mapped as unknown as TeamBattleEvent | DoubleBattleEvent;
   });
 }

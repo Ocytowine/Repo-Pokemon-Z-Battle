@@ -77,7 +77,7 @@ describe("source battle controller", () => {
     expect(eventState.pendingEncounter).toBeNull();
     expect(eventState.wildEncounterSteps).toBe(0);
     expect(callbacks.updateEventState).toHaveBeenCalledOnce();
-    expect(visuals.endBattle).toHaveBeenCalledWith(null);
+    expect(visuals.endBattle).toHaveBeenCalledWith(null, { escaped: true });
     expect(notices.at(-1)).toContain("Fuite réussie");
     expect(completed).toHaveBeenCalledWith(false);
   });

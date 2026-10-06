@@ -15,8 +15,8 @@ import type { SourceBattleContext, SourceBattleSettlement } from "@pokemon-z-bat
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import { SeededRandom, activeBattleController, canCaptureSharedBattleTarget, replacementBattleController,
-  type BattleTeam, type TeamBattleEvent,
+import { SeededRandom, canCaptureSharedBattleTarget,
+  type BattleTeam, type DoubleBattleEvent, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController, sharedBattleExperiencePresentations,
@@ -344,7 +344,7 @@ function finishImportedStep(): void {
       return;
     }
     importedNotice = `DÃ©placement vers ${importedAvatar.x},${importedAvatar.y}.`;
-    if (!sharedGuest && checkSourceWildEncounter()) return;
+    if ((!sharedGuest || multiplayer.current?.roomBattleActive === false) && checkSourceWildEncounter()) return;
     renderImportedView();
     continueSourceMovement();
     return;
@@ -837,15 +837,15 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) sourceBattles.renderVisuals();
     else if (!networkBattleAnimating) void sourceBattleVisuals.render(battle, importedAssets?.battleback ?? "snow");
   },
-  onMove: (moveIndex, local) => {
-    if (local) void sourceBattles.submitAction(moveIndex);
-    else multiplayer.submitBattleAction({ kind: "move", moveIndex });
+  onMove: (moveIndex, local, activeSlot, target) => {
+    if (local) void sourceBattles.submitAction(moveIndex, activeSlot, target);
+    else multiplayer.submitBattleAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
   },
-  onSwitch: (teamIndex, local) => {
-    if (local) void sourceBattles.switchPokemon(teamIndex);
-    else multiplayer.submitBattleAction({ kind: "switch", teamIndex });
+  onSwitch: (teamIndex, local, activeSlot) => {
+    if (local) void sourceBattles.switchPokemon(teamIndex, activeSlot);
+    else multiplayer.submitBattleAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   },
-  onReplacement: (teamIndex) => { multiplayer.submitBattleReplacement(teamIndex); },
+  onReplacement: (teamIndex, activeSlot) => { multiplayer.submitBattleReplacement(teamIndex, activeSlot); },
   onLeave: () => { multiplayer.leaveBattle(); },
   onEscape: (local) => {
     if (local) void sourceBattles.escape();
@@ -866,8 +866,6 @@ const sourceBattleJoinView = new SourceBattleJoinView({
     if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds);
   },
   onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
-  onObserve: () => { multiplayer.observeBattle(); },
-  onClose: () => { multiplayer.closeBattleJoinWindow(); },
 });
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onStatus: setNetworkText,
@@ -890,13 +888,14 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   },
   onSourceSceneState: () => undefined,
   onBattleStarted: beginNetworkBattlePresentation,
+  onBattleExpanded: presentNetworkBattleExpansion,
   onBattleTurnResolved: presentNetworkBattleTurn,
   onBattleReplacementResolved: presentNetworkBattleTurn,
   onBattleEscaped: (battleId, state) => {
     if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
     networkBattleAnimating = true;
     networkBattlePresentation = networkBattlePresentation.then(async () => {
-      await sourceBattleVisuals.endBattle(null);
+      await sourceBattleVisuals.endBattle(null, { escaped: true });
       networkBattleAnimating = false;
       render();
       requestNetworkSourceBattleClose(battleId);
@@ -940,11 +939,13 @@ function networkBattleViewerSide(): "player" | "opponent" {
 function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState): void {
   sourceBattles.acknowledgeSharedBattleOpened();
   const side = networkBattleViewerSide();
-  const sourceContext = multiplayer.current?.snapshot?.battle?.sourceContext ?? null;
+  const visibleBattle = multiplayer.current?.snapshot?.battle;
+  const sourceContext = visibleBattle?.sourceContext ?? null;
   if (sourceContext !== null) networkBattleContexts.set(battleId, sourceContext);
   networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
+  if (sourceContext?.origin === "source-trainer" && visibleBattle?.session.lifecycle === "join-window") return;
   networkBattlePresentation = networkBattlePresentation.then(async () => {
     if (networkPresentedBattle?.id !== battleId) return;
     const ownVisuals = networkPlayerVisuals[side] ?? sourcePlayerVisuals;
@@ -981,8 +982,31 @@ function networkBattleOutcome(battleId: string, state: TeamBattleState): SourceB
   return { ...outcome, ...(defeatText === null ? {} : { trainerDefeatText: defeatText }) };
 }
 
+function presentNetworkBattleExpansion(battleId: string, before: TeamBattleState, state: TeamBattleState): void {
+  const side = networkBattleViewerSide();
+  const presentedBefore = networkBattleForViewer(before, side);
+  const presentedAfter = networkBattleForViewer(state, side);
+  sourceBattleVisuals.prepareBattleJoin(presentedBefore, presentedAfter);
+  networkBattleAnimating = true;
+  render();
+  networkBattlePresentation = networkBattlePresentation.then(async () => {
+    if (networkPresentedBattle?.id !== battleId) return;
+    await sourceBattleVisuals.playBattleJoin(presentedBefore, presentedAfter,
+      importedAssets?.battleback ?? "snow");
+    if (networkPresentedBattle?.id !== battleId) return;
+    networkPresentedBattle = { id: battleId, state };
+    networkBattleAnimating = false;
+    render();
+  }).catch((error: unknown) => {
+    console.warn(`[network-battle] ${error instanceof Error ? error.message : "arrivee du partenaire impossible"}`);
+    networkPresentedBattle = { id: battleId, state };
+    networkBattleAnimating = false;
+    render();
+  });
+}
+
 function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, state: TeamBattleState,
-  events: readonly TeamBattleEvent[]): void {
+  events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): void {
   const side = networkBattleViewerSide();
   networkBattleAnimating = true;
   render();
@@ -1019,7 +1043,8 @@ function presentRestoredNetworkBattleEnd(battleId: string, state: TeamBattleStat
     networkPresentedBattle = { id: battleId, state };
     const presented = networkBattleForViewer(state, side);
     await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
-    await sourceBattleVisuals.endBattle(escaped ? null : presented.winner, networkBattleOutcome(battleId, state));
+    await sourceBattleVisuals.endBattle(escaped ? null : presented.winner,
+      { ...networkBattleOutcome(battleId, state), ...(escaped ? { escaped: true } : {}) });
     networkBattleAnimating = false;
     render();
     requestNetworkSourceBattleClose(battleId);
@@ -1069,8 +1094,11 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     guestSourceExcursion = true;
     networkSourceWorld = world;
     publishActiveSourceFollower();
+    const roomBattle = session.snapshot?.battle ?? session.joinableBattle;
+    const battleAllowsAttachment = roomBattle?.sourceContext?.mapId === world.mapId
+      && roomBattle.state.status === "active";
     if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId,
-      session.roomBattleActive)) {
+      session.roomBattleActive, battleAllowsAttachment)) {
       multiplayer.setSourcePresence(true, importedAvatar);
       importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
     } else {
@@ -1919,16 +1947,21 @@ function renderEncounter(): void {
   const network = multiplayer.current;
   const sourceBattle = sourceBattles.current;
   const networkBattle = network?.snapshot?.battle ?? null;
+  const joinableBattle = networkBattle ?? network?.joinableBattle ?? null;
   const canonicalNetworkState = networkBattle !== null && networkPresentedBattle?.id === networkBattle.id
     ? networkPresentedBattle.state : networkBattle?.state ?? null;
   const viewerSide = networkBattleViewerSide();
-  const networkController = networkBattle?.participation === null || networkBattle?.participation === undefined
-    ? null : networkBattle.state.replacementRequired.includes(viewerSide)
-      ? replacementBattleController(networkBattle.participation, networkBattle.state, viewerSide)
-      : activeBattleController(networkBattle.participation, viewerSide);
+  const viewerCamp = networkBattle?.participation?.camps[viewerSide];
+  const networkController = viewerCamp === undefined || network === null ? null
+    : (viewerCamp.activeMemberIds ?? [viewerCamp.activeMemberId]).some((id) =>
+      viewerCamp.members.some((member) => member.battler.id === id && member.ownerId === network.ticket.playerId))
+      ? network.ticket.playerId : null;
   const controllableMemberIds = networkBattle?.participation === null || networkBattle?.participation === undefined
     || network === null ? null : networkBattle.participation.camps[viewerSide].members
       .filter((member) => member.ownerId === network.ticket.playerId).map((member) => member.battler.id);
+  const escapeParticipants = networkBattle?.participation === null || networkBattle?.participation === undefined
+    ? [] : [...new Set([...networkBattle.participation.camps.player.trainerIds,
+      ...networkBattle.participation.camps.opponent.trainerIds])];
   const presentedNetworkState = canonicalNetworkState !== null && networkBattle !== null
     ? networkBattleForViewer(canonicalNetworkState, viewerSide) : canonicalNetworkState;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : presentedNetworkState;
@@ -1937,15 +1970,22 @@ function renderEncounter(): void {
     sourceEventState.inventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
+    waitingForJoin: networkBattle?.sourceContext?.origin === "source-trainer"
+      && networkBattle.session.lifecycle === "join-window",
     networkSide: networkBattle !== null && network !== null
       && (networkBattle.duel || networkBattle.participation !== null
         && networkController === network.ticket.playerId)
       ? "player" : null,
     controllableMemberIds,
     networkSubmittedTurn: network?.submittedTurn ?? null,
+    submittedActiveSlots: localSourceBattle ? sourceBattles.pendingDoubleSlots : network?.submittedActiveSlots ?? [],
     escapable: localSourceBattle ? sourceEventState.pendingEncounter?.escapable === true
-      : networkBattle?.sourceContext?.escapable === true
-        && networkBattle.session.narrativeOwnerId === network?.ticket.playerId && !networkBattle.escaped,
+      : networkBattle?.sourceContext?.escapable === true && network !== null
+        && escapeParticipants.includes(network.ticket.playerId) && !networkBattle.escaped,
+    escapeConfirmedByMe: !localSourceBattle && network !== null
+      && networkBattle?.escapeConfirmations?.includes(network.ticket.playerId) === true,
+    escapeConfirmationCount: localSourceBattle ? 0 : networkBattle?.escapeConfirmations?.length ?? 0,
+    escapeConfirmationRequired: localSourceBattle ? 1 : Math.max(1, escapeParticipants.length),
     capturable: localSourceBattle ? sourceEventState.pendingEncounter !== null
       : networkBattle?.participation !== null && networkBattle?.participation !== undefined
         && networkBattle.sourceContext !== null
@@ -1955,12 +1995,16 @@ function renderEncounter(): void {
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
-  sourcePlayerDuelView.render({ challenge: duel, battleActive: networkBattle !== null, side,
+  const battleOwnerName = network?.snapshot?.players.find((player) =>
+    player.playerId === joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "le meneur";
+  sourcePlayerDuelView.render({ challenge: duel, battleActive: network?.roomBattleActive === true, side,
     players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
-  sourceBattleJoinView.render({ battle: networkBattle, playerId: network?.ticket.playerId ?? null,
-    team: currentPlayerDuelTeam(), available: networkBattle?.sourceContext === null || side === null
-      ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared" });
+  sourceBattleJoinView.render({ battle: joinableBattle, playerId: network?.ticket.playerId ?? null,
+    team: currentPlayerDuelTeam(), available: joinableBattle?.sourceContext === null || side === null
+      ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared",
+    ownerName: battleOwnerName,
+    opponentName: joinableBattle?.sourceContext?.presentation.opponentTrainer?.name ?? "le Dresseur adverse" });
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
     sourceEventState = { ...sourceEventState,
@@ -2065,9 +2109,19 @@ function interact(playerId: AvatarId): void {
     const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
       importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
     if (target === null && trySourceTraversalInteraction()) return;
-    const interactionTarget = sourceInteractionTarget(target !== null,
-      multiplayer.active && !guestSourceExcursion && remotePlayerAhead());
+    const joinableBattle = multiplayer.current?.joinableBattle;
+    const remoteAhead = multiplayer.active && !guestSourceExcursion && remotePlayerAhead();
+    const interactionTarget = joinableBattle !== null && joinableBattle !== undefined && remoteAhead
+      ? "player" : sourceInteractionTarget(target !== null, remoteAhead);
     if (interactionTarget === "player") {
+      if (joinableBattle !== null && joinableBattle !== undefined) {
+        sourceBattleJoinView.open(joinableBattle.id);
+        importedNotice = joinableBattle.sourceContext?.origin === "source-wild"
+          ? "Choisissez les Pokémon qui viendront aider l'autre Dresseur."
+          : "Choisissez le camp que vous souhaitez rejoindre.";
+        renderImportedView();
+        return;
+      }
       const team = currentPlayerDuelTeam();
       if (team === null) {
         importedNotice = "Aucun Pokémon en état de combattre.";

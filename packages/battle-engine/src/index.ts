@@ -1,9 +1,11 @@
 export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
-export { activeBattleController, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
+export { activeBattleController, activeBattleControllerAt, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
   battleMemberIndicesOwnedBy, canCaptureSharedBattleTarget, replacementBattleController,
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
   restoreSharedBattleLedger, sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
+export { activeBattlePositions, activeTeamIndices, battlerAtPosition, createDoubleTeamBattleState, replaceFaintedDoublePokemon,
+  resolveDoubleTeamTurn } from "./double-team-battle.js";
 export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,
   chooseSourceBattleReplacement } from "./battle-tactics.js";
 export { resolveTurn } from "./resolve-turn.js";
@@ -17,6 +19,7 @@ export type {
   BattleAbility,
   BattleEvent,
   BattleMove,
+  BattlePosition,
   BattleSide,
   BattleState,
   BattleStat,
@@ -43,6 +46,9 @@ export type {
   TurnActions,
   TurnResult,
   WaitAction,
+  DoubleBattleEvent,
+  DoubleTurnResult,
+  PositionedTeamBattleAction,
 } from "./types.js";
 export type { BattleJoinProposal, OwnedBattleMember, SharedBattleCamp, SharedBattleDefeatCredit,
   SharedBattleEngagement, SharedBattleFormat, SharedBattleLedger, SharedBattleOwnerDefeatCredit,

@@ -55,6 +55,7 @@ function callbacks(): NetworkSessionCallbacks {
     onSourceActorsState: vi.fn(),
     onSourceSceneState: vi.fn(),
     onBattleStarted: vi.fn(),
+    onBattleExpanded: vi.fn(),
     onBattleTurnResolved: vi.fn(),
     onBattleReplacementResolved: vi.fn(),
     onBattleEscaped: vi.fn(),
@@ -71,13 +72,19 @@ afterEach(() => {
 });
 
 describe("overworld network session", () => {
-  it("keeps a guest excursion isolated from a source battle on the host map", () => {
+  it("hides a source battle from either player until they join or observe", () => {
     const snapshot = { phase: "battle", sourceWorld: { presence: { player: "shared", opponent: "away" } },
       battle: { sourceContext: {}, participation: { camps: {
         player: { trainerIds: ["host"] }, opponent: { trainerIds: [] },
       } } } } as unknown as RoomSnapshot;
     expect(roomSnapshotForPlayer(snapshot, "guest", "opponent")).toMatchObject({ phase: "waiting", battle: null });
     expect(roomSnapshotForPlayer(snapshot, "host", "player").battle).toBe(snapshot.battle);
+    const guestOwned = { ...snapshot, battle: { ...snapshot.battle!, participation: { camps: {
+      player: { trainerIds: ["guest"] }, opponent: { trainerIds: [] },
+    } } } } as unknown as RoomSnapshot;
+    expect(roomSnapshotForPlayer(guestOwned, "host", "player"))
+      .toMatchObject({ phase: "waiting", battle: null });
+    expect(roomSnapshotForPlayer(guestOwned, "guest", "opponent").battle).toBe(guestOwned.battle);
   });
 
   it("creates, stores, uses and disconnects a room session", async () => {

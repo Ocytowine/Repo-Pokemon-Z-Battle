@@ -1,5 +1,6 @@
-import type { BattleJoinProposal, BattleSide, BattleTeam, SharedBattleLedger, SharedBattleParticipation,
-  SharedBattleSession, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleJoinProposal, BattleSide, BattleTeam, DoubleBattleEvent, SharedBattleLedger,
+  SharedBattleParticipation, SharedBattleSession, TeamBattleAction, TeamBattleEvent,
+  TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
 import type { SourceAvatarSnapshot, SourceFollowerSnapshot, SourceMovementMode, SourceWorldHostState,
@@ -40,7 +41,7 @@ export interface RoomSnapshot {
     readonly observerIds: readonly string[];
     readonly ledger: SharedBattleLedger | null; readonly session: SharedBattleSession;
     readonly sourceContext: SourceBattleContext | null; readonly escaped: boolean;
-    readonly escapeAttempts: number } | null;
+    readonly escapeAttempts: number; readonly escapeConfirmations: readonly string[] } | null;
   readonly duelChallenge: PlayerDuelChallenge | null;
   readonly world: OverworldState;
   readonly sourceWorld: SourceWorldSnapshot | null;
@@ -62,6 +63,7 @@ export type ClientMessage =
       readonly type: "submitAction";
       readonly battleId: string;
       readonly turn: number;
+      readonly activeSlot?: number;
       readonly action: TeamBattleAction;
     })
   | (RequestedMessage & {
@@ -69,6 +71,7 @@ export type ClientMessage =
       readonly battleId: string;
       readonly turn: number;
       readonly teamIndex: number;
+      readonly activeSlot?: number;
     })
   | (RequestedMessage & { readonly type: "attemptBattleEscape"; readonly battleId: string; readonly turn: number })
   | (RequestedMessage & { readonly type: "requestSnapshot" })
@@ -133,7 +136,7 @@ export type ServerMessage =
       readonly battleId: string;
       readonly turn: number;
       readonly state: TeamBattleState;
-      readonly events: readonly TeamBattleEvent[];
+      readonly events: readonly (TeamBattleEvent | DoubleBattleEvent)[];
     })
   | (VersionedMessage & {
       readonly type: "replacementResolved";

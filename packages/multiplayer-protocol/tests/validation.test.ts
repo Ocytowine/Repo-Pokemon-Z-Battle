@@ -65,6 +65,8 @@ describe("multiplayer protocol", () => {
   });
 
   it("accepts team switches and forced replacements", () => {
+    expect(parseClientMessage('{"type":"submitAction","version":12,"requestId":"d1","battleId":"b1","turn":1,"activeSlot":1,"action":{"kind":"move","moveIndex":0,"target":{"side":"opponent","slot":1}}}'))
+      .toMatchObject({ activeSlot: 1, action: { target: { side: "opponent", slot: 1 } } });
     expect(parseClientMessage('{"type":"submitAction","version":12,"requestId":"s1","battleId":"b1","turn":1,"action":{"kind":"switch","teamIndex":5}}')).toMatchObject({ action: { kind: "switch", teamIndex: 5 } });
     expect(parseClientMessage('{"type":"submitReplacement","version":12,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":1}')).toMatchObject({ type: "submitReplacement", teamIndex: 1 });
     expect(() => parseClientMessage('{"type":"submitReplacement","version":12,"requestId":"r1","battleId":"b1","turn":2,"teamIndex":6}')).toThrow("submitReplacement mal formé");

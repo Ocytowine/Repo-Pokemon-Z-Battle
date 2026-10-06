@@ -132,7 +132,7 @@ export interface PlayerPokemonCollectionState {
 export interface PlayerBattleCatalog {
   readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types">[];
   readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
-    & { readonly flags?: string })[];
+    & { readonly flags?: string; readonly targetCode?: string })[];
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
@@ -695,11 +695,17 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
   // Le catalogue détaillé contient aussi description/targetCode. Ces données
   // d'interface ne font pas partie de l'état de combat public et le protocole
   // réseau rejette volontairement tout champ supplémentaire.
+  const targetAliases: Readonly<Record<string, string>> = { SingleNonUser: "00", NoTarget: "01",
+    RandomOpposing: "02", AllOpposing: "04", AllNonUsers: "08", User: "10", UserSide: "20",
+    BothSides: "40", OpposingSide: "80", Partner: "100", UserOrPartner: "200",
+    SingleOpposing: "400", OppositeOpposing: "800" };
+  const rawTarget = definition.targetCode ?? "00";
+  const targetCode = targetAliases[rawTarget] ?? rawTarget.toUpperCase().replace(/^0X/u, "");
   return { id: definition.id, internalName: definition.internalName, name: definition.name,
     functionCode: definition.functionCode as BattleMove["functionCode"], power: definition.power,
     type: definition.type, category: definition.category, accuracy: definition.accuracy,
     pp: slot.maxPp, priority: definition.priority, effectChance: definition.effectChance,
-    ...(definition.flags === undefined ? {} : { flags: definition.flags }) };
+    ...(definition.flags === undefined ? {} : { flags: definition.flags }), targetCode };
 }
 
 function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): BattlerState {

@@ -70,6 +70,12 @@ function sourceBattleContext(ownerId: string) {
     continuation: "pending-encounter" } as const;
 }
 
+function sourceTrainerBattleContext(ownerId: string) {
+  return { ...sourceBattleContext(ownerId), origin: "source-trainer", escapable: false,
+    presentation: { ...sourceBattleContext(ownerId).presentation,
+      opponentTrainer: { id: 12, name: "Dresseur Test", spriteId: "trainer-test" } } } as const;
+}
+
 describe("authoritative battle room", () => {
   it("starts a player duel only when facing the other avatar and resolves both players' actions", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
@@ -350,7 +356,7 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().sourceWorld?.avatars.opponent).not.toMatchObject({ x: 1, y: 2 });
   });
 
-  it("keeps an away guest outside the shared map until the host battle closes", () => {
+  it("lets an away guest attach to the shared map without becoming an automatic spectator", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");
     room.connect("bob");
@@ -364,8 +370,8 @@ describe("authoritative battle room", () => {
     expect(room.receive("bob", { type: "setSourcePresence", version: 12,
       requestId: "guest-return-during-battle", attached: true,
       avatar: { x: 0, y: 2, direction: "right" } })[0]?.message)
-      .toMatchObject({ type: "error", code: "INVALID_PHASE" });
-    expect(room.snapshot().sourceWorld?.presence.opponent).toBe("away");
+      .toMatchObject({ type: "ack" });
+    expect(room.snapshot().sourceWorld?.presence.opponent).toBe("shared");
   });
 
   it("publishes and persists a host-only read-only source scene", () => {
@@ -577,7 +583,7 @@ describe("authoritative battle room", () => {
     const opponentTeam = { ...initialBattle().teams.opponent,
       members: initialBattle().teams.opponent.members.map((member) => ({ ...member, hp: 1 })) };
     const forbidden = room.receive("bob", { type: "openSourceBattle", version: 12,
-      requestId: "source-battle-guest", context: sourceBattleContext("bob"), playerTeam, opponentTeam });
+      requestId: "source-battle-guest", context: sourceTrainerBattleContext("bob"), playerTeam, opponentTeam });
     expect(forbidden[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
 
     const opened = room.receive("alice", { type: "openSourceBattle", version: 12,
@@ -598,6 +604,100 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().battle).toMatchObject({ state: { status: "finished", winner: "player" },
       session: { lifecycle: "settling", settlementId: `${battle.id}:settlement` },
       sourceContext: { origin: "source-wild" } });
+  });
+
+  it("lets the host help a shared wild encounter opened by the guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    const opened = room.receive("bob", { type: "openSourceBattle", version: 12,
+      requestId: "guest-wild-open", context: sourceBattleContext("bob"),
+      playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
+    expect(opened.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    const battleId = room.snapshot().battle!.id;
+    expect(room.snapshot().battle).toMatchObject({
+      session: { origin: "source-wild", narrativeOwnerId: "bob", lifecycle: "join-window" },
+      participation: { battleOwnerId: "bob", camps: { player: { trainerIds: ["bob"] } } },
+    });
+
+    const helper = { ...battler("player"), id: "host-helper" };
+    room.receive("alice", { type: "proposeBattleJoin", version: 12, requestId: "host-help-proposal",
+      battleId, side: "player", team: { activeIndex: 0, members: [helper] },
+      finalMemberIds: ["player", helper.id] });
+    room.receive("bob", { type: "respondBattleJoin", version: 12, requestId: "guest-accepts-help",
+      battleId, accept: true });
+    expect(room.snapshot().battle).toMatchObject({ participation: { camps: { player: {
+      trainerIds: ["bob", "alice"], activeMemberId: "player", activeMemberIds: ["player", helper.id],
+    } } }, state: { turn: 1, format: "double", teams: { player: { activeIndices: [0, 1] } } } });
+    room.receive("alice", { type: "submitAction", version: 12, requestId: "host-helper-turn",
+      battleId, turn: 1, activeSlot: 1, action: { kind: "move", moveIndex: 0 } });
+    const helped = room.receive("bob", { type: "submitAction", version: 12, requestId: "guest-owner-turn",
+      battleId, turn: 1, activeSlot: 0, action: { kind: "move", moveIndex: 0 } });
+    expect(helped.map((entry) => entry.message.type)).toContain("turnResolved");
+  });
+
+  it("keeps an away guest wild battle joinable when the host reaches its map", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("bob", { type: "setSourcePresence", version: 12,
+      requestId: "away-wild-presence", attached: false, avatar: null });
+    const initial = initialBattle();
+    const context = { ...sourceBattleContext("bob"), mapId: 7 };
+    const opened = room.receive("bob", { type: "openSourceBattle", version: 12,
+      requestId: "away-wild-open", context,
+      playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
+    expect(opened.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toMatchObject({ sourceContext: { mapId: 7 },
+      participation: { battleOwnerId: "bob" } });
+
+    const destination = { ...sourceWorld, mapId: 7 };
+    room.receive("alice", { type: "setSourceWorld", version: 12,
+      requestId: "host-reaches-away-wild", world: destination });
+    room.receive("bob", { type: "setSourcePresence", version: 12,
+      requestId: "away-owner-attaches", attached: true,
+      avatar: { x: 1, y: 2, direction: "up" } });
+    expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, presence: { opponent: "shared" } });
+
+    const battleId = room.snapshot().battle!.id;
+    const helper = { ...battler("player"), id: "travelling-host-helper" };
+    const proposed = room.receive("alice", { type: "proposeBattleJoin", version: 12,
+      requestId: "travelling-host-proposal", battleId, side: "player",
+      team: { activeIndex: 0, members: [helper] }, finalMemberIds: ["player", helper.id] });
+    expect(proposed.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+  });
+
+  it("lets a guest help a wild battle from the next turn without resetting its history", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "wild-mid-open",
+      context: sourceBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
+    const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "submitAction", version: 12, requestId: "wild-mid-turn",
+      battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const beforeJoin = room.snapshot().battle!;
+    expect(beforeJoin.state.turn).toBe(2);
+    expect(beforeJoin.session.lifecycle).toBe("active");
+    const ledgerBeforeJoin = beforeJoin.ledger;
+
+    const guest = { ...battler("player"), id: "guest-helper" };
+    room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "wild-mid-propose",
+      battleId, side: "player", team: { activeIndex: 0, members: [guest] },
+      finalMemberIds: ["player", guest.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 12, requestId: "wild-mid-accept",
+      battleId, accept: true });
+    expect(room.snapshot().battle).toMatchObject({ state: { turn: 2 }, participation: { camps: { player: {
+      activeMemberId: "player", activeMemberIds: ["player", guest.id], trainerIds: ["alice", "bob"],
+    } } }, ledger: ledgerBeforeJoin });
+
+    room.receive("bob", { type: "submitAction", version: 12, requestId: "wild-helper-turn",
+      battleId, turn: 2, activeSlot: 1, action: { kind: "move", moveIndex: 0 } });
+    const nextTurn = room.receive("alice", { type: "submitAction", version: 12, requestId: "wild-owner-turn-2",
+      battleId, turn: 2, activeSlot: 0, action: { kind: "move", moveIndex: 0 } });
+    expect(nextTurn.map((entry) => entry.message.type)).toContain("turnResolved");
   });
 
   it("persists an explicit observer choice and lets only the host close the join window", () => {
@@ -639,8 +739,21 @@ describe("authoritative battle room", () => {
     const playerTeam = initialBattle().teams.player;
     const opponentTeam = initialBattle().teams.opponent;
     room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "open-proposal",
-      context: sourceBattleContext("alice"), playerTeam, opponentTeam });
+      context: sourceTrainerBattleContext("alice"), playerTeam, opponentTeam });
     const battleId = room.snapshot().battle!.id;
+    expect(room.receive("alice", { type: "submitAction", version: 12, requestId: "trainer-too-early",
+      battleId, turn: 1, action: { kind: "move", moveIndex: 0 } })[0]?.message)
+      .toMatchObject({ type: "error", code: "INVALID_PHASE", message: expect.stringContaining("attend") });
+    expect(room.receive("alice", { type: "closeBattleJoinWindow", version: 12,
+      requestId: "trainer-cannot-skip-guest", battleId })[0]?.message)
+      .toMatchObject({ type: "error", code: "INVALID_PHASE", message: expect.stringContaining("attend") });
+    expect(room.receive("bob", { type: "moveAvatar", version: 12, requestId: "trainer-guest-move-away",
+      direction: "left", sequence: 1 }).map((entry) => entry.message.type))
+      .toEqual(["ack", "sourceWorldUpdated"]);
+    room.receive("bob", { type: "moveAvatar", version: 12, requestId: "trainer-guest-move-back",
+      direction: "right", sequence: 2 });
+    room.receive("bob", { type: "moveAvatar", version: 12, requestId: "trainer-guest-face-host",
+      direction: "up", sequence: 3 });
     const guest = { ...battler("opponent"), id: "guest-source-mon" };
     room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "source-proposal",
       battleId, side: "opponent", team: { activeIndex: 0, members: [guest] },
@@ -652,8 +765,6 @@ describe("authoritative battle room", () => {
       battleId, accept: true });
     expect(room.snapshot().battle?.participation?.camps.opponent.members.map((member) => member.battler.id))
       .toEqual(["opponent", "guest-source-mon"]);
-    room.receive("alice", { type: "closeBattleJoinWindow", version: 12,
-      requestId: "close-after-approval", battleId });
     expect(room.snapshot().battle?.session.lifecycle).toBe("active");
   });
 
@@ -674,31 +785,52 @@ describe("authoritative battle room", () => {
       ledger: { engagedMemberIds: { player: ["player"], opponent: ["opponent"] } } });
   });
 
-  it("reserves global escape to the narrative owner and persists its settlement", () => {
+  it("requires every participating trainer to confirm escape and persists the consensus", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(2), worldWithSource);
     room.connect("alice");
     room.connect("bob");
     const initial = initialBattle();
     room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "escape-open",
       context: sourceBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
-    const battle = room.snapshot().battle!;
-    expect(room.receive("bob", { type: "attemptBattleEscape", version: 12, requestId: "escape-guest",
-      battleId: battle.id, turn: 1 })[0]?.message).toMatchObject({ type: "error", code: "HOST_ONLY" });
-    const escaped = room.receive("alice", { type: "attemptBattleEscape", version: 12,
-      requestId: "escape-host", battleId: battle.id, turn: 1 });
-    expect(escaped.map((entry) => entry.message.type)).toEqual(["ack", "battleSettlement", "battleEscaped", "snapshot"]);
+    const battleId = room.snapshot().battle!.id;
+    const helper = { ...battler("player"), id: "escape-helper" };
+    room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "escape-join",
+      battleId, side: "player", team: { activeIndex: 0, members: [helper] },
+      finalMemberIds: ["player", helper.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 12, requestId: "escape-join-accept",
+      battleId, accept: true });
+    const firstVote = room.receive("alice", { type: "attemptBattleEscape", version: 12,
+      requestId: "escape-host", battleId, turn: 1 });
+    expect(firstVote.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toMatchObject({ escaped: false, escapeAttempts: 0,
+      escapeConfirmations: ["alice"] });
+    const pending = room.exportState();
+    const cancelled = room.receive("bob", { type: "submitAction", version: 12,
+      requestId: "escape-cancelled-by-action", battleId, turn: 1, activeSlot: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(cancelled.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle?.escapeConfirmations).toEqual([]);
+    const restoredPending = new AuthoritativeBattleRoom("ABC234", initialBattle,
+      new SeededRandom(pending.rngState), worldWithSource, pending);
+    expect(restoredPending.snapshot().battle?.escapeConfirmations).toEqual(["alice"]);
+    const escaped = restoredPending.receive("bob", { type: "attemptBattleEscape", version: 12,
+      requestId: "escape-guest", battleId, turn: 1 });
+    expect(escaped.map((entry) => entry.message.type)).toEqual([
+      "ack", "battleSettlement", "battleSettlement", "battleEscaped", "snapshot",
+    ]);
     const settlement = escaped.find((entry) => entry.message.type === "battleSettlement")?.message;
     expect(settlement).toMatchObject({ type: "battleSettlement", settlement: { ownerId: "alice",
-      battleId: battle.id, outcome: "escaped", money: { kind: "none" }, healParty: false } });
-    expect(room.snapshot()).toMatchObject({ phase: "finished", battle: { escaped: true, escapeAttempts: 1,
-      session: { lifecycle: "settling", settlementId: `${battle.id}:settlement` } } });
-    const persisted = room.exportState();
+      battleId, outcome: "escaped", money: { kind: "none" }, healParty: false } });
+    expect(restoredPending.snapshot()).toMatchObject({ phase: "finished", battle: { escaped: true,
+      escapeAttempts: 1, escapeConfirmations: [],
+      session: { lifecycle: "settling", settlementId: `${battleId}:settlement` } } });
+    const persisted = restoredPending.exportState();
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle,
       new SeededRandom(persisted.rngState), worldWithSource, persisted);
     expect(restored.snapshot().battle).toMatchObject({ escaped: true, escapeAttempts: 1 });
-    expect(restored.connect("alice").settlement).toMatchObject({ battleId: battle.id, ownerId: "alice" });
+    expect(restored.connect("alice").settlement).toMatchObject({ battleId, ownerId: "alice" });
     expect(restored.receive("alice", { type: "ackBattleSettlement", version: 12,
-      requestId: "escape-settlement-ack", settlementId: `${battle.id}-alice` })[0]?.message).toMatchObject({ type: "ack" });
+      requestId: "escape-settlement-ack", settlementId: `${battleId}-alice` })[0]?.message).toMatchObject({ type: "ack" });
     expect(restored.connect("alice").settlement).toBeNull();
   });
 
@@ -710,7 +842,7 @@ describe("authoritative battle room", () => {
     const opponentTeam = { ...initial.teams.opponent,
       members: initial.teams.opponent.members.map((member) => ({ ...member, hp: 1 })) };
     room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "settlement-open",
-      context: sourceBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam });
+      context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam });
     const battleId = room.snapshot().battle!.id;
     const guest = { ...battler("player"), id: "guest-mon" };
     room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "settlement-join", battleId,
@@ -719,8 +851,13 @@ describe("authoritative battle room", () => {
       battleId, accept: true });
     room.receive("alice", { type: "closeBattleJoinWindow", version: 12, requestId: "settlement-close", battleId });
     room.disconnect("bob");
+    room.connect("bob");
+    room.receive("bob", { type: "submitAction", version: 12,
+      requestId: "settlement-guest-action", battleId, turn: 1, activeSlot: 1,
+      action: { kind: "move", moveIndex: 0 } });
     const resolved = room.receive("alice", { type: "submitAction", version: 12,
-      requestId: "settlement-win", battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+      requestId: "settlement-win", battleId, turn: 1, activeSlot: 0,
+      action: { kind: "move", moveIndex: 0 } });
     const settlements = resolved.filter((entry) => entry.message.type === "battleSettlement");
     expect(settlements).toHaveLength(2);
     expect(settlements.map((entry) => entry.audience)).toEqual([
@@ -755,7 +892,7 @@ describe("authoritative battle room", () => {
     room.connect("bob");
     const initial = initialBattle();
     room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "resume-open",
-      context: sourceBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
+      context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
     const battleId = room.snapshot().battle!.id;
     const guest = { ...battler("opponent"), id: "guest-active" };
     room.receive("bob", { type: "proposeBattleJoin", version: 12, requestId: "resume-join", battleId,

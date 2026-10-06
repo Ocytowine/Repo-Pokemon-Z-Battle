@@ -50,10 +50,12 @@ describe("shared battle participation", () => {
     proposal = approveBattleJoin(proposal, "host");
     const joined = applyBattleJoin(battle(), proposal);
     expect(joined.camps.player.trainerIds).toEqual(["host", "guest"]);
+    expect(joined.format).toBe("double");
+    expect(joined.camps.player.activeMemberIds).toEqual(["starter", "guest-mon"]);
     expect(activeBattleController(joined, "player")).toBe("host");
   });
 
-  it("lets the guest compose the opposing camp up to six Pokémon with host consent", () => {
+  it("lets the guest compose the opposing camp with at most three owned Pokémon", () => {
     const contribution = [pokemon("g1"), pokemon("g2"), pokemon("g3")];
     let proposal = proposeBattleJoin(battle(), { joinerId: "guest", side: "opponent", members: contribution,
       finalMemberIds: ["g1", "g2", "g3"] });
@@ -63,14 +65,17 @@ describe("shared battle participation", () => {
     expect(activeBattleController(joined, "opponent")).toBe("guest");
   });
 
-  it("rejects double battles, full camps and rosters larger than six", () => {
-    expect(() => proposeBattleJoin(battle("double"), { joinerId: "guest", side: "player", members: [pokemon("g")],
-      finalMemberIds: ["starter", "g"] })).toThrow(/double/u);
+  it("accepts a second trainer in doubles and rejects full camps or rosters larger than six", () => {
+    expect(proposeBattleJoin(battle("double"), { joinerId: "guest", side: "player", members: [pokemon("g")],
+      finalMemberIds: ["starter", "g"] }).side).toBe("player");
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "player",
       members: Array.from({ length: 6 }, (_, index) => pokemon(`g${index}`)),
       finalMemberIds: ["starter", ...Array.from({ length: 6 }, (_, index) => `g${index}`)] })).toThrow(/six/u);
+    expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "opponent",
+      members: Array.from({ length: 4 }, (_, index) => pokemon(`g${index}`)),
+      finalMemberIds: Array.from({ length: 4 }, (_, index) => `g${index}`) })).toThrow(/trois/u);
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "player", members: [pokemon("g")],
-      finalMemberIds: ["g"] })).toThrow(/meneur/u);
+      finalMemberIds: ["g"] })).toThrow(/retirer/u);
     const fainted = { ...pokemon("ko"), hp: 0 };
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "opponent", members: [fainted],
       finalMemberIds: ["ko"] })).toThrow(/apte au combat/u);

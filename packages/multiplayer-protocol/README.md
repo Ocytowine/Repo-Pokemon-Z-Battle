@@ -31,9 +31,16 @@ publie ce profil a la creation de la room et peut le mettre a jour par l'intenti
 `SourceBattleContext` strict : origine, carte, présentation par identifiants
 logiques, faits de récompense et continuation. Aucun chemin local, Ranch, IV/EV,
 inventaire ou sauvegarde narrative n'entre dans ce contrat. Le snapshot expose le
-cycle partagé et conserve le contexte jusqu'au règlement.
+cycle partagé et conserve le contexte jusqu'au règlement. L'hôte publie les
+combats sauvages ou de Dresseurs ; l'invité peut publier uniquement une rencontre
+sauvage lorsqu'il est présent sur la carte partagée.
 
 La fenêtre de jonction possède aussi des intentions bornées : `observeBattle`
 enregistre le choix explicite de l'invité et `closeBattleJoinWindow` est réservé au
 propriétaire narratif. Le snapshot conserve les observateurs, la composition et
 les propriétaires ; une reconnexion ne rouvre donc pas une décision déjà prise.
+
+En combat double, les intentions d'action et de remplacement identifient le slot
+actif concerne. Le snapshot publie aussi les confirmations de fuite : contre un
+sauvage rejoint, chaque Dresseur engage doit confirmer la meme tentative. Cet
+accord est autoritaire, annule par une autre action et restaure apres reconnexion.

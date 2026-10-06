@@ -102,9 +102,6 @@ export class SourceSequenceEffects {
       || !Number.isInteger(command.data.version)) {
       return this.abort(session, "Séquence interrompue : combat de Dresseur invalide.");
     }
-    if (command.data.format === "double") {
-      return this.abort(session, "Séquence interrompue : les combats de Dresseurs doubles restent à porter.");
-    }
     const trainer = assets.trainers.find((candidate) => candidate.trainerType === command.data.trainerType
       && candidate.name === command.data.trainerName && candidate.version === command.data.version);
     const trainerType = assets.trainerTypes.find((candidate) => candidate.internalName === command.data.trainerType);
@@ -117,6 +114,7 @@ export class SourceSequenceEffects {
       baseMoney: trainerType.baseMoney,
       trainerTypeId: trainerType.id,
       defeatText: localizedDialogueText(command.data.defeatText, session.translations),
+      format: command.data.format === "double" ? "double" : "single",
     }, (won) => {
       if (!this.dependencies.isActive(session)) return;
       if (!won && command.data.canLose !== true) session.cursor = session.plan.steps.length;

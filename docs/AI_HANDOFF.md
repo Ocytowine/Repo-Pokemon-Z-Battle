@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-05.
+Derniere mise a jour : 2026-10-06.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -1332,7 +1332,8 @@ case cardinale praticable et replace le suiveur sans perdre son apparence. Le HU
 annonce une seule fois la coupure/depart et le retour ; l'onglet Coop distingue
 `Connecté`, `Reconnexion…` et `Parti`. Le schema v12 reste compatible par ajout de
 champs de snapshot et d'une intention ; les donnees personnelles ne changent pas.
-La recette deux navigateurs reste ouverte avant cloture de `STAB-NET-2`.
+La recette deux navigateurs a ete validee par le porteur le 2026-10-06 ;
+`STAB-NET-2` est clos.
 
 Correctif de reprise manuelle du 2026-10-06 : une place invitee marquee `left`
 apres un depart explicite ou l'expiration des 15 secondes ne compte plus comme une
@@ -1355,8 +1356,7 @@ Cette occupation est recalculee apres chaque mutation persistante, donc un switc
 une variable ou un self-switch qui change de page publie simultanement la nouvelle
 histoire et sa geometrie. Le snapshot de room la conserve pour la reconnexion.
 Les tests couvrent une zone invisible, les changements par switch/self-switch, le
-refus puis l'autorisation d'un pas invite et la restauration de la room. La recette
-manuelle deux navigateurs reste ouverte avant de clore `STAB-WORLD-1`. Les positions
+refus puis l'autorisation d'un pas invite et la restauration de la room. Les positions
 des PNJ mobiles en dehors de ces publications restent le perimetre distinct de
 `STAB-WORLD-2`.
 
@@ -1398,7 +1398,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 422 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 436 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1413,7 +1413,7 @@ locaux au joueur concerne et une excursion `away` conserve son parcours local.
 Le meme jalon empeche tout debut de combat avec un actif K.O. : le noyau choisit
 un reserve conscient ou refuse une equipe entierement K.O., y compris lors d'une
 proposition de composition Coop. `STAB-WORLD-2` a ete accepte manuellement par le
-porteur le meme jour ; `STAB-WORLD-1` reste en validation.
+porteur le meme jour.
 
 Isolation d'excursion du 2026-10-06 : un invite `away` qui livre un combat local
 ne recoit plus le combat source ouvert en parallele par l'hote. Le snapshot de
@@ -1447,6 +1447,119 @@ par une sur la carte partagee : seuls le soin et `set-checkpoint` s'appliquent a
 l'invite. Les switches, variables, ajouts de Pokemon, rencontres et mutations de
 l'histoire ne sont jamais executes par ce chemin. Le meme filtrage protege les
 transferts personnels sans reouvrir l'autorite narrative a l'invite.
+
+Cloture manuelle du 2026-10-06 : le porteur confirme que l'ensemble de la recette
+passe dans deux navigateurs. Depart et reconnexion, blocages narratifs, autorite
+exclusive de l'hote, excursions et combats simultanes, retour sur la carte partagee,
+fin propre des combats et soin personnel de l'invite fonctionnent sans erreur HUD
+persistante. `STAB-NET-2` et `STAB-WORLD-1` sont donc termines, comme `STAB-NET-1`
+et `STAB-WORLD-2`. Le prochain lot de stabilisation est `STAB-BATTLE-1`.
+
+Premier jalon `STAB-BATTLE-1` du 2026-10-06 : `TeamBattleEvent` alimente desormais
+un sequenceur visuel pur commun aux combats locaux et aux combats autoritaires de
+room. L'autorite reste le moteur de combat ; la file locale ne fait que projeter
+les evenements recus. Elle ordonne action, impact, mise a jour visible des PV,
+critique/efficacite ou echec, statut, KO puis remplacement. Les remplacements
+automatiques locaux conservent leur evenement `pokemonSwitched`, ce qui evite
+l'apparition brutale du Pokemon suivant. L'etat est transitoire ; une reconnexion
+repart du snapshot autoritaire courant sans rejouer les anciens tours. L'audience
+reste chaque participant ou observateur qui recoit le combat.
+
+Les messages de rate, immunite, faible/forte efficacite, critique, statuts, soins,
+degats residuels, objets et blocages d'action ont un delai lisible independant de
+`prefers-reduced-motion`. Un clic, Entree ou Espace permet de les avancer et la
+boite utilise `role=status`. Les PV atteignent zero avant le texte et l'animation
+de KO ; un remplacement recharge ensuite le bon battler. La transition d'entree
+est un fondu noir sans flash gris. En fin de victoire, textes de Dresseur, EXP,
+niveaux, capacites et argent precedent la musique de victoire et la sortie ; la
+fuite possede aussi un message explicite. `STAB-BATTLE-1` reste en validation
+manuelle solo/PvP/Coop avant cloture.
+
+Ralliement Coop du 2026-10-06 : un joueur non engage reste maintenant dans
+l'overworld et le combat source lui est masque jusqu'a une interaction face au
+meneur. Contre un sauvage, cette interaction propose uniquement d'aider le meneur
+et reste disponible entre deux tours, meme apres le premier tour. L'acceptation
+conserve le numero de tour, les PV et le registre de participation ; le premier
+Pokemon retenu de l'arrivant devient l'actif du camp au tour suivant. Contre un
+Dresseur source, l'invite choisit entre aider l'hote et se rallier au Dresseur
+adverse. La room bloque les actions du combat et la presentation avant l'envoi
+des Pokemon jusqu'a ce choix et a son acceptation. L'invite non engage peut se
+deplacer pour rejoindre l'hote, tandis que les participants et observateurs
+restent verrouilles. L'autorite et la persistance appartiennent a la room ; le
+panneau de composition est seulement une projection personnelle et transitoire.
+La reconnexion restaure le snapshot, le camp, l'actif et le tour autoritaires.
+
+Correction symetrique du meme jalon : `openSourceBattle` n'est host-only que pour
+les combats de Dresseurs et les combats issus de la narration. Une rencontre
+sauvage aleatoire peut etre publiee par l'invite lorsqu'il est `shared` sur la
+carte de l'hote. L'invite devient alors `battleOwnerId` et proprietaire de la
+continuation `pending-encounter`; l'hote recoit le combat masque comme rejoignable,
+peut se deplacer jusqu'a l'invite et emploie exactement le meme choix `Aider`.
+Les projections, noms, validations de proximite, reglements personnels, fuite et
+fermeture utilisent l'identite du meneur du combat plutot que le role fixe hote.
+Une rencontre sauvage declenchee par l'invite `away` est aussi publiee avec son
+`mapId`, sans rattacher ni teleporter l'hote. Elle reste masquee a l'hote pendant
+son trajet. Lorsque celui-ci publie cette carte puis rejoint physiquement
+l'invite, `setSourcePresence(attached)` est autorise malgre le combat : les deux
+avatars partagent alors l'instance et l'interaction `Aider` devient disponible,
+sans recreer la bataille ni perdre son tour. Un combat PNJ ou narratif ne peut
+toujours pas etre ouvert par l'invite.
+
+Isolation des compositions du meme jalon : le panneau de jonction affiche les
+Pokemon deja engages de l'autre joueur comme membres fixes. Le joueur qui rejoint
+ne selectionne que ses propres Pokemon, et le noyau refuse autoritairement toute
+proposition qui retirerait un membre possede par l'autre participant. Chaque
+sauvegarde et chaque reglement restent limites a leur proprietaire.
+
+Moteur double du 2026-10-06 : le ralliement ne remplace plus l'actif du meneur et
+ne simule plus un combat simple. Son acceptation passe la participation et l'etat
+tactique au format `double`, avec un slot actif par Dresseur. Chaque joueur engage
+au maximum trois de ses Pokemon, ne choisit que l'action, la cible, le changement
+et le remplacement de son propre actif, et ne peut jamais piloter celui de son
+partenaire. Un camp reste limite a deux Dresseurs et six Pokemon. Contre un sauvage
+seul, les deux joueurs combattent en 2 contre 1 ; contre un Dresseur, le camp PNJ
+emploie un second actif s'il en possede un. Un invite rallie a l'ennemi controle de
+la meme facon son propre Pokemon dans ce camp.
+
+Le noyau partage `double-team-battle` resout les quatre intentions dans un ordre
+global de priorite et vitesse. Il porte le ciblage source `PBTargets`, les attaques
+de zone, leur coefficient de degats, les PP consommes une seule fois, les effets de
+fin de tour, les K.O. et les remplacements par slot. Le solo, la room et les combats
+source emploient ce meme noyau. Le protocole ajoute seulement les positions et
+cibles optionnelles, de sorte que les anciens messages simples restent valides.
+La room est l'autorite des actions et de la persistance ; elle attend chaque slot
+possede, complete les slots sans proprietaire par l'IA, conserve le tour et les
+places actives a la reconnexion, puis adresse les evenements positionnes a tous les
+participants. L'interface affiche jusqu'a quatre battlers, demande la cible lorsque
+plusieurs adversaires sont eligibles et avance automatiquement vers le second actif
+local lorsqu'un meme joueur en controle deux.
+
+Preuves automatiques : resolution de quatre actions, ciblage individuel, attaque
+de zone, conversion de jonction, actifs possedes, action et remplacement par
+proprietaire, persistance de room et presentation des evenements positionnes. La
+recette manuelle reste ouverte : sauvage 2 contre 1 initie par chacun des joueurs,
+ralliement allie et adverse contre un Dresseur, source double natif, choix des deux
+cibles, K.O./remplacements des quatre slots et reconnexion au milieu d'un tour.
+`STAB-BATTLE-1` reste donc `En validation`.
+
+Correctif visuel et de consensus du 2026-10-06 : les positions doubles ne reposent
+plus sur des marges CSS. Elles reprennent les origines exactes
+`PLAYERBATTLERD1/D2`, `FOEBATTLERD1/D2`, `PLAYERBOXD1/D2` et `FOEBOXD1/D2` de
+`PokeBattle_SceneConstants`, dans le repere source 512 x 384. Les HUD simple et
+double affichent de nouveau les icones de types et la ligne de statut issue de
+`battleStatuses.png`; le format double reste volontairement compact. Lorsqu'une
+aide est acceptee pendant un sauvage, le nouveau slot est d'abord masque puis sa
+Ball, son effet d'envoi, son cri et son HUD sont joues sur la scene existante. Une
+ouverture double en attente joue aussi chaque second envoi separement.
+
+La fuite d'un sauvage rejoint est desormais un consensus de tous les Dresseurs
+engages, quelle que soit l'identite du meneur. La room persiste la liste des
+confirmations et la replique aux participants ; une reconnexion conserve donc le
+vote. Le tirage de fuite et la consommation du tour n'ont lieu qu'une fois tous
+les accords recus. Une action differente annule le vote et debloque les clients.
+En solo, la confirmation unique conserve le comportement existant. La recette
+manuelle doit encore verifier les placements avec plusieurs tailles de sprites,
+l'arrivee vue des deux navigateurs et une fuite acceptee puis annulee.
 
 ## Commandes utiles
 

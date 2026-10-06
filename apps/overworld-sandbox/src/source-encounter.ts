@@ -1,5 +1,6 @@
-import { attemptSourceBattleEscape, chooseSourceBattleAction, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
-  type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
+import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBattleState, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
+  type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamReplacementResult,
+  type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 
@@ -27,7 +28,7 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
-  catalog: PlayerCreationCatalog): TeamBattleState {
+  catalog: PlayerCreationCatalog, format: "single" | "double" = "single"): TeamBattleState {
   const player = playerPartyToBattleTeam(party, catalog);
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
@@ -44,8 +45,10 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     opponentParty = addPokemonToParty(opponentParty, pokemon);
   });
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
-  return createTeamBattleState({ player: player.members, opponent: opponent.members },
-    { player: player.activeIndex, opponent: opponent.activeIndex });
+  return format === "double"
+    ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
+    : createTeamBattleState({ player: player.members, opponent: opponent.members },
+      { player: player.activeIndex, opponent: opponent.activeIndex });
 }
 
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
@@ -74,8 +77,10 @@ export function attemptSourceEncounterEscape(state: TeamBattleState, attempts: n
   return attemptSourceBattleEscape(state, attempts, rng);
 }
 
-export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleState {
-  if (state.status === "finished" || state.replacementRequired.length === 0) return state;
+export function resolveAutomaticReplacements(state: TeamBattleState): TeamReplacementResult {
+  if (state.status === "finished" || state.replacementRequired.length === 0) {
+    return { state, events: [], trace: [] };
+  }
   const replacements: Partial<Record<"player" | "opponent", number>> = {};
   for (const side of state.replacementRequired) {
     const team = state.teams[side];
@@ -83,7 +88,11 @@ export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleSt
     if (replacement < 0) throw new Error(`Aucun remplaçant valide pour ${side}.`);
     replacements[side] = replacement;
   }
-  return replaceFaintedPokemon(state, replacements).state;
+  return replaceFaintedPokemon(state, replacements);
+}
+
+export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleState {
+  return resolveAutomaticReplacements(state).state;
 }
 
 export function storeSourceEncounterParty(party: PlayerPartyState, state: TeamBattleState): PlayerPartyState {

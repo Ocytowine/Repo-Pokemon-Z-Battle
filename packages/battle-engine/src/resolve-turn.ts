@@ -311,7 +311,8 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
   return hit;
 }
 
-export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveActions, rng: RandomSource): TurnResult {
+export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveActions, rng: RandomSource,
+  options: { readonly endOfTurn?: boolean; readonly damageMultiplier?: number } = {}): TurnResult {
   validateState(state, actions);
   const battlers: Record<BattleSide, BattlerState> = {
     player: cloneBattler(state.battlers.player),
@@ -358,7 +359,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       continue;
     }
     const traceStart = trace.length;
-    const damage = calculateDamage(side, battlers[side], defender, slot.move, rng, trace);
+    const baseDamage = calculateDamage(side, battlers[side], defender, slot.move, rng, trace);
+    const damage = Math.max(1, Math.floor(baseDamage * (options.damageMultiplier ?? 1)));
     const damageTrace = trace.slice(traceStart).find((entry) => entry.type === "damage");
     if (damageTrace === undefined) throw new Error("Damage calculation did not emit its trace.");
     const hp = Math.max(0, defender.hp - damage);
@@ -390,16 +392,20 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (hp === 0) {
       winner = side;
       events.push({ type: "fainted", side: targetSide });
-      events.push({ type: "battleEnded", winner: side });
+      if (options.endOfTurn !== false) events.push({ type: "battleEnded", winner: side });
     }
   }
 
-  if (winner === null) winner = applyResidualStatus(battlers, events);
-  if (winner === null) winner = applyHeldItems(battlers, events);
+  if (options.endOfTurn === false) winner = null;
+  else {
+    if (winner === null) winner = applyResidualStatus(battlers, events);
+    if (winner === null) winner = applyHeldItems(battlers, events);
+  }
 
   events.push({ type: "turnEnded", turn: state.turn });
   return {
-    state: { turn: state.turn + 1, status: winner === null ? "active" : "finished", winner, battlers },
+    state: { turn: state.turn + (options.endOfTurn === false ? 0 : 1),
+      status: winner === null ? "active" : "finished", winner, battlers },
     events,
     trace,
   };

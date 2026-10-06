@@ -1,4 +1,4 @@
-import type { BattleSide, BattleTeam, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattlePosition, BattleSide, BattleTeam, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { sourceItemIconUrl } from "./source-bag.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
@@ -15,10 +15,15 @@ export interface SourceBattleOverlayModel {
   readonly state: TeamBattleState | null;
   readonly local: boolean;
   readonly animating: boolean;
+  readonly waitingForJoin: boolean;
   readonly networkSide: BattleSide | null;
   readonly controllableMemberIds: readonly string[] | null;
   readonly networkSubmittedTurn: number | null;
+  readonly submittedActiveSlots: readonly number[];
   readonly escapable: boolean;
+  readonly escapeConfirmedByMe: boolean;
+  readonly escapeConfirmationCount: number;
+  readonly escapeConfirmationRequired: number;
   readonly capturable: boolean;
   readonly escaped: boolean;
   readonly bag: {
@@ -30,15 +35,15 @@ export interface SourceBattleOverlayModel {
 
 export interface SourceBattleOverlayCallbacks {
   readonly onRenderVisuals: (state: TeamBattleState, local: boolean) => void;
-  readonly onMove: (moveIndex: number, local: boolean) => void;
-  readonly onSwitch: (teamIndex: number, local: boolean) => void;
-  readonly onReplacement: (teamIndex: number) => void;
+  readonly onMove: (moveIndex: number, local: boolean, activeSlot: number, target?: BattlePosition) => void;
+  readonly onSwitch: (teamIndex: number, local: boolean, activeSlot: number) => void;
+  readonly onReplacement: (teamIndex: number, activeSlot: number) => void;
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
   readonly onDetails: (pokemonId: string) => void;
 }
 
-type BattleMenu = "root" | "moves" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items";
+type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items";
 
 export function sourceBattleSummary(state: TeamBattleState, observing: boolean): string {
   const playerTeam = state.teams.player;
@@ -58,6 +63,8 @@ function hpPercent(hp: number, maximum: number): number {
 export class SourceBattleOverlay {
   private menu: BattleMenu = "root";
   private renderedTurn: number | null = null;
+  private activeSlot = 0;
+  private pendingMoveIndex: number | null = null;
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {}
 
@@ -73,10 +80,15 @@ export class SourceBattleOverlay {
     if (this.renderedTurn !== model.state.turn) {
       this.menu = "root";
       this.renderedTurn = model.state.turn;
+      this.activeSlot = 0;
+      this.pendingMoveIndex = null;
     }
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
-    if (visualStage !== null) visualStage.hidden = false;
-    this.callbacks.onRenderVisuals(model.state, model.local);
+    if (visualStage !== null) {
+      visualStage.hidden = false;
+      visualStage.classList.toggle("waiting-for-join", model.waitingForJoin);
+    }
+    if (!model.waitingForJoin) this.callbacks.onRenderVisuals(model.state, model.local);
     const playerTeam = model.state.teams.player;
     const opponentTeam = model.state.teams.opponent;
     const player = playerTeam.members[playerTeam.activeIndex];
@@ -95,7 +107,17 @@ export class SourceBattleOverlay {
   private renderActions(model: SourceBattleOverlayModel, team: BattleTeam): void {
     const actions = document.querySelector<HTMLElement>("#encounter-actions");
     if (actions === null || model.state === null) return;
-    const active = team.members[team.activeIndex];
+    if (model.waitingForJoin) {
+      actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>En attente de l’autre Dresseur…</p><small>Il doit venir interagir avec vous et choisir son camp.</small></div>';
+      return;
+    }
+    const activeIndices = team.activeIndices ?? [team.activeIndex];
+    const controllableSlots = activeIndices.flatMap((index, slot) => model.controllableMemberIds === null
+      || model.controllableMemberIds.includes(team.members[index]!.id) ? [slot] : []);
+    if (!controllableSlots.includes(this.activeSlot) || model.submittedActiveSlots.includes(this.activeSlot)) {
+      this.activeSlot = controllableSlots.find((slot) => !model.submittedActiveSlots.includes(slot)) ?? controllableSlots[0] ?? 0;
+    }
+    const active = team.members[activeIndices[this.activeSlot] ?? team.activeIndex];
     if (active === undefined) return;
     if (!model.local && model.state.status === "finished") {
       const result = model.state.winner === "player" ? "Victoire !" : "Défaite.";
@@ -107,15 +129,19 @@ export class SourceBattleOverlay {
       actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>Fuite réussie</p><small>Retour au monde en préparation…</small></div>';
       return;
     }
-    const submitted = !model.local && model.networkSubmittedTurn === model.state.turn;
-    const blocked = submitted || model.animating || !model.local && model.networkSide === null;
-    const replacement = !model.local && model.networkSide !== null && model.state.replacementRequired.includes("player");
+    const submitted = !model.local && model.networkSubmittedTurn === model.state.turn
+      && model.submittedActiveSlots.includes(this.activeSlot);
+    const blocked = submitted || model.escapeConfirmedByMe || model.animating
+      || !model.local && model.networkSide === null;
+    const replacement = !model.local && model.networkSide !== null && (model.state.replacementRequired.includes("player")
+      || model.state.slotReplacements?.some((position) => position.side === "player" && position.slot === this.activeSlot) === true);
     if (replacement) {
       this.menu = "pokemon";
       this.renderPokemon(actions, team, model, blocked, true);
       return;
     }
     if (this.menu === "moves") this.renderMoves(actions, active, model, blocked);
+    else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
     else if (this.menu === "bag") this.renderBagCategories(actions, model, blocked);
     else if (this.menu === "balls" || this.menu === "medicine" || this.menu === "battle-items") {
@@ -124,17 +150,27 @@ export class SourceBattleOverlay {
   }
 
   private renderRoot(actions: HTMLElement, model: SourceBattleOverlayModel, team: BattleTeam, blocked: boolean): void {
-    const reserves = team.members.filter((member, index) => index !== team.activeIndex && member.hp > 0).length;
+    const activeIndices = team.activeIndices ?? [team.activeIndex];
+    const reserves = team.members.filter((member, index) => !activeIndices.includes(index) && member.hp > 0).length;
     const bagCount = model.bag.balls.length + model.bag.medicine.length + model.bag.battleItems.length;
-    actions.innerHTML = `<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
+    const activePicker = activeIndices.length < 2 ? "" : `<div class="source-battle-active-picker">${activeIndices.map((index, slot) => `<button data-active-slot="${slot}"${disabled(model.submittedActiveSlots.includes(slot))}>${escapeSourceHtml(team.members[index]!.name)}${slot === this.activeSlot ? " ✓" : ""}</button>`).join("")}</div>`;
+    actions.innerHTML = `${activePicker}<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
       <button data-battle-menu="pokemon" class="pokemon"${disabled(blocked)}><b>●</b><span>Pokémon</span><small>${reserves} remplaçant${reserves > 1 ? "s" : ""}</small></button>
       <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
-      <button id="escape-source-encounter" class="escape"${disabled(model.animating
-        || !model.local && model.networkSubmittedTurn === model.state?.turn || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
+      <button id="escape-source-encounter" class="escape"${disabled(model.animating || model.escapeConfirmedByMe
+        || !model.local && model.networkSubmittedTurn === model.state?.turn || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapeConfirmedByMe
+          ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+          : model.escapable && model.escapeConfirmationRequired > 1
+            ? `Accord requis · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+            : model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
+      this.render(model);
+    }));
+    actions.querySelectorAll<HTMLButtonElement>("[data-active-slot]").forEach((button) => button.addEventListener("click", () => {
+      this.activeSlot = Number(button.dataset.activeSlot);
       this.render(model);
     }));
     actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => {
@@ -152,15 +188,42 @@ export class SourceBattleOverlay {
       button.addEventListener("click", () => {
         const moveIndex = Number(button.dataset.encounterMove);
         if (!Number.isInteger(moveIndex)) return;
-        this.menu = "root";
-        this.callbacks.onMove(moveIndex, model.local);
+        const move = active.moves[moveIndex]?.move;
+        const selectable = ["00", "400"].includes((move?.targetCode ?? "00").toUpperCase());
+        const opponentCount = model.state?.teams.opponent.activeIndices?.length ?? 1;
+        if (selectable && opponentCount > 1) {
+          this.pendingMoveIndex = moveIndex;
+          this.menu = "targets";
+          this.render(model);
+        } else {
+          this.menu = "root";
+          this.callbacks.onMove(moveIndex, model.local, this.activeSlot);
+        }
       }));
+  }
+
+  private renderTargets(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {
+    if (model.state === null || this.pendingMoveIndex === null) { this.menu = "moves"; this.render(model); return; }
+    const team = model.state.teams.opponent;
+    const indices = team.activeIndices ?? [team.activeIndex];
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back="moves" aria-label="Retour">‹</button><div><small>CIBLE</small><strong>Quel Pokemon viser ?</strong></div></header><div class="source-battle-move-grid">${indices.map((index, slot) => {
+      const battler = team.members[index]!;
+      return `<button data-target-slot="${slot}"${disabled(blocked || battler.hp <= 0)}><span>${escapeSourceHtml(battler.name)}</span><small>${battler.hp}/${battler.stats.maxHp} PV</small></button>`;
+    }).join("")}</div></div>`;
+    this.bindBack(actions, model, "moves");
+    actions.querySelectorAll<HTMLButtonElement>("[data-target-slot]").forEach((button) => button.addEventListener("click", () => {
+      const moveIndex = this.pendingMoveIndex!;
+      this.pendingMoveIndex = null;
+      this.menu = "root";
+      this.callbacks.onMove(moveIndex, model.local, this.activeSlot,
+        { side: "opponent", slot: Number(button.dataset.targetSlot) });
+    }));
   }
 
   private renderPokemon(actions: HTMLElement, team: BattleTeam, model: SourceBattleOverlayModel,
     blocked: boolean, replacement: boolean): void {
     const rows = team.members.map((member, index) => {
-      const active = index === team.activeIndex;
+      const active = (team.activeIndices ?? [team.activeIndex]).includes(index);
       const cannotSwitch = blocked || active || member.hp <= 0
         || model.controllableMemberIds !== null && !model.controllableMemberIds.includes(member.id);
       return `<article class="source-battle-team-row${active ? " active" : ""}"><div><strong>${escapeSourceHtml(member.name)}</strong><small>N.${member.level}${active ? " · AU COMBAT" : member.hp <= 0 ? " · K.O." : ""}</small></div><span class="source-battle-team-hp"><i><b style="width:${hpPercent(member.hp, member.stats.maxHp)}%"></b></i><em>${member.hp}/${member.stats.maxHp} PV</em></span><nav><button data-battle-details="${escapeSourceHtml(member.id)}"${disabled(model.animating)}>Détails</button><button data-${replacement ? "encounter-replacement" : "encounter-switch"}="${index}"${disabled(cannotSwitch)}>${replacement ? "Envoyer" : "Changer"}</button></nav></article>`;
@@ -172,10 +235,10 @@ export class SourceBattleOverlay {
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-switch]").forEach((button) =>
       button.addEventListener("click", () => {
         this.menu = "root";
-        this.callbacks.onSwitch(Number(button.dataset.encounterSwitch), model.local);
+        this.callbacks.onSwitch(Number(button.dataset.encounterSwitch), model.local, this.activeSlot);
       }));
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-replacement]").forEach((button) =>
-      button.addEventListener("click", () => this.callbacks.onReplacement(Number(button.dataset.encounterReplacement))));
+      button.addEventListener("click", () => this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot)));
   }
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {

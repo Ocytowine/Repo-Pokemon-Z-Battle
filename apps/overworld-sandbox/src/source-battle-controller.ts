@@ -1,14 +1,16 @@
-import { closeSharedBattleSession, createSharedBattleSession, SeededRandom, settleEscapedSharedBattleSession,
-  settleSharedBattleSession, type BattleSide, type SharedBattleSession, type TeamBattleAction,
+import { activeBattlePositions, activeTeamIndices, closeSharedBattleSession, createSharedBattleSession,
+  replaceFaintedDoublePokemon, resolveDoubleTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
+  settleSharedBattleSession, type BattlePosition, type BattleSide, type DoubleBattleEvent,
+  type PositionedTeamBattleAction, type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
 import {
-  applyAutomaticReplacements,
   attemptSourceEncounterEscape,
   createSourceEncounterBattle,
   createSourceTrainerBattle,
+  resolveAutomaticReplacements,
   resolveSourceEncounterAction,
   settleSourceEncounter,
   storeSourceEncounterParty,
@@ -32,7 +34,7 @@ export interface SourceBattlePresentation {
     readonly battleback?: string;
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
   }) => Promise<void>;
-  readonly playTurn: (before: TeamBattleState, events: readonly TeamBattleEvent[]) => Promise<void>;
+  readonly playTurn: (before: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]) => Promise<void>;
   readonly endBattle: (winner: BattleSide | null, outcome?: SourceBattleOutcome) => Promise<void> | void;
   readonly render: (state: TeamBattleState, battleback?: string) => Promise<void>;
 }
@@ -54,6 +56,7 @@ export interface SourceBattleOutcome {
   readonly experiences?: readonly SourceBattleExperiencePresentation[];
   readonly money?: number;
   readonly trainerDefeatText?: string;
+  readonly escaped?: boolean;
 }
 
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
@@ -114,6 +117,7 @@ export interface SourceTrainerBattleAudio {
   readonly baseMoney: number;
   readonly trainerTypeId: number;
   readonly defeatText: string;
+  readonly format?: "single" | "double";
 }
 
 function encounterSeed(species: string, level: number): number {
@@ -134,6 +138,7 @@ export class SourceBattleController {
   private sharedContinuationPending = false;
   private localSession: SharedBattleSession | null = null;
   private localSequence = 0;
+  private localDoubleActions: PositionedTeamBattleAction[] = [];
 
   public constructor(
     private readonly presentation: SourceBattlePresentation,
@@ -205,7 +210,7 @@ export class SourceBattleController {
     const resources = this.callbacks.getResources();
     if (resources === null || this.active) return false;
     try {
-      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog);
+      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single");
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
@@ -266,13 +271,17 @@ export class SourceBattleController {
         if (this.localSession !== null) {
           this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
         }
-        await this.presentation.endBattle(null);
+        await this.presentation.endBattle(null, { escaped: true });
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
         encounterCompletion?.(false);
       } else {
         await this.presentation.playTurn(before, result.turn.events);
-        this.battle = applyAutomaticReplacements(result.turn.state);
+        const replacements = resolveAutomaticReplacements(result.turn.state);
+        if (replacements.events.length > 0) {
+          await this.presentation.playTurn(result.turn.state, replacements.events);
+        }
+        this.battle = replacements.state;
         if (this.battle.status === "finished") {
           const encounterCompletion = this.encounterCompletion;
           const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
@@ -295,8 +304,8 @@ export class SourceBattleController {
     }
   }
 
-  public async submitAction(moveIndex: number): Promise<void> {
-    await this.submitTurnAction({ kind: "move", moveIndex });
+  public async submitAction(moveIndex: number, activeSlot = 0, target?: BattlePosition): Promise<void> {
+    await this.submitTurnAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
   }
 
   public acknowledgeSharedBattleOpened(): void {
@@ -329,20 +338,66 @@ export class SourceBattleController {
     return true;
   }
 
-  public async switchPokemon(teamIndex: number): Promise<void> {
-    await this.submitTurnAction({ kind: "switch", teamIndex });
+  public async switchPokemon(teamIndex: number, activeSlot = 0): Promise<void> {
+    await this.submitTurnAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   }
 
-  private async submitTurnAction(action: TeamBattleAction): Promise<void> {
+  public get pendingDoubleSlots(): readonly number[] {
+    return this.localDoubleActions.map((entry) => entry.actor.slot);
+  }
+
+  private async submitTurnAction(action: TeamBattleAction, activeSlot = 0): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
+    if (this.battle.format === "double") {
+      const actor = { side: "player" as const, slot: activeSlot };
+      if (!activeBattlePositions(this.battle).some((position) => position.side === actor.side && position.slot === actor.slot)) return;
+      this.localDoubleActions = [...this.localDoubleActions.filter((entry) => entry.actor.slot !== activeSlot), { actor, action }];
+      const required = activeTeamIndices(this.battle.teams.player).filter((index) => this.battle!.teams.player.members[index]!.hp > 0).length;
+      if (this.localDoubleActions.length < required) {
+        this.callbacks.setNotice("Action du premier Pokemon enregistree. Choisissez celle du second.");
+        this.callbacks.render();
+        return;
+      }
+    }
     this.resolving = true;
     this.callbacks.render();
     try {
       const eventState = this.callbacks.getEventState();
       const before = this.battle;
-      const result = resolveSourceEncounterAction(before, action, this.rng);
+      const result = before.format === "double"
+        ? resolveDoubleTeamTurn(before, [
+          ...this.localDoubleActions,
+          ...activeTeamIndices(before.teams.opponent).map((_, slot) => {
+            const battler = before.teams.opponent.members[activeTeamIndices(before.teams.opponent)[slot]!]!;
+            const choices = battler.moves.map((entry, moveIndex) => ({ entry, moveIndex })).filter(({ entry }) => entry.pp > 0);
+            const selected = choices[this.rng!.nextInt(choices.length)];
+            if (selected === undefined) throw new Error("Le Pokemon adverse n'a aucune capacite disponible.");
+            return { actor: { side: "opponent" as const, slot }, action: { kind: "move" as const, moveIndex: selected.moveIndex } };
+          }),
+        ], this.rng)
+        : resolveSourceEncounterAction(before, action, this.rng);
+      this.localDoubleActions = [];
       await this.presentation.playTurn(before, result.events);
-      this.battle = applyAutomaticReplacements(result.state);
+      let replacementState = result.state;
+      const replacementEvents: TeamBattleEvent[] = [];
+      if (result.state.format === "double") {
+        for (const position of [...(replacementState.slotReplacements ?? [])]) {
+          const team = replacementState.teams[position.side];
+          const active = activeTeamIndices(team);
+          const next = team.members.findIndex((member, index) => member.hp > 0 && !active.includes(index));
+          if (next < 0) continue;
+          const fromIndex = active[position.slot]!;
+          replacementEvents.push({ type: "pokemonSwitched", side: position.side, fromIndex, toIndex: next,
+            from: team.members[fromIndex]!.id, to: team.members[next]!.id, reason: "replacement" });
+          replacementState = replaceFaintedDoublePokemon(replacementState, position, next);
+        }
+      } else {
+        const replacements = resolveAutomaticReplacements(result.state);
+        replacementState = replacements.state;
+        replacementEvents.push(...replacements.events);
+      }
+      if (replacementEvents.length > 0) await this.presentation.playTurn(result.state, replacementEvents);
+      this.battle = replacementState;
       if (this.battle.status === "finished") {
         const winner = this.battle.winner;
         const resources = this.callbacks.getResources();
@@ -405,6 +460,7 @@ export class SourceBattleController {
     this.sharedOpening = false;
     this.sharedContinuationPending = false;
     this.localSession = null;
+    this.localDoubleActions = [];
   }
 
   private sharedContext(state: TeamBattleState, resources: SourceBattleResources, input: {
@@ -424,7 +480,7 @@ export class SourceBattleController {
       return { memberId: member.id, species: member.species, level: member.level,
         baseExperience: definition.baseExperience };
     });
-    return { origin: input.origin, mapId: resources.mapId, format: "single", escapable: input.escapable,
+    return { origin: input.origin, mapId: resources.mapId, format: state.format ?? "single", escapable: input.escapable,
       presentation: { battlebackId: resources.battleback,
         battleMusicId: input.battleMusic === undefined ? resources.battleMusic : input.battleMusic,
         victoryMusicId: input.victoryMusic === undefined ? resources.victoryMusic : input.victoryMusic,

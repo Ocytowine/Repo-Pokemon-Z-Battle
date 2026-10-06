@@ -198,9 +198,9 @@ describe("persistent player party", () => {
 
     expect(Object.keys(move).sort()).toEqual([
       "accuracy", "category", "effectChance", "flags", "functionCode", "id", "internalName", "name",
-      "power", "pp", "priority", "type",
+      "power", "pp", "priority", "targetCode", "type",
     ]);
-    expect(move).not.toHaveProperty("targetCode");
+    expect(move).toHaveProperty("targetCode", "00");
     expect(move).not.toHaveProperty("description");
   });
 

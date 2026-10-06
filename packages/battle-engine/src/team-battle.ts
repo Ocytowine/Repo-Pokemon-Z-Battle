@@ -44,7 +44,9 @@ function cloneBattler(battler: BattlerState): BattlerState {
 }
 
 function cloneTeam(team: BattleTeam): BattleTeam {
-  return { activeIndex: team.activeIndex, members: team.members.map(cloneBattler) };
+  return { activeIndex: team.activeIndex,
+    ...(team.activeIndices === undefined ? {} : { activeIndices: [...team.activeIndices] }),
+    members: team.members.map(cloneBattler) };
 }
 
 function cloneTeams(state: TeamBattleState): Record<BattleSide, BattleTeam> {
@@ -57,6 +59,12 @@ function validateTeam(team: BattleTeam, side: BattleSide): void {
   }
   if (!Number.isInteger(team.activeIndex) || team.activeIndex < 0 || team.activeIndex >= team.members.length) {
     throw new RangeError(`Invalid active Pokemon index for ${side}.`);
+  }
+  if (team.activeIndices !== undefined && (team.activeIndices.length < 1 || team.activeIndices.length > 2
+    || new Set(team.activeIndices).size !== team.activeIndices.length
+    || team.activeIndices[0] !== team.activeIndex
+    || team.activeIndices.some((index) => !Number.isInteger(index) || index < 0 || index >= team.members.length))) {
+    throw new RangeError(`Invalid active Pokemon indices for ${side}.`);
   }
   const ids = new Set<string>();
   for (const member of team.members) {

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SeededRandom } from "@pokemon-z-battle/battle-engine";
+import { SeededRandom, createDoubleTeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
-import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle, resolveSourceEncounterAction, resolveSourceEncounterTurn, scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
-import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, selectSourceBattleAnimation, selectSourceBattleAudio,
+import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle,
+  resolveAutomaticReplacements, resolveSourceEncounterAction, resolveSourceEncounterTurn,
+  scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
+import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, joinedBattlePositions,
+  selectSourceBattleAnimation, selectSourceBattleAudio,
   sourcePlayerBallKeyframes, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
 import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
   sourceTrainerSpritePlacement } from "../src/source-battle-layout.js";
@@ -61,6 +64,10 @@ describe("source encounter bridge", () => {
     expect(sourceBattleSpritePlacement("opponent", 96, 96, 89)).toEqual({
       left: 336, top: 79, width: 96, height: 96, originX: 48, originY: 89,
     });
+    expect(sourceBattleSpritePlacement("player", 96, 96, 93, "double", 0)).toMatchObject({ left: 32, top: 227 });
+    expect(sourceBattleSpritePlacement("player", 96, 96, 93, "double", 1)).toMatchObject({ left: 112, top: 243 });
+    expect(sourceBattleSpritePlacement("opponent", 96, 96, 89, "double", 0)).toMatchObject({ left: 384, top: 79 });
+    expect(sourceBattleSpritePlacement("opponent", 96, 96, 89, "double", 1)).toMatchObject({ left: 304, top: 63 });
     expect(sourceTrainerSpritePlacement("player", 160, 220)).toEqual({ left: 48, top: 164, width: 160, height: 220 });
     expect(sourceTrainerSpritePlacement("opponent", 160, 160)).toEqual({ left: 304, top: 8, width: 160, height: 160 });
   });
@@ -105,6 +112,33 @@ describe("source encounter bridge", () => {
     expect(result.events).toContainEqual(expect.objectContaining({ type: "pokemonSwitched", side: "player",
       fromIndex: 0, toIndex: 1, reason: "voluntary" }));
     expect(result.events).toContainEqual(expect.objectContaining({ type: "moveUsed", side: "opponent" }));
+  });
+
+  it("detects the newly active battler that must play its send-out after a join", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const before = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
+    const helper = { ...before.teams.player.members[0]!, id: "helper", name: "Partenaire" };
+    const after = createDoubleTeamBattleState({
+      player: [before.teams.player.members[0]!, helper], opponent: before.teams.opponent.members,
+    }, { player: [0, 1], opponent: [0] });
+    expect(joinedBattlePositions(before, after)).toMatchObject([
+      { side: "player", slot: 1, battler: { id: "helper" } },
+    ]);
+  });
+
+  it("preserves automatic replacement events for the visual sequencer", () => {
+    let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("first", "CHESPIN", 5, catalog));
+    party = addPokemonToParty(party, createPersistentPokemon("second", "CHESPIN", 5, catalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
+    const knockedOut = { ...battle, replacementRequired: ["player" as const], teams: { ...battle.teams,
+      player: { ...battle.teams.player, members: battle.teams.player.members.map((member, index) =>
+        index === battle.teams.player.activeIndex ? { ...member, hp: 0 } : member) } } };
+
+    const replacement = resolveAutomaticReplacements(knockedOut);
+
+    expect(replacement.state.teams.player.activeIndex).toBe(1);
+    expect(replacement.events).toEqual([expect.objectContaining({ type: "pokemonSwitched", side: "player",
+      fromIndex: 0, toIndex: 1, reason: "replacement" })]);
   });
 
   it("builds a trainer team from the extracted trainer definition", () => {

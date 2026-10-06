@@ -26,6 +26,8 @@ export interface BattleMove {
   readonly priority: number;
   readonly effectChance: number;
   readonly flags?: string;
+  /** Pokemon Z PBTargets hexadecimal code, kept so double battles can resolve real targets. */
+  readonly targetCode?: string;
 }
 
 export type BattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
@@ -88,6 +90,8 @@ export interface BattleState {
 export interface MoveAction {
   readonly kind: "move";
   readonly moveIndex: number;
+  /** Required for a selectable target in a double battle; ignored in a simple battle. */
+  readonly target?: BattlePosition;
 }
 
 export type BattleAction = MoveAction;
@@ -138,6 +142,8 @@ export interface TurnResult {
 export interface SwitchAction {
   readonly kind: "switch";
   readonly teamIndex: number;
+  /** Active slot replaced in a double battle. Defaults to slot 0 in a simple battle. */
+  readonly activeSlot?: number;
 }
 
 export interface WaitAction { readonly kind: "wait" }
@@ -147,6 +153,8 @@ export type TeamTurnActions = Readonly<Record<BattleSide, TeamBattleAction>>;
 
 export interface BattleTeam {
   readonly activeIndex: number;
+  /** One index in singles, up to two distinct conscious members in doubles. */
+  readonly activeIndices?: readonly number[];
   readonly members: readonly BattlerState[];
 }
 
@@ -156,6 +164,18 @@ export interface TeamBattleState {
   readonly winner: BattleSide | null;
   readonly teams: Readonly<Record<BattleSide, BattleTeam>>;
   readonly replacementRequired: readonly BattleSide[];
+  readonly format?: "single" | "double";
+  readonly slotReplacements?: readonly BattlePosition[];
+}
+
+export interface BattlePosition {
+  readonly side: BattleSide;
+  readonly slot: number;
+}
+
+export interface PositionedTeamBattleAction {
+  readonly actor: BattlePosition;
+  readonly action: TeamBattleAction;
 }
 
 export type TeamBattleEvent =
@@ -174,6 +194,19 @@ export type TeamBattleEvent =
       readonly reason: "voluntary" | "replacement";
     }
   | { readonly type: "replacementRequired"; readonly side: BattleSide };
+
+export type DoubleBattleEvent = TeamBattleEvent | {
+  readonly type: "positionedActionResolved";
+  readonly actor: BattlePosition;
+  readonly targets: readonly BattlePosition[];
+  readonly events: readonly BattleEvent[];
+};
+
+export interface DoubleTurnResult {
+  readonly state: TeamBattleState;
+  readonly events: readonly DoubleBattleEvent[];
+  readonly trace: readonly BattleTrace[];
+}
 
 export interface TeamTurnResult {
   readonly state: TeamBattleState;

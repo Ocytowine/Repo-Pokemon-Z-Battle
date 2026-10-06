@@ -4,7 +4,7 @@ import { PROTOCOL_VERSION, normalizeRoomCode, parseSourceWorldHostState, type Ne
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
   type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import type { BattleTeam, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleTeam, DoubleBattleEvent, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -29,6 +29,7 @@ interface MutableNetworkSession {
   userDisconnected: boolean;
   snapshot: RoomSnapshot | null;
   submittedTurn: number | null;
+  submittedActiveSlots: number[];
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
   sourceActorSignature: string | undefined;
@@ -36,14 +37,18 @@ interface MutableNetworkSession {
   pendingSettlement: SourceBattleSettlement | null;
   closingBattleId: string | null;
   roomBattleActive: boolean;
+  joinableBattle: RoomSnapshot["battle"];
 }
 
 export interface NetworkSessionView {
   readonly ticket: MultiplayerTicket;
   readonly snapshot: RoomSnapshot | null;
   readonly submittedTurn: number | null;
-  /** Etat brut de la room, y compris lorsqu'un combat est masque a un invite `away`. */
+  readonly submittedActiveSlots: readonly number[];
+  /** Etat brut de la room, y compris lorsqu'un combat est masque au joueur non engage. */
   readonly roomBattleActive: boolean;
+  /** Combat source brut masque tant que l'invite n'a pas choisi son camp ou l'observation. */
+  readonly joinableBattle: RoomSnapshot["battle"];
 }
 
 export interface SourceBattleNetworkDraft {
@@ -64,8 +69,9 @@ export interface NetworkSessionCallbacks {
     actors: readonly SourceWorldActorSnapshot[]) => void;
   readonly onSourceSceneState: (state: SourceSceneSnapshot) => void;
   readonly onBattleStarted: (battleId: string, state: TeamBattleState) => void;
+  readonly onBattleExpanded: (battleId: string, before: TeamBattleState, state: TeamBattleState) => void;
   readonly onBattleTurnResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
-    events: readonly TeamBattleEvent[]) => void;
+    events: readonly (TeamBattleEvent | DoubleBattleEvent)[]) => void;
   readonly onBattleReplacementResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
     events: readonly TeamBattleEvent[]) => void;
   readonly onBattleEscaped: (battleId: string, state: TeamBattleState) => void;
@@ -79,13 +85,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-/** Keeps a guest excursion independent from source battles opened on the host's shared map. */
+/** Keeps any nonparticipant in the overworld until they explicitly join or observe a source battle. */
 export function roomSnapshotForPlayer(snapshot: RoomSnapshot, playerId: string,
-  side: "player" | "opponent"): RoomSnapshot {
+  _side: "player" | "opponent"): RoomSnapshot {
   const battle = snapshot.battle;
-  if (side !== "opponent" || snapshot.sourceWorld?.presence.opponent !== "away"
-    || battle?.sourceContext === null || battle?.sourceContext === undefined
-    || battle.participation === null
+  if (battle?.sourceContext === null || battle?.sourceContext === undefined
+    || battle.participation === null || (battle.observerIds ?? []).includes(playerId)
     || Object.values(battle.participation.camps).some((camp) => camp.trainerIds.includes(playerId))) {
     return snapshot;
   }
@@ -284,22 +289,36 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), settlementId: settlement.settlementId }));
   }
 
-  /** Returns true only when the host handed this source battle to the authoritative room. */
+  /** Publishes host battles and shared-map guest wild encounters to the authoritative room. */
   public openSourceBattle(draft: SourceBattleNetworkDraft): boolean {
     const session = this.activeSession;
     const socket = session?.socket;
-    if (session === null || session.ticket.side !== "player" || session.snapshot?.battle !== null
-      || session.snapshot?.sourceWorld?.mapId !== draft.context.mapId || socket === null || socket === undefined
+    const guestWild = session?.ticket.side === "opponent" && draft.context.origin === "source-wild";
+    const sharedMap = session?.snapshot?.sourceWorld?.mapId === draft.context.mapId
+      && session.snapshot.sourceWorld.presence[session.ticket.side] === "shared";
+    const guestAwayWild = guestWild && session?.snapshot?.sourceWorld?.presence.opponent === "away";
+    if (session === null || session.roomBattleActive || session.snapshot?.battle !== null
+      || session.ticket.side !== "player" && !guestWild
+      || !sharedMap && !guestAwayWild || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return false;
+    const threeMemberTeam = (team: BattleTeam): BattleTeam => {
+      const ordered = [team.members[team.activeIndex]!, ...team.members.filter((_, index) => index !== team.activeIndex)];
+      return { activeIndex: 0, members: ordered.slice(0, 3) };
+    };
+    const playerTeam = threeMemberTeam(draft.playerTeam);
+    const opponentTeam = threeMemberTeam(draft.opponentTeam);
+    const opponentIds = new Set(opponentTeam.members.map((member) => member.id));
+    const context = { ...draft.context, narrativeOwnerId: session.ticket.playerId,
+      rewards: { ...draft.context.rewards,
+        opponents: draft.context.rewards.opponents.filter((opponent) => opponentIds.has(opponent.memberId)) } };
     socket.send(JSON.stringify({ type: "openSourceBattle", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), context: { ...draft.context, narrativeOwnerId: session.ticket.playerId },
-      playerTeam: draft.playerTeam, opponentTeam: draft.opponentTeam }));
+      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam }));
     return true;
   }
 
   public proposeBattleJoin(side: "player" | "opponent", team: BattleTeam,
     finalMemberIds: readonly string[]): void {
-    const battleId = this.activeSession?.snapshot?.battle?.id;
+    const battleId = this.activeSession?.snapshot?.battle?.id ?? this.activeSession?.joinableBattle?.id;
     if (battleId !== undefined) this.sendRequest({ type: "proposeBattleJoin", battleId, side, team, finalMemberIds });
   }
 
@@ -323,33 +342,36 @@ export class OverworldNetworkSession {
     if (battleId !== undefined) this.sendRequest({ type: "leaveBattle", battleId });
   }
 
-  public submitBattleAction(action: TeamBattleAction): void {
+  public submitBattleAction(action: TeamBattleAction, activeSlot = 0): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
     const socket = session?.socket;
     if (session === null || battle === null || battle === undefined || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return;
     session.submittedTurn = battle.state.turn;
+    if (!session.submittedActiveSlots.includes(activeSlot)) session.submittedActiveSlots.push(activeSlot);
     socket.send(JSON.stringify({
       type: "submitAction",
       version: PROTOCOL_VERSION,
       requestId: crypto.randomUUID(),
       battleId: battle.id,
       turn: battle.state.turn,
+      activeSlot,
       action,
     }));
     this.callbacks.onRender();
   }
 
-  public submitBattleReplacement(teamIndex: number): void {
+  public submitBattleReplacement(teamIndex: number, activeSlot = 0): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
     const socket = session?.socket;
     if (session === null || battle === null || battle === undefined || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return;
     session.submittedTurn = battle.state.turn;
+    if (!session.submittedActiveSlots.includes(activeSlot)) session.submittedActiveSlots.push(activeSlot);
     socket.send(JSON.stringify({ type: "submitReplacement", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn, teamIndex }));
+      requestId: crypto.randomUUID(), battleId: battle.id, turn: battle.state.turn, teamIndex, activeSlot }));
     this.callbacks.onRender();
   }
 
@@ -402,6 +424,7 @@ export class OverworldNetworkSession {
       userDisconnected: false,
       snapshot: null,
       submittedTurn: null,
+      submittedActiveSlots: [],
       profile,
       sourceFollowerSignature: undefined,
       sourceActorSignature: undefined,
@@ -409,6 +432,7 @@ export class OverworldNetworkSession {
       pendingSettlement: null,
       closingBattleId: null,
       roomBattleActive: false,
+      joinableBattle: null,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -421,7 +445,10 @@ export class OverworldNetworkSession {
     if (session !== null && snapshot.revision < session.revision) return;
     if (session !== null) {
       session.roomBattleActive = snapshot.battle !== null;
+      const rawBattle = snapshot.battle;
       snapshot = roomSnapshotForPlayer(snapshot, session.ticket.playerId, session.ticket.side);
+      session.joinableBattle = snapshot.battle === null && rawBattle?.state.status === "active"
+        && !rawBattle.escaped ? rawBattle : null;
       const previousBattle = session.snapshot?.battle ?? null;
       const pendingMovementSequence = session.pendingMovementSequence;
       const ownMovementSequence = snapshot.movementSequences[session.ticket.side];
@@ -443,8 +470,24 @@ export class OverworldNetworkSession {
       } else if (previousBattle !== null && snapshot.battle === null) {
         session.closingBattleId = null;
         this.callbacks.onBattleClosed(previousBattle.id);
+      } else if (previousBattle !== null && snapshot.battle !== null
+        && previousBattle.id === snapshot.battle.id
+        && previousBattle.sourceContext?.origin === "source-trainer"
+        && previousBattle.session.lifecycle === "join-window"
+        && snapshot.battle.session.lifecycle !== "join-window") {
+        this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
+      } else if (previousBattle !== null && snapshot.battle !== null
+        && previousBattle.id === snapshot.battle.id
+        && previousBattle.state.format !== "double" && snapshot.battle.state.format === "double") {
+        this.callbacks.onBattleExpanded(snapshot.battle.id, previousBattle.state, snapshot.battle.state);
       }
-      if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) session.submittedTurn = null;
+      if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) {
+        session.submittedTurn = null;
+        session.submittedActiveSlots = [];
+      } else if (session.submittedActiveSlots.length === 0
+        && snapshot.battle.escapeConfirmations?.includes(session.ticket.playerId) !== true) {
+        session.submittedTurn = null;
+      }
       const own = snapshot.world.avatars[session.ticket.side];
       if (snapshot.sourceWorld !== null) this.callbacks.onSourceWorldState(snapshot.sourceWorld, animate, applyOwnAvatar);
       else if (own !== undefined) this.callbacks.onMapChanged(own.mapId);
@@ -549,6 +592,7 @@ export class OverworldNetworkSession {
             battle: { ...snapshot.battle, state: message.state },
           };
           session.submittedTurn = null;
+          session.submittedActiveSlots = [];
           this.callbacks.onBattleTurnResolved(message.battleId, before, message.state, message.events);
           this.setStatus(message.state.status === "finished" ? "Combat terminé" : "Combat", message.state.status === "finished"
             ? `Victoire : ${message.state.winner}. Retour dans le monde…`
@@ -561,6 +605,7 @@ export class OverworldNetworkSession {
           session.snapshot = { ...snapshot,
             battle: { ...snapshot.battle, state: message.state } };
           session.submittedTurn = null;
+          session.submittedActiveSlots = [];
           this.callbacks.onBattleReplacementResolved(message.battleId, before, message.state, message.events);
           this.callbacks.onRender();
         } else if (message.type === "battleEscaped") {
@@ -569,6 +614,7 @@ export class OverworldNetworkSession {
           session.snapshot = { ...snapshot, phase: "finished",
             battle: { ...snapshot.battle, escaped: true } };
           session.submittedTurn = null;
+          session.submittedActiveSlots = [];
           this.callbacks.onBattleEscaped(message.battleId, snapshot.battle.state);
           this.setStatus("Fuite réussie", "Retour au monde de l'hôte en préparation.");
           this.callbacks.onRender();
@@ -576,6 +622,7 @@ export class OverworldNetworkSession {
           this.applyBattleSettlement(session, message.settlement);
         } else if (message.type === "error") {
           session.submittedTurn = null;
+          session.submittedActiveSlots = [];
           session.pendingMovementSequence = null;
           this.setStatus("Erreur", `${message.code} · ${message.message}`);
         }
