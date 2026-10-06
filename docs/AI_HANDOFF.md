@@ -1440,6 +1440,14 @@ n'est pas dedupliquee comme si elle avait ete envoyee ; elle pourra donc etre
 publiee apres confirmation. Cela supprime le `INVALID_PHASE` de cinematique qui
 pouvait apparaitre apres la fermeture propre d'un combat.
 
+Correction des services invites du 2026-10-06 : une page de Centre Pokemon peut
+contenir des switches techniques en plus de `heal-party`. Elle reste desormais
+classifiee comme service personnel, mais ses commandes d'etat sont filtrees une
+par une sur la carte partagee : seuls le soin et `set-checkpoint` s'appliquent a
+l'invite. Les switches, variables, ajouts de Pokemon, rencontres et mutations de
+l'histoire ne sont jamais executes par ce chemin. Le meme filtrage protege les
+transferts personnels sans reouvrir l'autorite narrative a l'invite.
+
 ## Commandes utiles
 
 ```powershell

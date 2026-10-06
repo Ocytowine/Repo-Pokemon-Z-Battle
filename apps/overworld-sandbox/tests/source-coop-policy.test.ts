@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory }
+import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
+  sourceInteractionTarget, sourcePlayersFaceForDuel, sourceStateWithHostStory }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -29,7 +29,13 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess(page(["show-text", "set-switches"]))).toBe("blocked");
     expect(guestSourceEventAccess(page(["show-text", "heal-party", "request-trainer-battle"]))).toBe("blocked");
     expect(guestSourceEventAccess(page(["screen-tone", "transfer-player", "request-encounter"]))).toBe("blocked");
-    expect(guestSourceEventAccess(page(["heal-party", "set-self-switch"]))).toBe("blocked");
+    const technicalHealing = page(["heal-party", "set-self-switch"]);
+    expect(guestSourceEventAccess(technicalHealing)).toBe("personal");
+    expect(guestSourceStateCommandAllowed(technicalHealing, "heal-party")).toBe(true);
+    expect(guestSourceStateCommandAllowed(technicalHealing, "set-self-switch")).toBe(false);
+    const technicalTransfer = page(["transfer-player", "set-switches"]);
+    expect(guestSourceEventAccess(technicalTransfer)).toBe("transfer");
+    expect(guestSourceStateCommandAllowed(technicalTransfer, "set-switches")).toBe(false);
     const ranch = page(["ruby-script"]);
     expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },

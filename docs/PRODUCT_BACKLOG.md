@@ -155,6 +155,10 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   bloquee en entier, meme si elle contient aussi un soin ou un transfert. Seuls
   les services strictement personnels et les sorties de carte restent locaux.
   En excursion `away`, l'invite retrouve ses evenements personnels complets.
+- Les switches et variables techniques d'une page de Centre ne bloquent plus le
+  soin de l'invite : la page reste personnelle, puis seules les commandes
+  `heal-party` et `set-checkpoint` sont appliquees. Les autres mutations d'etat
+  sont filtrees et ne touchent jamais l'histoire de l'hote.
 - Invariant combat associe : la projection d'equipe choisit le premier Pokemon
   conscient si l'actif est K.O. et refuse une equipe entierement K.O. ; une
   composition Coop sans Pokemon apte est egalement refusee.

@@ -67,8 +67,8 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
 import { sourceBagEntries } from "./source-bag.js";
-import { guestSourceEventAccess, shouldRejoinSharedSourceMap, sourceInteractionTarget, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory }
+import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
+  sourceInteractionTarget, sourcePlayersFaceForDuel, sourceStateWithHostStory }
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
@@ -647,6 +647,8 @@ function showSourceSequenceText(sequence: SourceSequenceSession, page: ImportedE
 
 async function executeSourceSequenceCommand(sequence: SourceSequenceSession,
   command: ImportedEventPage["commands"][number]): Promise<SourceSequenceCommandResult> {
+  if (guestUsesSharedSourceWorld() && isSourceStateCommand(command.kind)
+    && !guestSourceStateCommandAllowed(sequence.sourcePage ?? sequence.plan.page, command.kind)) return "continue";
   return sourceSequenceEffects.execute(sequence, command);
 }
 
@@ -1622,7 +1624,10 @@ function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: r
 
 function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
   const previousInventory = sourceEventState.inventory;
-  const result = applySafeStateCommands(sourceInteractionState(), completed.flow.page, completed.mapId, completed.eventId,
+  const statePage = guestUsesSharedSourceWorld() ? { ...completed.flow.page,
+    commands: completed.flow.page.commands.filter((command) => !isSourceStateCommand(command.kind)
+      || guestSourceStateCommandAllowed(completed.flow.page, command.kind)) } : completed.flow.page;
+  const result = applySafeStateCommands(sourceInteractionState(), statePage, completed.mapId, completed.eventId,
     { checkpoint: { mapId: completed.mapId, x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction },
       createPokemon: (species, level) => {
         if (importedAssets === null) throw new Error("Catalogue Pokémon indisponible.");
