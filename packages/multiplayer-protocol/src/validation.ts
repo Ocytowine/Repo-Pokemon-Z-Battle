@@ -34,10 +34,14 @@ function isSafePositiveInteger(value: unknown): value is number {
 }
 
 function isSourceAvatar(value: unknown): boolean {
-  return isRecord(value) && hasExactKeys(value, ["x", "y", "direction"])
+  return isRecord(value) && ["x", "y", "direction"].every((key) => key in value)
+    && Object.keys(value).every((key) => ["x", "y", "direction", "mode", "action"].includes(key))
     && Number.isSafeInteger(value.x) && Number(value.x) >= 0
     && Number.isSafeInteger(value.y) && Number(value.y) >= 0
-    && ["up", "down", "left", "right"].includes(String(value.direction));
+    && ["up", "down", "left", "right"].includes(String(value.direction))
+    && (value.mode === undefined || ["walk", "run", "mount", "surf", "dive"].includes(String(value.mode)))
+    && (value.action === undefined || ["idle", "step", "ledge-jump", "surf-transition", "ice-slide",
+      "waterfall", "climb"].includes(String(value.action)));
 }
 
 function isBattleAction(value: unknown): boolean {

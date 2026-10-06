@@ -1626,8 +1626,8 @@ Ordre convenu :
   implementes ; recette deux navigateurs encore a valider ;
 - [ ] `STAB-WORLD-1` : blocages narratifs actifs partages dans le code, y compris
   les zones invisibles ; recette deux navigateurs encore a valider ;
-- [ ] `STAB-WORLD-2` : positions logiques, collisions, interpolation distante et
-  reconnexion implementees ; recette deux navigateurs encore a valider ;
+- [x] `STAB-WORLD-2` : positions logiques, collisions, interpolation distante et
+  reconnexion validees dans deux navigateurs le 2026-10-06 ;
 - [ ] `STAB-BATTLE-1` : ordonner transitions, textes, PV, KO, EXP et musiques ;
 - [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
 

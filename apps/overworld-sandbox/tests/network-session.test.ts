@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OverworldNetworkSession, type NetworkSessionCallbacks } from "../src/network-session.js";
-import { createDefaultNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
+import { OverworldNetworkSession, roomSnapshotForPlayer, type NetworkSessionCallbacks } from "../src/network-session.js";
+import { createDefaultNetworkPlayerProfile, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
   protocolVersion: 12,
@@ -71,6 +71,15 @@ afterEach(() => {
 });
 
 describe("overworld network session", () => {
+  it("keeps a guest excursion isolated from a source battle on the host map", () => {
+    const snapshot = { phase: "battle", sourceWorld: { presence: { player: "shared", opponent: "away" } },
+      battle: { sourceContext: {}, participation: { camps: {
+        player: { trainerIds: ["host"] }, opponent: { trainerIds: [] },
+      } } } } as unknown as RoomSnapshot;
+    expect(roomSnapshotForPlayer(snapshot, "guest", "opponent")).toMatchObject({ phase: "waiting", battle: null });
+    expect(roomSnapshotForPlayer(snapshot, "host", "player").battle).toBe(snapshot.battle);
+  });
+
   it("creates, stores, uses and disconnects a room session", async () => {
     const storage = new MemoryStorage();
     const sockets: FakeWebSocket[] = [];

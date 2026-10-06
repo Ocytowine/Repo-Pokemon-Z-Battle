@@ -32,6 +32,7 @@ interface MutableNetworkSession {
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
   sourceActorSignature: string | undefined;
+  confirmedSourceMapId: number | null;
   pendingSettlement: SourceBattleSettlement | null;
   closingBattleId: string | null;
 }
@@ -73,6 +74,19 @@ export interface NetworkSessionCallbacks {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Keeps a guest excursion independent from source battles opened on the host's shared map. */
+export function roomSnapshotForPlayer(snapshot: RoomSnapshot, playerId: string,
+  side: "player" | "opponent"): RoomSnapshot {
+  const battle = snapshot.battle;
+  if (side !== "opponent" || snapshot.sourceWorld?.presence.opponent !== "away"
+    || battle?.sourceContext === null || battle?.sourceContext === undefined
+    || battle.participation === null
+    || Object.values(battle.participation.camps).some((camp) => camp.trainerIds.includes(playerId))) {
+    return snapshot;
+  }
+  return { ...snapshot, phase: "waiting", battle: null };
 }
 
 export class OverworldNetworkSession {
@@ -198,8 +212,11 @@ export class OverworldNetworkSession {
     const socket = session?.socket;
     if (session === null || session.ticket.side !== "opponent" || socket === null || socket === undefined
       || socket.readyState !== WebSocket.OPEN) return;
+    const publicAvatar = avatar === null ? null : { x: avatar.x, y: avatar.y, direction: avatar.direction,
+      ...(avatar.mode === undefined ? {} : { mode: avatar.mode }),
+      ...(avatar.action === undefined ? {} : { action: avatar.action }) };
     socket.send(JSON.stringify({ type: "setSourcePresence", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), attached, avatar }));
+      requestId: crypto.randomUUID(), attached, avatar: publicAvatar }));
   }
 
   public publishSourceScene(scene: SourceSceneSnapshot): void {
@@ -234,7 +251,8 @@ export class OverworldNetworkSession {
     const session = this.activeSession;
     const socket = session?.socket;
     const signature = JSON.stringify({ mapId, actors });
-    if (session === null || session.ticket.side !== "player" || session.sourceActorSignature === signature
+    if (session === null || session.ticket.side !== "player" || session.confirmedSourceMapId !== mapId
+      || session.sourceActorSignature === signature
       || socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return;
     session.sourceActorSignature = signature;
     socket.send(JSON.stringify({ type: "setSourceActors", version: PROTOCOL_VERSION,
@@ -383,6 +401,7 @@ export class OverworldNetworkSession {
       profile,
       sourceFollowerSignature: undefined,
       sourceActorSignature: undefined,
+      confirmedSourceMapId: null,
       pendingSettlement: null,
       closingBattleId: null,
     };
@@ -396,6 +415,7 @@ export class OverworldNetworkSession {
     const session = this.activeSession;
     if (session !== null && snapshot.revision < session.revision) return;
     if (session !== null) {
+      snapshot = roomSnapshotForPlayer(snapshot, session.ticket.playerId, session.ticket.side);
       const previousBattle = session.snapshot?.battle ?? null;
       const pendingMovementSequence = session.pendingMovementSequence;
       const ownMovementSequence = snapshot.movementSequences[session.ticket.side];
@@ -407,6 +427,7 @@ export class OverworldNetworkSession {
         session.pendingMovementSequence = null;
       }
       session.snapshot = snapshot;
+      session.confirmedSourceMapId = snapshot.sourceWorld?.mapId ?? null;
       if (previousBattle === null && snapshot.battle !== null) {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
         if (snapshot.battle.state.status === "finished" || snapshot.battle.escaped) {
@@ -486,6 +507,7 @@ export class OverworldNetworkSession {
         } else if (message.type === "sourceWorldUpdated") {
           if (message.revision < session.revision) return;
           session.revision = message.revision;
+          session.confirmedSourceMapId = message.state.mapId;
           if (message.side === session.ticket.side) {
             session.sequence = Math.max(session.sequence, message.sequence);
             if (session.pendingMovementSequence !== null && message.sequence >= session.pendingMovementSequence) {

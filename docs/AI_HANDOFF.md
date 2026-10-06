@@ -1334,6 +1334,16 @@ annonce une seule fois la coupure/depart et le retour ; l'onglet Coop distingue
 champs de snapshot et d'une intention ; les donnees personnelles ne changent pas.
 La recette deux navigateurs reste ouverte avant cloture de `STAB-NET-2`.
 
+Correctif de reprise manuelle du 2026-10-06 : une place invitee marquee `left`
+apres un depart explicite ou l'expiration des 15 secondes ne compte plus comme une
+place occupee. Une nouvelle jonction par le code de room remplace cette identite,
+revoque son ancien ticket et conserve la protection de la grace tant que l'etat
+reste `reconnecting`. Une bataille active ou un reglement personnel non accuse
+interdit toujours ce remplacement afin de ne perdre aucune ressource du joueur.
+Le validateur du monde accepte aussi `mode` et `action` sur un suiveur, conformement
+au type public `SourceFollowerSnapshot`; leur presence transitoire ne provoque plus
+le message `setSourceWorld mal forme`.
+
 Premier jalon `STAB-WORLD-1` du 2026-10-05 : les obstacles narratifs publies par
 l'hote incluent maintenant les zones invisibles de contact `trigger 1/2`. L'hote
 continue de declencher une telle zone avant son pas ; l'invite, qui ne peut pas
@@ -1364,8 +1374,9 @@ directement, sans rejouer un ancien mouvement. Pour eviter les collisions fantom
 `blockedPoints` ne transporte plus les PNJ visibles : il conserve seulement les
 zones narratives invisibles de contact ; `actors` est l'unique occupation mobile.
 Les tests couvrent schema strict, deduplication client, refus invite, collision
-avant/apres mouvement, persistence/reconnexion et interpolation. La recette
-deux navigateurs reste ouverte avant de clore `STAB-WORLD-2`.
+avant/apres mouvement, persistence/reconnexion et interpolation. Le porteur a
+juge la recette deux navigateurs acceptable le 2026-10-06 ; `STAB-WORLD-2` est
+clos.
 
 Audit source cible du 2026-10-05 : `engine-support-report.json` confirme 19/19
 interactions de types, mais seulement 23/353 fonctions d'attaque, 13/255 talents,
@@ -1387,11 +1398,32 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 417 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 421 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
 exigeant une revision posterieure a celle de l'excursion.
+
+Correctif d'autorite narrative du 2026-10-06 : sur la carte source partagee,
+l'invite ne peut plus lancer une sequence qui contient un combat, une rencontre
+ou une mutation de l'histoire, meme si cette page contient aussi un effet
+personnel comme un soin ou un transfert. L'hote reste l'unique proprietaire de la
+narration et des combats qui en decoulent ; les services personnels restent
+locaux au joueur concerne et une excursion `away` conserve son parcours local.
+Le meme jalon empeche tout debut de combat avec un actif K.O. : le noyau choisit
+un reserve conscient ou refuse une equipe entierement K.O., y compris lors d'une
+proposition de composition Coop. `STAB-WORLD-2` a ete accepte manuellement par le
+porteur le meme jour ; `STAB-WORLD-1` reste en validation.
+
+Isolation d'excursion du 2026-10-06 : un invite `away` qui livre un combat local
+ne recoit plus le combat source ouvert en parallele par l'hote. Le snapshot de
+room est projete pour ce joueur sans ce combat tant qu'il ne participe pas et
+reste hors de la carte partagee ; son combat, ses commandes et ses deplacements
+personnels continuent donc sans etre remplaces. Lorsqu'il revient sur le `mapId`
+de l'hote, `setSourcePresence` accepte desormais le meme contrat de mouvement
+optionnel `mode/action` que les avatars de monde, tout en supprimant les champs
+visuels locaux avant envoi. Enfin, l'hote ne publie les PNJ qu'apres confirmation
+du `mapId` par la room, ce qui supprime les erreurs transitoires de carte.
 
 ## Commandes utiles
 

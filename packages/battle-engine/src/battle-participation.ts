@@ -147,6 +147,9 @@ export function proposeBattleJoin(state: SharedBattleParticipation, input: {
   if (!candidates.some((member) => member.ownerId === input.joinerId && finalIds.includes(member.battler.id))) {
     throw new Error("La composition finale doit conserver au moins un Pokémon de l'invité.");
   }
+  if (!candidates.some((member) => finalIds.includes(member.battler.id) && member.battler.hp > 0)) {
+    throw new Error("La composition finale doit contenir au moins un Pokemon apte au combat.");
+  }
   if (camp.trainerIds.includes(state.battleOwnerId)
     && !candidates.some((member) => member.ownerId === state.battleOwnerId && finalIds.includes(member.battler.id))) {
     throw new Error("La composition alliée doit conserver au moins un Pokémon du meneur.");
@@ -199,14 +202,20 @@ export function applyBattleJoin(state: SharedBattleParticipation, proposal: Batt
     && proposal.finalMemberIds.includes(member.battler.id))) {
     throw new Error("La composition finale doit conserver au moins un Pokémon de l'invité.");
   }
+  if (!proposal.members.some((member) => proposal.finalMemberIds.includes(member.battler.id)
+    && member.battler.hp > 0)) {
+    throw new Error("La composition finale doit contenir au moins un Pokemon apte au combat.");
+  }
   if (camp.trainerIds.includes(state.battleOwnerId)
     && !proposal.members.some((member) => member.ownerId === state.battleOwnerId
       && proposal.finalMemberIds.includes(member.battler.id))) {
     throw new Error("La composition alliée doit conserver au moins un Pokémon du meneur.");
   }
   const members = proposal.finalMemberIds.map((id) => proposal.members.find((member) => member.battler.id === id)!);
-  const activeMemberId = members.some((member) => member.battler.id === camp.activeMemberId)
-    ? camp.activeMemberId : members[0]!.battler.id;
+  const currentActive = members.find((member) => member.battler.id === camp.activeMemberId
+    && member.battler.hp > 0);
+  const activeMemberId = currentActive?.battler.id
+    ?? members.find((member) => member.battler.hp > 0)!.battler.id;
   const joined = { ...state, camps: { ...state.camps, [proposal.side]: {
     trainerIds: [...camp.trainerIds, proposal.joinerId], members, activeMemberId,
   } } };

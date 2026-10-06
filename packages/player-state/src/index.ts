@@ -787,7 +787,11 @@ export function applySharedBattleExperience(party: PlayerPartyState, settlement:
 
 export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: PlayerBattleCatalog): BattleTeam {
   if (party.activeIndex === null || party.members.length === 0) throw new Error("Impossible de combattre avec une équipe vide.");
-  return { activeIndex: party.activeIndex, members: party.members.map((member) => battler(member, catalog)) };
+  const members = party.members.map((member) => battler(member, catalog));
+  const activeIndex = (members[party.activeIndex]?.hp ?? 0) > 0
+    ? party.activeIndex : members.findIndex((member) => member.hp > 0);
+  if (activeIndex < 0) throw new Error("Impossible de combattre avec une équipe entièrement K.O.");
+  return { activeIndex, members };
 }
 
 export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): PlayerPartyState {

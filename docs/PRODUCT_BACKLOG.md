@@ -121,6 +121,10 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Restauration : une reconnexion conserve profil, avatar et suiveur ; si l'ancienne
   case a ete occupee, la room choisit une case voisine praticable. Les transitions
   de presence produisent au plus une notification HUD par changement d'etat.
+- Reprise manuelle : un depart explicite ou une grace expiree libere la place
+  invitee pour une nouvelle identite et revoque l'ancien ticket. La place reste
+  reservee pendant `reconnecting`, ainsi que pendant un combat actif ou tant qu'un
+  reglement personnel attend son proprietaire.
 - Reste avant `Termine` : recette deux navigateurs pour fermeture volontaire,
   coupure brutale, retour avant/apres 15 secondes et occupation de l'ancienne case.
 
@@ -146,12 +150,24 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Preuves automatiques : activation/desactivation d'une zone de contact par switch
   et self-switch, refus autoritaire du pas invite, ouverture ulterieure de la case
   et restauration des obstacles apres persistence de la room.
+- Correctif de validation du 2026-10-06 : sur la carte partagee, une sequence de
+  l'invite contenant un combat, une rencontre ou une mutation narrative est
+  bloquee en entier, meme si elle contient aussi un soin ou un transfert. Seuls
+  les services strictement personnels et les sorties de carte restent locaux.
+  En excursion `away`, l'invite retrouve ses evenements personnels complets.
+- Invariant combat associe : la projection d'equipe choisit le premier Pokemon
+  conscient si l'actif est K.O. et refuse une equipe entierement K.O. ; une
+  composition Coop sans Pokemon apte est egalement refusee.
+- Isolation d'excursion : un combat local de l'invite `away` reste personnel et
+  n'est pas remplace par un combat source simultane de l'hote. Le rattachement
+  attend un `setSourcePresence` valide et les PNJ ne sont publies qu'apres
+  confirmation autoritaire du nouveau `mapId`.
 - Reste avant `Termine` : recette deux navigateurs sur une zone narrative invisible
   avant puis apres sa progression, avec reconnexion de l'invite.
 
 ### STAB-WORLD-2 — PNJ mobiles autoritaires
 
-- Priorite/statut : `P0` / `En validation`.
+- Priorite/statut : `P0` / `Termine`.
 - Constat : mouvement et collision des PNJ sont actuellement calcules localement,
   ce qui permet une divergence entre navigateurs.
 - Autorite : room pour position logique et occupation ; clients pour interpolation.
@@ -172,8 +188,8 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Preuves automatiques : schema strict et deduplication, refus de publication par
   l'invite, collision avant/apres un pas de PNJ, persistence de room, projection
   des pages actives, interpolation distante et restauration sans rejouer un pas.
-- Reste avant `Termine` : recette deux navigateurs avec un PNJ autonome, collision
-  des deux cotes, changement de page et reconnexion pendant/apres son mouvement.
+- Validation manuelle : le porteur juge le comportement acceptable dans deux
+  navigateurs le 2026-10-06.
 
 ### STAB-BATTLE-1 — Sequenceur visuel de combat
 

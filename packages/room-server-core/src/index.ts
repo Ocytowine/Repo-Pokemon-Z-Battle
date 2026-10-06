@@ -38,6 +38,7 @@ export interface RoomConnection {
   readonly snapshot: RoomSnapshot;
   readonly reconnected: boolean;
   readonly settlement: SourceBattleSettlement | null;
+  readonly replacedPlayerId?: string;
 }
 
 export interface PersistedRoomState {
@@ -216,6 +217,14 @@ export class AuthoritativeBattleRoom {
     const existing = this.#players.get(playerId);
     if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
       settlement: this.pendingBattleSettlement(existing.playerId) };
+    // A participant marked as definitively gone no longer owns the guest seat.
+    // Keep an active battle or an unapplied personal settlement attached to its
+    // original identity, but otherwise let a manual join reuse the invitation.
+    const replaceableGuest = this.#battleState === null
+      ? [...this.#players.values()].find((player) => player.side === "opponent" && player.departed
+        && this.pendingBattleSettlement(player.playerId) === null)
+      : undefined;
+    if (replaceableGuest !== undefined) this.#players.delete(replaceableGuest.playerId);
     const usedSides = new Set([...this.#players.values()].map((player) => player.side));
     const side: BattleSide | undefined = usedSides.has("player") ? (usedSides.has("opponent") ? undefined : "opponent") : "player";
     if (side === undefined) throw new Error("ROOM_FULL");
@@ -231,7 +240,8 @@ export class AuthoritativeBattleRoom {
         avatars: { ...current.avatars, opponent: this.sourceSpawn(hostState) } };
     }
     this.#revision += 1;
-    return { side, snapshot: this.snapshot(), reconnected: false, settlement: null };
+    return { side, snapshot: this.snapshot(), reconnected: false, settlement: null,
+      ...(replaceableGuest === undefined ? {} : { replacedPlayerId: replaceableGuest.playerId }) };
   }
 
   public connect(playerId: string): RoomConnection {

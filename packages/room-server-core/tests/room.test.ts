@@ -1,6 +1,6 @@
 import { MINIMAL_MOVE_CATALOG, SeededRandom, createTeamBattleState, type BattleSide, type BattlerState, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { describe, expect, it } from "vitest";
-import { AuthoritativeBattleRoom } from "../src/index.js";
+import { AuthoritativeBattleRoom, PLAYER_RECONNECT_GRACE_MS } from "../src/index.js";
 import { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 import { DEMO_WORLD_CATALOG, createDemoWorldState, createOverworldState, type OverworldCatalog } from "@pokemon-z-battle/overworld-engine";
 
@@ -177,6 +177,28 @@ describe("authoritative battle room", () => {
     expect(left.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().players[1]).toMatchObject({ connected: false, connectionState: "left",
       reconnectUntil: null });
+  });
+
+  it("releases a departed guest seat for a manual join without bypassing the reconnect grace", () => {
+    let now = 1_000;
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource,
+      undefined, () => now);
+    room.connect("alice");
+    room.connect("bob");
+
+    room.disconnect("bob");
+    expect(() => room.reserve("charlie")).toThrow("ROOM_FULL");
+    now += PLAYER_RECONNECT_GRACE_MS;
+    room.expireDisconnectedPlayers();
+    expect(room.reserve("charlie")).toMatchObject({ side: "opponent", reconnected: false,
+      replacedPlayerId: "bob" });
+    expect(room.snapshot().players.map((player) => player.playerId)).toEqual(["alice", "charlie"]);
+
+    const explicit = new AuthoritativeBattleRoom("DEF567", initialBattle, new SeededRandom(2), worldWithSource);
+    explicit.connect("host");
+    explicit.connect("guest");
+    explicit.receive("guest", { type: "leaveRoom", version: 12, requestId: "guest-leave" });
+    expect(explicit.reserve("replacement")).toMatchObject({ side: "opponent", replacedPlayerId: "guest" });
   });
 
   it("hosts the source map, validates both movements and reserves story publication for the host", () => {

@@ -159,6 +159,7 @@ export class BattleRoom extends DurableObject<Env> {
     const playerId = crypto.randomUUID();
     const reconnectToken = randomToken();
     const connection = this.#room.reserve(playerId, profile);
+    if (connection.replacedPlayerId !== undefined) this.#identities.delete(connection.replacedPlayerId);
     this.#identities.set(playerId, await sha256(reconnectToken));
     return {
       protocolVersion: PROTOCOL_VERSION,

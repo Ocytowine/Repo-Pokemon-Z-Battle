@@ -71,6 +71,20 @@ describe("shared battle participation", () => {
       finalMemberIds: ["starter", ...Array.from({ length: 6 }, (_, index) => `g${index}`)] })).toThrow(/six/u);
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "player", members: [pokemon("g")],
       finalMemberIds: ["g"] })).toThrow(/meneur/u);
+    const fainted = { ...pokemon("ko"), hp: 0 };
+    expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "opponent", members: [fainted],
+      finalMemberIds: ["ko"] })).toThrow(/apte au combat/u);
+  });
+
+  it("selects a conscious active when a composition retained a fainted active", () => {
+    const source = battle();
+    const fainted = { ...source.camps.player.members[0]!.battler, hp: 0 };
+    const withFaintedActive = { ...source, camps: { ...source.camps, player: { ...source.camps.player,
+      members: [{ ownerId: "host", battler: fainted }] } } };
+    let proposal = proposeBattleJoin(withFaintedActive, { joinerId: "guest", side: "player",
+      members: [pokemon("guest-mon")], finalMemberIds: ["starter", "guest-mon"] });
+    proposal = approveBattleJoin(proposal, "host");
+    expect(applyBattleJoin(withFaintedActive, proposal).camps.player.activeMemberId).toBe("guest-mon");
   });
 
   it("rejects duplicate identities, cross-camp trainers and unknown owners", () => {

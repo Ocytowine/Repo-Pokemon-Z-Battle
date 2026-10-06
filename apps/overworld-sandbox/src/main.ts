@@ -290,7 +290,7 @@ function sourceInteractionState(): SourceEventState {
 }
 
 function guestCanRunSourceEvent(active: ActiveSourceAutorun): boolean {
-  return !isNetworkGuest() || guestSourceEventAccess(active.page) !== "blocked";
+  return !guestUsesSharedSourceWorld() || guestSourceEventAccess(active.page) !== "blocked";
 }
 
 function startPendingSourceEncounter(): boolean {

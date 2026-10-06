@@ -27,6 +27,9 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess(page(["show-choices", "recover-all"]))).toBe("personal");
     expect(guestSourceEventAccess(page(["screen-tone", "transfer-player"]))).toBe("transfer");
     expect(guestSourceEventAccess(page(["show-text", "set-switches"]))).toBe("blocked");
+    expect(guestSourceEventAccess(page(["show-text", "heal-party", "request-trainer-battle"]))).toBe("blocked");
+    expect(guestSourceEventAccess(page(["screen-tone", "transfer-player", "request-encounter"]))).toBe("blocked");
+    expect(guestSourceEventAccess(page(["heal-party", "set-self-switch"]))).toBe("blocked");
     const ranch = page(["ruby-script"]);
     expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },

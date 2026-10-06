@@ -204,6 +204,15 @@ describe("persistent player party", () => {
     expect(move).not.toHaveProperty("description");
   });
 
+  it("never starts a battle with a fainted active Pokemon", () => {
+    const reserve = { ...party.members[0]!, id: "reserve", hp: 3 };
+    const team = playerPartyToBattleTeam({ ...party,
+      members: [{ ...party.members[0]!, hp: 0 }, reserve] }, catalog);
+    expect(team.activeIndex).toBe(1);
+    expect(() => playerPartyToBattleTeam({ ...party,
+      members: [{ ...party.members[0]!, hp: 0 }] }, catalog)).toThrow(/entièrement K\.O\./u);
+  });
+
   it("restores only one owner's resources from a mixed shared camp", () => {
     const hostTeam = playerPartyToBattleTeam(party, catalog);
     const guest = { ...hostTeam.members[0]!, id: "guest-mon", hp: 18 };

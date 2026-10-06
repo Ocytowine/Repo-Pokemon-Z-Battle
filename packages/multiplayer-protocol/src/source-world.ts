@@ -120,9 +120,15 @@ function parseAvatar(value: unknown, width: number, height: number): SourceAvata
 function parseFollower(value: unknown, width: number, height: number): SourceFollowerSnapshot | null {
   if (value === null || value === undefined) return null;
   if (!isRecord(value) || !["x", "y", "direction", "species"].every((key) => key in value)
-    || Object.keys(value).some((key) => !["x", "y", "direction", "species", "appearance"].includes(key))
+    || Object.keys(value).some((key) => ![
+      "x", "y", "direction", "mode", "action", "species", "appearance",
+    ].includes(key))
     || !integer(value.x, 0, width - 1) || !integer(value.y, 0, height - 1)
     || typeof value.direction !== "string" || !DIRECTIONS.has(value.direction as Direction)
+    || value.mode !== undefined && (typeof value.mode !== "string"
+      || !MOVEMENT_MODES.has(value.mode as SourceMovementMode))
+    || value.action !== undefined && (typeof value.action !== "string"
+      || !MOVEMENT_ACTIONS.has(value.action as SourceMovementAction))
     || typeof value.species !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(value.species)) {
     throw new Error("Pokemon suiveur de carte source invalide.");
   }
@@ -132,7 +138,10 @@ function parseFollower(value: unknown, width: number, height: number): SourceFol
     || value.appearance.gender !== null && !["male", "female", "genderless"].includes(String(value.appearance.gender)))) {
     throw new Error("Apparence du Pokemon suiveur invalide.");
   }
-  return { x: value.x, y: value.y, direction: value.direction as Direction, species: value.species,
+  return { x: value.x, y: value.y, direction: value.direction as Direction,
+    ...(value.mode === undefined ? {} : { mode: value.mode as SourceMovementMode }),
+    ...(value.action === undefined ? {} : { action: value.action as SourceMovementAction }),
+    species: value.species,
     ...(value.appearance === undefined ? {} : {
       appearance: value.appearance as NonNullable<SourceFollowerSnapshot["appearance"]>,
     }) };

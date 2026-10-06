@@ -141,6 +141,10 @@ describe("multiplayer protocol", () => {
       .toMatchObject({ type: "setSourcePresence", attached: false });
     expect(parseClientMessage('{"type":"setSourcePresence","version":12,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"}}'))
       .toMatchObject({ type: "setSourcePresence", attached: true, avatar: { x: 1, y: 2 } });
+    expect(parseClientMessage('{"type":"setSourcePresence","version":12,"requestId":"p2b","attached":true,"avatar":{"x":1,"y":2,"direction":"up","mode":"surf","action":"step"}}'))
+      .toMatchObject({ type: "setSourcePresence", avatar: { mode: "surf", action: "step" } });
+    expect(() => parseClientMessage('{"type":"setSourcePresence","version":12,"requestId":"p2c","attached":true,"avatar":{"x":1,"y":2,"direction":"up","pattern":1}}'))
+      .toThrow("setSourcePresence mal forme");
     expect(() => parseClientMessage('{"type":"setSourcePresence","version":12,"requestId":"p3","attached":true,"avatar":null}'))
       .toThrow("setSourcePresence mal forme");
   });
@@ -167,6 +171,10 @@ describe("multiplayer protocol", () => {
       story: { switches: { "67": true }, variables: { "20": 3 },
         selfSwitches: { "3:7:A": true } } } as const;
     expect(parseSourceWorldHostState(world)).toEqual(world);
+    expect(parseSourceWorldHostState({ ...world,
+      follower: { ...world.follower, mode: "run", action: "step" } })).toMatchObject({
+      follower: { species: "FENNEKIN", mode: "run", action: "step" },
+    });
     const message: ClientMessage = { type: "setSourceWorld", version: 12, requestId: "source-1", world,
       relocateHost: false };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);

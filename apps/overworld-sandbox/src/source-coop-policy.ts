@@ -35,6 +35,11 @@ export function sourceStateWithHostStory(local: SourceEventState, story: SourceS
  */
 export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEventAccess {
   const commands = page.commands.map((command) => portSourceRubyCommand(command) ?? command);
+  const sharedNarrativeEffects = new Set([
+    "set-switches", "set-self-switch", "change-variables", "add-pokemon",
+    "request-encounter", "request-trainer-battle", "set-pokedex-enabled", "set-follower",
+  ]);
+  if (commands.some((command) => sharedNarrativeEffects.has(command.kind))) return "blocked";
   if (commands.some((command) => command.kind === "transfer-player")) return "transfer";
   if (commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all"
     || command.kind === "open-shop" || command.kind === "open-ranch")) return "personal";
