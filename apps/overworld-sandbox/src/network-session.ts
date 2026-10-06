@@ -35,12 +35,15 @@ interface MutableNetworkSession {
   confirmedSourceMapId: number | null;
   pendingSettlement: SourceBattleSettlement | null;
   closingBattleId: string | null;
+  roomBattleActive: boolean;
 }
 
 export interface NetworkSessionView {
   readonly ticket: MultiplayerTicket;
   readonly snapshot: RoomSnapshot | null;
   readonly submittedTurn: number | null;
+  /** Etat brut de la room, y compris lorsqu'un combat est masque a un invite `away`. */
+  readonly roomBattleActive: boolean;
 }
 
 export interface SourceBattleNetworkDraft {
@@ -219,13 +222,14 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), attached, avatar: publicAvatar }));
   }
 
-  public publishSourceScene(scene: SourceSceneSnapshot): void {
+  public publishSourceScene(scene: SourceSceneSnapshot): boolean {
     const session = this.activeSession;
     const socket = session?.socket;
-    if (session === null || session.ticket.side !== "player" || socket === null || socket === undefined
-      || socket.readyState !== WebSocket.OPEN) return;
+    if (session === null || session.ticket.side !== "player" || session.confirmedSourceMapId !== scene.mapId
+      || socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify({ type: "setSourceScene", version: PROTOCOL_VERSION,
       requestId: crypto.randomUUID(), scene }));
+    return true;
   }
 
   public publishSourceFollower(species: string | null, appearance?: SourceFollowerSnapshot["appearance"]): void {
@@ -404,6 +408,7 @@ export class OverworldNetworkSession {
       confirmedSourceMapId: null,
       pendingSettlement: null,
       closingBattleId: null,
+      roomBattleActive: false,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -415,6 +420,7 @@ export class OverworldNetworkSession {
     const session = this.activeSession;
     if (session !== null && snapshot.revision < session.revision) return;
     if (session !== null) {
+      session.roomBattleActive = snapshot.battle !== null;
       snapshot = roomSnapshotForPlayer(snapshot, session.ticket.playerId, session.ticket.side);
       const previousBattle = session.snapshot?.battle ?? null;
       const pendingMovementSequence = session.pendingMovementSequence;

@@ -489,6 +489,10 @@ export class AuthoritativeBattleRoom {
     if (world === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune carte narrative partagee.")];
     }
+    if (attached && this.#battleState !== null) {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "Le retour sur la carte partagee attend la fin du combat de l'hote.")];
+    }
     const joinAvatar = attached && avatar !== null ? this.sourceJoinPoint(world, avatar) : null;
     if (attached && joinAvatar === null) {
       return [this.error(player.playerId, requestId, "INTERACTION_UNAVAILABLE", "Point de retour sur la carte partagee invalide.")];

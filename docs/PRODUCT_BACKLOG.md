@@ -162,6 +162,12 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   n'est pas remplace par un combat source simultane de l'hote. Le rattachement
   attend un `setSourcePresence` valide et les PNJ ne sont publies qu'apres
   confirmation autoritaire du nouveau `mapId`.
+- Si l'invite atteint la carte de l'hote pendant un combat deja actif, il reste
+  `away` et ne devient pas spectateur. Le client et la room bloquent le
+  rattachement jusqu'au snapshot de fermeture, puis le retentent automatiquement.
+- Les snapshots de cinematique et de PNJ de l'hote attendent tous deux la
+  confirmation du `mapId` par la room ; une publication differee reste eligible
+  apres la transition et ne produit plus d'erreur HUD.
 - Reste avant `Termine` : recette deux navigateurs sur une zone narrative invisible
   avant puis apres sa progression, avec reconnexion de l'invite.
 

@@ -350,6 +350,24 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().sourceWorld?.avatars.opponent).not.toMatchObject({ x: 1, y: 2 });
   });
 
+  it("keeps an away guest outside the shared map until the host battle closes", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("bob", { type: "setSourcePresence", version: 12,
+      requestId: "guest-away-during-battle", attached: false, avatar: null });
+    const initial = initialBattle();
+    room.receive("alice", { type: "openSourceBattle", version: 12, requestId: "host-battle-before-return",
+      context: sourceBattleContext("alice"), playerTeam: initial.teams.player,
+      opponentTeam: initial.teams.opponent });
+
+    expect(room.receive("bob", { type: "setSourcePresence", version: 12,
+      requestId: "guest-return-during-battle", attached: true,
+      avatar: { x: 0, y: 2, direction: "right" } })[0]?.message)
+      .toMatchObject({ type: "error", code: "INVALID_PHASE" });
+    expect(room.snapshot().sourceWorld?.presence.opponent).toBe("away");
+  });
+
   it("publishes and persists a host-only read-only source scene", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");

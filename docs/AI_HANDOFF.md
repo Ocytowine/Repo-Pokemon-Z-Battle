@@ -1398,7 +1398,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 421 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 422 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1424,6 +1424,21 @@ de l'hote, `setSourcePresence` accepte desormais le meme contrat de mouvement
 optionnel `mode/action` que les avatars de monde, tout en supprimant les champs
 visuels locaux avant envoi. Enfin, l'hote ne publie les PNJ qu'apres confirmation
 du `mapId` par la room, ce qui supprime les erreurs transitoires de carte.
+
+Garde de rattachement du 2026-10-06 : atteindre le `mapId` de l'hote ne suffit
+plus a rattacher un invite `away` lorsqu'un combat existe deja dans la room. Le
+client conserve l'etat brut `roomBattleActive` meme lorsque ce combat lui est
+masque, et la room refuse aussi autoritairement tout `setSourcePresence(attached)`
+retarde. L'invite poursuit donc son exploration personnelle sans devenir
+spectateur ; le snapshot de fermeture du combat declenche ensuite son rattachement
+automatique s'il se trouve toujours sur la carte de l'hote.
+
+Garde de scene du 2026-10-06 : comme les positions de PNJ, un
+`SourceSceneSnapshot` n'est publie par l'hote que si son `mapId` correspond a la
+derniere carte confirmee par la room. Une scene ignoree pendant une transition
+n'est pas dedupliquee comme si elle avait ete envoyee ; elle pourra donc etre
+publiee apres confirmation. Cela supprime le `INVALID_PHASE` de cinematique qui
+pouvait apparaitre apres la fermeture propre d'un combat.
 
 ## Commandes utiles
 

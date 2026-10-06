@@ -116,8 +116,11 @@ describe("overworld network session", () => {
     sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 12, side: "player", sequence: 1,
       revision: 2, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, true);
-    session.publishSourceScene({ mapId: 3, sequenceActive: true,
-      dialogue: { label: "Crisanto", text: "Attention !", choices: [] }, actors: [], presentation: null });
+    expect(session.publishSourceScene({ mapId: 4, sequenceActive: false,
+      dialogue: null, actors: [], presentation: null })).toBe(false);
+    expect(session.publishSourceScene({ mapId: 3, sequenceActive: true,
+      dialogue: { label: "Crisanto", text: "Attention !", choices: [] },
+      actors: [], presentation: null })).toBe(true);
     expect(JSON.parse(sockets[0]?.sent[1] ?? "{}")).toMatchObject({ type: "setSourceScene",
       scene: { mapId: 3, sequenceActive: true } });
     const actors = [{ eventId: 7, x: 2, y: 1, direction: "left" as const, blocking: true,

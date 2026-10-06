@@ -50,6 +50,7 @@ describe("guest source event policy", () => {
 
   it("rejoins the shared instance when the host reaches the guest's map", () => {
     expect(shouldRejoinSharedSourceMap(true, "away", 7, 7)).toBe(true);
+    expect(shouldRejoinSharedSourceMap(true, "away", 7, 7, true)).toBe(false);
     expect(shouldRejoinSharedSourceMap(true, "away", 6, 7)).toBe(false);
     expect(shouldRejoinSharedSourceMap(true, "shared", 7, 7)).toBe(false);
   });

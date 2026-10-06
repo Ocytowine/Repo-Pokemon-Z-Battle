@@ -267,8 +267,7 @@ function publishCurrentSourceScene(): void {
   if (scene === null) return;
   const signature = JSON.stringify(scene);
   if (signature === lastPublishedSourceScene) return;
-  lastPublishedSourceScene = signature;
-  multiplayer.publishSourceScene(scene);
+  if (multiplayer.publishSourceScene(scene)) lastPublishedSourceScene = signature;
 }
 
 function renderedSourceEventState(): SourceEventState {
@@ -1068,7 +1067,8 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     guestSourceExcursion = true;
     networkSourceWorld = world;
     publishActiveSourceFollower();
-    if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId)) {
+    if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId,
+      session.roomBattleActive)) {
       multiplayer.setSourcePresence(true, importedAvatar);
       importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
     } else {
@@ -1828,7 +1828,8 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
   sourceFollowerMotion.reset(importedAssets.map, importedAvatar);
   void refreshSourceParallelPresentation(importedAssets);
   renderImportedView();
-  if (multiplayer.current?.ticket.side === "opponent" && networkSourceWorld?.mapId === transfer.targetMapId) {
+  if (multiplayer.current?.ticket.side === "opponent" && multiplayer.current.roomBattleActive === false
+    && networkSourceWorld?.mapId === transfer.targetMapId) {
     guestSourceExcursion = false;
     multiplayer.setSourcePresence(true, importedAvatar);
   }
@@ -1860,7 +1861,8 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     sourceMovementMode = requestedTransferMode
       ?? (sourceMovementMode === "mount" && mountAllowed ? "mount" : "walk");
     sourceMovementAction = "idle";
-    const returningToSharedWorld = guestSession && hostMapId === next.assets.map.id;
+    const returningToSharedWorld = guestSession && multiplayer.current?.roomBattleActive === false
+      && hostMapId === next.assets.map.id;
     if (returningToSharedWorld) {
       guestSourceExcursion = false;
       multiplayer.setSourcePresence(true, importedAvatar);

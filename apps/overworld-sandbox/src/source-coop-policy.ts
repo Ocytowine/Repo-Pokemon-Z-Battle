@@ -18,8 +18,8 @@ export function sourceInteractionTarget(hasMapEvent: boolean, remotePlayerAhead:
 }
 
 export function shouldRejoinSharedSourceMap(guest: boolean, presence: "shared" | "away",
-  localMapId: number | null, hostMapId: number): boolean {
-  return guest && presence === "away" && localMapId === hostMapId;
+  localMapId: number | null, hostMapId: number, roomBattleActive = false): boolean {
+  return guest && presence === "away" && localMapId === hostMapId && !roomBattleActive;
 }
 
 export function sourceStateWithHostStory(local: SourceEventState, story: SourceStorySnapshot | null,
