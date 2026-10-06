@@ -17,6 +17,7 @@ export { isKnownType, typeEffectiveness } from "./type-chart.js";
 export type {
   BattleAction,
   BattleAbility,
+  ImplementedBattleAbility,
   BattleEvent,
   BattleMove,
   BattlePosition,

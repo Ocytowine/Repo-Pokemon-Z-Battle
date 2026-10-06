@@ -174,8 +174,12 @@ describe("persistent player party", () => {
       metadata: { form: 2, shiny: true, gender: "female" }, moves: [{ pp: 1 }] });
   });
 
-  it("blocks unsupported battle mechanics explicitly", () => {
-    expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!, ability: "LEVITATE" }] }, catalog)).toThrow("Talent");
+  it("preserves inert source abilities and still blocks malformed or unsupported battle mechanics", () => {
+    expect(playerPartyToBattleTeam({ ...party,
+      members: [{ ...party.members[0]!, ability: "CHEEKPOUCH" }] }, catalog).members[0]?.ability)
+      .toBe("CHEEKPOUCH");
+    expect(() => playerPartyToBattleTeam({ ...party,
+      members: [{ ...party.members[0]!, ability: "bad ability" }] }, catalog)).toThrow("Identifiant de talent invalide");
     expect(() => playerPartyToBattleTeam(party, { ...catalog, moves: [{ ...catalog.moves[0]!, functionCode: "999" }] })).toThrow("Fonction");
   });
 

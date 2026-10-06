@@ -30,8 +30,10 @@ export interface BattleMove {
   readonly targetCode?: string;
 }
 
-export type BattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
+export type ImplementedBattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
   | "PUREPOWER" | "QUICKFEET" | "SHIELDDUST" | "SIMPLE" | "STATIC" | "TORRENT";
+/** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
+export type BattleAbility = ImplementedBattleAbility | (string & {});
 export type HeldItem = "ASSAULTVEST" | "BLACKSLUDGE" | "LEFTOVERS" | "MUSCLEBAND" | "SCOPELENS" | "WISEGLASSES";
 
 export interface MoveSlot {
@@ -113,7 +115,7 @@ export type BattleEvent =
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: BattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }

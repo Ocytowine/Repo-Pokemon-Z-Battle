@@ -123,6 +123,11 @@ describe("multiplayer protocol", () => {
     const message: ClientMessage = { type: "openSourceBattle", version: 12, requestId: "source-battle-1",
       context, playerTeam: duelTeam, opponentTeam: duelTeam };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(parseClientMessage(JSON.stringify({ ...message, opponentTeam: { ...duelTeam,
+      members: [{ ...duelTeam.members[0], ability: "CHEEKPOUCH" }] } })))
+      .toMatchObject({ opponentTeam: { members: [{ ability: "CHEEKPOUCH" }] } });
+    expect(() => parseClientMessage(JSON.stringify({ ...message, opponentTeam: { ...duelTeam,
+      members: [{ ...duelTeam.members[0], ability: "bad ability" }] } }))).toThrow("openSourceBattle mal forme");
     const trainerMessage: ClientMessage = { ...message, context: { ...context, origin: "source-trainer",
       escapable: false, continuation: "trainer-sequence", presentation: { ...context.presentation,
         opponentTrainer: { id: 6, name: "Jean" }, defeatText: "Je dois encore m'entraîner !" },

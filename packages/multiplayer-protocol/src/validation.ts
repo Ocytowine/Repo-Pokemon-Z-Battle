@@ -69,8 +69,7 @@ const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDef
 const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
 const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020",
   "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
-const BATTLE_ABILITIES = new Set(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW",
-  "PUREPOWER", "QUICKFEET", "SHIELDDUST", "SIMPLE", "STATIC", "TORRENT"]);
+const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
 const HELD_ITEMS = new Set(["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"]);
 
 function boundedString(value: unknown, max = 64): value is string {
@@ -120,7 +119,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
       || !hasExactKeys(stages, BATTLE_STAGES) || !BATTLE_STAGES.every((stat) => safeInteger(stages[stat], -6, 6))
       || !safeInteger(member.hp, 0, Number(stats.maxHp)) || !isMajorStatus(member.majorStatus)
-      || member.ability !== null && !BATTLE_ABILITIES.has(String(member.ability))
+      || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
       || member.heldItem !== null && !HELD_ITEMS.has(String(member.heldItem))
     ) return false;
     return member.moves.every((slot) => {
