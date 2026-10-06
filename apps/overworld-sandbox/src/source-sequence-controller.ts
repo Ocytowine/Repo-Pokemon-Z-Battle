@@ -3,6 +3,7 @@ import type { PendingEventChoice } from "./source-event-flow.js";
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceScenePlan } from "./source-scene-plan.js";
 import { SourceSequenceRunner } from "./source-sequence-runner.js";
+import type { GridPoint } from "@pokemon-z-battle/overworld-engine";
 
 export interface SourceSequenceSession {
   readonly label: string;
@@ -18,6 +19,8 @@ export interface SourceSequenceSession {
   autorunBaseline?: SourceEventState;
   readonly runner: SourceSequenceRunner;
   readonly onComplete?: () => void;
+  /** Cible canonique ayant declenche l'evenement (par exemple un invite vu par un Dresseur). */
+  readonly interactionTarget?: GridPoint;
 }
 
 export interface SourceSequenceInput {
@@ -31,6 +34,7 @@ export interface SourceSequenceInput {
   readonly pendingChoice?: PendingEventChoice | null;
   readonly onComplete?: () => void;
   readonly runner?: SourceSequenceRunner;
+  readonly interactionTarget?: GridPoint;
 }
 
 export type SourceSequenceCommandResult = "continue" | "pause";
@@ -68,6 +72,7 @@ export class SourceSequenceController {
       advancing: false,
       runner: input.runner ?? new SourceSequenceRunner(),
       ...(input.onComplete === undefined ? {} : { onComplete: input.onComplete }),
+      ...(input.interactionTarget === undefined ? {} : { interactionTarget: { ...input.interactionTarget } }),
     };
     this.activeSession = session;
     void this.advance();

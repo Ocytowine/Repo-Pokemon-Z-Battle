@@ -58,4 +58,21 @@ describe("source sequence controller", () => {
     expect(errors).toEqual(["end"]);
     expect(controller.current).toBeNull();
   });
+
+  it("keeps a private copy of the participant position that triggered the sequence", async () => {
+    const controller = new SourceSequenceController({
+      dialogueActive: () => false,
+      onText: vi.fn(),
+      onChoice: vi.fn(),
+      executeCommand: async () => "pause",
+      onComplete: vi.fn(),
+      onError: vi.fn(),
+    });
+    const target = { x: 7, y: 9 };
+    const session = controller.start({ label: "trainer", mapId: 3, eventId: 4, translations: new Map(),
+      plan: plan([{ kind: "wait", text: null, indent: 0, data: { frames: 1 } }]), interactionTarget: target });
+    target.x = 99;
+    await Promise.resolve();
+    expect(session.interactionTarget).toEqual({ x: 7, y: 9 });
+  });
 });

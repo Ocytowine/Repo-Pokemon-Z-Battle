@@ -37,6 +37,7 @@ export interface SourceSequenceEffectDependencies {
   readonly startPendingEncounter: (onComplete: (won: boolean) => void) => boolean;
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
+  readonly getTrainerBattleFailure?: () => string | null;
   readonly openShop: (session: SourceSequenceSession, stock: readonly SourceShopItem[]) => void;
   readonly openRanch: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
@@ -46,6 +47,22 @@ export interface SourceSequenceEffectDependencies {
   readonly present: (command: SourceCommand, delay: (milliseconds: number) => Promise<void>) => Promise<boolean>;
   readonly isActive: (session: SourceSequenceSession) => boolean;
   readonly resume: () => void;
+}
+
+function normalizedTrainerName(name: string): string {
+  return name.normalize("NFKD").replaceAll(/\p{M}/gu, "").toLocaleLowerCase("fr")
+    .replaceAll(/\b(?:and|et|y)\b/gu, "&").replaceAll(/[^\p{L}\p{N}&]+/gu, "").trim();
+}
+
+export function resolveSourceTrainer(trainers: ImportedMapAssets["trainers"], trainerType: string,
+  trainerName: string, version: number): ImportedMapAssets["trainers"][number] | null {
+  const exact = trainers.find((candidate) => candidate.trainerType === trainerType
+    && candidate.name === trainerName && candidate.version === version);
+  if (exact !== undefined) return exact;
+  const normalizedName = normalizedTrainerName(trainerName);
+  const localized = trainers.filter((candidate) => candidate.trainerType === trainerType
+    && candidate.version === version && normalizedTrainerName(candidate.name) === normalizedName);
+  return localized.length === 1 ? localized[0]! : null;
 }
 
 export class SourceSequenceEffects {
@@ -102,10 +119,10 @@ export class SourceSequenceEffects {
       || !Number.isInteger(command.data.version)) {
       return this.abort(session, "Séquence interrompue : combat de Dresseur invalide.");
     }
-    const trainer = assets.trainers.find((candidate) => candidate.trainerType === command.data.trainerType
-      && candidate.name === command.data.trainerName && candidate.version === command.data.version);
+    const trainer = resolveSourceTrainer(assets.trainers, command.data.trainerType,
+      command.data.trainerName, command.data.version as number);
     const trainerType = assets.trainerTypes.find((candidate) => candidate.internalName === command.data.trainerType);
-    if (trainer === undefined || trainerType === undefined) {
+    if (trainer === null || trainerType === undefined) {
       return this.abort(session, "Séquence interrompue : équipe ou classe de Dresseur introuvable.");
     }
     const started = this.dependencies.startTrainerBattle(trainer, {
@@ -121,7 +138,8 @@ export class SourceSequenceEffects {
       this.dependencies.resume();
     });
     return started ? "pause"
-      : this.abort(session, "Séquence interrompue : le combat de Dresseur n'a pas pu démarrer.");
+      : this.abort(session, this.dependencies.getTrainerBattleFailure?.()
+        ?? "Séquence interrompue : le combat de Dresseur n'a pas pu démarrer.");
   }
 
   private openShop(session: SourceSequenceSession, command: SourceCommand): SourceSequenceCommandResult {

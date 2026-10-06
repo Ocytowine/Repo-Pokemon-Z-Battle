@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
-  sourceInteractionTarget, sourcePlayersFaceForDuel, sourceStateWithHostStory }
+  sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
+  sourceStateWithHostStory, sourceStateWithLocalStory }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -62,6 +63,15 @@ describe("guest source event policy", () => {
     expect(shouldRejoinSharedSourceMap(true, "shared", 7, 7)).toBe(false);
   });
 
+  it("allows an away guest to attach on the map of an active source battle", () => {
+    const battle = { state: { status: "active" }, sourceContext: { mapId: 7 } } as const;
+    expect(sourceBattleAllowsAttachment(battle, 7)).toBe(true);
+    expect(sourceBattleAllowsAttachment(battle, 8)).toBe(false);
+    expect(sourceBattleAllowsAttachment({ ...battle, state: { status: "finished" } }, 7)).toBe(false);
+    expect(shouldRejoinSharedSourceMap(true, "away", 7, 7, true,
+      sourceBattleAllowsAttachment(battle, 7))).toBe(true);
+  });
+
   it("uses the host story even while the guest is on another map", () => {
     const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 } };
     const synchronized = sourceStateWithHostStory(local,
@@ -70,5 +80,15 @@ describe("guest source event policy", () => {
       selfSwitches: { "4:2:A": true } });
     expect(synchronized.party).toBe(local.party);
     expect(synchronized.ranch).toBe(local.ranch);
+  });
+
+  it("keeps personal effects without copying the projected host story into the guest save", () => {
+    const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 },
+      selfSwitches: { "3:4:A": false }, money: 500 };
+    const applied = { ...local, switches: { "10": true }, variables: { "2": 7 },
+      selfSwitches: { "3:4:A": true }, money: 750 };
+    expect(sourceStateWithLocalStory(local, applied)).toMatchObject({
+      switches: { "10": false }, variables: { "2": 1 }, selfSwitches: { "3:4:A": false }, money: 750,
+    });
   });
 });

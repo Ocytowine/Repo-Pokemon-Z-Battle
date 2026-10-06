@@ -1235,6 +1235,42 @@ scene sans executer une seconde IA locale. Cette presentation n'est pas
 persistante : apres reconnexion, le snapshot de scene et les poses courantes de la
 room suffisent tant que la sequence est active.
 
+Correctif de detection Coop des Dresseurs du 2026-10-06 : le noyau generique de
+mouvement des PNJ recoit maintenant toutes les positions de joueurs eligibles sur
+la carte et choisit deterministement la cible visible la plus proche. Le contact
+transporte une copie de cette position dans `SourceSequenceSession`; l'orientation,
+la bulle et les commandes `step-toward-player` visent donc le joueur effectivement
+detecte, y compris l'invite, au lieu de toujours viser l'avatar local de l'hote.
+Les collisions autonomes tiennent egalement compte de tous les participants.
+
+L'autorite reste exclusivement l'hote : l'invite n'execute aucune IA ni narration
+locale et n'envoie pas de nouvelle intention de combat. Ses position et presence
+canoniques viennent du `SourceWorldSnapshot` de la room. L'etat narratif et le
+combat de Dresseur restent ceux de l'hote, tandis que les poses du PNJ sont un etat
+partage visible par les joueurs presents et le combat est diffuse aux participants
+selon le contrat Coop existant. La rotation initiale et chaque pas de l'approche
+sont maintenant republies dans `sourceActorsUpdated`, meme pendant la sequence qui
+suspend l'animation ambiante. Les poses canoniques de la room restaurent le rendu
+apres une reconnexion ; la cible ponctuelle n'est pas persistante une fois la
+sequence terminee. Tests ajoutes : selection de l'invite visible le plus proche et
+copie immuable de la cible dans la session.
+
+Correctif de reprise Dresseur du 2026-10-06 : un contact detecte pendant
+l'interpolation d'un pas est conserve jusqu'a la fin du mouvement, puis demarre
+avant l'evenement de case et la rencontre sauvage. Les positions de depart et
+d'arrivee du pas local ou distant participent a la detection ; traverser rapidement
+une ligne de vue ne perd donc plus l'alerte. Une alerte reste ensuite verrouillee
+tant que tous les participants n'ont pas quitte la ligne de vue, ce qui empeche un
+dialogue de Dresseur echoue de se relancer chaque seconde.
+
+La resolution d'equipe accepte aussi une variante localisee non ambigue du nom,
+sans relacher la classe ni la version. Cela raccorde generiquement les conjonctions
+de langues differentes presentes entre les evenements et le PBS (cas audite :
+`Hector et Zaida` / `Hector y Zaida`). En cas d'autre refus de creation, le HUD
+conserve maintenant la cause concrete fournie par `SourceBattleController` au lieu
+de la remplacer par un message generique. Tests ajoutes : verrouillage jusqu'a la
+sortie du champ de vision et resolution localisee bornee par classe/version.
+
 La phrase de defaite `_I("...")` de `pbTrainerBattle` est conservee dans
 `request-trainer-battle`, localisee avec le catalogue de la carte puis transmise
 comme `presentation.defeatText` dans le contexte public borne. Elle ne contient ni
@@ -1568,6 +1604,53 @@ liberer les deux clients. La branche `battleEscaped` possede maintenant un repli
 qui arrete l'etat d'animation et demande quand meme la fermeture si le fondu ou un
 asset echoue. Une requete de fermeture non envoyee sur socket ferme ne verrouille
 plus les tentatives suivantes, et une erreur/reconnexion libere aussi ce verrou.
+
+Correctif HUD du 2026-10-06 : les badges de statut sans etat etaient tout de meme
+affiches, car la declaration `display` du composant prenait le pas sur l'attribut
+HTML `hidden`. Cela donnait visuellement `Som` au sauvage neuf et pouvait conserver
+une ancienne ligne telle que `Par` sur un allie, sans que le moteur ne leur ait
+applique ces statuts. La variante `[hidden]` masque maintenant explicitement le
+badge. Le selecteur des deux Pokemon controles est aussi presente sur une seule
+ligne compacte au-dessus des commandes au lieu de deux boutons noirs superposes
+aux HUD.
+
+Correctif d'identite visuelle du Dresseur du 2026-10-06 : la scene de combat ne
+confond plus le camp tactique `player/opponent` avec le cote de room hote/invite.
+Le sprite dos est choisi a partir du `ownerId` du Pokemon actif replique dans la
+participation autoritaire, avec repli sur le premier Dresseur du camp. Un sauvage
+declenche par l'invite montre donc le profil visuel de l'invite sur les deux
+clients, y compris si l'hote rejoint ensuite. Le meme calcul oriente conserve le
+bon profil dos/face pour un duel ou un joueur rallie au camp oppose. Le profil est
+charge a la demande s'il n'est pas encore present dans le cache local ; cette
+presentation reste seulement visuelle et ne modifie aucun etat de combat.
+
+Correctif de continuite narrative multi-carte du 2026-10-06 : le mode `away` ne
+rend plus l'autorite narrative a l'invite. Une ancienne condition autorisait tous
+ses evenements des qu'il quittait la carte courante de l'hote ; il pouvait alors
+rejouer sa propre etape d'histoire sur une carte intermediaire. Les pages, acces et
+blocages continuent maintenant d'etre selectionnes depuis les switches, variables
+et self-switches autoritaires de l'hote sur toutes les cartes. L'invite n'execute
+que ses services personnels et ses transferts ; un transfert est suivi directement
+sans rejouer le dialogue ou la mise en scene narrative qui l'entoure. Les effets
+personnels autorises sont reappliques sur son etat local sans y recopier la
+projection narrative de l'hote. La selection d'une cible d'animation utilise elle
+aussi l'etat narratif projete. Autorite et persistance restent donc : histoire et
+monde chez l'hote/room, equipe et services chez le joueur concerne, rendu des
+consequences de l'histoire pour tous les participants, y compris en excursion.
+La geometrie locale employee par `resolveSourceMovement` en excursion est elle
+aussi reconstruite avec cette projection : `blockedPoints` et pages des acteurs ne
+peuvent plus rester sur l'avancement personnel alors que le decor affiche celui de
+l'hote.
+
+Correctif de rattachement en combat du 2026-10-06 : un invite `away` qui atteint
+la carte ou un combat source est actif peut de nouveau rejoindre l'instance. La
+regle existait lors de la reception d'un snapshot, mais les deux chemins de
+transfert exigeaient encore a tort `roomBattleActive === false`. Ils utilisent
+maintenant tous `sourceBattleAllowsAttachment` et `shouldRejoinSharedSourceMap` :
+le contexte doit viser la carte d'arrivee et le combat doit etre actif. Le client
+quitte immediatement son mode excursion, demande `setSourcePresence(true)` et rend
+donc l'avatar de l'hote ; la room valide ensuite la case de rattachement. Les
+combats d'une autre carte, termines ou non source ne desserrent pas cette garde.
 
 ## Commandes utiles
 

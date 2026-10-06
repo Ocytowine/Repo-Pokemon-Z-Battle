@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { networkBattleEventsForViewer, networkBattleForViewer } from "../src/network-battle-presentation.js";
-import { MINIMAL_MOVE_CATALOG, createTeamBattleState, type BattlerState } from "@pokemon-z-battle/battle-engine";
+import { networkBattleEventsForViewer, networkBattleForViewer,
+  networkBattleTrainerIds } from "../src/network-battle-presentation.js";
+import { MINIMAL_MOVE_CATALOG, createTeamBattleState, type BattlerState,
+  type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
 function battler(id: string): BattlerState {
   return { id, species: id, name: id, level: 5, types: ["NORMAL"], hp: 20,
@@ -23,5 +25,30 @@ describe("network battle presentation", () => {
       { type: "damageApplied", source: "player", target: "opponent", amount: 3, hp: 17,
         critical: false, effectiveness: 1 },
     ]);
+  });
+
+  it("selects the trainer who owns the active battler instead of the room host side", () => {
+    const participation: SharedBattleParticipation = {
+      battleOwnerId: "guest-id", format: "double",
+      camps: {
+        player: {
+          trainerIds: ["guest-id", "host-id"],
+          members: [
+            { ownerId: "guest-id", battler: battler("guest-lead") },
+            { ownerId: "host-id", battler: battler("host-help") },
+          ],
+          activeMemberId: "guest-lead", activeMemberIds: ["guest-lead", "host-help"],
+        },
+        opponent: {
+          trainerIds: [], members: [{ ownerId: null, battler: battler("wild") }],
+          activeMemberId: "wild",
+        },
+      },
+    };
+
+    expect(networkBattleTrainerIds(participation, "player"))
+      .toEqual({ player: "guest-id", opponent: null });
+    expect(networkBattleTrainerIds(participation, "opponent"))
+      .toEqual({ player: null, opponent: "guest-id" });
   });
 });

@@ -24,10 +24,23 @@ export function shouldRejoinSharedSourceMap(guest: boolean, presence: "shared" |
     && (!roomBattleActive || battleAllowsAttachment);
 }
 
+export function sourceBattleAllowsAttachment(battle: {
+  readonly state: { readonly status: string };
+  readonly sourceContext: { readonly mapId: number } | null;
+} | null | undefined, hostMapId: number): boolean {
+  return battle?.state.status === "active" && battle.sourceContext?.mapId === hostMapId;
+}
+
 export function sourceStateWithHostStory(local: SourceEventState, story: SourceStorySnapshot | null,
   guest: boolean): SourceEventState {
   return !guest || story === null ? local : { ...local, switches: story.switches,
     variables: story.variables, selfSwitches: story.selfSwitches };
+}
+
+/** Keeps personal effects while preventing the host story projection from leaking into the guest save. */
+export function sourceStateWithLocalStory(local: SourceEventState, applied: SourceEventState): SourceEventState {
+  return { ...applied, switches: local.switches, variables: local.variables,
+    selfSwitches: local.selfSwitches };
 }
 
 /**

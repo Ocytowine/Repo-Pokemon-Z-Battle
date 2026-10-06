@@ -1,7 +1,21 @@
-import type { BattleSide, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleSide, DoubleBattleEvent, SharedBattleParticipation, TeamBattleEvent,
+  TeamBattleState } from "@pokemon-z-battle/battle-engine";
 
 export function oppositeBattleSide(side: BattleSide): BattleSide {
   return side === "player" ? "opponent" : "player";
+}
+
+function activeTrainerId(participation: SharedBattleParticipation, side: BattleSide): string | null {
+  const camp = participation.camps[side];
+  return camp.members.find((member) => member.battler.id === camp.activeMemberId)?.ownerId
+    ?? camp.trainerIds[0] ?? null;
+}
+
+/** Resolves trainer identities from battle ownership, independently from host/guest room sides. */
+export function networkBattleTrainerIds(participation: SharedBattleParticipation,
+  viewer: BattleSide): { readonly player: string | null; readonly opponent: string | null } {
+  return { player: activeTrainerId(participation, viewer),
+    opponent: activeTrainerId(participation, oppositeBattleSide(viewer)) };
 }
 
 export function networkBattleForViewer(state: TeamBattleState, viewer: BattleSide): TeamBattleState {

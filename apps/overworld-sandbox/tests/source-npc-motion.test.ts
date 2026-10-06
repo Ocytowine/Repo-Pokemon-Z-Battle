@@ -29,7 +29,7 @@ describe("source NPC motion", () => {
   it("starts a deterministic random tile movement and exposes an interpolated pose", () => {
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [event], 0);
-    controller.update(150, map, [event], createSourceEventState(), { x: 4, y: 4 });
+    controller.update(150, map, [event], createSourceEventState(), [{ x: 4, y: 4 }]);
     const logical = controller.logicalEvents([event])[0]!;
     expect(Math.abs(logical.x - event.x) + Math.abs(logical.y - event.y)).toBe(1);
     const start = controller.poses(150).get(event.id)!;
@@ -45,7 +45,7 @@ describe("source NPC motion", () => {
     const initialDirection = controller.poses(0).get(event.id)!.direction;
     const occupiedByPlayer = initialDirection === 2 ? { x: 2, y: 3 } : initialDirection === 4 ? { x: 1, y: 2 }
       : initialDirection === 6 ? { x: 3, y: 2 } : { x: 2, y: 1 };
-    controller.update(150, map, [event], createSourceEventState(), occupiedByPlayer);
+    controller.update(150, map, [event], createSourceEventState(), [occupiedByPlayer]);
     const logical = controller.logicalEvents([event])[0]!;
     expect(logical).toMatchObject({ x: 2, y: 2 });
   });
@@ -58,8 +58,8 @@ describe("source NPC motion", () => {
         settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [trainer], 0);
-    expect(controller.update(1, map, [trainer], createSourceEventState(), { x: 2, y: 4 }))
-      .toMatchObject({ event: { id: trainer.id }, pageIndex: 0 });
+    expect(controller.update(1, map, [trainer], createSourceEventState(), [{ x: 2, y: 4 }]))
+      .toMatchObject({ event: { id: trainer.id }, pageIndex: 0, target: { x: 2, y: 4 } });
     expect(controller.logicalEvents([trainer])[0]).toMatchObject({ x: 2, y: 1 });
   });
 
@@ -69,8 +69,31 @@ describe("source NPC motion", () => {
         settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [trainer], 0);
-    expect(controller.update(1, map, [trainer], createSourceEventState(), { x: 3, y: 1 })).toBeNull();
-    expect(controller.update(2, map, [trainer], createSourceEventState(), { x: 2, y: 4 })).toBeNull();
+    expect(controller.update(1, map, [trainer], createSourceEventState(), [{ x: 3, y: 1 }])).toBeNull();
+    expect(controller.update(2, map, [trainer], createSourceEventState(), [{ x: 2, y: 4 }])).toBeNull();
+  });
+
+  it("selects the nearest visible participant and reports that canonical target", () => {
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer], 0);
+    expect(controller.update(1, map, [trainer], createSourceEventState(),
+      [{ x: 2, y: 4 }, { x: 2, y: 2 }]))
+      .toMatchObject({ event: { id: trainer.id }, target: { x: 2, y: 2 } });
+  });
+
+  it("does not retrigger a trainer until every participant has left its sight", () => {
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 0, trigger: 2 } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer], 0);
+    expect(controller.update(1, map, [trainer], createSourceEventState(), [{ x: 2, y: 3 }])).not.toBeNull();
+    expect(controller.update(2_000, map, [trainer], createSourceEventState(), [{ x: 2, y: 3 }])).toBeNull();
+    expect(controller.update(2_001, map, [trainer], createSourceEventState(), [{ x: 3, y: 3 }])).toBeNull();
+    expect(controller.update(2_002, map, [trainer], createSourceEventState(), [{ x: 2, y: 3 }])).not.toBeNull();
   });
 
   it("does not notice a player through another blocking event", () => {
@@ -81,20 +104,20 @@ describe("source NPC motion", () => {
       pages: [{ ...event.pages[0]!, settings: { ...event.pages[0]!.settings, moveType: 0 } }] };
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [trainer, blocker], 0);
-    expect(controller.update(1, map, [trainer, blocker], createSourceEventState(), { x: 2, y: 4 })).toBeNull();
+    expect(controller.update(1, map, [trainer, blocker], createSourceEventState(), [{ x: 2, y: 4 }])).toBeNull();
   });
 
   it("starts an event-touch sequence when a random autonomous step reaches the player", () => {
     const probe = new SourceNpcMotionController();
     probe.reset(map.id, [event], 0);
-    probe.update(150, map, [event], createSourceEventState(), { x: 4, y: 4 });
+    probe.update(150, map, [event], createSourceEventState(), [{ x: 4, y: 4 }]);
     const destination = probe.logicalEvents([event])[0]!;
     const touchingEvent: ImportedMapEvent = {
       ...event, pages: [{ ...event.pages[0]!, settings: { ...event.pages[0]!.settings, trigger: 2 } }],
     };
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [touchingEvent], 0);
-    const contact = controller.update(150, map, [touchingEvent], createSourceEventState(), destination);
+    const contact = controller.update(150, map, [touchingEvent], createSourceEventState(), [destination]);
     expect(contact).toMatchObject({ event: { id: event.id }, pageIndex: 0 });
     expect(controller.logicalEvents([touchingEvent])[0]).toMatchObject({ x: 2, y: 2 });
   });
@@ -109,8 +132,8 @@ describe("source NPC motion", () => {
     };
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [routedEvent], 0);
-    expect(controller.update(150, map, [routedEvent], createSourceEventState(), { x: 3, y: 2 })).toBeNull();
-    const contact = controller.update(151, map, [routedEvent], createSourceEventState(), { x: 3, y: 2 });
+    expect(controller.update(150, map, [routedEvent], createSourceEventState(), [{ x: 3, y: 2 }])).toBeNull();
+    const contact = controller.update(151, map, [routedEvent], createSourceEventState(), [{ x: 3, y: 2 }]);
     expect(contact).toMatchObject({ event: { id: event.id }, pageIndex: 0 });
     expect(controller.poses(151).get(event.id)).toMatchObject({ x: 2, y: 2, direction: 6 });
   });
@@ -132,7 +155,7 @@ describe("source NPC motion", () => {
   it("exports logical world actors and interpolates a host step on a guest", () => {
     const host = new SourceNpcMotionController();
     host.reset(map.id, [event], 0);
-    host.update(150, map, [event], createSourceEventState(), { x: 4, y: 4 });
+    host.update(150, map, [event], createSourceEventState(), [{ x: 4, y: 4 }]);
     const actors = host.worldActors([event], map.id, createSourceEventState());
     expect(actors).toHaveLength(1);
     expect(actors[0]).toMatchObject({ eventId: event.id, blocking: true, moveSpeed: 3, action: "step" });

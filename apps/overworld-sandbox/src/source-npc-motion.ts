@@ -20,12 +20,15 @@ interface NpcRuntime {
   pageIndex: number | null;
   routeIndex: number;
   noticeCooldownUntil: number;
+  noticeLatched: boolean;
 }
 
 export interface SourceNpcEventContact {
   readonly event: ImportedMapEvent;
   readonly page: NonNullable<ReturnType<typeof selectActiveEventPage>>["page"];
   readonly pageIndex: number;
+  /** Position canonique du joueur qui a provoque le contact, choisie par l'autorite de la carte. */
+  readonly target: GridPoint;
 }
 
 const DIRECTIONS: readonly Direction[] = ["down", "left", "right", "up"];
@@ -89,12 +92,14 @@ export class SourceNpcMotionController {
       pageIndex: null,
       routeIndex: 0,
       noticeCooldownUntil: 0,
+      noticeLatched: false,
     }));
   }
 
   public update(now: number, map: ImportedMap, events: readonly ImportedMapEvent[], state: SourceEventState,
-    player: GridPoint): SourceNpcEventContact | null {
+    players: readonly GridPoint[]): SourceNpcEventContact | null {
     if (this.mapId !== map.id) this.reset(map.id, events, now);
+    if (players.length === 0) return null;
     for (const event of events) {
       const runtime = this.runtimes.get(event.id);
       const selection = selectActiveEventPage(event, map.id, state);
@@ -116,17 +121,21 @@ export class SourceNpcMotionController {
         continue;
       }
       const sightRange = page.settings.trigger === 2 ? sourceTrainerSightRange(event.name) : null;
-      if (sightRange !== null && now >= runtime.noticeCooldownUntil
-        && this.trainerSeesPlayer(runtime, event, sightRange, player, map, events, state)) {
+      const sightTarget = sightRange === null ? null
+        : this.trainerSightTarget(runtime, event, sightRange, players, map, events, state);
+      if (sightTarget === null) runtime.noticeLatched = false;
+      if (sightTarget !== null && !runtime.noticeLatched && now >= runtime.noticeCooldownUntil) {
+        runtime.noticeLatched = true;
         runtime.noticeCooldownUntil = now + 1_000;
-        return { event, page, pageIndex: selection.pageIndex };
+        return { event, page, pageIndex: selection.pageIndex, target: sightTarget };
       }
       if ((page.settings.moveType !== 1 && page.settings.moveType !== 3) || now < runtime.nextMoveAt) continue;
       const actor = this.runtimeActor(runtime, page);
       const route = page.settings.moveType === 3 ? page.settings.moveRoute ?? null : null;
       const step = route?.steps[runtime.routeIndex] ?? null;
+      const nearestPlayer = this.nearestPlayer(runtime, players);
       const result = step === null ? null : executeSourceMoveRouteStep(actor, step,
-        { player, randomDirection: DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down" });
+        { player: nearestPlayer, randomDirection: DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down" });
       if (route !== null && result !== null) {
         runtime.direction = result.actor.direction;
         runtime.characterName = result.actor.characterName;
@@ -154,11 +163,12 @@ export class SourceNpcMotionController {
       if (!page.settings.directionFix) runtime.direction = direction;
       const destination = { x: runtime.x + (direction === "left" ? -1 : direction === "right" ? 1 : 0),
         y: runtime.y + (direction === "up" ? -1 : direction === "down" ? 1 : 0) };
-      if (page.settings.trigger === 2 && destination.x === player.x && destination.y === player.y) {
+      const touchedPlayer = players.find((player) => destination.x === player.x && destination.y === player.y);
+      if (page.settings.trigger === 2 && touchedPlayer !== undefined) {
         runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
-        return { event, page, pageIndex: selection.pageIndex };
+        return { event, page, pageIndex: selection.pageIndex, target: { ...touchedPlayer } };
       }
-      const occupied = [{ ...player }, ...events.flatMap((candidate) => {
+      const occupied = [...players.map((player) => ({ ...player })), ...events.flatMap((candidate) => {
         if (candidate.id === event.id) return [];
         const otherPage = selectEventPage(candidate, map.id, state);
         const other = this.runtimes.get(candidate.id);
@@ -193,6 +203,23 @@ export class SourceNpcMotionController {
     if (destination.x === actor.x && destination.y === actor.y - 1) return "up";
     if (destination.x === actor.x && destination.y === actor.y + 1) return "down";
     return null;
+  }
+
+  private nearestPlayer(runtime: NpcRuntime, players: readonly GridPoint[]): GridPoint {
+    return players.reduce((nearest, player) => {
+      const nearestDistance = Math.abs(nearest.x - runtime.x) + Math.abs(nearest.y - runtime.y);
+      const distance = Math.abs(player.x - runtime.x) + Math.abs(player.y - runtime.y);
+      return distance < nearestDistance ? player : nearest;
+    });
+  }
+
+  private trainerSightTarget(runtime: NpcRuntime, event: ImportedMapEvent, range: number,
+    players: readonly GridPoint[], map: ImportedMap, events: readonly ImportedMapEvent[],
+    state: SourceEventState): GridPoint | null {
+    const visible = players.filter((player) =>
+      this.trainerSeesPlayer(runtime, event, range, player, map, events, state));
+    if (visible.length === 0) return null;
+    return { ...this.nearestPlayer(runtime, visible) };
   }
 
   private trainerSeesPlayer(runtime: NpcRuntime, event: ImportedMapEvent, range: number, player: GridPoint,

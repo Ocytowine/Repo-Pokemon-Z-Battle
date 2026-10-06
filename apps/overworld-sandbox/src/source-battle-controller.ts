@@ -139,6 +139,7 @@ export class SourceBattleController {
   private localSession: SharedBattleSession | null = null;
   private localSequence = 0;
   private localDoubleActions: PositionedTeamBattleAction[] = [];
+  private startFailure: string | null = null;
 
   public constructor(
     private readonly presentation: SourceBattlePresentation,
@@ -159,6 +160,10 @@ export class SourceBattleController {
 
   public get sharedContinuationReady(): boolean {
     return this.sharedContinuationPending;
+  }
+
+  public get lastStartFailure(): string | null {
+    return this.startFailure;
   }
 
   public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null): boolean {
@@ -206,9 +211,17 @@ export class SourceBattleController {
 
   public startTrainerBattle(trainer: SourceTrainerDefinition, audio: SourceTrainerBattleAudio,
     onComplete: (won: boolean) => void): boolean {
+    this.startFailure = null;
     const eventState = this.callbacks.getEventState();
     const resources = this.callbacks.getResources();
-    if (resources === null || this.active) return false;
+    if (resources === null) {
+      this.startFailure = "Combat de Dresseur impossible : ressources de la carte indisponibles.";
+      return false;
+    }
+    if (this.active) {
+      this.startFailure = "Combat de Dresseur impossible : un autre combat est deja en cours d'ouverture.";
+      return false;
+    }
     try {
       const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single");
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
@@ -238,7 +251,8 @@ export class SourceBattleController {
       this.battle = null;
       this.rng = null;
       this.trainerCompletion = null;
-      this.callbacks.setNotice(error instanceof Error ? `Combat impossible : ${error.message}` : "Combat de Dresseur impossible.");
+      this.startFailure = error instanceof Error ? `Combat impossible : ${error.message}` : "Combat de Dresseur impossible.";
+      this.callbacks.setNotice(this.startFailure);
       this.callbacks.render();
       return false;
     }
