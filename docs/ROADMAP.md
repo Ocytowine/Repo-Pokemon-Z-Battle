@@ -1637,6 +1637,9 @@ Ordre convenu :
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
   placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
   implementes ;
+  dette ouverte : un changement croise hote/invite a ete observe ; retablir le
+  controle strict par proprietaire, puis qualifier separement un partage tactique
+  precombat uniquement sur consentement des deux joueurs ;
   recette solo et deux navigateurs a valider ;
 - [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
 
@@ -1692,10 +1695,22 @@ solo reutilise le meme noyau avec un adaptateur local. L'onglet Deplacements off
 aussi une action explicite qui donne 99 exemplaires de chaque objet extrait a la
 sauvegarde personnelle pour la recette.
 
+Quatrieme increment objets du 2026-10-07 : Ether, Ether Max, Elixir, Elixir Max et
+Baie Mepo restaurent maintenant les PP avec le meme noyau en exploration et en
+combat ; les objets monocapacite demandent explicitement la capacite cible. Les
+familles Attaque X, Defense X, Attaque Speciale X, Defense Speciale X, Vitesse X
+et Precision X, y compris les variantes +2/+3/+6 et leurs alias source, modifient
+les crans temporaires du seul Pokemon actif controle. Le protocole v15 transporte
+`targetMoveIndex`, la room valide le proprietaire, la cible active et le stock,
+puis conserve consommation et reliquat a travers reconnexion et reglement. Le
+solo, l'hote et l'invite utilisent tous `applyPokemonItemEffect` ; aucun objet ne
+permet de modifier le Pokemon de l'autre Dresseur.
+
 La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
-ou des especes deja possedees attendent leurs contextes autoritaires. PP, objets de
-statistiques, objets tenus, pierres et CT/CS restent ouverts dans `SOLO-ITEMS-1`.
+ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
+Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
+objets tenus, pierres et CT/CS, restent ouverts dans `SOLO-ITEMS-1`.
 
 ### Phase 12 - Extensions Coop
 

@@ -4,7 +4,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   battleMemberIndicesOwnedBy,
   canCaptureSharedBattleTarget, canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
   closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
-  proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
+  pokemonItemTargetMode, proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
   resolveDoubleTeamTurn, resolveTeamTurn,
   settleEscapedSharedBattleSession, settleSharedBattleSession,
   sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement,
@@ -47,7 +47,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 9 | 10 | 11 | 12 | 13 | 14;
+  readonly version: 9 | 10 | 11 | 12 | 13 | 14 | 15;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -358,7 +358,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 14,
+      version: 15,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -1807,13 +1807,17 @@ export class AuthoritativeBattleRoom {
     if (action.kind === "item" && (target === undefined || owner !== player.playerId)) {
       return "Un Dresseur ne peut utiliser un objet que sur l'un de ses propres Pokemon.";
     }
+    if (action.kind === "item" && pokemonItemTargetMode(action.itemId) === "active"
+      && !activeTeamIndices(state.teams[side]).includes(action.targetTeamIndex)) {
+      return "Cet objet de combat doit viser un Pokemon actif.";
+    }
     const itemId = action.kind === "item" ? action.itemId : action.ballId;
     const inventory = this.#battleInventories.get(player.playerId);
     const quantity = inventory?.[itemId] ?? 0;
     if (quantity <= 0) return "Cet objet n'est pas disponible dans le sac de ce Dresseur.";
     if (action.kind === "item") {
       const applied = applyPokemonItemEffect(target!, itemId, { context: "battle", revivalAllowed: true,
-        battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed });
+        battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed }, action.targetMoveIndex);
       if (typeof applied === "string") return `Cet objet ne peut pas etre utilise (${applied}).`;
     }
     const next = { ...inventory };

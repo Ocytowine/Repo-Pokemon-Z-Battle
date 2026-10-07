@@ -208,6 +208,15 @@ describe("persistent player party", () => {
     expect(move).not.toHaveProperty("description");
   });
 
+  it("projects decimal PBS weights to the integer battle unit used by capture", () => {
+    const captureCatalog: PlayerBattleCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+      captureRate: 190, weight: 6.9,
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 } }] };
+
+    expect(playerPartyToBattleTeam(party, captureCatalog).members[0]?.capture)
+      .toEqual({ rate: 190, baseSpeed: 90, weight: 69 });
+  });
+
   it("never starts a battle with a fainted active Pokemon", () => {
     const reserve = { ...party.members[0]!, id: "reserve", hp: 3 };
     const team = playerPartyToBattleTeam({ ...party,

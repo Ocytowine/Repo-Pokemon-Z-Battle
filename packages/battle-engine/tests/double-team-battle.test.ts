@@ -66,7 +66,8 @@ describe("double team battles", () => {
       { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
     ], rng);
     expect(result.state.teams.player.members[2]?.hp).toBe(30);
-    expect(result.events).toContainEqual({ type: "trainerItemUsed", side: "player", itemId: "POTION",
-      targetIndex: 2, target: "reserve", hpRestored: 20, statusCured: null, revived: false });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed", side: "player",
+      itemId: "POTION", targetIndex: 2, target: "reserve", hpRestored: 20,
+      statusCured: null, revived: false }));
   });
 });

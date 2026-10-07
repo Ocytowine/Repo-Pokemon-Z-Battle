@@ -1575,6 +1575,15 @@ seul, les deux joueurs combattent en 2 contre 1 ; contre un Dresseur, le camp PN
 emploie un second actif s'il en possede un. Un invite rallie a l'ennemi controle de
 la meme facon son propre Pokemon dans ce camp.
 
+Dette manuelle constatee le 2026-10-07 : malgre ce contrat, l'hote a pu utiliser
+le menu de changement pour envoyer un Pokemon appartenant a l'invite pendant un
+double Coop. Le comportement par defaut doit rester strictement borne au
+proprietaire. Le porteur souhaite toutefois garder comme amelioration possible un
+partage tactique optionnel, accepte par les deux joueurs avant le combat. Si cette
+extension est retenue, la room devra persister une permission limitee a la session
+de combat et continuer d'attribuer ressources, EXP et sauvegarde au vrai
+proprietaire ; aucun echange permanent de Pokemon n'est implique.
+
 Le noyau partage `double-team-battle` resout les quatre intentions dans un ordre
 global de priorite et vitesse. Il porte le ciblage source `PBTargets`, les attaques
 de zone, leur coefficient de degats, les PP consommes une seule fois, les effets de
@@ -1726,13 +1735,45 @@ idempotent que les autres resultats, y compris apres reconnexion. La presentatio
 textuelle est fonctionnelle ; l'animation source du lancer et le surnom sont
 explicitement reportes a la reprise visuelle demandee par le porteur.
 
+Correctif de contrat capture/Coop du 2026-10-07 : le poids extrait du PBS est en
+kilogrammes decimaux, alors que `PokeBattle_Battler#weight` et les seuils de la
+Masse Ball emploient des hectogrammes entiers. La projection vers `BattlerState`
+effectue maintenant cette conversion une seule fois. Avant ce correctif, le champ
+decimal ajoute avec les donnees de capture faisait rejeter par le validateur strict
+les equipes de `respondPlayerChallenge` et `openSourceBattle`. Les deux chemins
+reseau acceptent desormais la meme projection bornee, sans assouplir le protocole.
+
 Un bouton volontaire `Donner tous les objets de test` est disponible dans l'onglet
 Deplacements. Il place 99 exemplaires de chaque objet extrait dans la seule
 sauvegarde personnelle du navigateur courant. Il ne modifie ni l'inventaire de
 l'autre joueur ni la room et evite toute edition directe des fichiers internes du
 navigateur.
 
-`SOLO-ITEMS-1` reste en cours pour les soins de PP, objets de statistiques, objets
+Quatrieme increment `SOLO-ITEMS-1` du 2026-10-07 : le registre commun couvre les
+restaurateurs de PP verifies dans les handlers source : `ETHER` et `LEPPABERRY`
+restaurent 10 PP a une capacite choisie, `MAXETHER` la remplit, `ELIXIR` restaure
+10 PP a toutes les capacites et `MAXELIXIR` les remplit. Le Sac personnel demande
+le Pokemon puis la capacite lorsque necessaire ; un index absent/invalide ou une
+capacite deja pleine ne consomme rien. Les PP resultants sont egalement portes par
+l'evenement tactique afin que la presentation animee reste coherente avant le
+snapshot final.
+
+Le meme increment active en combat les familles `XATTACK`, `XDEFEND`/`XDEFENSE`,
+`XSPECIAL`/`XSPATK`, `XSPDEF`, `XSPEED` et `XACCURACY`, avec les variantes
+1/2/3/6 presentes dans les donnees. Elles ne sont jamais applicables hors combat
+et visent automatiquement le Pokemon actif controle. Le protocole passe en v15
+pour transporter l'index de capacite des objets PP ; l'ancien etat persiste v14
+reste chargeable. La room refuse un Pokemon non possede ou une reserve pour un
+objet X, reserve le stock personnel et restitue consommation/reliquat apres
+reconnexion. Un test double fait consommer au meme tour un soin par l'invite et un
+objet X par l'hote, avec deux reglements strictement separes.
+
+`DIREHIT`/Puissance et `GUARDSPEC`/Garde-Stats restent explicitement reportes :
+leurs effets source exigent Focus Energy et Mist, deux etats volatils que le moteur
+ne represente pas encore. Ils ne doivent pas etre simules par un simple cran de
+statistique.
+
+`SOLO-ITEMS-1` reste en cours pour les objets de combat a etat volatil, objets
 tenus, pierres et CT/CS. `SOLO-CAPTURE-1` possede maintenant sa boucle fonctionnelle
 solo/Coop ; restent l'animation, le surnom, la capture critique/Pokedex et les
 modificateurs contextuels heure/milieu/type de rencontre. Les sous-categories et

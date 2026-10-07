@@ -360,8 +360,10 @@ export class SourceBattleController {
     await this.submitTurnAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   }
 
-  public async useItem(itemId: string, targetTeamIndex: number, activeSlot = 0): Promise<void> {
-    await this.submitTurnAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
+  public async useItem(itemId: string, targetTeamIndex: number, activeSlot = 0,
+    targetMoveIndex?: number): Promise<void> {
+    await this.submitTurnAction({ kind: "item", itemId, targetTeamIndex,
+      ...(targetMoveIndex === undefined ? {} : { targetMoveIndex }) }, activeSlot);
   }
 
   public async capture(ballId: string, activeSlot = 0, target?: BattlePosition): Promise<void> {

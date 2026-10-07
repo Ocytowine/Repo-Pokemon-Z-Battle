@@ -103,7 +103,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
   const events: BattleEvent[] = [];
   const trace: DoubleTurnResult["trace"][number][] = [];
   let first = true;
-  for (const target of targets) {
+  for (const [targetIndex, target] of targets.entries()) {
     const attacker = teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]!;
     const defender = teams[target.side].members[activeTeamIndices(teams[target.side])[target.slot]!]!;
     if (attacker.hp <= 0 || defender.hp <= 0) continue;
@@ -112,7 +112,8 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     const mini: BattleState = { turn: state.turn, status: "active", winner: null,
       battlers: { [miniSide]: attacker, [miniTarget]: defender } as Readonly<Record<BattleSide, BattlerState>> };
     const result = resolveSelectedMoves(mini, { [miniSide]: action }, rng,
-      { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1 });
+      { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1,
+        attackerHeldItemAfterDamage: targetIndex === targets.length - 1 });
     let nextAttacker = result.state.battlers[miniSide];
     if (!first) {
       nextAttacker = { ...nextAttacker, moves: nextAttacker.moves.map((slot, index) => index === action.moveIndex
@@ -203,7 +204,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const team = teams[entry.actor.side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error("Cible d'objet double invalide.");
-    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy);
+    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Objet ${action.itemId} inutilisable : ${applied}.`);
     teams[entry.actor.side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };

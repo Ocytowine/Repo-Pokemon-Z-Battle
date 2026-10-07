@@ -3,7 +3,8 @@ import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
-import { isPokemonBallSupported, isPokemonItemUseSupported, type BattleTeam } from "@pokemon-z-battle/battle-engine";
+import { isPokemonBallSupported, isPokemonItemUseSupported, pokemonItemTargetMode,
+  type BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
 const ROOM_CODE = /^[A-Z2-9]{6}$/u;
@@ -62,9 +63,12 @@ function isBattleAction(value: unknown): boolean {
     && Number(value.teamIndex) >= 0
     && Number(value.teamIndex) <= 5
     && (value.activeSlot === undefined || safeInteger(value.activeSlot, 0, 1));
-  const item = isRecord(value) && hasExactKeys(value, ["kind", "itemId", "targetTeamIndex"])
+  const item = isRecord(value) && ["kind", "itemId", "targetTeamIndex"].every((key) => key in value)
+    && Object.keys(value).every((key) => ["kind", "itemId", "targetTeamIndex", "targetMoveIndex"].includes(key))
     && value.kind === "item" && typeof value.itemId === "string" && isPokemonItemUseSupported(value.itemId)
-    && safeInteger(value.targetTeamIndex, 0, 5);
+    && safeInteger(value.targetTeamIndex, 0, 5)
+    && (pokemonItemTargetMode(value.itemId) === "move"
+      ? safeInteger(value.targetMoveIndex, 0, 3) : value.targetMoveIndex === undefined);
   const capture = isRecord(value) && ["kind", "ballId"].every((key) => key in value)
     && Object.keys(value).every((key) => ["kind", "ballId", "target"].includes(key))
     && value.kind === "capture" && typeof value.ballId === "string" && isPokemonBallSupported(value.ballId)
@@ -74,7 +78,7 @@ function isBattleAction(value: unknown): boolean {
 }
 
 function isSourceBattleInventory(value: unknown): boolean {
-  return isRecord(value) && Object.keys(value).length <= 64
+  return isRecord(value) && Object.keys(value).length <= 128
     && Object.entries(value).every(([itemId, quantity]) => (isPokemonItemUseSupported(itemId) || isPokemonBallSupported(itemId))
       && safeInteger(quantity, 1, 999));
 }

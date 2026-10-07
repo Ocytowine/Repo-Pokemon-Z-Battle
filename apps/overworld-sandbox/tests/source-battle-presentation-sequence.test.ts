@@ -91,4 +91,20 @@ describe("source battle presentation sequence", () => {
     expect(sequence.map((step) => step.kind)).toEqual(["status", "health", "faint"]);
     expect(sequence[1]).toMatchObject({ to: 0, state: { teams: { player: { members: [{ hp: 0 }] } } } });
   });
+
+  it("presents authoritative PP and temporary stage item effects", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const common = { type: "trainerItemUsed" as const, side: "player" as const,
+      targetIndex: 0, target: "Héros", hpRestored: 0, statusCured: null, revived: false };
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { ...common, itemId: "ETHER", ppRestored: 5, movePp: [15], targetMoveIndex: 0,
+        statRaised: null, stagesRaised: 0 },
+      { ...common, itemId: "XATTACK", ppRestored: 0, movePp: null, targetMoveIndex: null,
+        statRaised: "attack", stagesRaised: 1 },
+    ]);
+    expect(sequence[0]).toMatchObject({ message: "Héros reçoit ETHER et récupère 5 PP.",
+      state: { teams: { player: { members: [{ moves: [{ pp: 15 }] }] } } } });
+    expect(sequence[1]).toMatchObject({ message: "Héros reçoit XATTACK : Attaque augmente.",
+      state: { teams: { player: { members: [{ stages: { attack: 1 } }] } } } });
+  });
 });

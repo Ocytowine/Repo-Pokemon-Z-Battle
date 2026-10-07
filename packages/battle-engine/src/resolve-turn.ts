@@ -304,7 +304,9 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
     trace.push({ type: "accuracy", side, base: 0, accuracyStage: attacker.stages.accuracy, evasionStage: defender.stages.evasion, threshold: Number.POSITIVE_INFINITY, hit: true });
     return true;
   }
-  const threshold = accuracy * accuracyFactor(attacker.stages.accuracy) / accuracyFactor(defender.stages.evasion);
+  const itemModifier = attacker.heldItem === "WIDELENS" ? 1.1 : 1;
+  const threshold = accuracy * itemModifier * accuracyFactor(attacker.stages.accuracy)
+    / accuracyFactor(defender.stages.evasion);
   const roll = draw(rng, trace, "accuracy", 100);
   const hit = roll < threshold;
   trace.push({ type: "accuracy", side, base: accuracy, accuracyStage: attacker.stages.accuracy, evasionStage: defender.stages.evasion, threshold, hit });
@@ -312,7 +314,8 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
 }
 
 export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveActions, rng: RandomSource,
-  options: { readonly endOfTurn?: boolean; readonly damageMultiplier?: number } = {}): TurnResult {
+  options: { readonly endOfTurn?: boolean; readonly damageMultiplier?: number;
+    readonly attackerHeldItemAfterDamage?: boolean } = {}): TurnResult {
   validateState(state, actions);
   const battlers: Record<BattleSide, BattlerState> = {
     player: cloneBattler(state.battlers.player),
@@ -360,16 +363,21 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     }
     const traceStart = trace.length;
     const baseDamage = calculateDamage(side, battlers[side], defender, slot.move, rng, trace);
-    const damage = Math.max(1, Math.floor(baseDamage * (options.damageMultiplier ?? 1)));
+    let damage = baseDamage === 0 ? 0 : Math.max(1, Math.floor(baseDamage * (options.damageMultiplier ?? 1)));
     const damageTrace = trace.slice(traceStart).find((entry) => entry.type === "damage");
     if (damageTrace === undefined) throw new Error("Damage calculation did not emit its trace.");
+    const focusSash = defender.heldItem === "FOCUSSASH" && defender.hp === defender.stats.maxHp
+      && damage >= defender.hp;
+    if (focusSash) damage = Math.max(0, defender.hp - 1);
     const hp = Math.max(0, defender.hp - damage);
-    battlers[targetSide] = { ...defender, hp };
+    battlers[targetSide] = { ...defender, hp, heldItem: focusSash ? null : defender.heldItem };
     events.push({
       type: "damageApplied", source: side, target: targetSide,
       amount: Math.min(damage, defender.hp), hp,
       critical: damageTrace.critical, effectiveness: damageTrace.effectiveness,
     });
+    if (focusSash) events.push({ type: "heldItemConsumed", side: targetSide,
+      item: "FOCUSSASH", effect: "survive", hp });
     if (slot.move.functionCode === "0DD" && battlers[side].hp > 0) {
       const current = battlers[side];
       const amount = Math.min(current.stats.maxHp - current.hp, Math.round(Math.min(damage, defender.hp) / 2));
@@ -388,6 +396,25 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       battlers[side] = { ...battlers[side], majorStatus: { kind: "paralysis" } };
       events.push({ type: "abilityActivated", side: targetSide, ability: "STATIC", effect: "inflict-paralysis" });
       events.push({ type: "statusApplied", source: targetSide, target: side, status: "paralysis" });
+    }
+    if (damage > 0 && slot.move.flags?.includes("a") === true && defender.heldItem === "ROCKYHELMET"
+      && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
+      const current = battlers[side];
+      const amount = Math.min(current.hp, Math.max(1, Math.floor(current.stats.maxHp / 6)));
+      battlers[side] = { ...current, hp: current.hp - amount };
+      events.push({ type: "itemActivated", side, item: "ROCKYHELMET", effect: "damage",
+        amount, hp: current.hp - amount });
+      if (current.hp - amount === 0) events.push({ type: "fainted", side });
+    }
+    if (options.attackerHeldItemAfterDamage !== false && damage > 0
+      && battlers[side].heldItem === "LIFEORB" && battlers[side].hp > 0
+      && battlers[side].ability !== "MAGICGUARD") {
+      const current = battlers[side];
+      const amount = Math.min(current.hp, Math.max(1, Math.floor(current.stats.maxHp / 10)));
+      battlers[side] = { ...current, hp: current.hp - amount };
+      events.push({ type: "itemActivated", side, item: "LIFEORB", effect: "damage",
+        amount, hp: current.hp - amount });
+      if (current.hp - amount === 0) events.push({ type: "fainted", side });
     }
     if (hp === 0) {
       winner = side;

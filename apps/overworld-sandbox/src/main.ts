@@ -872,9 +872,10 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) void sourceBattles.switchPokemon(teamIndex, activeSlot);
     else multiplayer.submitBattleAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   },
-  onItem: (itemId, targetTeamIndex, local, activeSlot) => {
-    if (local) void sourceBattles.useItem(itemId, targetTeamIndex, activeSlot);
-    else multiplayer.submitBattleAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
+  onItem: (itemId, targetTeamIndex, local, activeSlot, targetMoveIndex) => {
+    if (local) void sourceBattles.useItem(itemId, targetTeamIndex, activeSlot, targetMoveIndex);
+    else multiplayer.submitBattleAction({ kind: "item", itemId, targetTeamIndex,
+      ...(targetMoveIndex === undefined ? {} : { targetMoveIndex }) }, activeSlot);
   },
   onCapture: (ballId, local, activeSlot, target) => {
     if (local) void sourceBattles.capture(ballId, activeSlot, target);
@@ -1628,7 +1629,7 @@ function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ra
   }
 }
 
-function useSourcePokemonItem(itemId: string, pokemonId: string): {
+function useSourcePokemonItem(itemId: string, pokemonId: string, moveIndex?: number): {
   readonly ok: boolean;
   readonly message: string;
   readonly eventState: SourceEventState;
@@ -1636,7 +1637,7 @@ function useSourcePokemonItem(itemId: string, pokemonId: string): {
   const result = usePokemonItem(sourceEventState.inventory, sourceEventState.party, itemId, pokemonId, {
     context: "field",
     revivalAllowed: sourceEventState.switches["320"] !== true,
-  });
+  }, moveIndex);
   if (!result.ok) {
     const message = result.reason === "unsupported-item" ? "L'effet de cet objet n'est pas encore porté."
       : result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
@@ -1653,6 +1654,7 @@ function useSourcePokemonItem(itemId: string, pokemonId: string): {
     candidate.internalName === result.pokemon.species);
   const pokemonName = result.pokemon.nickname ?? species?.name ?? result.pokemon.species;
   const effects = [result.effect.hpRestored > 0 ? `${result.effect.hpRestored} PV restaurés` : null,
+    result.effect.ppRestored > 0 ? `${result.effect.ppRestored} PP restaurés` : null,
     result.effect.statusCured === null ? null : "statut soigné",
     result.effect.revived ? "Pokémon ranimé" : null].filter((entry): entry is string => entry !== null);
   const message = `${pokemonName} : ${effects.join(" · ")}.`;

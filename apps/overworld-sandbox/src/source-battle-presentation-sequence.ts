@@ -124,8 +124,15 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         state = { ...state, teams: { ...state.teams, [event.side]: { ...team,
           members: team.members.map((member, index) => index === event.targetIndex
             ? { ...member, hp: Math.min(member.stats.maxHp, member.hp + event.hpRestored),
+              moves: event.movePp === null ? member.moves : member.moves.map((slot, moveIndex) =>
+                ({ ...slot, pp: event.movePp?.[moveIndex] ?? slot.pp })),
+              stages: event.statRaised === null ? member.stages : { ...member.stages,
+                [event.statRaised]: member.stages[event.statRaised] + event.stagesRaised },
               ...(event.statusCured === null ? {} : { majorStatus: null }) } : member) } } };
-        message(`${target.name} reçoit ${event.itemId}${event.hpRestored > 0 ? ` et récupère ${event.hpRestored} PV` : ""}.`, "status");
+        const effect = event.hpRestored > 0 ? ` et récupère ${event.hpRestored} PV`
+          : event.ppRestored > 0 ? ` et récupère ${event.ppRestored} PP`
+            : event.statRaised === null ? "" : ` : ${STAT_NAMES[event.statRaised]} augmente`;
+        message(`${target.name} reçoit ${event.itemId}${effect}.`, "status");
       }
     } else if (event.type === "captureAttempted") {
       const target = Object.values(state.teams).flatMap((team) => team.members)

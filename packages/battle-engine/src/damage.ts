@@ -63,6 +63,8 @@ export function calculateDamage(
   if (defender.majorStatus?.kind === "caduco" && defender.hp <= Math.floor(defender.stats.maxHp / 2)) statusModifier *= 1.5;
   if (attacker.heldItem === "MUSCLEBAND" && move.category === "Physical") statusModifier *= 1.1;
   if (attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
+  if (attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
+  if (attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
   result = Math.round(result * statusModifier);
   if (effectiveness !== 0) result = Math.max(1, result);
 

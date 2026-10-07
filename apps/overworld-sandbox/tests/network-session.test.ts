@@ -3,7 +3,7 @@ import { OverworldNetworkSession, roomSnapshotForPlayer, type NetworkSessionCall
 import { createDefaultNetworkPlayerProfile, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
-  protocolVersion: 14,
+  protocolVersion: 15,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",
@@ -116,11 +116,11 @@ describe("overworld network session", () => {
       actors: [], actorRevision: 0,
       story: { switches: {}, variables: {}, selfSwitches: {} }, followers: {},
       avatars: { player: { x: 1, y: 1, direction: "up" }, opponent: { x: 1, y: 2, direction: "left" } } } as const;
-    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 14, side: "opponent", sequence: 1,
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 15, side: "opponent", sequence: 1,
       revision: 1, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, false);
     expect(session.sendMovement("player", "right")).toBe(false);
-    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 14, side: "player", sequence: 1,
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 15, side: "player", sequence: 1,
       revision: 2, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, true);
     expect(session.publishSourceScene({ mapId: 4, sequenceActive: false,
@@ -135,7 +135,7 @@ describe("overworld network session", () => {
     session.publishSourceActors(3, actors);
     session.publishSourceActors(3, actors);
     expect(JSON.parse(sockets[0]?.sent[2] ?? "{}")).toMatchObject({ type: "setSourceActors", mapId: 3, actors });
-    sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 14, mapId: 3, actorRevision: 1,
+    sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 15, mapId: 3, actorRevision: 1,
       revision: 3, actors });
     expect(handlers.onSourceActorsState).toHaveBeenLastCalledWith(3, 1, actors);
     const followerAppearance = { form: 1, shiny: true, gender: "female" as const };

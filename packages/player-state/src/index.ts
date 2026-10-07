@@ -1,4 +1,5 @@
-import type { BattleAbility, BattleMove, BattleSide, BattleStats, BattleTeam, BattlerState, HeldItem,
+import { isHeldItemSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
+  type BattleTeam, type BattlerState, type HeldItem,
   MajorStatusState, SharedBattleOwnerSettlement, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
@@ -11,9 +12,13 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
-export { isPokemonItemUseSupported, usePokemonItem, type PlayerInventory, type PokemonItemUseContext,
+export { isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode,
+  usePokemonItem, type PlayerInventory, type PokemonItemUseContext,
   type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
   type PokemonItemUseResult } from "./item-use.js";
+export { equipPokemonHeldItem, removePokemonHeldItem, type HeldItemChangeFailure,
+  type HeldItemChangeResult } from "./held-item.js";
+export { isHeldItemSupported, SUPPORTED_HELD_ITEMS } from "@pokemon-z-battle/battle-engine";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const PLAYER_POKEMON_STORAGE_SCHEMA_VERSION = 1 as const;
@@ -674,7 +679,6 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const ITEMS = new Set<HeldItem>(["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"]);
 const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
@@ -685,7 +689,7 @@ function supportedAbility(value: string | null): BattleAbility | null {
 
 function supportedItem(value: string | null): HeldItem | null {
   if (value === null) return null;
-  if (!ITEMS.has(value as HeldItem)) throw new Error(`Objet tenu non supporté par le moteur : ${value}.`);
+  if (!isHeldItemSupported(value)) throw new Error(`Objet tenu non supporté par le moteur : ${value}.`);
   return value as HeldItem;
 }
 
@@ -720,8 +724,11 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     hp: member.hp, majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
+    // PBS exposes kilograms with one decimal (6.9), while Pokemon Z's compiled
+    // battler API returns hectograms (69). Keep the battle/network contract in
+    // the source integer unit used by Heavy Ball's 2048/3072/4096 thresholds.
     ...(definition.captureRate === undefined ? {} : { capture: { rate: definition.captureRate,
-      baseSpeed: definition.baseStats?.speed ?? 1, weight: definition.weight ?? 0 } }),
+      baseSpeed: definition.baseStats?.speed ?? 1, weight: Math.round((definition.weight ?? 0) * 10) } }),
     appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
 }
 
@@ -812,6 +819,7 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
     if (result === undefined) throw new Error(`Résultat de combat incomplet pour ${member.id}.`);
     const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      heldItem: result.heldItem,
       moves: member.moves.map((slot) => {
         const current = pp.get(slot.internalName);
         if (current === undefined) throw new Error(`Résultat sans la capacité ${slot.internalName}.`);
@@ -843,6 +851,7 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     if (result === undefined) return pokemon;
     const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      heldItem: result.heldItem,
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])

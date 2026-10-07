@@ -149,13 +149,37 @@ describe("team battles", () => {
     }, new ScriptedRandom([]));
 
     expect(result.state.teams.player.members[1]?.hp).toBe(45);
-    expect(result.events).toContainEqual({ type: "trainerItemUsed", side: "player", itemId: "POTION",
-      targetIndex: 1, target: "reserve", hpRestored: 20, statusCured: null, revived: false });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed", side: "player",
+      itemId: "POTION", targetIndex: 1, target: "reserve", hpRestored: 20,
+      statusCured: null, revived: false }));
     expect(result.events[1]).toEqual({ type: "teamActionOrdered", order: [
       { side: "player", kind: "item" }, { side: "opponent", kind: "wait" },
     ] });
     expect(() => resolveTeamTurn(state, { player: { kind: "item", itemId: "POTION", targetTeamIndex: 0 },
       opponent: { kind: "wait" } }, new ScriptedRandom([]))).toThrow("no-effect");
+  });
+
+  it("restores a selected move's PP and raises only the active Pokemon's battle stage", () => {
+    const depleted = pokemon("lead", "player", { moves: [
+      { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 1 },
+      { move: MINIMAL_MOVE_CATALOG.SCRATCH, pp: 0 },
+    ] });
+    const state = createTeamBattleState({ player: [depleted], opponent: [pokemon("foe", "opponent")] });
+    const ether = resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "ETHER", targetTeamIndex: 0, targetMoveIndex: 1 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]));
+    expect(ether.state.teams.player.members[0]?.moves.map((slot) => slot.pp)).toEqual([1, 10]);
+    expect(ether.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed", itemId: "ETHER",
+      ppRestored: 10, targetMoveIndex: 1, movePp: [1, 10] }));
+
+    const boosted = resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "XATTACK2", targetTeamIndex: 0 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]));
+    expect(boosted.state.teams.player.members[0]?.stages.attack).toBe(2);
+    expect(boosted.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed", itemId: "XATTACK2",
+      statRaised: "attack", stagesRaised: 2 }));
   });
 
   it("runs residual status hooks after switch-only turns and requests a replacement", () => {

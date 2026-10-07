@@ -219,7 +219,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const team = teams[side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error(`Invalid item target for ${side}.`);
-    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy);
+    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
     teams[side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };

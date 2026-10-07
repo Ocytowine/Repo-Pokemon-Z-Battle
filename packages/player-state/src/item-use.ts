@@ -1,9 +1,9 @@
-import { applyPokemonItemEffect, isPokemonItemUseSupported,
+import { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode,
   type PokemonItemUseEffect, type PokemonItemUseFailure as CorePokemonItemUseFailure,
   type PokemonItemUsePolicy } from "@pokemon-z-battle/battle-engine";
 import type { PersistentPokemon, PlayerPartyState } from "./index.js";
 
-export { isPokemonItemUseSupported };
+export { isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode };
 
 export type PlayerInventory = Readonly<Record<string, number>>;
 export type PokemonItemUseContext = PokemonItemUsePolicy["context"];
@@ -21,13 +21,13 @@ export type PokemonItemUseResult =
  * after a valid effect. Solo and Coop adapters must pass the current owner's party and inventory.
  */
 export function usePokemonItem(inventory: PlayerInventory, party: PlayerPartyState, item: string,
-  pokemonId: string, policy: PokemonItemUsePolicy): PokemonItemUseResult {
+  pokemonId: string, policy: PokemonItemUsePolicy, targetMoveIndex?: number): PokemonItemUseResult {
   if (!isPokemonItemUseSupported(item)) return { ok: false, inventory, party, reason: "unsupported-item" };
   const quantity = inventory[item] ?? 0;
   if (!Number.isSafeInteger(quantity) || quantity <= 0) return { ok: false, inventory, party, reason: "item-not-owned" };
   const index = party.members.findIndex((candidate) => candidate.id === pokemonId);
   if (index < 0) return { ok: false, inventory, party, reason: "target-not-found" };
-  const applied = applyPokemonItemEffect(party.members[index]!, item, policy);
+  const applied = applyPokemonItemEffect(party.members[index]!, item, policy, targetMoveIndex);
   if (typeof applied === "string") return { ok: false, inventory, party, reason: applied };
   const nextInventory = { ...inventory };
   if (quantity === 1) delete nextInventory[item]; else nextInventory[item] = quantity - 1;

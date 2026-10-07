@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildWebSocketUrl, parseStoredSession, parseTicket, reconnectDelay } from "../src/multiplayer-client.js";
 
 const ticket = {
-  protocolVersion: 14,
+  protocolVersion: 15,
   roomCode: "ABC234",
   playerId: "player-1",
   side: "player",

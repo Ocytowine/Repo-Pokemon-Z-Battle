@@ -258,6 +258,14 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   room attend toutes les intentions possedees, complete celles de l'IA et persiste
   les slots actifs pour la reconnexion. L'interface projette jusqu'a quatre
   battlers et demande une cible lorsque plusieurs adversaires sont valides.
+- Dette observee pendant la recette du 2026-10-07 : en combat double Coop, l'hote
+  a pu choisir comme remplacement un Pokemon appartenant a l'invite. Cela contredit
+  le contrat actuel de controle par proprietaire et devra etre bloque avant de
+  terminer ce lot. Une variante volontaire peut etre conservee comme extension :
+  avant le combat, les deux joueurs accepteraient explicitement un partage tactique
+  des remplacements. Cette permission serait autoritaire dans la room, limitee au
+  combat courant, restauree apres reconnexion et ne transfererait jamais la
+  propriete, la sauvegarde ni le reglement personnel du Pokemon.
 - Correctif de presentation : sprites et HUD doubles emploient les coordonnees
   exactes du moteur source ; types et statuts sont visibles en simple comme en
   double. Le second envoi est anime au moment de l'acceptation. Une fuite sauvage
@@ -360,8 +368,14 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   au seul proprietaire par `consumedItems` dans le reglement idempotent.
 - Increment capture fonctionnel le 2026-10-07 : les Balls rejoignent la projection
   privee du protocole v14 et leur consommation autoritaire suit le meme reglement
-  idempotent. Soins de PP, objets de statistiques, objets tenus, pierres et CT/CS
-  restent a porter avant de fermer toute la famille.
+  idempotent.
+- Increment PP/statistiques fonctionnel le 2026-10-07 : Ether, Ether Max, Elixir,
+  Elixir Max et Baie Mepo ciblent les capacites, tandis que les familles Attaque X,
+  Defense X, Attaque Speciale X, Defense Speciale X, Vitesse X et Precision X
+  appliquent leurs crans temporaires au Pokemon actif. Le protocole v15 conserve
+  la cible de capacite et le cloisonnement proprietaire en combat simple/double,
+  reconnexion comprise. Puissance et Garde-Stats attendent les etats volatils
+  correspondants ; objets tenus, pierres et CT/CS restent a porter avant fermeture.
 
 ### SOLO-CAPTURE-1 — Capture complete
 

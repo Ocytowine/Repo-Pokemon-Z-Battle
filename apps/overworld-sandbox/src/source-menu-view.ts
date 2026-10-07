@@ -11,7 +11,7 @@ import { sourceMovementCapabilityLabel, type SourceMovementCapability,
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
-import { isPokemonItemUseSupported } from "@pokemon-z-battle/player-state";
+import { isPokemonItemUsableInField, pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
 
 const SOURCE_VOLUME_KEY = "pokemon-z-battle.options.volume.v1";
 
@@ -74,7 +74,7 @@ export interface SourceMenuViewCallbacks {
   readonly onDive: () => void;
   readonly onPokemonLead: (pokemonId: string) => void;
   readonly onPokemonDetails: (pokemonId: string) => void;
-  readonly onUsePokemonItem: (itemId: string, pokemonId: string) => {
+  readonly onUsePokemonItem: (itemId: string, pokemonId: string, moveIndex?: number) => {
     readonly ok: boolean;
     readonly message: string;
     readonly eventState: SourceEventState;
@@ -85,6 +85,7 @@ export class SourceMenuView {
   private selectedPocket = 1;
   private selectedTeamPokemonId: string | null = null;
   private selectedBagItemId: string | null = null;
+  private selectedBagPokemonId: string | null = null;
   private bagNotice: string | null = null;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
@@ -153,6 +154,15 @@ export class SourceMenuView {
     if (this.selectedBagItemId !== null
       && !entries.some(({ item }) => item.internalName === this.selectedBagItemId)) this.selectedBagItemId = null;
     const selectedEntry = entries.find(({ item }) => item.internalName === this.selectedBagItemId) ?? null;
+    const targetMode = selectedEntry === null ? null : pokemonItemTargetMode(selectedEntry.item.internalName);
+    const selectedTarget = model.eventState.party.members.find((pokemon) =>
+      pokemon.id === this.selectedBagPokemonId) ?? null;
+    const targetChoices = targetMode === "move" && selectedTarget !== null
+      ? selectedTarget.moves.map((slot, index) => {
+        const move = model.assets.battleCatalog.moves.find((candidate) => candidate.internalName === slot.internalName);
+        return `<button type="button" data-source-bag-move="${index}"><strong>${escapeSourceHtml(move?.name ?? slot.internalName)}</strong><small>${slot.pp}/${slot.maxPp} PP</small></button>`;
+      }).join("")
+      : model.eventState.party.members.map((pokemon) => `<button type="button" data-source-bag-target="${escapeSourceHtml(pokemon.id)}"><strong>${escapeSourceHtml(pokemon.nickname ?? pokemon.species)}</strong><small>${pokemon.hp}/${pokemon.stats.maxHp} PV${pokemon.majorStatus === null ? "" : ` · ${escapeSourceHtml(pokemon.majorStatus.kind)}`}</small></button>`).join("");
     const pocket = SOURCE_BAG_POCKETS.find((candidate) => candidate.id === this.selectedPocket)
       ?? SOURCE_BAG_POCKETS[0]!;
     const totalTypes = [...counts.values()].reduce((sum, count) => sum + count, 0);
@@ -162,36 +172,54 @@ export class SourceMenuView {
       <div class="source-bag-list">${entries.length === 0
         ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>Poche vide</strong><small>Aucun objet dans la catégorie ${escapeSourceHtml(pocket.name)}.</small></div>`
         : entries.map(({ item, quantity }) => {
-          const supported = isPokemonItemUseSupported(item.internalName);
+          const supported = isPokemonItemUsableInField(item.internalName);
           return `<button type="button" class="source-bag-entry${item.internalName === this.selectedBagItemId ? " selected" : ""}"${supported ? ` data-source-bag-item="${escapeSourceHtml(item.internalName)}"` : " disabled"} title="${supported ? "Utiliser sur un Pokémon" : "Effet pas encore porté"}"><img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><div><strong>${escapeSourceHtml(item.name)}</strong><small>${escapeSourceHtml(item.description)}</small></div><span>×${quantity}</span></button>`;
-        }).join("")}</div>${selectedEntry === null ? "" : `<section class="source-bag-targets"><header><div><small>UTILISER</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Annuler</button></header>${model.eventState.party.members.length === 0
-          ? "<p>Aucun Pokémon dans l'équipe.</p>" : `<div>${model.eventState.party.members.map((pokemon) => `<button type="button" data-source-bag-target="${escapeSourceHtml(pokemon.id)}"><strong>${escapeSourceHtml(pokemon.nickname ?? pokemon.species)}</strong><small>${pokemon.hp}/${pokemon.stats.maxHp} PV${pokemon.majorStatus === null ? "" : ` · ${escapeSourceHtml(pokemon.majorStatus.kind)}`}</small></button>`).join("")}</div>`}</section>`}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+        }).join("")}</div>${selectedEntry === null ? "" : `<section class="source-bag-targets"><header><div><small>${selectedTarget === null ? "UTILISER" : "CAPACITÉ"}</small><strong>${escapeSourceHtml(selectedTarget?.nickname ?? selectedTarget?.species ?? selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Annuler</button></header>${model.eventState.party.members.length === 0
+          ? "<p>Aucun Pokémon dans l'équipe.</p>" : `<div>${targetChoices}</div>`}</section>`}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>("[data-source-pocket]").forEach((button) => button.addEventListener("click", () => {
       const pocketId = Number(button.dataset.sourcePocket);
       if (!Number.isInteger(pocketId) || !SOURCE_BAG_POCKETS.some((candidate) => candidate.id === pocketId)) return;
       this.selectedPocket = pocketId;
       this.selectedBagItemId = null;
+      this.selectedBagPokemonId = null;
       this.bagNotice = null;
       this.render(model);
     }));
     content.querySelectorAll<HTMLButtonElement>("[data-source-bag-item]").forEach((button) => button.addEventListener("click", () => {
       this.selectedBagItemId = button.dataset.sourceBagItem ?? null;
+      this.selectedBagPokemonId = null;
       this.bagNotice = null;
       this.renderBag(content, model);
     }));
     content.querySelector<HTMLButtonElement>("[data-source-bag-cancel]")?.addEventListener("click", () => {
       this.selectedBagItemId = null;
+      this.selectedBagPokemonId = null;
       this.bagNotice = null;
       this.renderBag(content, model);
     });
     content.querySelectorAll<HTMLButtonElement>("[data-source-bag-target]").forEach((button) => button.addEventListener("click", () => {
       if (this.selectedBagItemId === null || button.dataset.sourceBagTarget === undefined) return;
+      if (pokemonItemTargetMode(this.selectedBagItemId) === "move") {
+        this.selectedBagPokemonId = button.dataset.sourceBagTarget;
+        this.renderBag(content, model);
+        return;
+      }
       const result = this.callbacks.onUsePokemonItem(this.selectedBagItemId, button.dataset.sourceBagTarget);
       this.bagNotice = result.message;
-      if (result.ok) this.selectedBagItemId = null;
+      if (result.ok) { this.selectedBagItemId = null; this.selectedBagPokemonId = null; }
       this.renderBag(content, { ...model, eventState: result.eventState });
     }));
+    content.querySelectorAll<HTMLButtonElement>("[data-source-bag-move]").forEach((button) =>
+      button.addEventListener("click", () => {
+        if (this.selectedBagItemId === null || this.selectedBagPokemonId === null) return;
+        const moveIndex = Number(button.dataset.sourceBagMove);
+        if (!Number.isInteger(moveIndex)) return;
+        const result = this.callbacks.onUsePokemonItem(this.selectedBagItemId, this.selectedBagPokemonId, moveIndex);
+        this.bagNotice = result.message;
+        if (result.ok) { this.selectedBagItemId = null; this.selectedBagPokemonId = null; }
+        this.renderBag(content, { ...model, eventState: result.eventState });
+      }));
   }
 
   private renderSave(content: HTMLElement, model: SourceMenuViewModel): void {

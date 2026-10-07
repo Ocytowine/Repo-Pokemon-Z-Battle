@@ -34,7 +34,13 @@ export type ImplementedBattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "G
   | "PUREPOWER" | "QUICKFEET" | "SHIELDDUST" | "SIMPLE" | "STATIC" | "TORRENT";
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});
-export type HeldItem = "ASSAULTVEST" | "BLACKSLUDGE" | "LEFTOVERS" | "MUSCLEBAND" | "SCOPELENS" | "WISEGLASSES";
+export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT", "FOCUSSASH",
+  "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES"] as const;
+export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number];
+
+export function isHeldItemSupported(value: string): value is HeldItem {
+  return (SUPPORTED_HELD_ITEMS as readonly string[]).includes(value);
+}
 
 export interface MoveSlot {
   readonly move: BattleMove;
@@ -124,6 +130,8 @@ export type BattleEvent =
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
   | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage"; readonly amount: number; readonly hp: number }
+  | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
+      readonly effect: "survive"; readonly hp: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean }
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
@@ -159,6 +167,8 @@ export interface ItemAction {
   readonly itemId: string;
   /** Team member owned by the acting trainer. It may be active or in reserve. */
   readonly targetTeamIndex: number;
+  /** Required by single-move PP restorers; omitted for whole-Pokemon effects. */
+  readonly targetMoveIndex?: number;
 }
 
 export interface CaptureAction {
@@ -215,7 +225,10 @@ export type TeamBattleEvent =
   | { readonly type: "replacementRequired"; readonly side: BattleSide }
   | { readonly type: "trainerItemUsed"; readonly side: BattleSide; readonly itemId: string;
       readonly targetIndex: number; readonly target: string; readonly hpRestored: number;
-      readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean };
+      readonly ppRestored: number; readonly movePp: readonly number[] | null;
+      readonly targetMoveIndex: number | null;
+      readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean;
+      readonly statRaised: BattleStat | null; readonly stagesRaised: number };
 
 export type DoubleBattleEvent = TeamBattleEvent | {
   readonly type: "positionedActionResolved";
