@@ -46,6 +46,14 @@ Améliorations :
 
     Les sprites du fangames sont un peu trops grosses, il faudrait les redimensionner pour qu'ils s'intègrent mieux à l'interface et à l'écran de jeu.
 
+Installation VS code:
+
+    Node JS : https://nodejs.org/en/download/ version 22
+    GIT : https://git-scm.com/downloads
+    Extension VS code : 
+        - French Language Pack for Visual Studio Code
+    
+Github : du côté de l'hote, il faut créer un compte github et créer un repository public pour le fangame. ensuite, il faut cloner le repository sur ton pc (dans le dossier de ton choix) et y copier les fichiers du fangame. ensuite, tu peux faire un commit et push pour envoyer les fichiers sur github.
 
 Avant de lancer : (met à jour la cible de la ou tu extrait le fangame)
 
@@ -63,6 +71,6 @@ Le multi :
 
 	en 1er : 
     corepack pnpm multiplayer:dev
+    
 	puis : 
     corepack pnpm sandbox:overworld
-
