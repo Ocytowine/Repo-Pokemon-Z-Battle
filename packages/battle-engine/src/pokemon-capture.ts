@@ -37,26 +37,27 @@ function modifiedRate(ballId: string, target: BattlerState, context: PokemonCapt
     case "NESTBALL": if (target.level <= 40) rate *= Math.max(Math.floor((41 - target.level) / 10), 1); break;
     case "REPEATBALL": if (context.alreadyOwned) rate *= 3.5; break;
     case "TIMERBALL": rate *= Math.min(1 + 0.3 * context.turn, 4); break;
-    case "DUSKBALL": if (context.night) rate *= 3.5; break;
+    // Pokemon Z runs this Ruby expression with integer operands (`7/2`), therefore 3x.
+    case "DUSKBALL": if (context.night) rate *= 3; break;
     case "QUICKBALL": if (context.turn <= 1) rate *= 5; break;
-    case "FASTBALL": if ((target.capture?.baseSpeed ?? 0) >= 100) rate *= 4; break;
+    case "FASTBALL": if ((target.capture?.baseSpeed ?? 0) >= 100) rate *= 4; rate = Math.min(rate, 255); break;
     case "LEVELBALL": {
       const level = Math.max(0, ...context.actorLevels);
       if (level >= target.level * 4) rate *= 8;
       else if (level >= target.level * 2) rate *= 4;
       else if (level > target.level) rate *= 2;
-      break;
+      rate = Math.min(rate, 255); break;
     }
-    case "LUREBALL": if (context.fishing) rate *= 5; break;
+    case "LUREBALL": if (context.fishing) rate *= 5; rate = Math.min(rate, 255); break;
     case "HEAVYBALL": {
       const weight = target.capture?.weight ?? 0;
       rate += weight >= 4096 ? 40 : weight >= 3072 ? 30 : weight >= 2048 ? 20 : -20;
-      rate = Math.max(rate, 1); break;
+      rate = Math.min(Math.max(rate, 1), 255); break;
     }
-    case "LOVEBALL": if (context.sameSpeciesOppositeGender) rate *= 8; break;
-    case "MOONBALL": if (MOON_SPECIES.has(target.species)) rate *= 4; break;
+    case "LOVEBALL": if (context.sameSpeciesOppositeGender) rate *= 8; rate = Math.min(rate, 255); break;
+    case "MOONBALL": if (MOON_SPECIES.has(target.species)) rate *= 4; rate = Math.min(rate, 255); break;
   }
-  return Math.floor(Math.min(rate, 255));
+  return Math.floor(rate);
 }
 
 /** Exact four-shake formula used by Pokemon Z, driven by an injectable authoritative RNG. */

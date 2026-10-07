@@ -303,6 +303,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "pokemonSwitched": return `${event.side} remplace ${event.from} par ${event.to}`;
     case "replacementRequired": return `${event.side} doit choisir un remplaçant`;
     case "trainerItemUsed": return `${event.side} utilise ${event.itemId} sur ${event.target}`;
+    case "captureAttempted": return `${event.side} lance ${event.ballId} · ${event.shakes} secousse(s) · ${event.success ? "capture" : "échec"}`;
   }
 }
 

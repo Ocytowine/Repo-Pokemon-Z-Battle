@@ -1705,11 +1705,38 @@ d'une reconnexion. La sauvegarde locale n'est debitee qu'au reglement personnel 
 argent. Les autres participants voient l'evenement tactique necessaire a la
 presentation, jamais le contenu complet du Sac.
 
+Troisieme increment objets/capture du 2026-10-07 : les 28 Balls declarees par
+`$BallTypes` sont reconnues par le noyau commun. La formule reprend les PV, le taux
+de capture, les multiplicateurs de statut, le seuil sur 65 536 et les quatre
+secousses du script source. Les modificateurs calculables depuis le combat sont
+portes (Balls fixes, Filet, Esprit, Faiblo, Chrono, Rapide, Speed, Niveau, Masse,
+Amour, Lune et Parc) ; les bonus qui dependent encore d'un Pokedex, de l'heure ou
+du type de rencontre attendent leurs contrats personnels/monde au lieu de faire
+confiance au client.
+
+L'action `capture` fonctionne dans le resolveur simple et double. En solo,
+l'adaptateur consomme la Ball puis ajoute le Pokemon au joueur, dans l'equipe si
+elle contient moins de six membres, sinon au Ranch. En Coop, le protocole v14 ne
+transmet que la Ball et la cible ; la room verifie le combat sauvage, la cible non
+possedee et le stock prive, effectue les tirages puis remet `capturedPokemon`
+uniquement dans le reglement du Dresseur ayant lance la Ball. Forme, shiny, genre,
+PV, statut, capacites, Ball, carte, date et identite du nouveau proprietaire sont
+persistes localement. La consommation et l'ajout sont couverts par le meme journal
+idempotent que les autres resultats, y compris apres reconnexion. La presentation
+textuelle est fonctionnelle ; l'animation source du lancer et le surnom sont
+explicitement reportes a la reprise visuelle demandee par le porteur.
+
+Un bouton volontaire `Donner tous les objets de test` est disponible dans l'onglet
+Deplacements. Il place 99 exemplaires de chaque objet extrait dans la seule
+sauvegarde personnelle du navigateur courant. Il ne modifie ni l'inventaire de
+l'autre joueur ni la room et evite toute edition directe des fichiers internes du
+navigateur.
+
 `SOLO-ITEMS-1` reste en cours pour les soins de PP, objets de statistiques, objets
-tenus, pierres et CT/CS. Le prochain lot fonctionnel prioritaire est
-`SOLO-CAPTURE-1` : Balls, formule et resultat de capture, ajout personnel a
-l'equipe ou au Ranch, en solo puis via la meme room autoritaire. Les sous-categories
-et tris avances du Sac restent planifies dans `UI-BAG-1` apres le noyau metier.
+tenus, pierres et CT/CS. `SOLO-CAPTURE-1` possede maintenant sa boucle fonctionnelle
+solo/Coop ; restent l'animation, le surnom, la capture critique/Pokedex et les
+modificateurs contextuels heure/milieu/type de rencontre. Les sous-categories et
+tris avances du Sac restent planifies dans `UI-BAG-1` apres le noyau metier.
 
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements

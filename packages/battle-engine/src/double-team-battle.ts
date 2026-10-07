@@ -231,7 +231,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       (battlerAtPosition({ ...state, teams }, position)?.hp ?? 0) > 0);
     const targetPosition = action.target !== undefined && enemies.some((candidate) => key(candidate) === key(action.target!))
       ? action.target : enemies[0];
-    const target = targetPosition === undefined ? undefined : battlerAtPosition({ ...state, teams }, targetPosition);
+    if (targetPosition === undefined) throw new Error("Cible de capture double invalide.");
+    const target = battlerAtPosition({ ...state, teams }, targetPosition);
     const actor = battlerAtPosition({ ...state, teams }, entry.actor);
     if (target === undefined || actor === undefined) throw new Error("Cible de capture double invalide.");
     const actorLevels = activeTeamIndices(teams[entry.actor.side]).map((index) => teams[entry.actor.side].members[index]!.level);

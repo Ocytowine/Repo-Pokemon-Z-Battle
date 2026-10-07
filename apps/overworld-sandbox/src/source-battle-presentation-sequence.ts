@@ -127,6 +127,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
               ...(event.statusCured === null ? {} : { majorStatus: null }) } : member) } } };
         message(`${target.name} reçoit ${event.itemId}${event.hpRestored > 0 ? ` et récupère ${event.hpRestored} PV` : ""}.`, "status");
       }
+    } else if (event.type === "captureAttempted") {
+      const target = Object.values(state.teams).flatMap((team) => team.members)
+        .find((member) => member.id === event.target);
+      message(`${event.ballId} lancée sur ${target?.name ?? "le Pokémon sauvage"}…`);
+      message(event.success ? `${target?.name ?? "Le Pokémon sauvage"} est capturé !`
+        : event.shakes === 0 ? "Oh non ! Le Pokémon s'est libéré immédiatement !"
+          : event.shakes === 1 ? "Presque ! Il semblait pris !"
+            : event.shakes === 2 ? "Aïe ! C'était tout près !" : "Mince ! Il manquait si peu !");
     } else if (event.type === "abilityActivated") {
       message(`Le talent ${event.ability} de ${activeName(state, event.side)} s'active !`, "status");
     } else if (event.type === "statStageChanged") {

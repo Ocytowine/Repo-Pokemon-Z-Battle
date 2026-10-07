@@ -358,17 +358,23 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   soins supportes, valide stock et cible possedee, limite le Dresseur a un objet
   par tour et restaure son reliquat apres reconnexion. La consommation est rendue
   au seul proprietaire par `consumedItems` dans le reglement idempotent.
-- Prochain increment : `SOLO-CAPTURE-1`, avec Balls et capture autoritaires. Soins
-  de PP, objets de statistiques, objets tenus, pierres et CT/CS restent a porter
-  avant de fermer toute la famille.
+- Increment capture fonctionnel le 2026-10-07 : les Balls rejoignent la projection
+  privee du protocole v14 et leur consommation autoritaire suit le meme reglement
+  idempotent. Soins de PP, objets de statistiques, objets tenus, pierres et CT/CS
+  restent a porter avant de fermer toute la famille.
 
 ### SOLO-CAPTURE-1 — Capture complete
 
-- Priorite/statut : `P0` / pret a demarrer sur le contrat d'objets v13.
+- Priorite/statut : `P0` / boucle fonctionnelle, finition visuelle et contextes avances ouverts.
 - Couvre : eligibilite, choix/consommation de Ball, formule, animation, surnom,
   equipe ou Ranch, shiny, forme, genre, origine et echec.
 - Autorite : adaptateur local en solo, room pour un combat partage.
 - Le shiny est une propriete generee/persistee du Pokemon, jamais un simple filtre.
+- Noyau fonctionnel du 2026-10-07 : formule source, echec/reussite, consommation,
+  equipe/Ranch et proprietaire du lanceur sont couverts en solo et Coop, avec
+  reconnexion/idempotence. Animation source et surnom sont reportes avec le visuel ;
+  capture critique et bonus Heure/Plongee/Peche/Repetition attendent Pokedex et
+  contexte de rencontre autoritaire.
 
 ### SOLO-EVOLUTION-1 — Evolutions
 

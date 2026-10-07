@@ -124,6 +124,8 @@ export type BattleEvent =
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
   | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage"; readonly amount: number; readonly hp: number }
+  | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
+      readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean }
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
   | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" }
   | { readonly type: "fainted"; readonly side: BattleSide }
@@ -213,9 +215,7 @@ export type TeamBattleEvent =
   | { readonly type: "replacementRequired"; readonly side: BattleSide }
   | { readonly type: "trainerItemUsed"; readonly side: BattleSide; readonly itemId: string;
       readonly targetIndex: number; readonly target: string; readonly hpRestored: number;
-      readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean }
-  | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
-      readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean };
+      readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean };
 
 export type DoubleBattleEvent = TeamBattleEvent | {
   readonly type: "positionedActionResolved";

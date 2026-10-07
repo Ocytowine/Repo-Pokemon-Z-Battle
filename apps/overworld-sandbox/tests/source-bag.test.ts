@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
+import { grantSourceTestItems, sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
 import type { SourceShopItem } from "../src/source-economy.js";
 
 const potion: SourceShopItem = { id: 217, internalName: "POTION", name: "Potion",
@@ -20,5 +20,11 @@ describe("source bag", () => {
     expect(sourceBagEntries(inventory, catalog, 2)).toEqual([{ item: potion, quantity: 3 }]);
     expect(sourceBagEntries(inventory, catalog, 3)).toEqual([{ item: ball, quantity: 5 }]);
     expect([...sourceBagPocketCounts(inventory, catalog)]).toEqual([[3, 1], [2, 1]]);
+  });
+
+  it("fills a personal test inventory without mutating its previous values", () => {
+    const inventory = { POTION: 2 };
+    expect(grantSourceTestItems(inventory, catalog)).toEqual({ POTION: 99, POKEBALL: 99 });
+    expect(inventory).toEqual({ POTION: 2 });
   });
 });

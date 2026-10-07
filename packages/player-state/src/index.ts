@@ -133,7 +133,9 @@ export interface PlayerPokemonCollectionState {
 }
 
 export interface PlayerBattleCatalog {
-  readonly pokemon: readonly Pick<PokemonDefinition, "internalName" | "name" | "types">[];
+  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types">
+    & { readonly captureRate?: number; readonly weight?: number;
+      readonly baseStats?: Pick<PokemonDefinition["baseStats"], "speed"> })[];
   readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
     & { readonly flags?: string; readonly targetCode?: string })[];
 }
@@ -718,7 +720,8 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     hp: member.hp, majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
-    capture: { rate: definition.captureRate ?? 0, baseSpeed: definition.baseStats.speed, weight: definition.weight ?? 0 },
+    ...(definition.captureRate === undefined ? {} : { capture: { rate: definition.captureRate,
+      baseSpeed: definition.baseStats?.speed ?? 1, weight: definition.weight ?? 0 } }),
     appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
 }
 

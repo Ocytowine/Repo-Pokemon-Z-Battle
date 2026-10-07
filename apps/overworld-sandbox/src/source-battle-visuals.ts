@@ -285,7 +285,15 @@ export class SourceBattleVisuals {
     panel?.classList.add("outro-playing");
     await this.fadeAudio(this.#battleMusic, winner === "player" ? 350 : 1_000);
     this.#battleMusic = null;
-    if (winner === "player") {
+    if (outcome.captured !== undefined) {
+      this.message(`${outcome.captured.name} a été capturé !`);
+      await readableMessageDelay(850);
+      if (outcome.captured.destination !== undefined) {
+        this.message(outcome.captured.destination === "team"
+          ? `${outcome.captured.name} rejoint votre équipe.` : `${outcome.captured.name} est envoyé au Ranch.`);
+        await readableMessageDelay(850);
+      }
+    } else if (winner === "player") {
       if (outcome.trainerDefeatText !== undefined && outcome.trainerDefeatText !== "") {
         this.message(outcome.trainerDefeatText);
         await readableMessageDelay(1_100);

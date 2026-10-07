@@ -15,7 +15,7 @@ import type { SourceBattleContext, SourceBattleSettlement } from "@pokemon-z-bat
 import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import { SeededRandom, canCaptureSharedBattleTarget,
+import { SeededRandom, canCaptureSharedBattleTarget, isPokemonBallSupported,
   type BattleTeam, type DoubleBattleEvent, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
@@ -66,7 +66,7 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
-import { sourceBagEntries } from "./source-bag.js";
+import { grantSourceTestItems, sourceBagEntries } from "./source-bag.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory }
@@ -170,11 +170,11 @@ function activeNetworkPlayerProfile(): NetworkPlayerProfile {
   return createNetworkPlayerProfile(activePlayerSelection.avatarId, activePlayerSelection.profile);
 }
 
-function activePokemonCreationContext(mapId: number): PokemonCreationContext {
+function activePokemonCreationContext(mapId: number, ball = "POKEBALL"): PokemonCreationContext {
   return {
     owner: { trainerId: activePlayerSelection.trainerIdentity.trainerId,
       name: activePlayerSelection.profile.displayName, pronouns: activePlayerSelection.profile.pronouns },
-    origin: { method: "encounter", mapId, receivedAt: new Date().toISOString(), ball: "POKEBALL" },
+    origin: { method: "encounter", mapId, receivedAt: new Date().toISOString(), ball },
   };
 }
 
@@ -778,6 +778,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onEditProfile: openPlayerCustomization,
   onMovementMode: selectSourceMovementMode,
   onMovementTestOverride: setSourceMovementTestOverride,
+  onGrantTestItems: grantAllSourceTestItems,
   onDive: requestSourceDive,
   onPokemonLead: setSourcePartyLead,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
@@ -816,6 +817,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
   },
+  getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
   setNotice: (notice) => { importedNotice = notice; },
   render,
   openSharedBattle: (draft) => multiplayer.openSourceBattle({ ...draft, battleItems: battleItemInventory() }),
@@ -873,6 +875,11 @@ const sourceBattleOverlay = new SourceBattleOverlay({
   onItem: (itemId, targetTeamIndex, local, activeSlot) => {
     if (local) void sourceBattles.useItem(itemId, targetTeamIndex, activeSlot);
     else multiplayer.submitBattleAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
+  },
+  onCapture: (ballId, local, activeSlot, target) => {
+    if (local) void sourceBattles.capture(ballId, activeSlot, target);
+    else multiplayer.submitBattleAction({ kind: "capture", ballId,
+      ...(target === undefined ? {} : { target }) }, activeSlot);
   },
   onReplacement: (teamIndex, activeSlot) => { multiplayer.submitBattleReplacement(teamIndex, activeSlot); },
   onLeave: () => { multiplayer.leaveBattle(); },
@@ -942,13 +949,23 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     if (assets === null || playerId === undefined) return false;
     networkBattleSettlements.set(settlement.battleId, settlement);
     const previousParty = sourceEventState.party;
-    const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog);
+    const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog,
+      settlement.capturedPokemon === undefined ? undefined
+        : activePokemonCreationContext(networkBattleContexts.get(settlement.battleId)?.mapId
+          ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId));
     sourceEventState = result.state;
     persistSourceEventState();
     if (result.applied) networkBattleOutcomes.set(settlement.battleId, {
       experiences: sharedBattleExperiencePresentations(previousParty, result.state.party,
         result.gains, assets.battleCatalog),
       ...(result.moneyDelta === 0 ? {} : { money: result.moneyDelta }),
+      ...(settlement.outcome !== "captured" ? {} : { captured: {
+        name: settlement.capturedPokemon?.battler.name
+          ?? settlement.state.teams.opponent.members[settlement.state.teams.opponent.activeIndex]?.name
+          ?? "Le Pokémon sauvage",
+        ...(settlement.capturedPokemon === undefined ? {} : {
+          destination: previousParty.members.length < 6 ? "team" as const : "ranch" as const }),
+      } }),
     });
     const experience = result.gains.reduce((total, gain) => total + gain.gained, 0);
     importedNotice = result.applied
@@ -2056,8 +2073,22 @@ function render(): void {
 
 function battleItemInventory(): Readonly<Record<string, number>> {
   return Object.fromEntries(Object.entries(sourceEventState.inventory)
-    .filter(([itemId, quantity]) => isPokemonItemUseSupported(itemId)
+    .filter(([itemId, quantity]) => (isPokemonItemUseSupported(itemId) || isPokemonBallSupported(itemId))
       && Number.isSafeInteger(quantity) && quantity > 0));
+}
+
+function grantAllSourceTestItems(): void {
+  if (importedAssets === null) {
+    importedNotice = "Catalogue d'objets indisponible.";
+    render();
+    return;
+  }
+  const inventory = grantSourceTestItems(sourceEventState.inventory, importedAssets.items);
+  sourceEventState = { ...sourceEventState, inventory };
+  persistSourceEventState();
+  importedNotice = `${importedAssets.items.size} objets de test ajoutés à votre sauvegarde personnelle.`;
+  renderSourceMenu();
+  renderImportedView();
 }
 
 function renderEncounter(): void {
@@ -2087,7 +2118,7 @@ function renderEncounter(): void {
     : network?.battleInventory ?? sourceEventState.inventory;
   const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
     visibleBattleInventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity,
-      usable: isPokemonItemUseSupported(item.internalName) }));
+      usable: isPokemonItemUseSupported(item.internalName) || isPokemonBallSupported(item.internalName) }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     waitingForJoin: networkBattle?.sourceContext?.origin === "source-trainer"

@@ -39,6 +39,7 @@ export interface SourceBattleOverlayCallbacks {
   readonly onMove: (moveIndex: number, local: boolean, activeSlot: number, target?: BattlePosition) => void;
   readonly onSwitch: (teamIndex: number, local: boolean, activeSlot: number) => void;
   readonly onItem: (itemId: string, targetTeamIndex: number, local: boolean, activeSlot: number) => void;
+  readonly onCapture: (ballId: string, local: boolean, activeSlot: number, target?: BattlePosition) => void;
   readonly onReplacement: (teamIndex: number, activeSlot: number) => void;
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
@@ -266,14 +267,19 @@ export class SourceBattleOverlay {
     const entries = category === "balls" ? model.bag.balls
       : category === "medicine" ? model.bag.medicine : model.bag.battleItems;
     const title = category === "balls" ? "Poké Balls" : category === "medicine" ? "Soins" : "Objets combat";
-    const usable = category === "medicine";
-    const unavailable = category === "balls" ? "La capture sera raccordée dans le prochain lot."
+    const usable = category === "medicine" || category === "balls";
+    const unavailable = category === "balls" ? "Ce Pokémon ne peut pas être capturé."
       : "L'effet de cet objet de combat n'est pas encore porté dans le moteur.";
     const list = entries.length === 0 ? '<p class="source-battle-empty">Aucun objet de cette catégorie.</p>'
       : entries.map((entry) => `<button class="source-battle-item" data-battle-item="${escapeSourceHtml(entry.internalName)}"${disabled(blocked || !usable || entry.usable === false)} title="${escapeSourceHtml(usable && entry.usable !== false ? entry.description : unavailable)}"><img src="${sourceItemIconUrl(entry.id)}" alt=""><span><strong>${escapeSourceHtml(entry.name)}</strong><small>${escapeSourceHtml(entry.description)}</small></span><b>×${entry.quantity}</b></button>`).join("");
     actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-bag-items"><header><button data-battle-back="bag" aria-label="Retour">‹</button><div><small>SAC</small><strong>${title}</strong></div></header><div>${list}</div><footer>${blocked ? "Action en cours." : usable ? "Choisissez un objet puis votre Pokémon." : unavailable}</footer></div>`;
     this.bindBack(actions, model, "bag");
-    if (usable) actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
+    if (category === "balls") actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.menu = "root";
+        this.callbacks.onCapture(button.dataset.battleItem!, model.local, this.activeSlot);
+      }));
+    else if (usable) actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
       button.addEventListener("click", () => {
         this.pendingItemId = button.dataset.battleItem ?? null;
         this.menu = "item-targets";

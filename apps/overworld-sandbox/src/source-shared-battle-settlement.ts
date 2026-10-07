@@ -1,5 +1,6 @@
-import { applySharedBattleExperience, healPlayerParty, storeOwnedBattleResults,
-  type PlayerCreationCatalog, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
+import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, createPersistentPokemon,
+  healPlayerParty, storeOwnedBattleResults, type PlayerCreationCatalog, type PokemonCreationContext,
+  type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_BAG_SLOT_LIMIT, addSourceMoney, sourceDefeatLoss } from "./source-economy.js";
 import type { SourceEventState } from "./source-event-state.js";
@@ -15,7 +16,7 @@ const SETTLEMENT_JOURNAL_LIMIT = 128;
 
 /** Applies one owner-scoped settlement atomically and at most once to the personal save. */
 export function applySourceBattleSettlement(state: SourceEventState, settlement: SourceBattleSettlement,
-  playerId: string, catalog: PlayerCreationCatalog): AppliedSourceBattleSettlement {
+  playerId: string, catalog: PlayerCreationCatalog, captureContext?: PokemonCreationContext): AppliedSourceBattleSettlement {
   if (settlement.ownerId !== playerId || settlement.tactical.ownerId !== playerId) {
     throw new Error("Le règlement de combat appartient à un autre joueur.");
   }
@@ -26,6 +27,24 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience);
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
   let next = { ...state, party };
+  if (settlement.capturedPokemon !== undefined) {
+    if (captureContext === undefined) throw new Error("Contexte personnel de capture absent.");
+    const captured = settlement.capturedPokemon;
+    const source = captured.battler;
+    let pokemon = createPersistentPokemon(crypto.randomUUID(), source.species, source.level, catalog, captureContext);
+    pokemon = { ...pokemon,
+      hp: captured.ballId === "HEALBALL" ? pokemon.stats.maxHp : Math.min(source.hp, pokemon.stats.maxHp),
+      majorStatus: captured.ballId === "HEALBALL" ? null : source.majorStatus,
+      moves: source.moves.map((slot) => ({ internalName: slot.move.internalName, pp: slot.pp, maxPp: slot.move.pp })),
+      metadata: { ...pokemon.metadata,
+        happiness: captured.ballId === "FRIENDBALL" ? 200 : pokemon.metadata.happiness,
+        form: source.appearance?.form ?? pokemon.metadata.form,
+        shiny: source.appearance?.shiny ?? pokemon.metadata.shiny,
+        gender: source.appearance?.gender ?? pokemon.metadata.gender } };
+    next = next.party.members.length < 6
+      ? { ...next, party: addPokemonToParty(next.party, pokemon) }
+      : { ...next, ranch: addPokemonToStorage(next.ranch, pokemon) };
+  }
   const previousMoney = next.money;
   if (settlement.money.kind === "fixed") next = addSourceMoney(next, settlement.money.amount);
   else if (settlement.money.kind === "source-defeat") {

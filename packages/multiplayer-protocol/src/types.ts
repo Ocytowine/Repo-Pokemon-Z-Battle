@@ -9,7 +9,7 @@ import type { SourceSceneSnapshot } from "./source-scene.js";
 import type { SourceBattleContext } from "./source-battle.js";
 import type { SourceBattleSettlement } from "./source-battle-settlement.js";
 
-export const PROTOCOL_VERSION = 13 as const;
+export const PROTOCOL_VERSION = 14 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";

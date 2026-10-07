@@ -50,3 +50,12 @@ export function sourceBagPocketCounts(inventory: Readonly<Record<string, number>
   }
   return counts;
 }
+
+/** Explicit test-only mutation. The caller remains responsible for persisting its own personal save. */
+export function grantSourceTestItems(inventory: Readonly<Record<string, number>>,
+  catalog: ReadonlyMap<string, SourceShopItem>, quantity = 99): Readonly<Record<string, number>> {
+  if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) throw new Error("Quantité de test invalide.");
+  const next = { ...inventory };
+  for (const internalName of catalog.keys()) next[internalName] = quantity;
+  return next;
+}

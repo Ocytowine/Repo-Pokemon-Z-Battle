@@ -2,7 +2,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   activeTeamIndices, applyBattleJoin, approveBattleJoin,
   applyPokemonItemEffect,
   battleMemberIndicesOwnedBy,
-  canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
+  canCaptureSharedBattleTarget, canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
   closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
   proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
   resolveDoubleTeamTurn, resolveTeamTurn,
@@ -47,7 +47,7 @@ export interface RoomConnection {
 }
 
 export interface PersistedRoomState {
-  readonly version: 9 | 10 | 11 | 12 | 13;
+  readonly version: 9 | 10 | 11 | 12 | 13 | 14;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -358,7 +358,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 13,
+      version: 14,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -692,7 +692,7 @@ export class AuthoritativeBattleRoom {
       }
     }
 
-    if (message.action.kind === "item") {
+    if (message.action.kind === "item" || message.action.kind === "capture") {
       const itemError = this.reserveBattleItem(player, controlledSide, message.action);
       if (itemError !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", itemError)];
     }
@@ -709,7 +709,7 @@ export class AuthoritativeBattleRoom {
     const output: RoomDispatch[] = [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
     ];
-    if (message.action.kind === "item") output.push(this.battleInventoryDispatch(player.playerId));
+    if (message.action.kind === "item" || message.action.kind === "capture") output.push(this.battleInventoryDispatch(player.playerId));
     this.resolveQueuedEncounterTurn(output);
     if (cancelledEscape || output.some((entry) => entry.message.type === "turnResolved")) {
       output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -746,7 +746,7 @@ export class AuthoritativeBattleRoom {
           "Un Dresseur ne peut envoyer que l'un de ses propres Pokemon.")];
       }
     }
-    if (message.action.kind === "item") {
+    if (message.action.kind === "item" || message.action.kind === "capture") {
       const itemError = this.reserveBattleItem(player, position.side, message.action);
       if (itemError !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", itemError)];
     }
@@ -767,7 +767,7 @@ export class AuthoritativeBattleRoom {
     const output: RoomDispatch[] = [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
     ];
-    if (message.action.kind === "item") output.push(this.battleInventoryDispatch(player.playerId));
+    if (message.action.kind === "item" || message.action.kind === "capture") output.push(this.battleInventoryDispatch(player.playerId));
     this.resolveQueuedEncounterTurn(output);
     if (cancelledEscape || output.some((entry) => entry.message.type === "turnResolved")) {
       output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -795,6 +795,23 @@ export class AuthoritativeBattleRoom {
       ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy)
       : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy);
     this.#battleState = result.state;
+    const captureEvent = result.events.flatMap((event) => event.type === "positionedActionResolved"
+      ? [...event.events] : event.type === "captureAttempted" ? [event] : [])
+      .find((event) => event.type === "captureAttempted" && event.success);
+    let captured: { readonly ownerId: string; readonly ballId: string; readonly battler: BattlerState } | null = null;
+    if (captureEvent?.type === "captureAttempted" && this.#battleParticipation !== null) {
+      const single = [...this.#pendingActions.entries()].find(([, action]) =>
+        action.kind === "capture" && action.ballId === captureEvent.ballId);
+      const positioned = [...this.#pendingDoubleActions.values()].find((entry) =>
+        entry.action.kind === "capture" && entry.action.ballId === captureEvent.ballId);
+      const ownerId = single === undefined
+        ? positioned === undefined ? null : activeBattleControllerAt(this.#battleParticipation, positioned.actor)
+        : activeBattleController(this.#battleParticipation, single[0]);
+      const battler = Object.values(beforeState.teams).flatMap((team) => team.members)
+        .find((member) => member.id === captureEvent.target);
+      if (ownerId === null || battler === undefined) throw new Error("Propriétaire de la capture introuvable.");
+      captured = { ownerId, ballId: captureEvent.ballId, battler };
+    }
     if (this.#battleLedger !== null) {
       this.#battleLedger = recordSharedBattleTurn(this.#battleLedger, beforeState, result.state, result.events);
     }
@@ -814,7 +831,7 @@ export class AuthoritativeBattleRoom {
     if (this.#battleState.status === "finished" && this.#battleState.winner !== null && source !== null) {
       if (this.#battleSession === null) throw new Error("Session de combat source absente.");
       this.#battleSession = settleSharedBattleSession(this.#battleSession, this.#battleState);
-      this.createSourceBattleSettlements(false, output);
+      this.createSourceBattleSettlements(false, output, captured);
       this.#revision += 1;
     } else if (this.#battleState.status === "finished" && this.#battleState.winner !== null && encounter !== null) {
       this.#worldState = {
@@ -1676,7 +1693,8 @@ export class AuthoritativeBattleRoom {
       battleId: this.#battleId, state, events } });
   }
 
-  private createSourceBattleSettlements(escaped: boolean, output: RoomDispatch[]): void {
+  private createSourceBattleSettlements(escaped: boolean, output: RoomDispatch[],
+    captured: { readonly ownerId: string; readonly ballId: string; readonly battler: BattlerState } | null = null): void {
     const battleId = this.#battleId;
     const state = this.#battleState;
     const participation = this.#battleParticipation;
@@ -1704,7 +1722,7 @@ export class AuthoritativeBattleRoom {
         battleId,
         ownerId,
         narrativeOwnerId: context.narrativeOwnerId,
-        outcome: escaped ? "escaped" : tactical.won ? "won" : "lost",
+        outcome: captured !== null ? "captured" : escaped ? "escaped" : tactical.won ? "won" : "lost",
         tactical,
         participation,
         state,
@@ -1713,6 +1731,7 @@ export class AuthoritativeBattleRoom {
         items: [],
         consumedItems: Object.entries(this.#battleConsumedItems.get(ownerId) ?? {})
           .map(([itemId, quantity]) => ({ itemId, quantity })),
+        ...(captured?.ownerId === ownerId ? { capturedPokemon: { ballId: captured.ballId, battler: captured.battler } } : {}),
         healParty: ownerIsNarrative && !escaped && !narrativeWon,
       };
       this.#pendingBattleSettlements.set(settlement.settlementId, settlement);
@@ -1760,33 +1779,48 @@ export class AuthoritativeBattleRoom {
   }
 
   private reserveBattleItem(player: RoomPlayer, side: BattleSide,
-    action: Extract<TeamBattleAction, { readonly kind: "item" }>): string | null {
+    action: Extract<TeamBattleAction, { readonly kind: "item" | "capture" }>): string | null {
     const state = this.#battleState;
     const participation = this.#battleParticipation;
     if (state === null || participation === null || this.#sourceBattleContext === null) {
       return "Les objets personnels ne sont disponibles que dans un combat source partage.";
     }
     const alreadySubmitted = [...this.#pendingActions.entries()].some(([pendingSide, pending]) =>
-      pending.kind === "item" && activeBattleController(participation, pendingSide) === player.playerId)
-      || [...this.#pendingDoubleActions.values()].some((pending) => pending.action.kind === "item"
+      (pending.kind === "item" || pending.kind === "capture")
+        && activeBattleController(participation, pendingSide) === player.playerId)
+      || [...this.#pendingDoubleActions.values()].some((pending) =>
+        (pending.action.kind === "item" || pending.action.kind === "capture")
         && activeBattleControllerAt(participation, pending.actor) === player.playerId);
     if (alreadySubmitted) return "Un Dresseur ne peut utiliser qu'un objet par tour.";
-    const target = state.teams[side].members[action.targetTeamIndex];
-    const owner = participation.camps[side].members[action.targetTeamIndex]?.ownerId;
-    if (target === undefined || owner !== player.playerId) {
+    if (action.kind === "capture" && ([...this.#pendingActions.values()].some((pending) => pending.kind === "capture")
+      || [...this.#pendingDoubleActions.values()].some((pending) => pending.action.kind === "capture"))) {
+      return "Une tentative de capture est deja enregistree pour ce tour.";
+    }
+    if (action.kind === "capture" && !canCaptureSharedBattleTarget(participation, state, this.#sourceBattleContext.origin)) {
+      return "La cible active ne peut pas etre capturee.";
+    }
+    if (action.kind === "capture" && action.target !== undefined && action.target.side === side) {
+      return "Une Ball doit viser le camp adverse.";
+    }
+    const target = action.kind === "item" ? state.teams[side].members[action.targetTeamIndex] : null;
+    const owner = action.kind === "item" ? participation.camps[side].members[action.targetTeamIndex]?.ownerId : null;
+    if (action.kind === "item" && (target === undefined || owner !== player.playerId)) {
       return "Un Dresseur ne peut utiliser un objet que sur l'un de ses propres Pokemon.";
     }
+    const itemId = action.kind === "item" ? action.itemId : action.ballId;
     const inventory = this.#battleInventories.get(player.playerId);
-    const quantity = inventory?.[action.itemId] ?? 0;
+    const quantity = inventory?.[itemId] ?? 0;
     if (quantity <= 0) return "Cet objet n'est pas disponible dans le sac de ce Dresseur.";
-    const applied = applyPokemonItemEffect(target, action.itemId, { context: "battle", revivalAllowed: true,
-      battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed });
-    if (typeof applied === "string") return `Cet objet ne peut pas etre utilise (${applied}).`;
+    if (action.kind === "item") {
+      const applied = applyPokemonItemEffect(target!, itemId, { context: "battle", revivalAllowed: true,
+        battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed });
+      if (typeof applied === "string") return `Cet objet ne peut pas etre utilise (${applied}).`;
+    }
     const next = { ...inventory };
-    if (quantity === 1) delete next[action.itemId]; else next[action.itemId] = quantity - 1;
+    if (quantity === 1) delete next[itemId]; else next[itemId] = quantity - 1;
     this.#battleInventories.set(player.playerId, next);
     const consumed = { ...(this.#battleConsumedItems.get(player.playerId) ?? {}) };
-    consumed[action.itemId] = (consumed[action.itemId] ?? 0) + 1;
+    consumed[itemId] = (consumed[itemId] ?? 0) + 1;
     this.#battleConsumedItems.set(player.playerId, consumed);
     return null;
   }

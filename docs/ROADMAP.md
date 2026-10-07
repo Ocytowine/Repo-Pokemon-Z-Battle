@@ -1682,10 +1682,20 @@ reconnexion. Le reglement personnel transporte `consumedItems`, applique une seu
 fois avec les autres resultats du combat. Le solo utilise le meme resolveur et
 debite directement sa sauvegarde apres resolution valide.
 
-Le prochain increment prioritaire est la capture complete : Balls, formule,
-animation, surnom et insertion personnelle dans l'equipe ou le Ranch, avec
-autorite locale en solo et room en Coop. PP, objets de statistiques, objets tenus,
-pierres et CT/CS restent ouverts dans `SOLO-ITEMS-1`.
+Troisieme increment objets/capture du 2026-10-07 : les Balls et la formule de Z
+sont executees par le moteur commun en simple et double. Le protocole v14 transporte
+l'intention, puis la room valide cible sauvage, stock et proprietaire avant les
+tirages. Le reglement ne remet le Pokemon qu'au lanceur ; son client conserve les
+faits tactiques et cree les metadonnees personnelles avant insertion dans l'equipe
+ou au Ranch. Consommation et acquisition sont idempotentes apres reconnexion. Le
+solo reutilise le meme noyau avec un adaptateur local. L'onglet Deplacements offre
+aussi une action explicite qui donne 99 exemplaires de chaque objet extrait a la
+sauvegarde personnelle pour la recette.
+
+La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
+Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
+ou des especes deja possedees attendent leurs contextes autoritaires. PP, objets de
+statistiques, objets tenus, pierres et CT/CS restent ouverts dans `SOLO-ITEMS-1`.
 
 ### Phase 12 - Extensions Coop
 

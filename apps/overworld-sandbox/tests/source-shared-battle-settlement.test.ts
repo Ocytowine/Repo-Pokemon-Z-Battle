@@ -12,7 +12,7 @@ const catalog: PlayerCreationCatalog = {
   pokemon: [{ internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"],
     baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
     abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent",
-    happiness: 70, levelUpMoves: [{ level: 1, move: "TACKLE" }] }],
+    happiness: 70, captureRate: 190, weight: 60, levelUpMoves: [{ level: 1, move: "TACKLE" }] }],
 };
 
 describe("shared source battle settlement", () => {
@@ -49,5 +49,36 @@ describe("shared source battle settlement", () => {
     expect(applied.state.party.members[0]?.metadata).toEqual(pokemon.metadata);
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog))
       .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0 });
+  });
+
+  it("adds a captured Pokemon only to its owner and consumes the Ball idempotently", () => {
+    const pokemon = createPersistentPokemon("host-mon", "PIKACHU", 5, catalog);
+    const team = playerPartyToBattleTeam({ schemaVersion: 1, activeIndex: 0, members: [pokemon] }, catalog);
+    const wild = { ...team.members[0]!, id: "wild-pikachu", hp: 3, majorStatus: { kind: "sleep" as const,
+      turnsRemaining: 2 } };
+    const finalState = { ...createTeamBattleState({ player: team.members, opponent: [wild] }),
+      status: "finished" as const, winner: "player" as const };
+    const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["host"], members: [{ ownerId: "host", battler: team.members[0]! }],
+        activeMemberId: pokemon.id },
+      opponent: { trainerIds: [], members: [{ ownerId: null, battler: wild }], activeMemberId: wild.id },
+    } };
+    const settlement: SourceBattleSettlement = { settlementId: "capture-1-host", battleId: "capture-1",
+      ownerId: "host", narrativeOwnerId: "host", outcome: "captured", participation, state: finalState,
+      tactical: { ownerId: "host", side: "player", won: true, resourceMemberIds: [pokemon.id], defeatCredits: [] },
+      experience: { trainerBattle: false, levelCap: 17, experienceDisabled: false,
+        boostTenPercent: false, boostTwentyPercent: false }, money: { kind: "none" }, items: [],
+      consumedItems: [{ itemId: "MASTERBALL", quantity: 1 }], capturedPokemon: { ballId: "MASTERBALL", battler: wild },
+      healParty: false };
+    const initial = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
+      members: [pokemon] }, inventory: { MASTERBALL: 1 } };
+    const context = { owner: { trainerId: 123, name: "Ari", pronouns: "neutral" as const },
+      origin: { method: "encounter" as const, mapId: 3, receivedAt: "2026-10-07T12:00:00.000Z", ball: "MASTERBALL" } };
+    const applied = applySourceBattleSettlement(initial, settlement, "host", catalog, context);
+    expect(applied.state.inventory).toEqual({});
+    expect(applied.state.party.members).toHaveLength(2);
+    expect(applied.state.party.members[1]).toMatchObject({ species: "PIKACHU", hp: 3,
+      majorStatus: { kind: "sleep" }, metadata: { owner: { trainerId: 123 }, origin: { ball: "MASTERBALL" } } });
+    expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog, context).applied).toBe(false);
   });
 });

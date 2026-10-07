@@ -1,7 +1,12 @@
-import type { SharedBattleOwnerSettlement, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattlerState, SharedBattleOwnerSettlement, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { SourceBattleExperiencePolicy } from "./source-battle.js";
 
-export type SourceBattleSettlementOutcome = "won" | "lost" | "escaped";
+export type SourceBattleSettlementOutcome = "won" | "lost" | "escaped" | "captured";
+
+export interface SourceBattleCapturedPokemon {
+  readonly ballId: string;
+  readonly battler: BattlerState;
+}
 
 export type SourceBattleMoneySettlement =
   | { readonly kind: "none" }
@@ -38,5 +43,7 @@ export interface SourceBattleSettlement {
   readonly money: SourceBattleMoneySettlement;
   readonly items: readonly SourceBattleItemSettlement[];
   readonly consumedItems?: readonly SourceBattleItemSettlement[];
+  /** Present only in the settlement belonging to the trainer who threw the successful Ball. */
+  readonly capturedPokemon?: SourceBattleCapturedPokemon;
   readonly healParty: boolean;
 }

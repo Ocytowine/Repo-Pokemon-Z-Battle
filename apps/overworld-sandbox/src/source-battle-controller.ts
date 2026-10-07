@@ -3,7 +3,8 @@ import { activeBattlePositions, activeTeamIndices, closeSharedBattleSession, cre
   settleSharedBattleSession, type BattlePosition, type BattleSide, type DoubleBattleEvent,
   type PositionedTeamBattleAction, type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { experienceAtLevel, type PlayerCreationCatalog, type PlayerPartyState,
+import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
+  storeBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
 import {
@@ -57,6 +58,7 @@ export interface SourceBattleOutcome {
   readonly money?: number;
   readonly trainerDefeatText?: string;
   readonly escaped?: boolean;
+  readonly captured?: { readonly name: string; readonly destination?: "team" | "ranch" };
 }
 
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
@@ -104,6 +106,7 @@ export interface SourceBattleCallbacks {
   readonly getEventState: () => SourceEventState;
   readonly updateEventState: (state: SourceEventState) => void;
   readonly getResources: () => SourceBattleResources | null;
+  readonly getPokemonCreationContext: (mapId: number, ballId: string) => PokemonCreationContext;
   readonly setNotice: (notice: string) => void;
   readonly render: () => void;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
@@ -330,7 +333,7 @@ export class SourceBattleController {
   public completeSharedBattle(outcome: SourceBattleSettlementOutcome,
     continuation: SourceBattleContext["continuation"]): boolean {
     if (!this.sharedContinuationPending) return false;
-    const won = outcome === "won";
+    const won = outcome === "won" || outcome === "captured";
     const encounterCompletion = this.encounterCompletion;
     const trainerCompletion = this.trainerCompletion;
     if (continuation === "pending-encounter") {
@@ -344,6 +347,7 @@ export class SourceBattleController {
     this.clear();
     this.callbacks.setNotice(outcome === "escaped"
       ? "Fuite réussie : retour à l'exploration, sur la même case."
+      : outcome === "captured" ? "Capture réussie : le Pokémon rejoint votre collection personnelle."
       : won ? "Combat partagé remporté : reprise de l'aventure."
         : "Combat partagé perdu : retour à l'exploration.");
     if (continuation === "trainer-sequence") trainerCompletion?.(won);
@@ -360,6 +364,10 @@ export class SourceBattleController {
     await this.submitTurnAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
   }
 
+  public async capture(ballId: string, activeSlot = 0, target?: BattlePosition): Promise<void> {
+    await this.submitTurnAction({ kind: "capture", ballId, ...(target === undefined ? {} : { target }) }, activeSlot);
+  }
+
   public get pendingDoubleSlots(): readonly number[] {
     return this.localDoubleActions.map((entry) => entry.actor.slot);
   }
@@ -367,12 +375,14 @@ export class SourceBattleController {
   private async submitTurnAction(action: TeamBattleAction, activeSlot = 0): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
     const initialEventState = this.callbacks.getEventState();
-    if (action.kind === "item" && (initialEventState.inventory[action.itemId] ?? 0) <= 0) {
+    const consumedItemId = action.kind === "item" ? action.itemId : action.kind === "capture" ? action.ballId : null;
+    if (consumedItemId !== null && (initialEventState.inventory[consumedItemId] ?? 0) <= 0) {
       this.callbacks.setNotice("Objet indisponible dans votre sac.");
       this.callbacks.render();
       return;
     }
-    if (action.kind === "item" && this.localDoubleActions.some((entry) => entry.action.kind === "item")) {
+    if ((action.kind === "item" || action.kind === "capture")
+      && this.localDoubleActions.some((entry) => entry.action.kind === "item" || entry.action.kind === "capture")) {
       this.callbacks.setNotice("Un Dresseur ne peut utiliser qu'un objet par tour.");
       this.callbacks.render();
       return;
@@ -408,14 +418,14 @@ export class SourceBattleController {
           }),
         ], this.rng, itemPolicy)
         : resolveSourceEncounterAction(before, action, this.rng, itemPolicy);
-      const usedItems = submittedActions.filter((entry): entry is Extract<TeamBattleAction, { kind: "item" }> =>
-        entry.kind === "item");
+      const usedItems = submittedActions.flatMap((entry) => entry.kind === "item" ? [entry.itemId]
+        : entry.kind === "capture" ? [entry.ballId] : []);
       if (usedItems.length > 0) {
         const inventory = { ...eventState.inventory };
-        for (const used of usedItems) {
-          const quantity = inventory[used.itemId] ?? 0;
+        for (const itemId of usedItems) {
+          const quantity = inventory[itemId] ?? 0;
           if (quantity <= 0) throw new Error("Objet indisponible dans votre sac.");
-          if (quantity === 1) delete inventory[used.itemId]; else inventory[used.itemId] = quantity - 1;
+          if (quantity === 1) delete inventory[itemId]; else inventory[itemId] = quantity - 1;
         }
         eventState = { ...eventState, inventory };
         this.callbacks.updateEventState(eventState);
@@ -443,6 +453,40 @@ export class SourceBattleController {
       if (replacementEvents.length > 0) await this.presentation.playTurn(result.state, replacementEvents);
       this.battle = replacementState;
       if (this.battle.status === "finished") {
+        const captureEvent = result.events.flatMap((event) => event.type === "positionedActionResolved"
+          ? [...event.events] : event.type === "captureAttempted" ? [event] : [])
+          .find((event) => event.type === "captureAttempted" && event.success);
+        if (captureEvent?.type === "captureAttempted") {
+          const resources = this.callbacks.getResources();
+          if (resources === null) throw new Error("Ressources de capture indisponibles.");
+          const target = before.teams.opponent.members.find((member) => member.id === captureEvent.target);
+          if (target === undefined) throw new Error("Pokémon capturé introuvable.");
+          let pokemon = createPersistentPokemon(crypto.randomUUID(), target.species, target.level, resources.catalog,
+            this.callbacks.getPokemonCreationContext(resources.mapId, captureEvent.ballId));
+          pokemon = { ...pokemon,
+            hp: captureEvent.ballId === "HEALBALL" ? pokemon.stats.maxHp : Math.min(target.hp, pokemon.stats.maxHp),
+            majorStatus: captureEvent.ballId === "HEALBALL" ? null : target.majorStatus,
+            moves: target.moves.map((slot) => ({ internalName: slot.move.internalName, pp: slot.pp, maxPp: slot.move.pp })),
+            metadata: { ...pokemon.metadata,
+              happiness: captureEvent.ballId === "FRIENDBALL" ? 200 : pokemon.metadata.happiness,
+              form: target.appearance?.form ?? pokemon.metadata.form,
+              shiny: target.appearance?.shiny ?? pokemon.metadata.shiny,
+              gender: target.appearance?.gender ?? pokemon.metadata.gender } };
+          const party = storeBattleTeam(eventState.party, before.teams.player);
+          const destination = party.members.length < 6 ? "team" as const : "ranch" as const;
+          const capturedState = destination === "team"
+            ? { ...eventState, party: addPokemonToParty(party, pokemon) }
+            : { ...eventState, party, ranch: addPokemonToStorage(eventState.ranch, pokemon) };
+          const nextState = completePendingEncounter(capturedState);
+          const encounterCompletion = this.encounterCompletion;
+          this.closeFinishedLocalSession(this.battle);
+          await this.presentation.endBattle("player", { captured: { name: target.name, destination } });
+          this.callbacks.updateEventState(nextState);
+          this.clear();
+          this.callbacks.setNotice(`${target.name} capturé · envoyé ${destination === "team" ? "dans l'équipe" : "au Ranch"}.`);
+          encounterCompletion?.(true);
+          return;
+        }
         const winner = this.battle.winner;
         const resources = this.callbacks.getResources();
         const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
