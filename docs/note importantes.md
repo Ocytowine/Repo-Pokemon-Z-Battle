@@ -47,12 +47,22 @@ Améliorations :
     Les sprites du fangames sont un peu trops grosses, il faudrait les redimensionner pour qu'ils s'intègrent mieux à l'interface et à l'écran de jeu.
 
 
+Avant de lancer : (met à jour la cible de la ou tu extrait le fangame)
+
+corepack pnpm install
+corepack pnpm prepare:local --source "C:\Users\Ebaluteau\Desktop\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+corepack pnpm test
+corepack pnpm typecheck
+corepack pnpm build
+
 Le solo :
 
-	corepack pnpm sandbox:overworld
+corepack pnpm sandbox:overworld
 
 Le multi : 
 
-	en 1er : corepack pnpm multiplayer:dev
-	puis : corepack pnpm sandbox:overworld
+	en 1er : 
+    corepack pnpm multiplayer:dev
+	puis : 
+    corepack pnpm sandbox:overworld
 
