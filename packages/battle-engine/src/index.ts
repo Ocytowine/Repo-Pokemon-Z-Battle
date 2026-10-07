@@ -13,6 +13,10 @@ export { SeededRandom } from "./rng.js";
 export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
   settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";
 export { MAX_TEAM_SIZE, activeBattlers, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn } from "./team-battle.js";
+export { applyPokemonItemEffect, isPokemonItemUseSupported } from "./pokemon-item.js";
+export type { PokemonItemUseEffect, PokemonItemUseFailure, PokemonItemUsePolicy } from "./pokemon-item.js";
+export { attemptPokemonCapture, isPokemonBallSupported } from "./pokemon-capture.js";
+export type { PokemonCaptureContext, PokemonCaptureResult } from "./pokemon-capture.js";
 export { isKnownType, typeEffectiveness } from "./type-chart.js";
 export type {
   BattleAction,
@@ -29,7 +33,9 @@ export type {
   BattleTeam,
   BattleTrace,
   BattlerState,
+  CaptureAction,
   HeldItem,
+  ItemAction,
   MajorStatusState,
   MoveAction,
   MoveCategory,

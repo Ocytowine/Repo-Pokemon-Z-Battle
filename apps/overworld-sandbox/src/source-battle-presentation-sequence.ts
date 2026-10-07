@@ -117,6 +117,16 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
+    } else if (event.type === "trainerItemUsed") {
+      const team = state.teams[event.side];
+      const target = team.members[event.targetIndex];
+      if (target !== undefined) {
+        state = { ...state, teams: { ...state.teams, [event.side]: { ...team,
+          members: team.members.map((member, index) => index === event.targetIndex
+            ? { ...member, hp: Math.min(member.stats.maxHp, member.hp + event.hpRestored),
+              ...(event.statusCured === null ? {} : { majorStatus: null }) } : member) } } };
+        message(`${target.name} reçoit ${event.itemId}${event.hpRestored > 0 ? ` et récupère ${event.hpRestored} PV` : ""}.`, "status");
+      }
     } else if (event.type === "abilityActivated") {
       message(`Le talent ${event.ability} de ${activeName(state, event.side)} s'active !`, "status");
     } else if (event.type === "statStageChanged") {

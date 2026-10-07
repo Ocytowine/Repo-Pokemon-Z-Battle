@@ -356,12 +356,27 @@ export class SourceBattleController {
     await this.submitTurnAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   }
 
+  public async useItem(itemId: string, targetTeamIndex: number, activeSlot = 0): Promise<void> {
+    await this.submitTurnAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
+  }
+
   public get pendingDoubleSlots(): readonly number[] {
     return this.localDoubleActions.map((entry) => entry.actor.slot);
   }
 
   private async submitTurnAction(action: TeamBattleAction, activeSlot = 0): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
+    const initialEventState = this.callbacks.getEventState();
+    if (action.kind === "item" && (initialEventState.inventory[action.itemId] ?? 0) <= 0) {
+      this.callbacks.setNotice("Objet indisponible dans votre sac.");
+      this.callbacks.render();
+      return;
+    }
+    if (action.kind === "item" && this.localDoubleActions.some((entry) => entry.action.kind === "item")) {
+      this.callbacks.setNotice("Un Dresseur ne peut utiliser qu'un objet par tour.");
+      this.callbacks.render();
+      return;
+    }
     if (this.battle.format === "double") {
       const actor = { side: "player" as const, slot: activeSlot };
       if (!activeBattlePositions(this.battle).some((position) => position.side === actor.side && position.slot === actor.slot)) return;
@@ -376,8 +391,11 @@ export class SourceBattleController {
     this.resolving = true;
     this.callbacks.render();
     try {
-      const eventState = this.callbacks.getEventState();
+      let eventState = this.callbacks.getEventState();
       const before = this.battle;
+      const itemPolicy = { context: "battle" as const, revivalAllowed: true,
+        battleHealingAllowed: eventState.switches["666"] !== true };
+      const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
       const result = before.format === "double"
         ? resolveDoubleTeamTurn(before, [
           ...this.localDoubleActions,
@@ -388,8 +406,20 @@ export class SourceBattleController {
             if (selected === undefined) throw new Error("Le Pokemon adverse n'a aucune capacite disponible.");
             return { actor: { side: "opponent" as const, slot }, action: { kind: "move" as const, moveIndex: selected.moveIndex } };
           }),
-        ], this.rng)
-        : resolveSourceEncounterAction(before, action, this.rng);
+        ], this.rng, itemPolicy)
+        : resolveSourceEncounterAction(before, action, this.rng, itemPolicy);
+      const usedItems = submittedActions.filter((entry): entry is Extract<TeamBattleAction, { kind: "item" }> =>
+        entry.kind === "item");
+      if (usedItems.length > 0) {
+        const inventory = { ...eventState.inventory };
+        for (const used of usedItems) {
+          const quantity = inventory[used.itemId] ?? 0;
+          if (quantity <= 0) throw new Error("Objet indisponible dans votre sac.");
+          if (quantity === 1) delete inventory[used.itemId]; else inventory[used.itemId] = quantity - 1;
+        }
+        eventState = { ...eventState, inventory };
+        this.callbacks.updateEventState(eventState);
+      }
       this.localDoubleActions = [];
       await this.presentation.playTurn(before, result.events);
       let replacementState = result.state;
@@ -495,6 +525,7 @@ export class SourceBattleController {
         baseExperience: definition.baseExperience };
     });
     return { origin: input.origin, mapId: resources.mapId, format: state.format ?? "single", escapable: input.escapable,
+      healingItemsAllowed: eventState.switches["666"] !== true,
       presentation: { battlebackId: resources.battleback,
         battleMusicId: input.battleMusic === undefined ? resources.battleMusic : input.battleMusic,
         victoryMusicId: input.victoryMusic === undefined ? resources.victoryMusic : input.victoryMusic,

@@ -22,6 +22,10 @@ const catalog: PlayerCreationCatalog = {
       baseStats: { hp: 59, attack: 45, defense: 40, speed: 31, specialAttack: 35, specialDefense: 40 },
       abilities: ["SIMPLE"], growthRate: "Medium", baseExperience: 50, genderRate: "Female50Percent", happiness: 70,
       levelUpMoves: [{ level: 1, move: "TACKLE" }] },
+    { internalName: "BUNNELBY", name: "Sapereau", types: ["NORMAL"],
+      baseStats: { hp: 38, attack: 36, defense: 38, speed: 57, specialAttack: 32, specialDefense: 36 },
+      abilities: ["CHEEKPOUCH"], growthRate: "Medium", baseExperience: 47, genderRate: "Female50Percent", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }] },
   ],
   moves: [tackle],
 };
@@ -147,6 +151,14 @@ describe("source encounter bridge", () => {
       pokemon: [{ species: "BIDOOF", level: 3, moves: ["TACKLE", null, null, null] }] }, catalog);
     expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 3,
       moves: [{ move: { internalName: "TACKLE" }, pp: 35 }] });
+  });
+
+  it("starts a trainer battle while preserving a source ability whose effect is not implemented yet", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 8, catalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "CAMPESINO", name: "Jean", version: 0,
+      pokemon: [{ species: "BUNNELBY", level: 6, moves: [null, null, null, null] }] }, catalog);
+    expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BUNNELBY", ability: "CHEEKPOUCH" });
+    expect(() => resolveSourceEncounterTurn(battle, 0, new SeededRandom(12))).not.toThrow();
   });
 
   it("rejects an exhausted player move before consuming a turn", () => {

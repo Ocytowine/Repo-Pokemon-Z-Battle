@@ -1,4 +1,6 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
+import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
+import { attemptPokemonCapture } from "./pokemon-capture.js";
 import type {
   BattleEvent,
   BattleSide,
@@ -188,14 +190,19 @@ export function activeBattlers(state: TeamBattleState): Readonly<Record<BattleSi
   };
 }
 
-export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions, rng: RandomSource): TeamTurnResult {
+export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions, rng: RandomSource,
+  itemPolicy: PokemonItemUsePolicy = { context: "battle", revivalAllowed: true }): TeamTurnResult {
   validateState(state);
   if (state.replacementRequired.length > 0) throw new Error("Resolve required replacements before the next turn.");
   const teams = cloneTeams(state);
   const switchEvents: TeamBattleEvent[] = [];
+  const itemEvents: TeamBattleEvent[] = [];
+  const captureEvents: TeamBattleEvent[] = [];
   const moveActions: Partial<Record<BattleSide, MoveAction>> = {};
   const switchOrder = SIDES.filter((side) => actions[side].kind === "switch");
   const waitOrder = SIDES.filter((side) => actions[side].kind === "wait");
+  const itemOrder = SIDES.filter((side) => actions[side].kind === "item");
+  const captureOrder = SIDES.filter((side) => actions[side].kind === "capture");
 
   for (const side of switchOrder) {
     const action = actions[side];
@@ -205,6 +212,42 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   for (const side of SIDES) {
     const action = actions[side];
     if (action.kind === "move") moveActions[side] = action;
+  }
+  for (const side of itemOrder) {
+    const action = actions[side];
+    if (action.kind !== "item") continue;
+    const team = teams[side];
+    const target = team.members[action.targetTeamIndex];
+    if (target === undefined) throw new Error(`Invalid item target for ${side}.`);
+    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy);
+    if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
+    teams[side] = { ...team, members: team.members.map((member, index) =>
+      index === action.targetTeamIndex ? applied.pokemon : member) };
+    itemEvents.push({ type: "trainerItemUsed", side, itemId: action.itemId,
+      targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
+  }
+
+  for (const side of captureOrder) {
+    const action = actions[side];
+    if (action.kind !== "capture") continue;
+    const target = activePokemon(teams[opponentOf(side)]);
+    const actorTeam = teams[side];
+    const actor = activePokemon(actorTeam);
+    const capture = attemptPokemonCapture(action.ballId, target, {
+      turn: state.turn,
+      actorLevels: [actor.level],
+      sameSpeciesOppositeGender: actor.species === target.species
+        && actor.appearance?.gender !== null && target.appearance?.gender !== null
+        && actor.appearance?.gender !== target.appearance?.gender,
+    }, rng);
+    captureEvents.push({ type: "captureAttempted", side, ballId: action.ballId, target: target.id, ...capture });
+    if (capture.success) {
+      const events: TeamBattleEvent[] = [{ type: "turnStarted", turn: state.turn },
+        { type: "teamActionOrdered", order: [{ side, kind: "capture" }] },
+        ...captureEvents, { type: "battleEnded", winner: side }, { type: "turnEnded", turn: state.turn }];
+      return { state: { ...state, turn: state.turn + 1, status: "finished", winner: side, teams,
+        replacementRequired: [] }, events, trace: [] };
+    }
   }
 
   const result = resolveSelectedMoves(duelState(state, teams), moveActions, rng);
@@ -225,6 +268,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const orderedActions = [
     ...switchOrder.map((side) => ({ side, kind: "switch" as const })),
+    ...itemOrder.map((side) => ({ side, kind: "item" as const })),
+    ...captureOrder.map((side) => ({ side, kind: "capture" as const })),
     ...waitOrder.map((side) => ({ side, kind: "wait" as const })),
     ...moveOrder.map((side) => ({ side, kind: "move" as const })),
   ];
@@ -232,6 +277,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     { type: "turnStarted", turn: state.turn },
     { type: "teamActionOrdered", order: orderedActions },
     ...switchEvents,
+    ...itemEvents,
+    ...captureEvents,
     ...moveEvents,
     ...replacementRequired.map((side): TeamBattleEvent => ({ type: "replacementRequired", side })),
   ];

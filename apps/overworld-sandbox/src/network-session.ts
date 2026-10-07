@@ -2,6 +2,7 @@ import { type Direction, type OverworldEvent, type OverworldState } from "@pokem
 import { PROTOCOL_VERSION, normalizeRoomCode, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
+  type SourceBattleInventory,
   type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleTeam, DoubleBattleEvent, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -38,6 +39,7 @@ interface MutableNetworkSession {
   closingBattleId: string | null;
   roomBattleActive: boolean;
   joinableBattle: RoomSnapshot["battle"];
+  battleInventory: SourceBattleInventory | null;
 }
 
 export interface NetworkSessionView {
@@ -49,12 +51,14 @@ export interface NetworkSessionView {
   readonly roomBattleActive: boolean;
   /** Combat source brut masque tant que l'invite n'a pas choisi son camp ou l'observation. */
   readonly joinableBattle: RoomSnapshot["battle"];
+  readonly battleInventory: SourceBattleInventory | null;
 }
 
 export interface SourceBattleNetworkDraft {
   readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
   readonly playerTeam: BattleTeam;
   readonly opponentTeam: BattleTeam;
+  readonly battleItems: SourceBattleInventory;
 }
 
 export interface NetworkSessionCallbacks {
@@ -312,14 +316,14 @@ export class OverworldNetworkSession {
       rewards: { ...draft.context.rewards,
         opponents: draft.context.rewards.opponents.filter((opponent) => opponentIds.has(opponent.memberId)) } };
     socket.send(JSON.stringify({ type: "openSourceBattle", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam }));
+      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam, battleItems: draft.battleItems }));
     return true;
   }
 
   public proposeBattleJoin(side: "player" | "opponent", team: BattleTeam,
-    finalMemberIds: readonly string[]): void {
+    finalMemberIds: readonly string[], battleItems: SourceBattleInventory): void {
     const battleId = this.activeSession?.snapshot?.battle?.id ?? this.activeSession?.joinableBattle?.id;
-    if (battleId !== undefined) this.sendRequest({ type: "proposeBattleJoin", battleId, side, team, finalMemberIds });
+    if (battleId !== undefined) this.sendRequest({ type: "proposeBattleJoin", battleId, side, team, finalMemberIds, battleItems });
   }
 
   public respondBattleJoin(accept: boolean): void {
@@ -435,6 +439,7 @@ export class OverworldNetworkSession {
       closingBattleId: null,
       roomBattleActive: false,
       joinableBattle: null,
+      battleInventory: null,
     };
     this.activeSession = session;
     sessionStorage.setItem(this.storageKey, JSON.stringify({ serverUrl: normalizedServerUrl, ticket } satisfies StoredOverworldSession));
@@ -462,6 +467,7 @@ export class OverworldNetworkSession {
         session.pendingMovementSequence = null;
       }
       session.snapshot = snapshot;
+      if (snapshot.battle === null) session.battleInventory = null;
       session.confirmedSourceMapId = snapshot.sourceWorld?.mapId ?? null;
       if (previousBattle === null && snapshot.battle !== null) {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
@@ -531,6 +537,7 @@ export class OverworldNetworkSession {
             throw new Error("Le serveur a renvoyé une place différente du ticket.");
           }
           session.reconnectAttempt = 0;
+          session.battleInventory = message.battleInventory;
           this.applySnapshot(message.snapshot, false);
           if (message.settlement !== null) this.applyBattleSettlement(session, message.settlement);
           this.updateProfile(session.profile);
@@ -622,6 +629,10 @@ export class OverworldNetworkSession {
           this.callbacks.onRender();
         } else if (message.type === "battleSettlement") {
           this.applyBattleSettlement(session, message.settlement);
+        } else if (message.type === "battleInventoryUpdated") {
+          if (session.snapshot?.battle?.id !== message.battleId) return;
+          session.battleInventory = message.inventory;
+          this.callbacks.onRender();
         } else if (message.type === "error") {
           session.submittedTurn = null;
           session.submittedActiveSlots = [];

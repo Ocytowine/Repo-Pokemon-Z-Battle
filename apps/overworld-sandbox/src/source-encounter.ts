@@ -1,4 +1,5 @@
 import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBattleState, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
+  type PokemonItemUsePolicy,
   type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamReplacementResult,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
@@ -52,7 +53,7 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
 }
 
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
-  rng: RandomSource): TeamTurnResult {
+  rng: RandomSource, itemPolicy?: PokemonItemUsePolicy): TeamTurnResult {
   const player = state.teams.player.members[state.teams.player.activeIndex];
   if (player === undefined) throw new Error("Combattant actif introuvable.");
   if (playerAction.kind === "move") {
@@ -62,7 +63,7 @@ export function resolveSourceEncounterAction(state: TeamBattleState, playerActio
   return resolveTeamTurn(state, {
     player: playerAction,
     opponent: chooseSourceBattleAction(state, "opponent", rng),
-  }, rng);
+  }, rng, itemPolicy);
 }
 
 export function resolveSourceEncounterTurn(state: TeamBattleState, playerMoveIndex: number,

@@ -32,6 +32,15 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
     next = { ...next, money: Math.max(0, next.money - sourceDefeatLoss(next)) };
   }
   const inventory = { ...next.inventory };
+  for (const consumed of settlement.consumedItems ?? []) {
+    if (!Number.isSafeInteger(consumed.quantity) || consumed.quantity < 1 || consumed.itemId.length === 0) {
+      throw new Error("Consommation d'objet invalide.");
+    }
+    const quantity = inventory[consumed.itemId] ?? 0;
+    if (quantity < consumed.quantity) throw new Error("Le sac local ne contient plus l'objet consomme en combat.");
+    if (quantity === consumed.quantity) delete inventory[consumed.itemId];
+    else inventory[consumed.itemId] = quantity - consumed.quantity;
+  }
   for (const reward of settlement.items) {
     if (!Number.isSafeInteger(reward.quantity) || reward.quantity < 1 || reward.itemId.length === 0) {
       throw new Error("Récompense d'objet invalide.");

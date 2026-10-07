@@ -20,6 +20,7 @@ export interface SourceBattleContext {
   readonly mapId: number;
   readonly format: SharedBattleFormat;
   readonly escapable: boolean;
+  readonly healingItemsAllowed: boolean;
   readonly narrativeOwnerId: string;
   readonly presentation: {
     readonly battlebackId: string;
@@ -66,11 +67,11 @@ function optionalLogicalAsset(value: unknown): value is string | null {
 }
 
 export function parseSourceBattleContext(value: unknown): SourceBattleContext {
-  if (!record(value) || !exact(value, ["origin", "mapId", "format", "escapable", "narrativeOwnerId",
+  if (!record(value) || !exact(value, ["origin", "mapId", "format", "escapable", "healingItemsAllowed", "narrativeOwnerId",
     "presentation", "rewards", "continuation"])
     || !["source-wild", "source-trainer"].includes(String(value.origin))
     || !integer(value.mapId, 1, 999_999) || !["single", "double"].includes(String(value.format))
-    || typeof value.escapable !== "boolean" || !identifier(value.narrativeOwnerId)
+    || typeof value.escapable !== "boolean" || typeof value.healingItemsAllowed !== "boolean" || !identifier(value.narrativeOwnerId)
     || !["pending-encounter", "trainer-sequence"].includes(String(value.continuation))) {
     throw new Error("Contexte de combat source invalide.");
   }

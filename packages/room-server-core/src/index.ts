@@ -1,5 +1,6 @@
 import { activateSharedBattleSession, activeBattleController, activeBattleControllerAt, activeBattlePositions,
   activeTeamIndices, applyBattleJoin, approveBattleJoin,
+  applyPokemonItemEffect,
   battleMemberIndicesOwnedBy,
   canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
   closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
@@ -16,7 +17,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
   type SourceBattleContext, type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState,
-  type SourceBattleSettlement, type SourceWorldActorSnapshot,
+  type SourceBattleInventory, type SourceBattleSettlement, type SourceWorldActorSnapshot,
   type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { resolveInteraction, resolveMovement, type EncounterKind, type OverworldCatalog, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 
@@ -41,11 +42,12 @@ export interface RoomConnection {
   readonly snapshot: RoomSnapshot;
   readonly reconnected: boolean;
   readonly settlement: SourceBattleSettlement | null;
+  readonly battleInventory: SourceBattleInventory | null;
   readonly replacedPlayerId?: string;
 }
 
 export interface PersistedRoomState {
-  readonly version: 9 | 10 | 11 | 12;
+  readonly version: 9 | 10 | 11 | 12 | 13;
   readonly revision: number;
   readonly battleSequence: number;
   readonly battleId: string | null;
@@ -83,6 +85,9 @@ export interface PersistedRoomState {
   readonly escapeConfirmations?: readonly string[];
   readonly pendingBattleSettlements?: readonly SourceBattleSettlement[];
   readonly acknowledgedBattleSettlements?: readonly (readonly [string, string])[];
+  readonly battleInventories?: readonly (readonly [string, SourceBattleInventory])[];
+  readonly battleConsumedItems?: readonly (readonly [string, SourceBattleInventory])[];
+  readonly battleJoinInventory?: readonly [string, SourceBattleInventory] | null;
 }
 
 export interface EncounterContext {
@@ -153,6 +158,9 @@ export class AuthoritativeBattleRoom {
   readonly #escapeConfirmations = new Set<string>();
   readonly #pendingBattleSettlements = new Map<string, SourceBattleSettlement>();
   readonly #acknowledgedBattleSettlements = new Map<string, string>();
+  readonly #battleInventories = new Map<string, SourceBattleInventory>();
+  readonly #battleConsumedItems = new Map<string, SourceBattleInventory>();
+  #battleJoinInventory: readonly [string, SourceBattleInventory] | null = null;
   readonly #now: () => number;
 
   public constructor(roomCode: string, createBattle: (encounter?: EncounterContext) => TeamBattleState,
@@ -190,6 +198,13 @@ export class AuthoritativeBattleRoom {
       for (const [settlementId, ownerId] of persisted.acknowledgedBattleSettlements ?? []) {
         this.#acknowledgedBattleSettlements.set(settlementId, ownerId);
       }
+      for (const [ownerId, inventory] of persisted.battleInventories ?? []) {
+        this.#battleInventories.set(ownerId, inventory);
+      }
+      for (const [ownerId, inventory] of persisted.battleConsumedItems ?? []) {
+        this.#battleConsumedItems.set(ownerId, inventory);
+      }
+      this.#battleJoinInventory = persisted.battleJoinInventory ?? null;
       if (persisted.battleSession !== undefined && persisted.battleSession !== null) {
         this.#battleSession = persisted.battleSession;
       } else if (persisted.battleId !== null && persisted.battleState !== null) {
@@ -225,7 +240,8 @@ export class AuthoritativeBattleRoom {
   public reserve(playerId: string, profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile()): RoomConnection {
     const existing = this.#players.get(playerId);
     if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
-      settlement: this.pendingBattleSettlement(existing.playerId) };
+      settlement: this.pendingBattleSettlement(existing.playerId),
+      battleInventory: this.#battleInventories.get(existing.playerId) ?? null };
     // A participant marked as definitively gone no longer owns the guest seat.
     // Keep an active battle or an unapplied personal settlement attached to its
     // original identity, but otherwise let a manual join reuse the invitation.
@@ -249,7 +265,7 @@ export class AuthoritativeBattleRoom {
         avatars: { ...current.avatars, opponent: this.sourceSpawn(hostState) } };
     }
     this.#revision += 1;
-    return { side, snapshot: this.snapshot(), reconnected: false, settlement: null,
+    return { side, snapshot: this.snapshot(), reconnected: false, settlement: null, battleInventory: null,
       ...(replaceableGuest === undefined ? {} : { replacedPlayerId: replaceableGuest.playerId }) };
   }
 
@@ -264,7 +280,8 @@ export class AuthoritativeBattleRoom {
         this.#revision += 1;
       }
       return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
-        settlement: this.pendingBattleSettlement(existing.playerId) };
+        settlement: this.pendingBattleSettlement(existing.playerId),
+        battleInventory: this.#battleInventories.get(existing.playerId) ?? null };
     }
     this.reserve(playerId);
     return this.connect(playerId);
@@ -341,7 +358,7 @@ export class AuthoritativeBattleRoom {
 
   public exportState(): PersistedRoomState {
     return {
-      version: 12,
+      version: 13,
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -355,6 +372,9 @@ export class AuthoritativeBattleRoom {
       pendingActions: [...this.#pendingActions.entries()],
       pendingDoubleActions: [...this.#pendingDoubleActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
+      battleInventories: [...this.#battleInventories.entries()],
+      battleConsumedItems: [...this.#battleConsumedItems.entries()],
+      battleJoinInventory: this.#battleJoinInventory,
       worldState: this.#worldState,
       sourceWorldState: this.#sourceWorldState,
       sourceSceneState: this.#sourceSceneState,
@@ -672,6 +692,10 @@ export class AuthoritativeBattleRoom {
       }
     }
 
+    if (message.action.kind === "item") {
+      const itemError = this.reserveBattleItem(player, controlledSide, message.action);
+      if (itemError !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", itemError)];
+    }
     const cancelledEscape = this.#escapeConfirmations.size > 0;
     this.#escapeConfirmations.clear();
     this.#pendingActions.set(controlledSide, message.action);
@@ -685,6 +709,7 @@ export class AuthoritativeBattleRoom {
     const output: RoomDispatch[] = [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
     ];
+    if (message.action.kind === "item") output.push(this.battleInventoryDispatch(player.playerId));
     this.resolveQueuedEncounterTurn(output);
     if (cancelledEscape || output.some((entry) => entry.message.type === "turnResolved")) {
       output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -721,6 +746,10 @@ export class AuthoritativeBattleRoom {
           "Un Dresseur ne peut envoyer que l'un de ses propres Pokemon.")];
       }
     }
+    if (message.action.kind === "item") {
+      const itemError = this.reserveBattleItem(player, position.side, message.action);
+      if (itemError !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE", itemError)];
+    }
     const cancelledEscape = this.#escapeConfirmations.size > 0;
     this.#escapeConfirmations.clear();
     this.#pendingDoubleActions.set(actionKey, { actor: position, action: message.action });
@@ -738,6 +767,7 @@ export class AuthoritativeBattleRoom {
     const output: RoomDispatch[] = [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
     ];
+    if (message.action.kind === "item") output.push(this.battleInventoryDispatch(player.playerId));
     this.resolveQueuedEncounterTurn(output);
     if (cancelledEscape || output.some((entry) => entry.message.type === "turnResolved")) {
       output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -759,9 +789,11 @@ export class AuthoritativeBattleRoom {
     const source = this.#sourceBattleContext;
     const resolvedTurn = this.#battleState.turn;
     const beforeState = this.#battleState;
+    const itemPolicy = { context: "battle" as const, revivalAllowed: true,
+      battleHealingAllowed: source?.healingItemsAllowed ?? true };
     const result = double
-      ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng)
-      : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng);
+      ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy)
+      : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy);
     this.#battleState = result.state;
     if (this.#battleLedger !== null) {
       this.#battleLedger = recordSharedBattleTurn(this.#battleLedger, beforeState, result.state, result.events);
@@ -1200,6 +1232,7 @@ export class AuthoritativeBattleRoom {
         members: message.team.members,
         finalMemberIds: message.finalMemberIds,
       });
+      this.#battleJoinInventory = [player.playerId, { ...(message.battleItems ?? {}) }];
       this.#battleJoinRefusal = null;
     } catch (error) {
       return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
@@ -1280,6 +1313,11 @@ export class AuthoritativeBattleRoom {
           ...(this.#battleState.teams.opponent.activeIndices === undefined ? {} : { activeMemberIds: this.#battleState.teams.opponent.activeIndices
             .map((index) => this.#battleState!.teams.opponent.members[index]!.id) }) },
       } };
+      this.#battleInventories.clear();
+      this.#battleConsumedItems.clear();
+      this.#battleInventories.set(player.playerId, { ...(message.battleItems ?? {}) });
+      this.#battleConsumedItems.set(player.playerId, {});
+      this.#battleJoinInventory = null;
       this.#battleLedger = createSharedBattleLedger(this.#battleState);
       this.#battleJoinProposal = null;
       this.#battleObserverIds = [];
@@ -1303,6 +1341,9 @@ export class AuthoritativeBattleRoom {
       this.#battleLedger = null;
       this.#battleSession = null;
       this.#sourceBattleContext = null;
+      this.#battleInventories.clear();
+      this.#battleConsumedItems.clear();
+      this.#battleJoinInventory = null;
       return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
         error instanceof Error ? error.message : "Combat source invalide.")];
     }
@@ -1333,6 +1374,7 @@ export class AuthoritativeBattleRoom {
       this.#battleJoinRefusal = { playerId: this.#battleJoinProposal.joinerId,
         reason: "La composition a ete refusee par l'hote." };
       this.#battleJoinProposal = null;
+      this.#battleJoinInventory = null;
     } else {
       try {
         const approved = approveBattleJoin(this.#battleJoinProposal, player.playerId);
@@ -1353,6 +1395,11 @@ export class AuthoritativeBattleRoom {
         })) as unknown as Record<BattleSide, readonly number[]>;
         const previousState = this.#battleState;
         this.#battleParticipation = participation;
+        if (this.#battleJoinInventory?.[0] === approved.joinerId) {
+          this.#battleInventories.set(approved.joinerId, this.#battleJoinInventory[1]);
+          this.#battleConsumedItems.set(approved.joinerId, {});
+        }
+        this.#battleJoinInventory = null;
         if (this.#sourceBattleContext !== null) this.#sourceBattleContext = { ...this.#sourceBattleContext, format: "double" };
         this.#battleState = { ...createDoubleTeamBattleState(teams, activeIndices), turn: previousState.turn };
         this.synchronizeBattleParticipation();
@@ -1510,6 +1557,9 @@ export class AuthoritativeBattleRoom {
     this.#battleLedger = null;
     this.#battleSession = null;
     this.#sourceBattleContext = null;
+    this.#battleInventories.clear();
+    this.#battleConsumedItems.clear();
+    this.#battleJoinInventory = null;
     this.#pendingActions.clear();
     this.#pendingDoubleActions.clear();
     this.#pendingReplacements.clear();
@@ -1661,6 +1711,8 @@ export class AuthoritativeBattleRoom {
         experience: { ...context.rewards.experience, trainerBattle: context.origin === "source-trainer" },
         money,
         items: [],
+        consumedItems: Object.entries(this.#battleConsumedItems.get(ownerId) ?? {})
+          .map(([itemId, quantity]) => ({ itemId, quantity })),
         healParty: ownerIsNarrative && !escaped && !narrativeWon,
       };
       this.#pendingBattleSettlements.set(settlement.settlementId, settlement);
@@ -1707,6 +1759,44 @@ export class AuthoritativeBattleRoom {
       .find((settlement) => settlement.ownerId === playerId) ?? null;
   }
 
+  private reserveBattleItem(player: RoomPlayer, side: BattleSide,
+    action: Extract<TeamBattleAction, { readonly kind: "item" }>): string | null {
+    const state = this.#battleState;
+    const participation = this.#battleParticipation;
+    if (state === null || participation === null || this.#sourceBattleContext === null) {
+      return "Les objets personnels ne sont disponibles que dans un combat source partage.";
+    }
+    const alreadySubmitted = [...this.#pendingActions.entries()].some(([pendingSide, pending]) =>
+      pending.kind === "item" && activeBattleController(participation, pendingSide) === player.playerId)
+      || [...this.#pendingDoubleActions.values()].some((pending) => pending.action.kind === "item"
+        && activeBattleControllerAt(participation, pending.actor) === player.playerId);
+    if (alreadySubmitted) return "Un Dresseur ne peut utiliser qu'un objet par tour.";
+    const target = state.teams[side].members[action.targetTeamIndex];
+    const owner = participation.camps[side].members[action.targetTeamIndex]?.ownerId;
+    if (target === undefined || owner !== player.playerId) {
+      return "Un Dresseur ne peut utiliser un objet que sur l'un de ses propres Pokemon.";
+    }
+    const inventory = this.#battleInventories.get(player.playerId);
+    const quantity = inventory?.[action.itemId] ?? 0;
+    if (quantity <= 0) return "Cet objet n'est pas disponible dans le sac de ce Dresseur.";
+    const applied = applyPokemonItemEffect(target, action.itemId, { context: "battle", revivalAllowed: true,
+      battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed });
+    if (typeof applied === "string") return `Cet objet ne peut pas etre utilise (${applied}).`;
+    const next = { ...inventory };
+    if (quantity === 1) delete next[action.itemId]; else next[action.itemId] = quantity - 1;
+    this.#battleInventories.set(player.playerId, next);
+    const consumed = { ...(this.#battleConsumedItems.get(player.playerId) ?? {}) };
+    consumed[action.itemId] = (consumed[action.itemId] ?? 0) + 1;
+    this.#battleConsumedItems.set(player.playerId, consumed);
+    return null;
+  }
+
+  private battleInventoryDispatch(playerId: string): RoomDispatch {
+    if (this.#battleId === null) throw new Error("Combat absent pour la mise a jour du sac.");
+    return { audience: { playerId }, message: { type: "battleInventoryUpdated", version: PROTOCOL_VERSION,
+      battleId: this.#battleId, inventory: this.#battleInventories.get(playerId) ?? {} } };
+  }
+
   private closeSourceBattle(player: RoomPlayer, requestId: string,
     battleId: string): readonly RoomDispatch[] {
     if (this.#battleId !== battleId || this.#sourceBattleContext === null
@@ -1735,6 +1825,9 @@ export class AuthoritativeBattleRoom {
     this.#battleLedger = null;
     this.#battleSession = null;
     this.#sourceBattleContext = null;
+    this.#battleInventories.clear();
+    this.#battleConsumedItems.clear();
+    this.#battleJoinInventory = null;
     this.#pendingActions.clear();
     this.#pendingDoubleActions.clear();
     this.#pendingReplacements.clear();

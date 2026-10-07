@@ -11,6 +11,9 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
+export { isPokemonItemUseSupported, usePokemonItem, type PlayerInventory, type PokemonItemUseContext,
+  type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
+  type PokemonItemUseResult } from "./item-use.js";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const PLAYER_POKEMON_STORAGE_SCHEMA_VERSION = 1 as const;
@@ -137,7 +140,7 @@ export interface PlayerBattleCatalog {
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
-    & { readonly id?: number })[];
+    & { readonly id?: number; readonly captureRate?: number; readonly weight?: number })[];
 }
 
 /** Runtime catalog required by the detailed Pokemon summary; battle-only callers may keep the smaller contracts above. */
@@ -715,6 +718,7 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     hp: member.hp, majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
+    capture: { rate: definition.captureRate ?? 0, baseSpeed: definition.baseStats.speed, weight: definition.weight ?? 0 },
     appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
 }
 

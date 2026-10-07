@@ -52,4 +52,21 @@ describe("double team battles", () => {
     expect(result.state.teams.opponent.members[1]!.hp).toBeLessThan(120);
     expect(result.state.teams.player.members[0]!.moves[0]!.pp).toBe(MINIMAL_MOVE_CATALOG.TACKLE.pp - 1);
   });
+
+  it("lets one active slot spend its action healing an owned reserve", () => {
+    const reserve = { ...pokemon("reserve", "player", 60), hp: 10 };
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("p1", "player", 100), pokemon("p2", "player", 90), reserve],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "item", itemId: "POTION", targetTeamIndex: 2 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.state.teams.player.members[2]?.hp).toBe(30);
+    expect(result.events).toContainEqual({ type: "trainerItemUsed", side: "player", itemId: "POTION",
+      targetIndex: 2, target: "reserve", hpRestored: 20, statusCured: null, revived: false });
+  });
 });

@@ -5,7 +5,7 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  recalculatePlayerPokemonCollection, reorderPokemonMoves,
+  isPokemonItemUseSupported, recalculatePlayerPokemonCollection, reorderPokemonMoves, usePokemonItem,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
@@ -781,6 +781,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDive: requestSourceDive,
   onPokemonLead: setSourcePartyLead,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
+  onUsePokemonItem: useSourcePokemonItem,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
@@ -817,7 +818,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   },
   setNotice: (notice) => { importedNotice = notice; },
   render,
-  openSharedBattle: (draft) => multiplayer.openSourceBattle(draft),
+  openSharedBattle: (draft) => multiplayer.openSourceBattle({ ...draft, battleItems: battleItemInventory() }),
 });
 sourceSequenceEffects = new SourceSequenceEffects({
   getEventState: () => sourceEventState,
@@ -869,6 +870,10 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) void sourceBattles.switchPokemon(teamIndex, activeSlot);
     else multiplayer.submitBattleAction({ kind: "switch", teamIndex, activeSlot }, activeSlot);
   },
+  onItem: (itemId, targetTeamIndex, local, activeSlot) => {
+    if (local) void sourceBattles.useItem(itemId, targetTeamIndex, activeSlot);
+    else multiplayer.submitBattleAction({ kind: "item", itemId, targetTeamIndex }, activeSlot);
+  },
   onReplacement: (teamIndex, activeSlot) => { multiplayer.submitBattleReplacement(teamIndex, activeSlot); },
   onLeave: () => { multiplayer.leaveBattle(); },
   onEscape: (local) => {
@@ -887,7 +892,7 @@ const sourcePlayerDuelView = new SourcePlayerDuelView({
 const sourceBattleJoinView = new SourceBattleJoinView({
   onPropose: (side, finalMemberIds) => {
     const team = currentPlayerDuelTeam();
-    if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds);
+    if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds, battleItemInventory());
   },
   onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
 });
@@ -1606,6 +1611,39 @@ function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ra
   }
 }
 
+function useSourcePokemonItem(itemId: string, pokemonId: string): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const result = usePokemonItem(sourceEventState.inventory, sourceEventState.party, itemId, pokemonId, {
+    context: "field",
+    revivalAllowed: sourceEventState.switches["320"] !== true,
+  });
+  if (!result.ok) {
+    const message = result.reason === "unsupported-item" ? "L'effet de cet objet n'est pas encore porté."
+      : result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
+        : result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+          : result.reason === "revival-disabled" ? "Les rappels sont désactivés en mode Nuzlocke."
+            : "Cet objet n'aurait aucun effet sur ce Pokémon.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  persistSourceEventState();
+  const species = importedAssets?.battleCatalog.pokemon.find((candidate) =>
+    candidate.internalName === result.pokemon.species);
+  const pokemonName = result.pokemon.nickname ?? species?.name ?? result.pokemon.species;
+  const effects = [result.effect.hpRestored > 0 ? `${result.effect.hpRestored} PV restaurés` : null,
+    result.effect.statusCured === null ? null : "statut soigné",
+    result.effect.revived ? "Pokémon ranimé" : null].filter((entry): entry is string => entry !== null);
+  const message = `${pokemonName} : ${effects.join(" · ")}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
 function setSourcePartyLead(pokemonId: string): void {
   try {
     sourceEventState = { ...sourceEventState, party: movePokemonToPartyFront(sourceEventState.party, pokemonId) };
@@ -2016,6 +2054,12 @@ function render(): void {
   renderSourceMenu();
 }
 
+function battleItemInventory(): Readonly<Record<string, number>> {
+  return Object.fromEntries(Object.entries(sourceEventState.inventory)
+    .filter(([itemId, quantity]) => isPokemonItemUseSupported(itemId)
+      && Number.isSafeInteger(quantity) && quantity > 0));
+}
+
 function renderEncounter(): void {
   const network = multiplayer.current;
   const sourceBattle = sourceBattles.current;
@@ -2039,8 +2083,11 @@ function renderEncounter(): void {
     ? networkBattleForViewer(canonicalNetworkState, viewerSide) : canonicalNetworkState;
   const battleState = viewedMapId === SOURCE_MAP_ID && sourceBattle !== null ? sourceBattle : presentedNetworkState;
   const localSourceBattle = battleState !== null && battleState === sourceBattle;
+  const visibleBattleInventory = networkBattle === null ? sourceEventState.inventory
+    : network?.battleInventory ?? sourceEventState.inventory;
   const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
-    sourceEventState.inventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity }));
+    visibleBattleInventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity,
+      usable: isPokemonItemUseSupported(item.internalName) }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     waitingForJoin: networkBattle?.sourceContext?.origin === "source-trainer"

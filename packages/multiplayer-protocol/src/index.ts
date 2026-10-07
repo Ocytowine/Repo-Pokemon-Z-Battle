@@ -24,4 +24,5 @@ export {
   type RoomPlayerSnapshot,
   type RoomSnapshot,
   type ServerMessage,
+  type SourceBattleInventory,
 } from "./types.js";

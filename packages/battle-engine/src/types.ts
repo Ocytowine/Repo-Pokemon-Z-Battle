@@ -74,6 +74,8 @@ export interface BattlerState {
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
   readonly moves: readonly MoveSlot[];
+  /** Public species facts used by the authoritative capture formula. */
+  readonly capture?: { readonly rate: number; readonly baseSpeed: number; readonly weight: number };
   /** Public visual identity replicated with battle state; excludes private Pokemon metadata. */
   readonly appearance?: {
     readonly form: number;
@@ -150,7 +152,20 @@ export interface SwitchAction {
 
 export interface WaitAction { readonly kind: "wait" }
 
-export type TeamBattleAction = MoveAction | SwitchAction | WaitAction;
+export interface ItemAction {
+  readonly kind: "item";
+  readonly itemId: string;
+  /** Team member owned by the acting trainer. It may be active or in reserve. */
+  readonly targetTeamIndex: number;
+}
+
+export interface CaptureAction {
+  readonly kind: "capture";
+  readonly ballId: string;
+  readonly target?: BattlePosition;
+}
+
+export type TeamBattleAction = MoveAction | SwitchAction | WaitAction | ItemAction | CaptureAction;
 export type TeamTurnActions = Readonly<Record<BattleSide, TeamBattleAction>>;
 
 export interface BattleTeam {
@@ -184,7 +199,7 @@ export type TeamBattleEvent =
   | BattleEvent
   | {
       readonly type: "teamActionOrdered";
-      readonly order: readonly { readonly side: BattleSide; readonly kind: "move" | "switch" | "wait" }[];
+      readonly order: readonly { readonly side: BattleSide; readonly kind: "move" | "switch" | "wait" | "item" | "capture" }[];
     }
   | {
       readonly type: "pokemonSwitched";
@@ -195,7 +210,12 @@ export type TeamBattleEvent =
       readonly to: string;
       readonly reason: "voluntary" | "replacement";
     }
-  | { readonly type: "replacementRequired"; readonly side: BattleSide };
+  | { readonly type: "replacementRequired"; readonly side: BattleSide }
+  | { readonly type: "trainerItemUsed"; readonly side: BattleSide; readonly itemId: string;
+      readonly targetIndex: number; readonly target: string; readonly hpRestored: number;
+      readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean }
+  | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
+      readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean };
 
 export type DoubleBattleEvent = TeamBattleEvent | {
   readonly type: "positionedActionResolved";

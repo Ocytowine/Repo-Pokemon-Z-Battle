@@ -3,7 +3,7 @@ import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
-import type { BattleTeam } from "@pokemon-z-battle/battle-engine";
+import { isPokemonBallSupported, isPokemonItemUseSupported, type BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
 const ROOM_CODE = /^[A-Z2-9]{6}$/u;
@@ -62,7 +62,21 @@ function isBattleAction(value: unknown): boolean {
     && Number(value.teamIndex) >= 0
     && Number(value.teamIndex) <= 5
     && (value.activeSlot === undefined || safeInteger(value.activeSlot, 0, 1));
-  return move || switching;
+  const item = isRecord(value) && hasExactKeys(value, ["kind", "itemId", "targetTeamIndex"])
+    && value.kind === "item" && typeof value.itemId === "string" && isPokemonItemUseSupported(value.itemId)
+    && safeInteger(value.targetTeamIndex, 0, 5);
+  const capture = isRecord(value) && ["kind", "ballId"].every((key) => key in value)
+    && Object.keys(value).every((key) => ["kind", "ballId", "target"].includes(key))
+    && value.kind === "capture" && typeof value.ballId === "string" && isPokemonBallSupported(value.ballId)
+    && (value.target === undefined || isRecord(value.target) && hasExactKeys(value.target, ["side", "slot"])
+      && ["player", "opponent"].includes(String(value.target.side)) && safeInteger(value.target.slot, 0, 1));
+  return move || switching || item || capture;
+}
+
+function isSourceBattleInventory(value: unknown): boolean {
+  return isRecord(value) && Object.keys(value).length <= 64
+    && Object.entries(value).every(([itemId, quantity]) => (isPokemonItemUseSupported(itemId) || isPokemonBallSupported(itemId))
+      && safeInteger(quantity, 1, 999));
 }
 
 const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
@@ -104,7 +118,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -114,6 +128,10 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !hasExactKeys(member.appearance, ["form", "shiny", "gender"])
       || !safeInteger(member.appearance.form, 0, 999) || typeof member.appearance.shiny !== "boolean"
       || member.appearance.gender !== null && !["male", "female", "genderless"].includes(String(member.appearance.gender)))) return false;
+    if (member.capture !== undefined && (!isRecord(member.capture)
+      || !hasExactKeys(member.capture, ["rate", "baseSpeed", "weight"])
+      || !safeInteger(member.capture.rate, 1, 255) || !safeInteger(member.capture.baseSpeed, 1, 999)
+      || !safeInteger(member.capture.weight, 0, 999_999))) return false;
     const stats = member.stats;
     const stages = member.stages;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
@@ -278,11 +296,11 @@ export function parseClientMessage(payload: string): ClientMessage {
       }
       return value as unknown as ClientMessage;
     case "proposeBattleJoin":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "side", "team", "finalMemberIds"])
+      if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "side", "team", "finalMemberIds", "battleItems"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)
         || !["player", "opponent"].includes(String(value.side)) || !isBattleTeam(value.team)
         || !Array.isArray(value.finalMemberIds) || value.finalMemberIds.length < 1 || value.finalMemberIds.length > 6
-        || !value.finalMemberIds.every(isIdentifier)) return invalid("proposeBattleJoin mal forme");
+        || !value.finalMemberIds.every(isIdentifier) || !isSourceBattleInventory(value.battleItems)) return invalid("proposeBattleJoin mal forme");
       return value as unknown as ClientMessage;
     case "respondBattleJoin":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId", "accept"])
@@ -319,8 +337,9 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("setSourceScene mal forme");
       }
     case "openSourceBattle":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam"])
-        || !isIdentifier(value.requestId) || !isBattleTeam(value.playerTeam) || !isBattleTeam(value.opponentTeam)) {
+      if (!hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam", "battleItems"])
+        || !isIdentifier(value.requestId) || !isBattleTeam(value.playerTeam) || !isBattleTeam(value.opponentTeam)
+        || !isSourceBattleInventory(value.battleItems)) {
         return invalid("openSourceBattle mal forme");
       }
       try {

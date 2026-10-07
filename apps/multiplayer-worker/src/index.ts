@@ -197,6 +197,7 @@ export class BattleRoom extends DurableObject<Env> {
       reconnectToken,
       snapshot: connection.snapshot,
       settlement: connection.settlement,
+      battleInventory: connection.battleInventory,
     });
     this.broadcast({ type: "snapshot", version: PROTOCOL_VERSION, snapshot: connection.snapshot });
     return new Response(null, { status: 101, webSocket: client });

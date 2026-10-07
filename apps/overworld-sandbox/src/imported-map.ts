@@ -544,6 +544,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.internalName !== "string" || typeof entry.name !== "string" || !Array.isArray(entry.types)
       || !entry.types.every((type) => typeof type === "string") || !isRecord(entry.baseStats) || !Array.isArray(entry.abilities)
       || typeof entry.growthRate !== "string" || !Number.isInteger(entry.baseExperience) || (entry.baseExperience as number) < 1
+      || !Number.isInteger(entry.captureRate) || (entry.captureRate as number) < 1 || (entry.captureRate as number) > 255
       || typeof entry.genderRate !== "string" || !Number.isInteger(entry.happiness)
       || (entry.happiness as number) < 0 || (entry.happiness as number) > 255
       || typeof entry.kind !== "string" || typeof entry.pokedexEntry !== "string" || !isRecord(entry.effortPoints)
@@ -573,7 +574,8 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
       baseStats: { hp: stat("hp"), attack: stat("attack"), defense: stat("defense"), speed: stat("speed"),
         specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
       abilities: entry.abilities as string[], levelUpMoves, growthRate: entry.growthRate,
-      baseExperience: entry.baseExperience as number, genderRate: entry.genderRate, happiness: entry.happiness as number,
+      baseExperience: entry.baseExperience as number, captureRate: entry.captureRate as number,
+      genderRate: entry.genderRate, happiness: entry.happiness as number,
       kind: pokemonKinds.get(entry.id as number) ?? entry.kind, pokedexEntry: entry.pokedexEntry,
       effortPoints: { hp: effort("hp"), attack: effort("attack"), defense: effort("defense"), speed: effort("speed"),
         specialAttack: effort("specialAttack"), specialDefense: effort("specialDefense") },

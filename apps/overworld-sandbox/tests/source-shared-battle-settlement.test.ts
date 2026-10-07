@@ -37,9 +37,10 @@ describe("shared source battle settlement", () => {
           recipientMemberIds: [pokemon.id] }] },
       experience: { trainerBattle: false, levelCap: 17, experienceDisabled: false,
         boostTenPercent: false, boostTwentyPercent: false },
-      money: { kind: "fixed", amount: 500 }, items: [{ itemId: "POTION", quantity: 2 }], healParty: false };
+      money: { kind: "fixed", amount: 500 }, items: [{ itemId: "POTION", quantity: 2 }],
+      consumedItems: [{ itemId: "POTION", quantity: 1 }], healParty: false };
     const initial = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
-      members: [pokemon] } };
+      members: [pokemon] }, inventory: { POTION: 1 } };
     const applied = applySourceBattleSettlement(initial, settlement, "host", catalog);
     expect(applied).toMatchObject({ applied: true, moneyDelta: 500,
       state: { money: 3500, inventory: { POTION: 2 }, appliedBattleSettlementIds: ["battle-1-host"],

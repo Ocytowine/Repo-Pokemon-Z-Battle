@@ -37,5 +37,6 @@ export interface SourceBattleSettlement {
   readonly experience: SourceBattleSettlementExperiencePolicy;
   readonly money: SourceBattleMoneySettlement;
   readonly items: readonly SourceBattleItemSettlement[];
+  readonly consumedItems?: readonly SourceBattleItemSettlement[];
   readonly healParty: boolean;
 }

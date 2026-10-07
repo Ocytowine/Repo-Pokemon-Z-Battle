@@ -1,6 +1,6 @@
 # Backlog produit et technique
 
-Derniere mise a jour : 2026-10-05.
+Derniere mise a jour : 2026-10-07.
 
 Ce document transforme `docs/note importantes.md` en lots exploitables par une IA
 de code. La note d'origine reste la source des constats du porteur ; ce backlog
@@ -206,7 +206,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### STAB-BATTLE-1 — Sequenceur visuel de combat
 
-- Priorite/statut : `P0` / `En validation`.
+- Priorite/statut : `P0` / `Socle implemente, validation partielle suspendue par dependances`.
 - Constat : transitions grise/noire, textes trop rapides, PV non visibles avant le
   KO, disparition acceleree et musique declenchee au mauvais moment.
 - Autorite : moteur de combat pour le resultat ; sequenceur de presentation local
@@ -266,6 +266,11 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   victoire, une defaite, une fuite, un KO avec reserve et les deux parcours de
   ralliement Coop, puis sauvage 2 contre 1, Dresseur 2 contre 2, ralliement au camp
   adverse, ciblage, remplacements multiples et reconnexion en combat double.
+- Dependances de recette explicites : capture et acquisition naturelle pour les
+  equipes/remplacements multiples ; fonctions de capacites et talents du parcours
+  pour Jean/Sapereau ; acces aux combats doubles source pour leurs variantes
+  hote/invite. Ces dependances autorisent le demarrage de `SOLO-ITEMS-1` et
+  `SOLO-CAPTURE-1` sans declarer ce lot termine.
 
 ### STAB-AUDIO-1 — Musique des lieux
 
@@ -337,15 +342,29 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-ITEMS-1 — Utilisation des objets
 
-- Priorite/statut : `P0` / `Pret` apres audit cible des poches deja importees.
+- Priorite/statut : `P0` / `En cours`.
 - Couvre : soins hors combat, soins en combat, Balls, objets de combat, objets
   tenus, pierres, CT/CS et consommation atomique.
 - Noyau commun obligatoire : validation de cible, effet, consommation et resultat.
 - Dependances aval : capture, evolution, Mega-Evolution, Sac avance et Coop loot.
+- Increment personnel hors combat implemente le 2026-10-07 : registre explicite
+  des soins de PV, soins de statut, Restauration Totale et Rappels verifies dans
+  les handlers Ruby. Le meme noyau atomique est utilise par le joueur solo, l'hote
+  et l'invite sur leur inventaire et leur equipe personnels ; aucun etat n'est
+  replique a la room. Un objet sans effet n'est pas consomme et une cible absente
+  de l'equipe du proprietaire est refusee. Les Rappels respectent le mode Nuzlocke.
+- Increment combat implemente le 2026-10-07 : l'action `item` fonctionne en simple
+  et double dans le noyau commun. La room v13 recoit une projection bornee des
+  soins supportes, valide stock et cible possedee, limite le Dresseur a un objet
+  par tour et restaure son reliquat apres reconnexion. La consommation est rendue
+  au seul proprietaire par `consumedItems` dans le reglement idempotent.
+- Prochain increment : `SOLO-CAPTURE-1`, avec Balls et capture autoritaires. Soins
+  de PP, objets de statistiques, objets tenus, pierres et CT/CS restent a porter
+  avant de fermer toute la famille.
 
 ### SOLO-CAPTURE-1 — Capture complete
 
-- Priorite/statut : `P0` / bloque par SOLO-ITEMS-1.
+- Priorite/statut : `P0` / pret a demarrer sur le contrat d'objets v13.
 - Couvre : eligibilite, choix/consommation de Ball, formule, animation, surnom,
   equipe ou Ranch, shiny, forme, genre, origine et echec.
 - Autorite : adaptateur local en solo, room pour un combat partage.

@@ -302,6 +302,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "teamActionOrdered": return `Ordre d'équipe : ${event.order.map((entry) => `${entry.side} (${entry.kind})`).join(" → ")}`;
     case "pokemonSwitched": return `${event.side} remplace ${event.from} par ${event.to}`;
     case "replacementRequired": return `${event.side} doit choisir un remplaçant`;
+    case "trainerItemUsed": return `${event.side} utilise ${event.itemId} sur ${event.target}`;
   }
 }
 
@@ -614,11 +615,13 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
       battle: { ...snapshot.battle, id: message.battleId, state: message.state },
     };
     session.submittedTurn = null;
-    networkResults.push({ state: displayBattleState(message.state), events: message.events, trace: [] });
+    const events = message.events.flatMap((event): readonly TeamBattleEvent[] =>
+      event.type === "positionedActionResolved" ? event.events : [event]);
+    networkResults.push({ state: displayBattleState(message.state), events, trace: [] });
     resolving = true;
     render(previousState);
     try {
-      await playEvents(message.events);
+      await playEvents(events);
     } finally {
       resolving = false;
       render();

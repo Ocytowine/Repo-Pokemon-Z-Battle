@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-06.
+Derniere mise a jour : 2026-10-07.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -1271,6 +1271,24 @@ conserve maintenant la cause concrete fournie par `SourceBattleController` au li
 de la remplacer par un message generique. Tests ajoutes : verrouillage jusqu'a la
 sortie du champ de vision et resolution localisee bornee par classe/version.
 
+Correctif des talents source du 2026-10-07 : la creation d'un combattant ne
+confond plus identite extraite et effet deja implemente. Tout identifiant source
+borne (`[A-Z][A-Z0-9_]{0,63}`) est conserve dans `BattlerState` et accepte par la
+validation Coop ; seuls les talents explicitement codes dans le moteur produisent
+un effet ou un evenement `abilityActivated`. Un talent connu des donnees mais pas
+encore simule est donc inerte, sans empecher le combat. Cela debloque notamment le
+Sapereau de Jean dont `CHEEKPOUCH` faisait echouer le combat apres son dialogue.
+
+L'autorite du talent reste celle de l'etat de combat : en solo et dans la room, le
+meme noyau lit la meme identite ; le serveur replique cette valeur publique avec le
+combattant et aucune intention cliente supplementaire n'est necessaire. La valeur
+personnelle reste persistee dans le Pokemon, tandis que le Pokemon de Dresseur est
+recree depuis le catalogue source a chaque rencontre. Dette volontaire : les
+effets des talents ainsi admis mais encore inertes doivent etre portes un par un et
+couverts dans le moteur de combat. Tests ajoutes : conversion personnelle avec
+talent source inerte, validation reseau bornee et combat de Dresseur Sapereau avec
+`CHEEKPOUCH` jusqu'a la resolution d'un tour.
+
 La phrase de defaite `_I("...")` de `pbTrainerBattle` est conservee dans
 `request-trainer-battle`, localisee avec le catalogue de la carte puis transmise
 comme `presentation.defeatText` dans le contexte public borne. Elle ne contient ni
@@ -1651,6 +1669,56 @@ le contexte doit viser la carte d'arrivee et le combat doit etre actif. Le clien
 quitte immediatement son mode excursion, demande `setSourcePresence(true)` et rend
 donc l'avatar de l'hote ; la room valide ensuite la case de rattachement. Les
 combats d'une autre carte, termines ou non source ne desserrent pas cette garde.
+
+Premier increment `SOLO-ITEMS-1` du 2026-10-07 : le paquet `player-state` porte
+desormais le noyau pur et commun d'utilisation d'un objet personnel sur un Pokemon.
+Le registre explicite reproduit les valeurs de soin de
+`116-98118426-pitem-itemeffects.rb` pour les potions, boissons, baies de soin,
+antidotes et autres soins de statut, Restauration Totale et Rappels. La difference
+source de `SWEETHEART` (150 PV hors combat, 20 en combat) reste contextuelle et
+testee. Un effet invalide ne consomme rien ; un effet valide retire exactement une
+unite et remplace immuablement uniquement le membre cible de l'equipe fournie. Les
+Rappels respectent le switch Nuzlocke 320.
+
+Le Sac permet maintenant de choisir un objet porte, puis un Pokemon de sa propre
+equipe. Cet usage hors combat appartient entierement au `PLAYER_STATE` : en solo,
+chez l'hote et chez l'invite, l'adaptateur passe seulement l'inventaire et l'equipe
+de ce joueur, persiste le resultat localement et n'envoie aucune intention a la
+room narrative. Une identite de Pokemon absente de cette equipe est refusee ; il
+n'existe donc aucun chemin permettant de soigner ou de consommer depuis le
+proprietaire voisin.
+
+Deuxieme increment `SOLO-ITEMS-1` du 2026-10-07 : les memes effets de soin sont
+maintenant des actions de tour en combat simple et double. Le choix porte sur un
+objet supporte, puis sur un Pokemon du proprietaire, actif ou en reserve. Le noyau
+pur des effets vit dans `battle-engine` et est reutilise par `player-state`, le
+controleur solo et la room. L'option Heroique issue du switch 666 interdit ces
+soins avant toute consommation. Un objet invalide ou sans effet ne passe pas a
+l'etape tactique.
+
+Le protocole v13 transmet a l'ouverture ou a la jonction une projection bornee des
+seuls soins supportes. La room conserve un compteur par `ownerId`, refuse de cibler
+le Pokemon de l'autre Dresseur et limite chaque Dresseur a un objet par tour. Le
+reliquat personnel est renvoye seulement a ce joueur et restaure avec la room lors
+d'une reconnexion. La sauvegarde locale n'est debitee qu'au reglement personnel :
+`consumedItems` est applique dans la meme transaction idempotente que PV, EXP et
+argent. Les autres participants voient l'evenement tactique necessaire a la
+presentation, jamais le contenu complet du Sac.
+
+`SOLO-ITEMS-1` reste en cours pour les soins de PP, objets de statistiques, objets
+tenus, pierres et CT/CS. Le prochain lot fonctionnel prioritaire est
+`SOLO-CAPTURE-1` : Balls, formule et resultat de capture, ajout personnel a
+l'equipe ou au Ranch, en solo puis via la meme room autoritaire. Les sous-categories
+et tris avances du Sac restent planifies dans `UI-BAG-1` apres le noyau metier.
+
+Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
+mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements
+et remplacements multiples dependent d'une acquisition naturelle de plusieurs
+Pokemon ; Jean/Sapereau depend des capacites et talents de toute son equipe ; les
+combats doubles source et leurs variantes hote/invite dependent des scenes et
+regles atteignables. Le statut devient donc `validation partielle suspendue par
+dependances`, sans bloquer objets, capture et les lots verticaux de regles de
+combat. La recette complete reprendra apres ces dependances.
 
 ## Commandes utiles
 

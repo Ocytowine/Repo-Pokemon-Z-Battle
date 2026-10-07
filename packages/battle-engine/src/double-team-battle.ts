@@ -1,4 +1,6 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
+import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
+import { attemptPokemonCapture } from "./pokemon-capture.js";
 import type {
   BattleEvent, BattlePosition, BattleSide, BattleState, BattleTeam, BattlerState, DoubleBattleEvent,
   DoubleTurnResult, PositionedTeamBattleAction, RandomSource, TeamBattleAction, TeamBattleState,
@@ -182,7 +184,7 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
 
 /** Resolves every active slot in one global priority/speed order. Singles keep using resolveTeamTurn. */
 export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonly PositionedTeamBattleAction[],
-  rng: RandomSource): DoubleTurnResult {
+  rng: RandomSource, itemPolicy: PokemonItemUsePolicy = { context: "battle", revivalAllowed: true }): DoubleTurnResult {
   if (state.status !== "active" || state.format !== "double") throw new Error("Combat double actif attendu.");
   if ((state.slotReplacements?.length ?? 0) > 0) throw new Error("Les remplacements doubles doivent etre resolus avant le tour.");
   const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
@@ -192,8 +194,22 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     throw new Error("Chaque Pokemon actif doit choisir exactement une action.");
   }
   const switchEntries = submitted.filter((entry) => entry.action.kind === "switch");
+  const itemEntries = submitted.filter((entry) => entry.action.kind === "item");
+  const captureEntries = submitted.filter((entry) => entry.action.kind === "capture");
   const events: DoubleBattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
   for (const entry of switchEntries) events.push(switchAt(teams, entry.actor, (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex));
+  for (const entry of itemEntries) {
+    const action = entry.action as Extract<TeamBattleAction, { kind: "item" }>;
+    const team = teams[entry.actor.side];
+    const target = team.members[action.targetTeamIndex];
+    if (target === undefined) throw new Error("Cible d'objet double invalide.");
+    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy);
+    if (typeof applied === "string") throw new Error(`Objet ${action.itemId} inutilisable : ${applied}.`);
+    teams[entry.actor.side] = { ...team, members: team.members.map((member, index) =>
+      index === action.targetTeamIndex ? applied.pokemon : member) };
+    events.push({ type: "trainerItemUsed", side: entry.actor.side, itemId: action.itemId,
+      targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
+  }
   const moves = submitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } => entry.action.kind === "move")
     .map((entry) => { const battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
@@ -202,10 +218,36 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     .sort((left, right) => right.priority - left.priority || right.speed - left.speed || left.tie - right.tie);
   events.push({ type: "teamActionOrdered", order: [
     ...switchEntries.map((entry) => ({ side: entry.actor.side, kind: "switch" as const })),
+    ...itemEntries.map((entry) => ({ side: entry.actor.side, kind: "item" as const })),
+    ...captureEntries.map((entry) => ({ side: entry.actor.side, kind: "capture" as const })),
     ...submitted.filter((entry) => entry.action.kind === "wait").map((entry) => ({ side: entry.actor.side, kind: "wait" as const })),
     ...moves.map((entry) => ({ side: entry.actor.side, kind: "move" as const })),
   ] });
   const trace: DoubleTurnResult["trace"][number][] = [];
+  for (const entry of captureEntries) {
+    const action = entry.action as Extract<TeamBattleAction, { kind: "capture" }>;
+    const enemies = activeTeamIndices(teams[otherSide(entry.actor.side)]).map((_, slot) =>
+      ({ side: otherSide(entry.actor.side), slot })).filter((position) =>
+      (battlerAtPosition({ ...state, teams }, position)?.hp ?? 0) > 0);
+    const targetPosition = action.target !== undefined && enemies.some((candidate) => key(candidate) === key(action.target!))
+      ? action.target : enemies[0];
+    const target = targetPosition === undefined ? undefined : battlerAtPosition({ ...state, teams }, targetPosition);
+    const actor = battlerAtPosition({ ...state, teams }, entry.actor);
+    if (target === undefined || actor === undefined) throw new Error("Cible de capture double invalide.");
+    const actorLevels = activeTeamIndices(teams[entry.actor.side]).map((index) => teams[entry.actor.side].members[index]!.level);
+    const capture = attemptPokemonCapture(action.ballId, target, { turn: state.turn, actorLevels,
+      sameSpeciesOppositeGender: actor.species === target.species
+        && actor.appearance?.gender !== null && target.appearance?.gender !== null
+        && actor.appearance?.gender !== target.appearance?.gender }, rng);
+    const captureEvent = { type: "captureAttempted" as const, side: entry.actor.side,
+      ballId: action.ballId, target: target.id, ...capture };
+    events.push({ type: "positionedActionResolved", actor: entry.actor, targets: [targetPosition], events: [captureEvent] });
+    if (capture.success) {
+      events.push({ type: "battleEnded", winner: entry.actor.side }, { type: "turnEnded", turn: state.turn });
+      return { state: { ...state, turn: state.turn + 1, teams, winner: entry.actor.side,
+        status: "finished", replacementRequired: [], slotReplacements: [] }, events, trace };
+    }
+  }
   for (const entry of moves) {
     const liveState: TeamBattleState = { ...state, teams };
     if ((battlerAtPosition(liveState, entry.actor)?.hp ?? 0) <= 0) continue;

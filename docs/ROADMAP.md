@@ -949,6 +949,8 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] sauvegarder la carte et la position courantes ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
+- [ ] porter progressivement les effets des talents source encore inertes ; leur
+  identite valide est conservee et repliquee sans bloquer les combats.
 
 Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
 passable des cartes d'introduction avant trois choix issus des sources (difficulte,
@@ -1626,7 +1628,10 @@ Ordre convenu :
   services personnels invites valides dans deux navigateurs le 2026-10-06 ;
 - [x] `STAB-WORLD-2` : positions logiques, collisions, interpolation distante et
   reconnexion validees dans deux navigateurs le 2026-10-06 ;
-- [ ] `STAB-BATTLE-1` : sequenceur commun transitions, textes, PV, KO, EXP et
+- [ ] `STAB-BATTLE-1` : socle implemente ; validation partielle suspendue aux
+  dependances objets/capture, equipes naturelles, regles de combat du parcours et
+  acces aux variantes doubles source. Le sequenceur commun transitions, textes,
+  PV, KO, EXP et
   musiques implemente, avec ralliement Coop explicite aux combats sauvages ou de
   Dresseur et ouverture sauvage symetrique hote/invite sur la carte partagee ;
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
@@ -1659,6 +1664,28 @@ Carte/Boussole, Alchimie et Succes. DexNav, Nuzlocke/Monotype, Échange Miracle 
 Tour de Combat sont inventories dans `docs/PRODUCT_BACKLOG.md` sans devancer les
 P0. Chaque mecanique est concue une fois pour l'adaptateur local et la room
 autoritaire.
+
+Premier increment objets du 2026-10-07 : un registre pur dans `player-state`
+applique hors combat les soins de PV, soins de statut, Restauration Totale et
+Rappels controles contre les handlers de Z. La transaction valide possession,
+cible et effet avant de consommer exactement une unite. Elle ne recoit que l'equipe
+et l'inventaire du proprietaire : solo, hote et invite utilisent donc le meme noyau
+sans melanger leurs sauvegardes ni publier leur Sac dans la room. Le menu Sac rend
+les objets portes selectionnables et demande une cible de l'equipe personnelle ;
+les objets encore inertes restent visibles mais desactives.
+
+Deuxieme increment objets du 2026-10-07 : les soins personnels sont des actions de
+tour du moteur commun en simple et double. Le protocole v13 publie a la room une
+projection bornee par proprietaire ; la room valide stock, mode de difficulte et
+cible possedee, reserve la consommation et restitue le reliquat prive apres
+reconnexion. Le reglement personnel transporte `consumedItems`, applique une seule
+fois avec les autres resultats du combat. Le solo utilise le meme resolveur et
+debite directement sa sauvegarde apres resolution valide.
+
+Le prochain increment prioritaire est la capture complete : Balls, formule,
+animation, surnom et insertion personnelle dans l'equipe ou le Ranch, avec
+autorite locale en solo et room en Coop. PP, objets de statistiques, objets tenus,
+pierres et CT/CS restent ouverts dans `SOLO-ITEMS-1`.
 
 ### Phase 12 - Extensions Coop
 

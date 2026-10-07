@@ -9,6 +9,7 @@ export interface SourceBattleBagEntry {
   readonly name: string;
   readonly description: string;
   readonly quantity: number;
+  readonly usable?: boolean;
 }
 
 export interface SourceBattleOverlayModel {
@@ -37,13 +38,15 @@ export interface SourceBattleOverlayCallbacks {
   readonly onRenderVisuals: (state: TeamBattleState, local: boolean) => void;
   readonly onMove: (moveIndex: number, local: boolean, activeSlot: number, target?: BattlePosition) => void;
   readonly onSwitch: (teamIndex: number, local: boolean, activeSlot: number) => void;
+  readonly onItem: (itemId: string, targetTeamIndex: number, local: boolean, activeSlot: number) => void;
   readonly onReplacement: (teamIndex: number, activeSlot: number) => void;
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
   readonly onDetails: (pokemonId: string) => void;
 }
 
-type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items";
+type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items"
+  | "item-targets";
 
 export function sourceBattleSummary(state: TeamBattleState, observing: boolean): string {
   const playerTeam = state.teams.player;
@@ -65,6 +68,7 @@ export class SourceBattleOverlay {
   private renderedTurn: number | null = null;
   private activeSlot = 0;
   private pendingMoveIndex: number | null = null;
+  private pendingItemId: string | null = null;
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {}
 
@@ -82,6 +86,7 @@ export class SourceBattleOverlay {
       this.renderedTurn = model.state.turn;
       this.activeSlot = 0;
       this.pendingMoveIndex = null;
+      this.pendingItemId = null;
     }
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
     if (visualStage !== null) {
@@ -144,6 +149,7 @@ export class SourceBattleOverlay {
     else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
     else if (this.menu === "bag") this.renderBagCategories(actions, model, blocked);
+    else if (this.menu === "item-targets") this.renderItemTargets(actions, team, model, blocked);
     else if (this.menu === "balls" || this.menu === "medicine" || this.menu === "battle-items") {
       this.renderBagItems(actions, model, blocked, this.menu);
     } else this.renderRoot(actions, model, team, blocked);
@@ -260,12 +266,37 @@ export class SourceBattleOverlay {
     const entries = category === "balls" ? model.bag.balls
       : category === "medicine" ? model.bag.medicine : model.bag.battleItems;
     const title = category === "balls" ? "Poké Balls" : category === "medicine" ? "Soins" : "Objets combat";
-    const unavailable = !model.local ? "Les objets attendent leur raccord au combat Coop autoritaire."
-      : "L'effet de cet objet n'est pas encore porté dans le moteur de combat.";
+    const usable = category === "medicine";
+    const unavailable = category === "balls" ? "La capture sera raccordée dans le prochain lot."
+      : "L'effet de cet objet de combat n'est pas encore porté dans le moteur.";
     const list = entries.length === 0 ? '<p class="source-battle-empty">Aucun objet de cette catégorie.</p>'
-      : entries.map((entry) => `<button class="source-battle-item" disabled title="${escapeSourceHtml(unavailable)}"><img src="${sourceItemIconUrl(entry.id)}" alt=""><span><strong>${escapeSourceHtml(entry.name)}</strong><small>${escapeSourceHtml(entry.description)}</small></span><b>×${entry.quantity}</b></button>`).join("");
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-bag-items"><header><button data-battle-back="bag" aria-label="Retour">‹</button><div><small>SAC</small><strong>${title}</strong></div></header><div>${list}</div><footer>${blocked ? "Action en cours." : unavailable}</footer></div>`;
+      : entries.map((entry) => `<button class="source-battle-item" data-battle-item="${escapeSourceHtml(entry.internalName)}"${disabled(blocked || !usable || entry.usable === false)} title="${escapeSourceHtml(usable && entry.usable !== false ? entry.description : unavailable)}"><img src="${sourceItemIconUrl(entry.id)}" alt=""><span><strong>${escapeSourceHtml(entry.name)}</strong><small>${escapeSourceHtml(entry.description)}</small></span><b>×${entry.quantity}</b></button>`).join("");
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-bag-items"><header><button data-battle-back="bag" aria-label="Retour">‹</button><div><small>SAC</small><strong>${title}</strong></div></header><div>${list}</div><footer>${blocked ? "Action en cours." : usable ? "Choisissez un objet puis votre Pokémon." : unavailable}</footer></div>`;
     this.bindBack(actions, model, "bag");
+    if (usable) actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.pendingItemId = button.dataset.battleItem ?? null;
+        this.menu = "item-targets";
+        this.render(model);
+      }));
+  }
+
+  private renderItemTargets(actions: HTMLElement, team: BattleTeam, model: SourceBattleOverlayModel,
+    blocked: boolean): void {
+    if (this.pendingItemId === null) { this.menu = "medicine"; this.render(model); return; }
+    const rows = team.members.map((member, index) => {
+      const owned = model.controllableMemberIds === null || model.controllableMemberIds.includes(member.id);
+      return `<button data-item-target="${index}"${disabled(blocked || !owned)}><span>${escapeSourceHtml(member.name)}</span><small>${member.hp}/${member.stats.maxHp} PV${member.majorStatus === null ? "" : ` · ${escapeSourceHtml(member.majorStatus.kind)}`}</small></button>`;
+    }).join("");
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back="medicine" aria-label="Retour">‹</button><div><small>OBJET</small><strong>Sur quel Pokémon ?</strong></div></header><div class="source-battle-move-grid">${rows}</div></div>`;
+    this.bindBack(actions, model, "medicine");
+    actions.querySelectorAll<HTMLButtonElement>("[data-item-target]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const itemId = this.pendingItemId!;
+        this.pendingItemId = null;
+        this.menu = "root";
+        this.callbacks.onItem(itemId, Number(button.dataset.itemTarget), model.local, this.activeSlot);
+      }));
   }
 
   private bindBack(actions: HTMLElement, model: SourceBattleOverlayModel, destination: BattleMenu = "root"): void {

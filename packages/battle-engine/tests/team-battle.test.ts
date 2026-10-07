@@ -138,6 +138,26 @@ describe("team battles", () => {
     expect(result.trace).toEqual([]);
   });
 
+  it("uses a trainer medicine as a turn action on the selected team member", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("lead", "player"), pokemon("reserve", "player", { hp: 25 })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "POTION", targetTeamIndex: 1 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]));
+
+    expect(result.state.teams.player.members[1]?.hp).toBe(45);
+    expect(result.events).toContainEqual({ type: "trainerItemUsed", side: "player", itemId: "POTION",
+      targetIndex: 1, target: "reserve", hpRestored: 20, statusCured: null, revived: false });
+    expect(result.events[1]).toEqual({ type: "teamActionOrdered", order: [
+      { side: "player", kind: "item" }, { side: "opponent", kind: "wait" },
+    ] });
+    expect(() => resolveTeamTurn(state, { player: { kind: "item", itemId: "POTION", targetTeamIndex: 0 },
+      opponent: { kind: "wait" } }, new ScriptedRandom([]))).toThrow("no-effect");
+  });
+
   it("runs residual status hooks after switch-only turns and requests a replacement", () => {
     const state = createTeamBattleState({
       player: [pokemon("p1", "player"), pokemon("p2", "player")],

@@ -9,7 +9,7 @@ import type { SourceSceneSnapshot } from "./source-scene.js";
 import type { SourceBattleContext } from "./source-battle.js";
 import type { SourceBattleSettlement } from "./source-battle-settlement.js";
 
-export const PROTOCOL_VERSION = 12 as const;
+export const PROTOCOL_VERSION = 13 as const;
 export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
@@ -29,6 +29,9 @@ export interface PlayerDuelChallenge {
   readonly challenger: BattleSide;
   readonly challenged: BattleSide;
 }
+
+/** Bounded projection of battle-usable personal items. Never grants ownership by itself. */
+export type SourceBattleInventory = Readonly<Record<string, number>>;
 
 export interface RoomSnapshot {
   readonly revision: number;
@@ -83,7 +86,8 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "respondPlayerChallenge"; readonly accept: boolean;
       readonly team: BattleTeam | null })
   | (RequestedMessage & { readonly type: "proposeBattleJoin"; readonly battleId: string;
-      readonly side: BattleSide; readonly team: BattleTeam; readonly finalMemberIds: readonly string[] })
+      readonly side: BattleSide; readonly team: BattleTeam; readonly finalMemberIds: readonly string[];
+      readonly battleItems?: SourceBattleInventory })
   | (RequestedMessage & { readonly type: "respondBattleJoin"; readonly battleId: string; readonly accept: boolean })
   | (RequestedMessage & { readonly type: "observeBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "closeBattleJoinWindow"; readonly battleId: string })
@@ -100,7 +104,8 @@ export type ClientMessage =
       readonly appearance?: SourceFollowerSnapshot["appearance"] })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (RequestedMessage & { readonly type: "openSourceBattle"; readonly context: SourceBattleContext;
-      readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam })
+      readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam;
+      readonly battleItems?: SourceBattleInventory })
   | (RequestedMessage & { readonly type: "ackBattleSettlement"; readonly settlementId: string })
   | (RequestedMessage & { readonly type: "closeSourceBattle"; readonly battleId: string })
   | (VersionedMessage & { readonly type: "ping"; readonly nonce: string });
@@ -128,6 +133,7 @@ export type ServerMessage =
       readonly reconnectToken: string;
       readonly snapshot: RoomSnapshot;
       readonly settlement: SourceBattleSettlement | null;
+      readonly battleInventory: SourceBattleInventory | null;
     })
   | (VersionedMessage & { readonly type: "snapshot"; readonly snapshot: RoomSnapshot })
   | (VersionedMessage & { readonly type: "ack"; readonly requestId: string; readonly revision: number })
@@ -146,6 +152,8 @@ export type ServerMessage =
     })
   | (VersionedMessage & { readonly type: "battleEscaped"; readonly battleId: string; readonly turn: number })
   | (VersionedMessage & { readonly type: "battleSettlement"; readonly settlement: SourceBattleSettlement })
+  | (VersionedMessage & { readonly type: "battleInventoryUpdated"; readonly battleId: string;
+      readonly inventory: SourceBattleInventory })
   | (VersionedMessage & {
       readonly type: "worldUpdated";
       readonly side: BattleSide;
