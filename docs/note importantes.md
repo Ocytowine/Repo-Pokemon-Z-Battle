@@ -47,5 +47,12 @@ Améliorations :
     Les sprites du fangames sont un peu trops grosses, il faudrait les redimensionner pour qu'ils s'intègrent mieux à l'interface et à l'écran de jeu.
 
 
+Le solo :
 
+	corepack pnpm sandbox:overworld
+
+Le multi : 
+
+	en 1er : corepack pnpm multiplayer:dev
+	puis : corepack pnpm sandbox:overworld
 
