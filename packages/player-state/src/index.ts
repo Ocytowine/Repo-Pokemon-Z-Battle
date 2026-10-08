@@ -13,12 +13,12 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
-export { isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField, pokemonItemTargetMode,
+export { isPokemonEvolutionItem, isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField, pokemonItemTargetMode,
   discardInventoryItem, isPokemonPartyItemUsableInField, usePokemonItem, usePokemonPartyItem,
   type DiscardInventoryItemResult, type PokemonPartyItemUseResult,
   type PlayerInventory, type PokemonItemUseContext,
   type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
-  type PokemonItemUseResult } from "./item-use.js";
+  POKEMON_Z_EVOLUTION_ITEMS, type PokemonItemUseResult } from "./item-use.js";
 export { equipPokemonHeldItem, removePokemonHeldItem, type HeldItemChangeFailure,
   changePokemonCollectionHeldItem, type HeldItemChangeResult,
   type PokemonCollectionHeldItemChangeResult } from "./held-item.js";
@@ -95,6 +95,10 @@ export interface PersistentMoveSlot {
   readonly internalName: string;
   readonly pp: number;
   readonly maxPp: number;
+  /** Source PP Up counter. Missing on saves created before PP Up support and therefore equivalent to zero. */
+  readonly ppUps?: number;
+  /** Unmodified move PP, retained once a PP Up is used so later increases remain exact. */
+  readonly basePp?: number;
 }
 
 export interface PersistentPokemon {
@@ -109,6 +113,10 @@ export interface PersistentPokemon {
   readonly ability: string | null;
   readonly heldItem: string | null;
   readonly moves: readonly PersistentMoveSlot[];
+  /** Level-up moves awaiting an explicit keep/replace choice. */
+  readonly pendingMoves?: readonly string[];
+  /** Evolution offered by a completed progression trigger and awaiting the owner's decision. */
+  readonly pendingEvolution?: PokemonEvolutionCandidate;
   readonly metadata: PersistentPokemonMetadata;
 }
 
@@ -153,7 +161,8 @@ export interface PlayerBattleCatalog {
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
-    & { readonly id?: number; readonly captureRate?: number; readonly weight?: number })[];
+    & { readonly id?: number; readonly captureRate?: number; readonly weight?: number;
+      readonly evolutions?: PokemonDefinition["evolutions"] })[];
 }
 
 /** Runtime catalog required by the detailed Pokemon summary; battle-only callers may keep the smaller contracts above. */
@@ -370,11 +379,30 @@ function parsePokemon(value: unknown): PersistentPokemon {
   if (value.hp > stats.maxHp || value.moves.length < 1 || value.moves.length > 4) throw new Error("PV ou capacités sauvegardés invalides.");
   const moves = value.moves.map((slot) => {
     if (!isRecord(slot) || typeof slot.internalName !== "string" || slot.internalName === ""
-      || !integer(slot.pp, 0) || !integer(slot.maxPp, 1) || slot.pp > slot.maxPp) throw new Error("Capacité sauvegardée invalide.");
-    return { internalName: slot.internalName, pp: slot.pp, maxPp: slot.maxPp };
+      || !integer(slot.pp, 0) || !integer(slot.maxPp, 1) || slot.pp > slot.maxPp
+      || slot.ppUps !== undefined && !integer(slot.ppUps, 0, 3)
+      || slot.basePp !== undefined && !integer(slot.basePp, 1)) throw new Error("Capacité sauvegardée invalide.");
+    return { internalName: slot.internalName, pp: slot.pp, maxPp: slot.maxPp,
+      ...(slot.ppUps === undefined ? {} : { ppUps: slot.ppUps }),
+      ...(slot.basePp === undefined ? {} : { basePp: slot.basePp }) };
   });
+  const pendingMoves = value.pendingMoves === undefined ? undefined : value.pendingMoves;
+  if (pendingMoves !== undefined && (!Array.isArray(pendingMoves) || pendingMoves.length > 32
+    || !pendingMoves.every((move) => typeof move === "string" && move.length > 0))) {
+    throw new Error("Capacités en attente invalides.");
+  }
+  const pendingEvolution = value.pendingEvolution;
+  if (pendingEvolution !== undefined && (!isRecord(pendingEvolution)
+    || typeof pendingEvolution.species !== "string" || typeof pendingEvolution.method !== "string"
+    || pendingEvolution.parameter !== null && typeof pendingEvolution.parameter !== "string")) {
+    throw new Error("Évolution en attente invalide.");
+  }
   return { id: value.id, species: value.species, nickname: value.nickname, level: value.level, experience: value.experience,
     stats, hp: value.hp, majorStatus: parseStatus(value.majorStatus), ability: value.ability, heldItem: value.heldItem, moves,
+    ...(pendingMoves === undefined ? {} : { pendingMoves: [...new Set(pendingMoves as string[])] }),
+    ...(pendingEvolution === undefined ? {} : { pendingEvolution: {
+      species: pendingEvolution.species as string, method: pendingEvolution.method as string,
+      parameter: pendingEvolution.parameter as string | null } }),
     metadata: parsePokemonMetadata(value.metadata, value.id, value.species, value.level) };
 }
 
@@ -675,8 +703,275 @@ export function grantPokemonExperience(pokemon: PersistentPokemon, amount: numbe
   }
   const stats = calculatePokemonStats(definition, nextLevel, pokemon.metadata);
   const hp = hpWithPreservedDamage(pokemon, stats.maxHp, false);
-  return { pokemon: { ...pokemon, level: nextLevel, experience: nextExperience, stats, hp, moves },
+  const pendingMoves = [...new Set([...(pokemon.pendingMoves ?? []), ...skippedMoves])];
+  return { pokemon: { ...pokemon, level: nextLevel, experience: nextExperience, stats, hp, moves,
+      ...(pendingMoves.length === 0 ? {} : { pendingMoves }) },
     gained: nextExperience - currentExperience, levelsGained: nextLevel - pokemon.level, learnedMoves, skippedMoves };
+}
+
+export const POKEMON_Z_LEVEL_CAPS = [17, 27, 36, 42, 50, 56, 70, 75, 80, 85, 94, 100] as const;
+export const POKEMON_Z_GYM_SWITCHES = [88, 97, 150, 211, 326, 502, 503, 504, 505, 506, 744] as const;
+
+export function pokemonZLevelCap(switches: Readonly<Record<string, boolean>>): number {
+  let unlocked = 0;
+  for (let index = 0; index < POKEMON_Z_GYM_SWITCHES.length; index += 1) {
+    if (switches[String(POKEMON_Z_GYM_SWITCHES[index])] === true) unlocked = index + 1;
+  }
+  return POKEMON_Z_LEVEL_CAPS[unlocked]!;
+}
+
+export interface PokemonEvolutionCandidate {
+  readonly species: string;
+  readonly method: string;
+  readonly parameter: string | null;
+}
+
+export interface PokemonEvolutionContext {
+  readonly trigger: "level" | "item";
+  readonly item?: string;
+  readonly hour?: number;
+  readonly party?: PlayerPartyState;
+}
+
+function evolutionTime(context: PokemonEvolutionContext): "day" | "night" | null {
+  if (!Number.isInteger(context.hour) || context.hour! < 0 || context.hour! > 23) return null;
+  return context.hour! >= 6 && context.hour! < 20 ? "day" : "night";
+}
+
+/** Evaluates every evolution method currently used by Pokemon Z without mutating personal state. */
+export function pokemonEvolutionCandidates(pokemon: PersistentPokemon, catalog: PlayerCreationCatalog,
+  context: PokemonEvolutionContext): readonly PokemonEvolutionCandidate[] {
+  if (pokemon.metadata.eggSteps > 0 || pokemon.heldItem === "EVERSTONE"
+    || pokemon.species === "PICHU" && pokemon.metadata.form === 1) return [];
+  const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+  const time = evolutionTime(context);
+  return (definition?.evolutions ?? []).filter((evolution) => {
+    if (evolution.method === "Shedinja") return false;
+    if (context.trigger === "item") {
+      if (evolution.parameter !== context.item) return false;
+      if (evolution.method === "Item") return true;
+      return evolution.method === "ItemFemale" && pokemon.metadata.gender === "female";
+    }
+    const level = Number(evolution.parameter);
+    if (["Level", "Ninjask"].includes(evolution.method)) return Number.isFinite(level) && pokemon.level >= level;
+    if (evolution.method === "LevelMale") return pokemon.metadata.gender === "male" && pokemon.level >= level;
+    if (evolution.method === "LevelFemale") return pokemon.metadata.gender === "female" && pokemon.level >= level;
+    if (evolution.method === "AttackGreater") return pokemon.level >= level && pokemon.stats.attack > pokemon.stats.defense;
+    if (evolution.method === "AtkDefEqual") return pokemon.level >= level && pokemon.stats.attack === pokemon.stats.defense;
+    if (evolution.method === "DefenseGreater") return pokemon.level >= level && pokemon.stats.attack < pokemon.stats.defense;
+    if (evolution.method === "Silcoon" || evolution.method === "Cascoon") {
+      const lower = ((pokemon.metadata.personalId >>> 16) & 0xffff) % 10;
+      return pokemon.level >= level && (evolution.method === "Silcoon" ? lower < 5 : lower >= 5);
+    }
+    if (evolution.method === "Happiness") return (pokemon.metadata.happiness ?? 0) >= 220;
+    if (evolution.method === "HappinessDay") return (pokemon.metadata.happiness ?? 0) >= 220 && time === "day";
+    if (evolution.method === "HappinessNight") return (pokemon.metadata.happiness ?? 0) >= 220 && time === "night";
+    if (evolution.method === "DayHoldItem") return pokemon.heldItem === evolution.parameter && time === "day";
+    if (evolution.method === "NightHoldItem") return pokemon.heldItem === evolution.parameter && time === "night";
+    if (evolution.method === "HasMove") return evolution.parameter !== null
+      && pokemon.moves.some((move) => move.internalName === evolution.parameter);
+    if (evolution.method === "HasInParty") return evolution.parameter !== null
+      && (context.party?.members ?? []).some((member) => member.metadata.eggSteps === 0
+        && member.species === evolution.parameter);
+    return false;
+  }).map((evolution) => ({ ...evolution }));
+}
+
+/** Pure level-up evolution eligibility shared by Rare Candy, battle EXP and the future evolution scene. */
+export function pokemonLevelEvolutionCandidates(pokemon: PersistentPokemon,
+  catalog: PlayerCreationCatalog, context: Omit<PokemonEvolutionContext, "trigger"> = {}): readonly PokemonEvolutionCandidate[] {
+  return pokemonEvolutionCandidates(pokemon, catalog, { ...context, trigger: "level" });
+}
+
+export type PokemonEvolutionResult =
+  | { readonly ok: true; readonly party: PlayerPartyState; readonly pokemon: PersistentPokemon;
+      readonly previousSpecies: string; readonly learnedMoves: readonly string[];
+      readonly pendingMoves: readonly string[]; readonly consumedHeldItem: string | null }
+  | { readonly ok: false; readonly party: PlayerPartyState;
+      readonly reason: "target-not-found" | "evolution-not-pending" | "invalid-evolution" };
+
+function evolvedPokemon(pokemon: PersistentPokemon, evolution: PokemonEvolutionCandidate,
+  catalog: PlayerCreationCatalog): Omit<Extract<PokemonEvolutionResult, { readonly ok: true }>, "ok" | "party"> {
+  const previous = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+  const target = catalog.pokemon.find((candidate) => candidate.internalName === evolution.species);
+  if (previous === undefined || target === undefined
+    || !(previous.evolutions ?? []).some((candidate) => candidate.species === evolution.species
+      && candidate.method === evolution.method && candidate.parameter === evolution.parameter)) {
+    throw new Error("Évolution absente du catalogue.");
+  }
+  const abilitySlot = Math.max(0, previous.abilities.indexOf(pokemon.ability ?? ""));
+  const ability = target.abilities[abilitySlot] ?? target.abilities[0] ?? null;
+  let moves = pokemon.moves.map((slot) => ({ ...slot }));
+  const learnedMoves: string[] = [];
+  const skippedMoves: string[] = [];
+  for (const entry of target.levelUpMoves.filter((move) => move.level === pokemon.level)) {
+    if (moves.some((slot) => slot.internalName === entry.move)) continue;
+    const move = catalog.moves.find((candidate) => candidate.internalName === entry.move);
+    if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);
+    if (moves.length >= 4) { skippedMoves.push(entry.move); continue; }
+    moves = [...moves, { internalName: move.internalName, pp: move.pp, maxPp: move.pp }];
+    learnedMoves.push(entry.move);
+  }
+  const consumedHeldItem = ["DayHoldItem", "NightHoldItem"].includes(evolution.method)
+    ? pokemon.heldItem : null;
+  const metadata = { ...pokemon.metadata, form: 0 };
+  const stats = calculatePokemonStats(target, pokemon.level, metadata);
+  const pendingMoves = [...new Set([...(pokemon.pendingMoves ?? []), ...skippedMoves])];
+  const { pendingEvolution: _pendingEvolution, pendingMoves: _pendingMoves, ...basePokemon } = pokemon;
+  const nextPokemon: PersistentPokemon = { ...basePokemon, species: evolution.species, ability,
+    heldItem: consumedHeldItem === null ? pokemon.heldItem : null, stats,
+    hp: hpWithPreservedDamage(pokemon, stats.maxHp, false), moves, metadata,
+    ...(pendingMoves.length === 0 ? {} : { pendingMoves }) };
+  return { pokemon: nextPokemon, previousSpecies: pokemon.species, learnedMoves,
+    pendingMoves, consumedHeldItem };
+}
+
+/** Confirms or cancels a persisted evolution offer on the owner's party. */
+export function resolvePendingPokemonEvolution(party: PlayerPartyState, pokemonId: string, accept: boolean,
+  catalog: PlayerCreationCatalog): PokemonEvolutionResult {
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, party, reason: "target-not-found" };
+  const pokemon = party.members[index]!;
+  if (pokemon.pendingEvolution === undefined) return { ok: false, party, reason: "evolution-not-pending" };
+  if (!accept) {
+    const { pendingEvolution: _pendingEvolution, ...nextPokemon } = pokemon;
+    const members = party.members.map((candidate, memberIndex) => memberIndex === index ? nextPokemon : candidate);
+    return { ok: true, party: { ...party, members }, pokemon: nextPokemon, previousSpecies: pokemon.species,
+      learnedMoves: [], pendingMoves: pokemon.pendingMoves ?? [], consumedHeldItem: null };
+  }
+  try {
+    const evolved = evolvedPokemon(pokemon, pokemon.pendingEvolution, catalog);
+    const members = party.members.map((candidate, memberIndex) => memberIndex === index ? evolved.pokemon : candidate);
+    return { ok: true, party: { ...party, members }, ...evolved };
+  } catch {
+    return { ok: false, party, reason: "invalid-evolution" };
+  }
+}
+
+export type EvolutionItemUseResult =
+  | (Extract<PokemonEvolutionResult, { readonly ok: true }> & {
+      readonly inventory: Readonly<Record<string, number>>; readonly individualValuesRaised: number })
+  | { readonly ok: false; readonly inventory: Readonly<Record<string, number>>; readonly party: PlayerPartyState;
+      readonly reason: "item-not-owned" | "target-not-found" | "no-effect" | "invalid-evolution" };
+
+/** Non-cancellable evolution-item transaction, matching Pokemon Z's stone handlers. */
+export function usePokemonEvolutionItem(inventory: Readonly<Record<string, number>>, party: PlayerPartyState,
+  pokemonId: string, item: string, catalog: PlayerCreationCatalog): EvolutionItemUseResult {
+  const quantity = inventory[item] ?? 0;
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return { ok: false, inventory, party, reason: "item-not-owned" };
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, inventory, party, reason: "target-not-found" };
+  const pokemon = party.members[index]!;
+  const evolution = pokemonEvolutionCandidates(pokemon, catalog, { trigger: "item", item, party })[0];
+  if (evolution === undefined) return { ok: false, inventory, party, reason: "no-effect" };
+  const imbued = item.endsWith("IMBUIDA");
+  const ivs = { ...pokemon.metadata.ivs };
+  let individualValuesRaised = 0;
+  if (imbued) for (const stat of ["hp", "attack", "defense", "speed", "specialAttack", "specialDefense"] as const) {
+    const raised = Math.min(7, 31 - ivs[stat]);
+    ivs[stat] += raised;
+    individualValuesRaised += raised;
+  }
+  try {
+    const evolved = evolvedPokemon(imbued ? { ...pokemon, metadata: { ...pokemon.metadata, ivs } } : pokemon,
+      evolution, catalog);
+    const members = party.members.map((candidate, memberIndex) => memberIndex === index ? evolved.pokemon : candidate);
+    const nextInventory = { ...inventory };
+    if (quantity === 1) delete nextInventory[item]; else nextInventory[item] = quantity - 1;
+    return { ok: true, inventory: nextInventory, party: { ...party, members }, ...evolved,
+      individualValuesRaised };
+  } catch {
+    return { ok: false, inventory, party, reason: "invalid-evolution" };
+  }
+}
+
+export type RareCandyUseResult =
+  | { readonly ok: true; readonly inventory: Readonly<Record<string, number>>; readonly party: PlayerPartyState;
+      readonly pokemon: PersistentPokemon; readonly consumed: number; readonly levelsGained: number;
+      readonly learnedMoves: readonly string[]; readonly pendingMoves: readonly string[];
+      readonly evolutionCandidates: readonly PokemonEvolutionCandidate[]; readonly happinessChanged: number }
+  | { readonly ok: false; readonly inventory: Readonly<Record<string, number>>; readonly party: PlayerPartyState;
+      readonly reason: "item-not-owned" | "target-not-found" | "invalid-quantity" | "no-effect" };
+
+/** Atomic personal Rare Candy transaction. The caller supplies the host-story-derived level cap. */
+export function useRareCandy(inventory: Readonly<Record<string, number>>, party: PlayerPartyState,
+  pokemonId: string, requestedQuantity: number, levelCap: number,
+  catalog: PlayerCreationCatalog, context: Omit<PokemonEvolutionContext, "trigger"> = {}): RareCandyUseResult {
+  const owned = inventory.RARECANDY ?? 0;
+  if (!Number.isSafeInteger(owned) || owned < 1) return { ok: false, inventory, party, reason: "item-not-owned" };
+  if (!Number.isSafeInteger(requestedQuantity) || requestedQuantity < 1 || requestedQuantity > owned) {
+    return { ok: false, inventory, party, reason: "invalid-quantity" };
+  }
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, inventory, party, reason: "target-not-found" };
+  const pokemon = party.members[index]!;
+  const usable = Math.min(requestedQuantity, Math.max(0, Math.min(100, levelCap) - pokemon.level));
+  if (usable < 1 || pokemon.metadata.eggSteps > 0) return { ok: false, inventory, party, reason: "no-effect" };
+  const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+  if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${pokemon.species}.`);
+  const targetLevel = pokemon.level + usable;
+  const currentHappiness = pokemon.metadata.happiness;
+  const baseGain = currentHappiness === null ? 0 : currentHappiness < 100 ? 5 : currentHappiness < 200 ? 3 : 2;
+  const luxuryGain = pokemon.metadata.origin.ball === "LUXURYBALL" ? 1 : 0;
+  const rawGain = baseGain + luxuryGain;
+  const happinessGain = currentHappiness === null ? 0 : Math.min(255 - currentHappiness,
+    pokemon.heldItem === "SOOTHEBELL" ? Math.floor(rawGain * 1.5) : rawGain);
+  const prepared = { ...pokemon, metadata: { ...pokemon.metadata,
+    happiness: currentHappiness === null ? null : currentHappiness + happinessGain } };
+  const requiredExperience = Math.max(0, experienceAtLevel(targetLevel, definition.growthRate) - prepared.experience);
+  const progression = grantPokemonExperience(prepared, requiredExperience, catalog);
+  const progressedParty = { ...party, members: party.members.map((candidate, memberIndex) =>
+    memberIndex === index ? progression.pokemon : candidate) };
+  const evolutionCandidates = pokemonLevelEvolutionCandidates(progression.pokemon, catalog,
+    { ...context, party: context.party ?? progressedParty });
+  const progressedPokemon = (progression.pokemon.pendingMoves?.length ?? 0) > 0
+    || evolutionCandidates[0] === undefined ? progression.pokemon
+    : { ...progression.pokemon, pendingEvolution: evolutionCandidates[0] };
+  const members = progressedParty.members.map((candidate, memberIndex) => memberIndex === index ? progressedPokemon : candidate);
+  const nextInventory = { ...inventory };
+  if (owned === usable) delete nextInventory.RARECANDY; else nextInventory.RARECANDY = owned - usable;
+  return { ok: true, inventory: nextInventory, party: { ...party, members }, pokemon: progressedPokemon,
+    consumed: usable, levelsGained: progression.levelsGained, learnedMoves: progression.learnedMoves,
+    pendingMoves: progression.pokemon.pendingMoves ?? [],
+    evolutionCandidates, happinessChanged: happinessGain };
+}
+
+export type PendingMoveLearningResult =
+  | { readonly ok: true; readonly party: PlayerPartyState; readonly pokemon: PersistentPokemon; readonly forgottenMove: string | null }
+  | { readonly ok: false; readonly party: PlayerPartyState;
+      readonly reason: "target-not-found" | "move-not-pending" | "replacement-required" | "invalid-replacement" };
+
+export function learnPendingPokemonMove(party: PlayerPartyState, pokemonId: string,
+  move: Pick<MoveDefinition, "internalName" | "pp">, replacementIndex?: number): PendingMoveLearningResult {
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, party, reason: "target-not-found" };
+  const pokemon = party.members[index]!;
+  if (!(pokemon.pendingMoves ?? []).includes(move.internalName)) return { ok: false, party, reason: "move-not-pending" };
+  if (pokemon.moves.length >= 4 && replacementIndex === undefined) return { ok: false, party, reason: "replacement-required" };
+  if (replacementIndex !== undefined && (!Number.isSafeInteger(replacementIndex) || replacementIndex < 0
+    || replacementIndex >= pokemon.moves.length)) return { ok: false, party, reason: "invalid-replacement" };
+  const nextSlot = { internalName: move.internalName, pp: move.pp, maxPp: move.pp };
+  const forgottenMove = replacementIndex === undefined ? null : pokemon.moves[replacementIndex]!.internalName;
+  const moves = replacementIndex === undefined ? [...pokemon.moves, nextSlot]
+    : pokemon.moves.map((slot, moveIndex) => moveIndex === replacementIndex ? nextSlot : slot);
+  const pendingMoves = (pokemon.pendingMoves ?? []).filter((candidate) => candidate !== move.internalName);
+  const nextPokemon = { ...pokemon, moves, pendingMoves };
+  const members = party.members.map((candidate, memberIndex) => memberIndex === index ? nextPokemon : candidate);
+  return { ok: true, party: { ...party, members }, pokemon: nextPokemon, forgottenMove };
+}
+
+export function declinePendingPokemonMove(party: PlayerPartyState, pokemonId: string,
+  moveId: string): PendingMoveLearningResult {
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, party, reason: "target-not-found" };
+  const pokemon = party.members[index]!;
+  if (!(pokemon.pendingMoves ?? []).includes(moveId)) return { ok: false, party, reason: "move-not-pending" };
+  const pendingMoves = (pokemon.pendingMoves ?? []).filter((candidate) => candidate !== moveId);
+  const { pendingMoves: _pendingMoves, ...basePokemon } = pokemon;
+  const nextPokemon: PersistentPokemon = { ...basePokemon,
+    ...(pendingMoves.length === 0 ? {} : { pendingMoves }) };
+  const members = party.members.map((candidate, memberIndex) => memberIndex === index ? nextPokemon : candidate);
+  return { ok: true, party: { ...party, members }, pokemon: nextPokemon, forgottenMove: null };
 }
 
 export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPokemon): PlayerPartyState {
@@ -783,7 +1078,8 @@ export function pokemonZParticipantExperience(input: {
 
 /** Applies only one owner's immutable K.O. credits; callers persist the returned party atomically. */
 export function applySharedBattleExperience(party: PlayerPartyState, settlement: SharedBattleOwnerSettlement,
-  catalog: PlayerCreationCatalog, policy: PokemonZExperiencePolicy): SharedBattleExperienceSettlement {
+  catalog: PlayerCreationCatalog, policy: PokemonZExperiencePolicy,
+  evolutionContext: Omit<PokemonEvolutionContext, "trigger" | "party"> = {}): SharedBattleExperienceSettlement {
   let members = [...party.members];
   const gains: SharedBattleExperienceGain[] = [];
   for (const credit of settlement.defeatCredits) {
@@ -801,6 +1097,12 @@ export function applySharedBattleExperience(party: PlayerPartyState, settlement:
         participantCount: credit.participantCount, luckyEgg: pokemon.heldItem === "LUCKYEGG" }, policy);
       const result = grantPokemonExperience(pokemon, calculated, catalog);
       members[memberIndex] = result.pokemon;
+      if (result.levelsGained > 0 && (result.pokemon.pendingMoves?.length ?? 0) === 0) {
+        const currentParty = { ...party, members };
+        const evolution = pokemonLevelEvolutionCandidates(result.pokemon, catalog,
+          { ...evolutionContext, party: currentParty })[0];
+        if (evolution !== undefined) members[memberIndex] = { ...result.pokemon, pendingEvolution: evolution };
+      }
       gains.push({ turn: credit.turn, defeatedMemberId: credit.defeatedBattler.id,
         recipientMemberId: recipientId, calculated, gained: result.gained,
         previousLevel: pokemon.level, nextLevel: result.pokemon.level,

@@ -34,9 +34,7 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
   const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !alreadyLead,
     hint: alreadyLead ? "Déjà en tête" : "Premier de l'équipe" };
   if (context === "battle") return [details, future("switch", "Envoyer", "⇄"), item];
-  if (context === "team") {
-    return [details, makeLead, item];
-  }
+  if (context === "team") return [details, makeLead, item];
   if (entry.location === "team") {
     return [details, item,
     { id: "deposit", label: "Déposer", symbol: "↓", enabled: options.partySize > 1,

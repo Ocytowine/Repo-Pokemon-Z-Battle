@@ -63,6 +63,24 @@ describe("shared Pokemon card and contextual actions", () => {
     expect(sourcePokemonActionWheelHtml(selected, actions)).toContain('data-source-wheel-action="make-lead"');
   });
 
+  it("keeps progression decisions out of ordinary team actions", () => {
+    const selected = { ...entry(), pokemon: { ...pokemon, pendingMoves: ["GROWL"] } };
+    expect(sourcePokemonActions("team", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter" })
+      .some((action) => action.id === "learn-move")).toBe(false);
+    expect(sourcePokemonActions("ranch", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter" })
+      .some((action) => action.id === "learn-move")).toBe(false);
+  });
+
+  it("does not turn a pending evolution into a deferred team menu action", () => {
+    const selected = { ...entry(), pokemon: { ...pokemon,
+      pendingEvolution: { species: "QUILLADIN", method: "Level", parameter: "16" } } };
+    const actions = sourcePokemonActions("team", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter" });
+    expect(actions.some((action) => action.id === "evolve")).toBe(false);
+  });
+
   it("keeps held-item management accessible outside battle when the compatible pocket is empty", () => {
     const selected = entry();
     expect(sourcePokemonActions("team", selected,

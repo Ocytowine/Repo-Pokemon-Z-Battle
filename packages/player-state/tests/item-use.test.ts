@@ -100,6 +100,137 @@ describe("personal Pokemon item use", () => {
     expect(moves[1]?.pp).toBe(0);
   });
 
+  it("applies PP Up and PP Max with Pokemon Z's three-step maximum", () => {
+    const original = party(pokemon({ moves: [{ internalName: "TACKLE", pp: 20, maxPp: 35 }] }));
+    const first = usePokemonItem({ PPUP: 2 }, original, "PPUP", "owner-mon",
+      { context: "field", revivalAllowed: true }, 0);
+    expect(first).toMatchObject({ ok: true, inventory: { PPUP: 1 },
+      party: { members: [{ moves: [{ pp: 20, maxPp: 42, ppUps: 1, basePp: 35 }] }] },
+      effect: { maximumPpRaised: 7, targetMoveIndex: 0 } });
+    if (!first.ok) throw new Error("PP Plus aurait dû fonctionner.");
+    const maximum = usePokemonItem({ PPMAX: 1 }, first.party, "PPMAX", "owner-mon",
+      { context: "field", revivalAllowed: true }, 0);
+    expect(maximum).toMatchObject({ ok: true, inventory: {},
+      party: { members: [{ moves: [{ pp: 20, maxPp: 56, ppUps: 3, basePp: 35 }] }] },
+      effect: { maximumPpRaised: 14 } });
+    if (!maximum.ok) throw new Error("PP Max aurait dû fonctionner.");
+    expect(usePokemonItem({ PPUP: 1 }, maximum.party, "PPUP", "owner-mon",
+      { context: "field", revivalAllowed: true }, 0)).toMatchObject({ ok: false,
+      inventory: { PPUP: 1 }, reason: "no-effect" });
+    expect(isPokemonItemUsableInBattle("PPUP")).toBe(false);
+  });
+
+  it("applies vitamins, Z super vitamins and wings against the exact EV limits", () => {
+    const recalculate = (target: PersistentPokemon): PersistentPokemon => ({ ...target,
+      stats: { ...target.stats, attack: target.stats.attack + 1 } });
+    const trained = pokemon({ metadata: { ...pokemon().metadata, happiness: 90,
+      evs: { hp: 0, attack: 245, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 } } });
+    const vitamin = usePokemonItem({ PROTEIN: 1 }, party(trained), "PROTEIN", trained.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate);
+    expect(vitamin).toMatchObject({ ok: true, inventory: {},
+      party: { members: [{ stats: { attack: 21 }, metadata: { happiness: 95, evs: { attack: 250 } } }] },
+      effect: { trainingStat: "attack", trainingValueRaised: 5, happinessChanged: 5 } });
+    if (!vitamin.ok) throw new Error("La Protéine aurait dû fonctionner.");
+    expect(usePokemonItem({ SUPERPROTEIN: 1 }, vitamin.party, "SUPERPROTEIN", trained.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate))
+      .toMatchObject({ ok: false, inventory: { SUPERPROTEIN: 1 }, reason: "no-effect" });
+
+    const wingTarget = { ...trained, metadata: { ...trained.metadata, happiness: 200,
+      evs: { hp: 252, attack: 251, defense: 7, specialAttack: 0, specialDefense: 0, speed: 0 } } };
+    expect(usePokemonItem({ MUSCLEWING: 1 }, party(wingTarget), "MUSCLEWING", trained.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: false,
+      inventory: { MUSCLEWING: 1 }, reason: "no-effect" });
+    const belowLimit = { ...wingTarget, metadata: { ...wingTarget.metadata,
+      evs: { ...wingTarget.metadata.evs, hp: 251 } } };
+    expect(usePokemonItem({ MUSCLEWING: 1 }, party(belowLimit), "MUSCLEWING", trained.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: true,
+      inventory: {}, party: { members: [{ metadata: { evs: { attack: 252 } } }] },
+      effect: { trainingValueRaised: 1 } });
+    expect(isPokemonItemUsableInBattle("SUPERHPUP")).toBe(false);
+  });
+
+  it("applies Z potential caps with the source IV total and per-stat limits", () => {
+    const recalculate = (target: PersistentPokemon): PersistentPokemon => target;
+    const target = pokemon({ metadata: { ...pokemon().metadata, happiness: 150,
+      ivs: { hp: 30, attack: 20, defense: 31, specialAttack: 31, specialDefense: 31, speed: 31 } } });
+    expect(usePokemonItem({ ACapsula: 1 }, party(target), "ACapsula", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: true,
+      inventory: {}, party: { members: [{ metadata: { happiness: 153, ivs: { attack: 27 } } }] },
+      effect: { trainingStat: "attack", trainingValueRaised: 7, happinessChanged: 3,
+        individualValuesRaised: { attack: 7 } } });
+
+    const nearTotalLimit = pokemon({ metadata: { ...pokemon().metadata,
+      ivs: { hp: 30, attack: 31, defense: 31, speed: 31, specialAttack: 31, specialDefense: 30 } } });
+    expect(usePokemonItem({ CHAPADORADA: 1 }, party(nearTotalLimit), "CHAPADORADA", nearTotalLimit.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: true,
+      inventory: {}, party: { members: [{ metadata: { ivs: { hp: 31, specialDefense: 31 } } }] },
+      effect: { trainingValueRaised: 2, happinessChanged: 0,
+        individualValuesRaised: { hp: 1, specialDefense: 1 } } });
+    const perfect = pokemon({ metadata: { ...pokemon().metadata,
+      ivs: { hp: 31, attack: 31, defense: 31, speed: 31, specialAttack: 31, specialDefense: 31 } } });
+    expect(usePokemonItem({ CHAPADORADA: 1 }, party(perfect), "CHAPADORADA", perfect.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: false,
+      inventory: { CHAPADORADA: 1 }, reason: "no-effect" });
+    expect(isPokemonItemUsableInBattle("SCapsula")).toBe(false);
+  });
+
+  it("changes the actual nature with Z's mints and preserves an ineffective item", () => {
+    const target = pokemon({ metadata: { ...pokemon().metadata, nature: "HARDY" } });
+    const recalculate = (candidate: PersistentPokemon): PersistentPokemon => ({ ...candidate,
+      stats: { ...candidate.stats, attack: 22, specialAttack: 18 } });
+    const changed = usePokemonItem({ ADAMANTMINT: 1 }, party(target), "ADAMANTMINT", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate);
+    expect(changed).toMatchObject({ ok: true, inventory: {}, party: { members: [{
+      stats: { attack: 22, specialAttack: 18 }, metadata: { nature: "ADAMANT" },
+    }] }, effect: { natureChanged: { from: "HARDY", to: "ADAMANT" } } });
+    if (!changed.ok) throw new Error("La Menthe Rigide aurait dû fonctionner.");
+    expect(usePokemonItem({ ADAMANTMINT: 1 }, changed.party, "ADAMANTMINT", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: false,
+      inventory: { ADAMANTMINT: 1 }, reason: "no-effect" });
+    expect(isPokemonItemUseSupported("QUITEMINT")).toBe(false);
+    expect(isPokemonItemUsableInBattle("ADAMANTMINT")).toBe(false);
+  });
+
+  it("combines friendship berries and EV reduction exactly like Z", () => {
+    const recalculate = (candidate: PersistentPokemon): PersistentPokemon => candidate;
+    const target = pokemon({ metadata: { ...pokemon().metadata, happiness: 90,
+      evs: { hp: 5, attack: 0, defense: 0, speed: 0, specialAttack: 0, specialDefense: 0 } } });
+    expect(usePokemonItem({ POMEGBERRY: 1 }, party(target), "POMEGBERRY", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: true,
+      inventory: {}, party: { members: [{ metadata: { happiness: 100, evs: { hp: 0 } } }] },
+      effect: { happinessChanged: 10, trainingValueRaised: -5, effortValuesChanged: { hp: -5 } } });
+    const friendly = pokemon({ metadata: { ...pokemon().metadata, happiness: 254 } });
+    expect(usePokemonItem({ KELPSYBERRY: 1 }, party(friendly), "KELPSYBERRY", friendly.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: true,
+      party: { members: [{ metadata: { happiness: 255 } }] }, effect: { happinessChanged: 1 } });
+    const capped = pokemon({ metadata: { ...pokemon().metadata, happiness: 255 } });
+    expect(usePokemonItem({ KELPSYBERRY: 1 }, party(capped), "KELPSYBERRY", capped.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: false,
+      inventory: { KELPSYBERRY: 1 }, reason: "no-effect" });
+  });
+
+  it("applies both Z essences up to their unusual 508 EV cap and keeps the refined one", () => {
+    const recalculate = (candidate: PersistentPokemon): PersistentPokemon => candidate;
+    const target = pokemon({ metadata: { ...pokemon().metadata,
+      evs: { hp: 0, attack: 0, defense: 0, speed: 0, specialAttack: 0, specialDefense: 0 } } });
+    const first = usePokemonItem({ POKESENCIA: 1 }, party(target), "POKESENCIA", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate);
+    expect(first).toMatchObject({ ok: true, inventory: {},
+      party: { members: [{ metadata: { evs: { hp: 80, attack: 80, defense: 80, speed: 80,
+        specialAttack: 80, specialDefense: 80 } } }] }, effect: { trainingValueRaised: 480 } });
+    if (!first.ok) throw new Error("La Poké Essence aurait dû fonctionner.");
+    const refined = usePokemonItem({ POKESENCIAREFINADA: 1 }, first.party, "POKESENCIAREFINADA", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate);
+    expect(refined).toMatchObject({ ok: true, inventory: { POKESENCIAREFINADA: 1 },
+      party: { members: [{ metadata: { evs: { hp: 108 } } }] },
+      effect: { trainingValueRaised: 28, effortValuesChanged: { hp: 28 } } });
+    if (!refined.ok) throw new Error("La Poké Essence raffinée aurait dû fonctionner.");
+    expect(usePokemonItem(refined.inventory, refined.party, "POKESENCIAREFINADA", target.id,
+      { context: "field", revivalAllowed: true }, undefined, recalculate)).toMatchObject({ ok: false,
+      inventory: { POKESENCIAREFINADA: 1 }, reason: "no-effect" });
+    expect(isPokemonItemUsableInBattle("POKESENCIA")).toBe(false);
+  });
+
   it("keeps temporary battle-stage items out of personal field state", () => {
     expect(usePokemonItem({ XATTACK: 1 }, party(pokemon()), "XATTACK", "owner-mon",
       { context: "field", revivalAllowed: true })).toMatchObject({ ok: false,

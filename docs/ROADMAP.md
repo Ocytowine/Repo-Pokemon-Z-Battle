@@ -1749,11 +1749,71 @@ transaction tous les membres K.O. non oeufs et restaure PV, statut et PP depuis
 une confirmation dediee du Sac. La guerison de la Confusion par Poudre Soin reste
 liee au futur etat volatil Confusion.
 
+Neuvieme increment objets du 2026-10-08 : PP Plus et PP Max conservent les trois
+paliers source par capacite. Vitamines, Super Vitamines de Z et Ailes appliquent
+leurs gains EV permanents avec les plafonds 250/252/510, recalculent les
+statistiques en preservant les degats et appliquent le gain de bonheur source.
+Ces usages sont personnels et persistants en solo, chez l'hote et chez l'invite ;
+ils ne sont pas utilisables en combat et ne repliquent aucune donnee privee a la
+room.
+
+Dixieme increment objets du 2026-10-08 : les six Capsules de potentiel de Z
+ajoutent jusqu'a 7 IV a leur statistique, avec plafonds 31/186, recalcul immediat
+et bonheur `vitamin`. La Capsule doree applique le `+7` reel de son handler aux
+six statistiques, malgre sa description source `+10`, et n'est pas consommee si
+aucune statistique ne peut progresser. Comme les EV, ces donnees personnelles ne
+sont jamais repliquees a la room.
+
+Onzieme increment objets du 2026-10-08 : les 21 Menthes existantes modifient la
+nature reelle, recalculent les statistiques et preservent les degats. Elles sont
+personnelles, persistantes et inutilisables en combat. Le faux handler
+`QUITEMINT`/`QUITE` n'est pas expose, et une Menthe correspondant deja a la nature
+du Pokemon n'est pas consommee malgre le retour ambigu du handler Ruby.
+
+Douzieme increment objets du 2026-10-08 : le lot commun d'ajustement des EV couvre
+les six baies bonheur/-10 EV et les deux Poké Essences de Z. Les seuils de bonheur,
+le Grelot Zen, le recalcul des statistiques et la limite atypique de 508 EV sont
+reproduits. L'Essence normale est consommee ; la raffinee (`fieldUse=5`) reste
+reutilisable. Un effet nul ou un total deja superieur a 508 ne consomme rien et
+ne peut jamais produire le delta negatif possible dans le Ruby source.
+
+Treizieme increment objets du 2026-10-08 : le Bonbon Rare utilise le meme noyau
+de progression que l'EXP, avec selection de quantite, caps narratifs exacts de Z,
+recalcul des statistiques, preservation des degats et bonheur de montee de niveau.
+Les capacites trouvees sur plusieurs niveaux sont apprises dans les emplacements
+libres ou persistees pour reprise, puis un conducteur obligatoire demande aussitot
+leur remplacement dans l'ordre. Les donnees d'evolution extraites produisent aussi
+les candidats de niveau, genre, statistiques, bonheur ou capacite connue, sans
+encore muter l'espece ni jouer la scene. Etat et inventaire restent personnels en
+solo/hote/invite ; seul le cap vient de la progression narrative partagee de l'hote.
+
+Correctif apres recette : le Bonbon Rare et les recalculs permanents recoivent le
+catalogue `battleCatalog` effectivement charge. Les 43 icones d'objets absentes du
+jeu source sont detectees via le manifeste avant affichage et remplacent leur URL
+inexistante par l'icone generique, sans rafale de 404 dans la console.
+Le choix de quantite du Bonbon Rare et du jet d'objets emploie aussi un selecteur
+tactile commun (`-10/-1/+1/+10/Max`) a la place de l'incrementateur natif mobile.
+
 La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
 Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
 effets d'objets tenus non portes et pierres restent ouverts dans `SOLO-ITEMS-1`.
+La mutation/scene d'evolution et les methodes non liees au niveau passent dans
+`SOLO-EVOLUTION-1`, dont le resolveur d'eligibilite possede maintenant son socle.
+
+Premier increment evolution du 2026-10-08 : 17 des 18 methodes reellement utilisees
+par Z sont resolues dans un noyau commun ; la dix-huitieme, `Shedinja`, est une
+creation secondaire inventoriee separement. Bonbon Rare et EXP de combat
+enregistrent une offre persistante de reprise. Apres les questions de capacites,
+l'ecran d'evolution demarre automatiquement et ne peut etre annule que pendant son
+animation ; aucune action differee n'est exposee dans l'Equipe. La mutation met a
+jour espece, talent, statistiques, forme, objet tenu et capacites
+du niveau. Les 21 pierres/objets d'evolution sont actifs, dont les neuf pierres
+imprégnees et leur `+7` IV par statistique. Autorite et sauvegarde restent
+personnelles en solo/hote/invite. Une premiere animation bloquante est raccordee ;
+restent sa fidelite audiovisuelle, son raccord aux pierres, la creation de Munja
+et le registre Pokedex.
 
 ### Phase 12 - Extensions Coop
 

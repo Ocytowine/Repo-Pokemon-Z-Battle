@@ -16,7 +16,8 @@ const SETTLEMENT_JOURNAL_LIMIT = 128;
 
 /** Applies one owner-scoped settlement atomically and at most once to the personal save. */
 export function applySourceBattleSettlement(state: SourceEventState, settlement: SourceBattleSettlement,
-  playerId: string, catalog: PlayerCreationCatalog, captureContext?: PokemonCreationContext): AppliedSourceBattleSettlement {
+  playerId: string, catalog: PlayerCreationCatalog, captureContext?: PokemonCreationContext,
+  evolutionHour?: number): AppliedSourceBattleSettlement {
   if (settlement.ownerId !== playerId || settlement.tactical.ownerId !== playerId) {
     throw new Error("Le règlement de combat appartient à un autre joueur.");
   }
@@ -24,7 +25,8 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
     return { state, applied: false, gains: [], moneyDelta: 0 };
   }
   let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId);
-  const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience);
+  const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
+    evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
   let next = { ...state, party };
   if (settlement.capturedPokemon !== undefined) {

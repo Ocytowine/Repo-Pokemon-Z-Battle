@@ -2,7 +2,8 @@ import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBa
   type PokemonItemUsePolicy,
   type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamReplacementResult,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, storeBattleTeam,
+import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty,
+  playerPartyToBattleTeam, pokemonLevelEvolutionCandidates, storeBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 
 export interface SourceEncounterRequest {
@@ -118,7 +119,7 @@ export function scaledWildExperience(defeatedLevel: number, baseExperience: numb
 }
 
 export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattleState,
-  catalog?: PlayerCreationCatalog): SourceEncounterSettlement {
+  catalog?: PlayerCreationCatalog, evolutionHour?: number): SourceEncounterSettlement {
   if (state.status !== "finished" || state.winner === null) throw new Error("Le combat source n'est pas terminé.");
   const stored = storeSourceEncounterParty(party, state);
   if (state.winner !== "player") return { party: healPlayerParty(stored), completed: false, experience: null };
@@ -132,7 +133,15 @@ export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattle
   if (definition === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${defeated.species}.`);
   const reward = grantPokemonExperience(recipient,
     scaledWildExperience(defeated.level, definition.baseExperience, recipient.level), catalog);
-  const members = stored.members.map((member, index) => index === activeIndex ? reward.pokemon : member);
-  return { party: { ...stored, members }, completed: true, experience: { amount: reward.gained, pokemonId: recipient.id,
+  const progressedParty = { ...stored,
+    members: stored.members.map((member, index) => index === activeIndex ? reward.pokemon : member) };
+  const evolution = reward.levelsGained > 0 && (reward.pokemon.pendingMoves?.length ?? 0) === 0
+    ? pokemonLevelEvolutionCandidates(reward.pokemon, catalog, {
+      ...(evolutionHour === undefined ? {} : { hour: evolutionHour }), party: progressedParty,
+    })[0]
+    : undefined;
+  const progressedPokemon = evolution === undefined ? reward.pokemon : { ...reward.pokemon, pendingEvolution: evolution };
+  const members = progressedParty.members.map((member, index) => index === activeIndex ? progressedPokemon : member);
+  return { party: { ...progressedParty, members }, completed: true, experience: { amount: reward.gained, pokemonId: recipient.id,
     levelsGained: reward.levelsGained, learnedMoves: reward.learnedMoves, skippedMoves: reward.skippedMoves } };
 }

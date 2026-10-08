@@ -191,4 +191,29 @@ describe("source encounter bridge", () => {
     expect(victory).toMatchObject({ completed: true, experience: { amount: 13, levelsGained: 0 },
       party: { members: [{ experience: 148 }] } });
   });
+
+  it("queues a level evolution after a victorious local battle", () => {
+    const evolutionCatalog: PlayerCreationCatalog = {
+      ...catalog,
+      pokemon: [
+        { ...catalog.pokemon[0]!, evolutions: [{ species: "QUILLADIN", method: "Level", parameter: "6" }] },
+        { internalName: "QUILLADIN", name: "Boguérisse", types: ["GRASS"],
+          baseStats: { hp: 61, attack: 78, defense: 95, speed: 57, specialAttack: 56, specialDefense: 58 },
+          abilities: ["OVERGROW"], growthRate: "Parabolic", baseExperience: 142,
+          genderRate: "FemaleOneEighth", happiness: 70, levelUpMoves: [{ level: 1, move: "TACKLE" }] },
+        { ...catalog.pokemon[1]!, baseExperience: 255 },
+        catalog.pokemon[2]!,
+      ],
+    };
+    const party = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 5, evolutionCatalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 10 }, evolutionCatalog, "wild");
+    const victory = settleSourceEncounter(party, { ...battle, status: "finished", winner: "player" },
+      evolutionCatalog, 12);
+
+    expect(victory.experience?.levelsGained).toBeGreaterThan(0);
+    expect(victory.party.members[0]?.pendingEvolution).toEqual({
+      species: "QUILLADIN", method: "Level", parameter: "6",
+    });
+  });
 });

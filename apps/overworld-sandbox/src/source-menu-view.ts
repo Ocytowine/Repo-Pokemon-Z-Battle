@@ -1,6 +1,6 @@
 import type { ImportedAvatar, ImportedMapAssets } from "./imported-map.js";
 import { SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl,
-  sourcePocketIconUrl } from "./source-bag.js";
+  sourceItemIconFallbackUrl, sourcePocketIconUrl } from "./source-bag.js";
 import type { SourceEventState } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
@@ -29,9 +29,16 @@ export function sourceMenuVolume(storage: Pick<Storage, "getItem">): number {
   return Number.isFinite(stored) ? Math.max(0, Math.min(100, stored)) : 80;
 }
 
+export function sourceQuantitySelectorHtml(label: string, value: number, maximum: number): string {
+  const max = Math.max(1, Math.floor(maximum));
+  const current = Math.max(1, Math.min(max, Math.floor(value)));
+  const button = (delta: number, text: string): string => `<button type="button" data-source-quantity-delta="${delta}"${current + delta < 1 || current + delta > max ? " disabled" : ""} aria-label="${delta > 0 ? "Ajouter" : "Retirer"} ${Math.abs(delta)}">${text}</button>`;
+  return `<div class="source-quantity-picker" role="group" aria-label="${escapeSourceHtml(label)}"><span>${escapeSourceHtml(label)}</span><div>${button(-10, "−10")}${button(-1, "−")}<output aria-live="polite" data-source-quantity-value>${current}</output>${button(1, "+")}${button(10, "+10")}</div><button type="button" data-source-quantity-max${current === max ? " disabled" : ""}>Max · ${max}</button></div>`;
+}
+
 function bindSourceItemIconFallback(root: ParentNode): void {
   root.querySelectorAll<HTMLImageElement>("[data-source-item-icon]").forEach((image) => {
-    image.addEventListener("error", () => { image.src = sourceItemIconUrl(0); }, { once: true });
+    image.addEventListener("error", () => { image.src = sourceItemIconFallbackUrl(image.src); }, { once: true });
   });
 }
 
@@ -98,6 +105,11 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onUseRareCandy: (pokemonId: string, quantity: number) => {
+    readonly ok: boolean;
+    readonly message: string;
+    readonly eventState: SourceEventState;
+  };
   readonly onUsePokemonPartyItem: (itemId: string) => {
     readonly ok: boolean;
     readonly message: string;
@@ -110,8 +122,9 @@ export class SourceMenuView {
   private selectedTeamPokemonId: string | null = null;
   private selectedBagItemId: string | null = null;
   private selectedBagPokemonId: string | null = null;
-  private bagAction: "wheel" | "use" | "use-party-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
+  private bagAction: "wheel" | "use" | "use-party-confirm" | "rare-candy-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
   private discardQuantity = 1;
+  private rareCandyQuantity = 1;
   private selectedBagReplacementIndex: number | null = null;
   private bagResult: { readonly message: string; readonly itemId: string; readonly repeatAction: "use" | "give" | null } | null = null;
   private heldItemPokemonId: string | null = null;
@@ -158,7 +171,7 @@ export class SourceMenuView {
     content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${members.length === 0
       ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Équipe vide</strong><small>Choisissez votre premier Pokémon pour commencer.</small></div>'
       : entries.map((entry) => sourcePokemonCardHtml(entry, { active: entry.teamIndex === model.eventState.party.activeIndex,
-        selected: entry.pokemon.id === this.selectedTeamPokemonId })).join("")}</div>${wheel}${heldItemPanel}`;
+        selected: entry.pokemon.id === this.selectedTeamPokemonId })).join("")}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -242,9 +255,12 @@ export class SourceMenuView {
           ? teamEntries.map((entry) => `<button type="button" class="source-bag-target-card" data-source-bag-give-target="${escapeSourceHtml(entry.pokemon.id)}">${sourcePokemonIconHtml(entry)}<span><strong>${escapeSourceHtml(entry.displayName)}</strong><small>${entry.pokemon.heldItem === null ? "Aucun objet tenu" : `Tient ${escapeSourceHtml(entry.pokemon.heldItem)}`}</small></span></button>`).join("")
           : targetChoices}</div>`}</section></div>`;
     const discardPanel = selectedEntry === null || this.bagAction !== "discard" ? ""
-      : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-discard"><header><div><small>JETER</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header><label>Quantité <input type="number" min="1" max="${selectedEntry.quantity}" value="${Math.min(this.discardQuantity, selectedEntry.quantity)}" data-source-bag-discard-quantity></label><button type="button" class="danger" data-source-bag-discard-confirm>Jeter</button></section></div>`;
+      : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-discard"><header><div><small>JETER</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${sourceQuantitySelectorHtml("Quantité", this.discardQuantity, selectedEntry.quantity)}<button type="button" class="danger" data-source-bag-discard-confirm>Jeter</button></section></div>`;
     const partyUsePanel = selectedEntry === null || this.bagAction !== "use-party-confirm" ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>SOIGNER L'ÉQUIPE</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header><p>Ranimer et soigner complètement tous les Pokémon K.O. de l'équipe ?</p><footer><button type="button" data-source-party-item-confirm>Utiliser</button></footer></section></div>`;
+    const rareCandyTarget = this.bagAction === "rare-candy-confirm" ? selectedTarget : null;
+    const rareCandyPanel = selectedEntry === null || rareCandyTarget === null ? ""
+      : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-discard"><header><div><small>MONTER DE NIVEAU</small><strong>${escapeSourceHtml(rareCandyTarget.nickname ?? rareCandyTarget.species)} · N.${rareCandyTarget.level}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${sourceQuantitySelectorHtml("Bonbons", this.rareCandyQuantity, selectedEntry.quantity)}<button type="button" data-source-rare-candy-confirm>Utiliser</button></section></div>`;
     const teachTarget = selectedTarget === null ? null : teamEntries.find((entry) => entry.pokemon.id === selectedTarget.id) ?? null;
     const teachPanel = selectedEntry === null || machineMove === null || machineSpecies === undefined
       || !["teach", "teach-replace", "teach-confirm"].includes(this.bagAction ?? "") ? ""
@@ -266,8 +282,26 @@ export class SourceMenuView {
           const moveName = item.machineMove === null || item.machineMove === undefined ? undefined
             : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name;
           return `<button type="button" class="source-bag-entry${item.internalName === this.selectedBagItemId ? " selected" : ""}" data-source-bag-item="${escapeSourceHtml(item.internalName)}" title="Ouvrir les actions"><img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><div><strong>${escapeSourceHtml(sourceItemDisplayName(item, moveName))}</strong><small>${escapeSourceHtml(item.description)}</small></div><span>×${quantity}</span></button>`;
-        }).join("")}</div>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+        }).join("")}</div>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
+    content.querySelectorAll<HTMLButtonElement>("[data-source-quantity-delta]").forEach((button) =>
+      button.addEventListener("click", () => {
+        if (selectedEntry === null) return;
+        const delta = Number(button.dataset.sourceQuantityDelta);
+        if (!Number.isSafeInteger(delta)) return;
+        if (this.bagAction === "discard") {
+          this.discardQuantity = Math.max(1, Math.min(selectedEntry.quantity, this.discardQuantity + delta));
+        } else if (this.bagAction === "rare-candy-confirm") {
+          this.rareCandyQuantity = Math.max(1, Math.min(selectedEntry.quantity, this.rareCandyQuantity + delta));
+        }
+        this.renderBag(content, model);
+      }));
+    content.querySelector<HTMLButtonElement>("[data-source-quantity-max]")?.addEventListener("click", () => {
+      if (selectedEntry === null) return;
+      if (this.bagAction === "discard") this.discardQuantity = selectedEntry.quantity;
+      else if (this.bagAction === "rare-candy-confirm") this.rareCandyQuantity = selectedEntry.quantity;
+      this.renderBag(content, model);
+    });
     content.querySelectorAll<HTMLButtonElement>("[data-source-pocket]").forEach((button) => button.addEventListener("click", () => {
       const pocketId = Number(button.dataset.sourcePocket);
       if (!Number.isInteger(pocketId) || !SOURCE_BAG_POCKETS.some((candidate) => candidate.id === pocketId)) return;
@@ -366,9 +400,7 @@ export class SourceMenuView {
       }));
     content.querySelector<HTMLButtonElement>("[data-source-bag-discard-confirm]")?.addEventListener("click", () => {
       if (this.selectedBagItemId === null) return;
-      const input = content.querySelector<HTMLInputElement>("[data-source-bag-discard-quantity]");
-      const quantity = Number(input?.value ?? this.discardQuantity);
-      const result = this.callbacks.onDiscardItem(this.selectedBagItemId, quantity);
+      const result = this.callbacks.onDiscardItem(this.selectedBagItemId, this.discardQuantity);
       this.bagNotice = result.message;
       this.bagAction = null;
       this.bagResult = { message: result.message, itemId: this.selectedBagItemId, repeatAction: null };
@@ -376,6 +408,13 @@ export class SourceMenuView {
     });
     content.querySelectorAll<HTMLButtonElement>("[data-source-bag-target]").forEach((button) => button.addEventListener("click", () => {
       if (this.selectedBagItemId === null || button.dataset.sourceBagTarget === undefined) return;
+      if (this.selectedBagItemId === "RARECANDY") {
+        this.selectedBagPokemonId = button.dataset.sourceBagTarget;
+        this.rareCandyQuantity = 1;
+        this.bagAction = "rare-candy-confirm";
+        this.renderBag(content, model);
+        return;
+      }
       if (pokemonItemTargetMode(this.selectedBagItemId) === "move") {
         this.selectedBagPokemonId = button.dataset.sourceBagTarget;
         this.renderBag(content, model);
@@ -389,6 +428,15 @@ export class SourceMenuView {
       this.bagResult = { message: result.message, itemId: usedItemId, repeatAction: result.ok ? "use" : null };
       this.renderBag(content, { ...model, eventState: result.eventState });
     }));
+    content.querySelector<HTMLButtonElement>("[data-source-rare-candy-confirm]")?.addEventListener("click", () => {
+      if (this.selectedBagPokemonId === null) return;
+      const result = this.callbacks.onUseRareCandy(this.selectedBagPokemonId, this.rareCandyQuantity);
+      this.bagNotice = result.message;
+      this.bagAction = null;
+      this.selectedBagPokemonId = null;
+      this.bagResult = { message: result.message, itemId: "RARECANDY", repeatAction: result.ok ? "use" : null };
+      this.renderBag(content, { ...model, eventState: result.eventState });
+    });
     content.querySelectorAll<HTMLButtonElement>("[data-source-bag-move]").forEach((button) =>
       button.addEventListener("click", () => {
         if (this.selectedBagItemId === null || this.selectedBagPokemonId === null) return;

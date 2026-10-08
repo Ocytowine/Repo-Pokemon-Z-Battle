@@ -395,6 +395,28 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   `Cenizas` et la Cendre Sacree d'equipe sont fonctionnels avec consommation,
   bonheur, Nuzlocke et persistance solo/Coop. Poudre Soin attend encore l'etat
   volatil Confusion pour couvrir cette branche precise du handler source.
+- Increment entrainement permanent du 2026-10-08 : PP Plus/PP Max, vitamines,
+  Super Vitamines de Z et Ailes sont utilisables depuis le Sac. Les paliers PP,
+  plafonds EV 250/252/510, gain de bonheur et recalcul des statistiques suivent
+  la source ; l'etat reste personnel en solo/hote/invite.
+- Increment potentiel du 2026-10-08 : les six Capsules IV et la Capsule doree
+  sont fonctionnelles avec les plafonds 31/186 et le recalcul des statistiques.
+  Le port suit le `+7` du handler de la Capsule doree plutot que son texte `+10`,
+  mais conserve l'objet lorsqu'il ne produirait aucun effet.
+- Increment Menthes du 2026-10-08 : les 21 objets presents changent la nature
+  reelle et recalculent les statistiques. Le handler mort `QUITEMINT` est ignore
+  et une Menthe sans effet n'est pas consommee.
+- Increment EV groupe du 2026-10-08 : les six baies correctrices et les deux
+  Poké Essences combinent baisse/hausse d'EV, bonheur, Grelot Zen et recalcul des
+  statistiques. La limite source 508 et le caractere reutilisable de l'Essence
+  raffinee sont conserves, sans delta negatif sur un etat deja au-dessus du cap.
+- Increment Bonbon Rare/progression du 2026-10-08 : selection de quantite, caps
+  narratifs 17 a 100, EXP/statistiques/bonheur et capacites de niveau utilisent
+  le noyau commun. Une capacite sans emplacement libre est persistee pour reprise,
+  puis resolue immediatement par le conducteur obligatoire au lieu d'etre perdue.
+  Le resolveur expose deja les
+  evolutions devenues eligibles, mais la transformation et sa scene restent dans
+  `SOLO-EVOLUTION-1`.
 - Les autres effets d'objets tenus, objets de combat volatils et pierres restent
   a porter avant fermeture.
 
@@ -413,9 +435,16 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-EVOLUTION-1 — Evolutions
 
-- Priorite/statut : `P1` / bloque par objets et progression de combat.
+- Priorite/statut : `P1` / noyau et execution principale implementes, presentation a finir.
 - Couvre : niveau, objet, echange, bonheur, lieu/heure/genre si presents dans Z,
   annulation, apprentissage et evolution en Coop sur valeurs reelles.
+- Le resolveur pur couvre 17 des 18 methodes presentes dans les 557 branches
+  extraites, avec temps reel source, equipe, objet tenu, genre, statistiques,
+  bonheur, capacite et pierres. Bonbon Rare et EXP lancent automatiquement les
+  questions de capacites puis l'ecran d'evolution annulable pendant l'animation ;
+  mutation complete et 21 objets d'evolution fonctionnent en solo/hote/invite.
+  Restent la fidelite audiovisuelle, le raccord visuel des pierres, le cas
+  secondaire Munja et le futur registre Pokedex.
 
 ### SOLO-POKEDEX-1 — Pokedex
 

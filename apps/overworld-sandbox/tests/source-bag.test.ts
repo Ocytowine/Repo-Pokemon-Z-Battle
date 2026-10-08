@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { grantSourceTestItems, sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
+import { configureSourceItemIconAvailability, grantSourceTestItems, sourceBagEntries, sourceBagPocketCounts, sourceItemIconFallbackUrl,
+  sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
 import type { SourceShopItem } from "../src/source-economy.js";
 import { sourceActionWheelHtml } from "../src/source-action-wheel.js";
 import { isSourceItemDiscardable, sourceItemActions, sourceItemDisplayName, sourceItemTargetFlow } from "../src/source-item-actions.js";
@@ -28,6 +29,19 @@ describe("source bag", () => {
     const inventory = { POTION: 2 };
     expect(grantSourceTestItems(inventory, catalog)).toEqual({ POTION: 99, POKEBALL: 99 });
     expect(inventory).toEqual({ POTION: 2 });
+  });
+
+  it("remembers a missing source icon and uses the generic fallback on later renders", () => {
+    expect(sourceItemIconUrl(833)).toContain("item833.png");
+    expect(sourceItemIconFallbackUrl("http://127.0.0.1:5174/__pokemon-z/source/Graphics/Icons/item833.png"))
+      .toContain("item000.png");
+    expect(sourceItemIconUrl(833)).toContain("item000.png");
+  });
+
+  it("uses the extracted manifest to avoid requesting absent source icons", () => {
+    configureSourceItemIconAvailability(new Set([0, 263]));
+    expect(sourceItemIconUrl(263)).toContain("item263.png");
+    expect(sourceItemIconUrl(548)).toContain("item000.png");
   });
 
   it("builds contextual item actions and accepts feature-specific extensions", () => {

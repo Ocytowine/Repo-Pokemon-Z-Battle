@@ -1452,7 +1452,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 482 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 499 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1857,6 +1857,165 @@ l'hote et l'invite ; en combat, la room reste autoritaire et ne restitue que le
 bonheur et les ressources du Pokemon possede. Dette explicite : la branche
 Confusion de `HEALPOWDER` sera ajoutee avec les etats volatils, la Confusion
 n'etant pas encore representee dans le moteur.
+
+Le bonheur est directement visible dans la colonne permanente du resume Pokemon
+(equipe, Ranch et lecture de combat), avec sa valeur exacte sur 255, une jauge et
+une appreciation lisible. Il n'est donc plus necessaire d'ouvrir la sous-page
+IV/EV pour verifier l'effet d'un remede amer ; la fiche est reconstruite depuis
+l'etat personnel courant a chaque ouverture ou changement de Pokemon.
+
+Neuvieme increment `SOLO-ITEMS-1` du 2026-10-08 : `PPUP` et `PPMAX` augmentent
+durablement le maximum de PP de la capacite choisie selon les trois paliers du
+jeu source. Le compteur et les PP de base sont conserves dans la sauvegarde de la
+capacite avec une migration compatible : leur absence dans une ancienne sauvegarde
+vaut zero. L'utilisation ne restaure pas les PP courants et devient sans effet au
+troisieme palier.
+
+Les vitamines classiques (+10 EV), les Super Vitamines propres a Z (+20 EV) et
+les Ailes (+1 EV) sont egalement actives hors combat. Elles respectent les limites
+source de 250 EV pour les vitamines, 252 par statistique et 510 au total ; le gain
+reel peut donc etre inferieur a la valeur nominale. Statistiques et PV sont
+recalcules en preservant les degats, et le gain de bonheur `vitamin` tient compte
+des seuils de Z et du Grelot Zen. Ces mutations restent strictement personnelles
+et persistantes chez le solo, l'hote et l'invite ; aucune donnee IV/EV ou de Sac
+n'est repliquee dans la room.
+
+Dixieme increment `SOLO-ITEMS-1` du 2026-10-08 : les six Capsules propres a Z
+(`SCapsula`, `ACapsula`, `DCapsula`, `AECapsula`, `DECapsula`, `VCapsula`)
+augmentent de 7 l'IV cible, dans les limites de 31 par statistique et 186 au total,
+puis appliquent le meme gain de bonheur `vitamin`. La Capsule doree
+`CHAPADORADA` parcourt les six statistiques dans l'ordre source et ajoute jusqu'a
+7 IV a chacune, sans bonheur.
+
+Anomalie source conservee explicitement : la description de `CHAPADORADA` annonce
+`+10`, mais son handler Ruby appelle six fois `pbRaiseIndividualValues`, dont le
+gain par defaut est `+7`. Le port suit le comportement runtime `+7`. En revanche,
+il corrige prudemment la consommation a vide implicite du handler : si aucun IV
+ne peut augmenter, la transaction echoue et conserve l'objet, conformement a
+l'invariant commun des objets. Les Capsules restent personnelles, persistantes et
+inutilisables en combat chez le solo, l'hote et l'invite.
+
+Onzieme increment `SOLO-ITEMS-1` du 2026-10-08 : les 21 Menthes reellement
+presentes dans `items.json` changent la nature stockee du Pokemon, comme le fait
+`setNature` dans Z, puis recalculent ses statistiques en preservant ses degats.
+Il ne s'agit donc pas du comportement des jeux officiels recents qui gardent une
+nature d'origine separee des effets statistiques. L'usage reste personnel,
+persistant et reserve au terrain en solo, chez l'hote et chez l'invite.
+
+Deux anomalies source sont traitees explicitement : `QUITEMINT` est un handler
+mort visant la nature inexistante `QUITE` et n'est pas expose ; le vrai objet est
+`QUIETMINT` et applique `QUIET`. De plus, les handlers Ruby renvoient indirectement
+le resultat vrai de l'affichage meme lorsque la nature est deja identique, ce qui
+consomme la Menthe sans effet. Le port applique l'invariant transactionnel commun :
+une nature deja identique renvoie `no-effect` et conserve l'objet.
+
+Douzieme increment `SOLO-ITEMS-1` du 2026-10-08, lot groupe d'ajustement EV :
+les six baies Grana/Algama/Ispero/Meluce/Uvav/Tamate retirent jusqu'a 10 EV de
+leur statistique et appliquent simultanement le gain de bonheur `EV berry` de Z
+(+10 sous 100, +5 sous 200, sinon +2, avec Grelot Zen et plafond 255). Une baie
+reste donc utilisable si un seul des deux effets est possible, mais n'est pas
+consommee lorsque l'EV vaut zero et le bonheur est deja maximal.
+
+`POKESENCIA` et `POKESENCIAREFINADA` parcourent les statistiques dans l'ordre
+source, ajoutent 80 EV lorsqu'une valeur est inferieure ou egale a 152, sinon la
+completent vers 252, et bornent le total a la limite particuliere 508 codee dans
+Z. Depuis zero, une premiere utilisation produit donc 80 dans chaque statistique,
+soit 480 ; une seconde ajoute les 28 restants aux PV. Les deux handlers Ruby sont
+identiques, mais `POKESENCIAREFINADA` a `fieldUse=5` et n'est pas consommee, alors
+que `POKESENCIA` a `fieldUse=1` et l'est. Le port empeche aussi le delta negatif
+que le script pourrait calculer sur une sauvegarde deja au-dessus de 508 : dans
+ce cas l'objet reste sans effet et n'est pas consomme. Toutes ces mutations sont
+personnelles en solo/hote/invite et ne quittent jamais la sauvegarde du proprietaire.
+
+Treizieme increment `SOLO-ITEMS-1` du 2026-10-08 : le Bonbon Rare possede une
+transaction de progression dediee, car son effet traverse plusieurs noyaux. Le
+Sac demande une quantite, puis applique les caps narratifs exacts de Z
+(`17/27/36/42/50/56/70/75/80/85/94/100`) issus des interrupteurs de badges
+`88/97/150/211/326/502/503/504/505/506/744`. Seule la quantite qui produit
+effectivement des niveaux est consommee ; le niveau 100, le cap courant et les
+oeufs refusent proprement l'usage. Experience, statistiques et PV sont recalcules
+par le meme noyau que l'EXP de combat, en preservant les degats, et le bonheur
+`level up` de la source est applique une fois par utilisation, avec Luxe Ball et
+Grelot Zen.
+
+Les capacites de niveau franchies remplissent les emplacements libres. Si les
+quatre emplacements sont occupes, elles sont conservees dans la sauvegarde afin
+de survivre a un rechargement, puis l'ecran obligatoire demande immediatement et
+dans l'ordre si une capacite doit etre remplacee. Ce contrat corrige egalement les
+apprentissages traverses par l'EXP de combat. Les
+donnees `evolutions` extraites alimentent un premier resolveur pur pour les
+methodes de niveau, genre, rapport Attaque/Defense, Silcoon/Cascoon, bonheur et
+capacite connue, avec Pierre Stase. Il retourne le candidat apres le Bonbon Rare,
+mais ne change pas encore l'espece : mutation, annulation et scene d'evolution
+forment le prochain lot `SOLO-EVOLUTION-1`.
+
+Autorite : inventaire, equipe, capacites en attente et resultat d'evolution sont
+personnels et persistants. Le solo, l'hote et l'invite appellent la meme
+transaction locale ; aucune donnee privee n'est publiee a la room. Le cap est
+toutefois derive de l'etat narratif de l'hote deja replique pendant une session
+partagee, afin que les deux joueurs respectent l'avancement du monde visite. Une
+reconnexion restaure l'equipe personnelle et les choix de capacite non resolus.
+
+Correctif de recette du 2026-10-08 : le raccord UI du Bonbon Rare et le recalcul
+des objets d'entrainement referencaient par erreur une propriete inexistante
+`playerDetailsCatalog` au lieu du catalogue reel `battleCatalog`. Vite seul ne
+typecheckait pas cette application et le defaut n'apparaissait qu'au clic. Les
+deux chemins utilisent maintenant le catalogue charge, et le typecheck explicite
+de l'overworld fait partie de la validation du correctif.
+
+Le catalogue source contient en outre 43 objets sans bitmap `itemNNN.png` (cles,
+montures, lettres, quelques Mega-Gemmes et objets particuliers). Ce ne sont pas
+des echecs d'extraction : leur absence est confirmee par `asset-manifest.json`.
+L'overworld construit desormais l'ensemble des icones disponibles depuis ce
+manifeste et choisit `item000.png` avant le rendu pour toute entree absente. Un
+repli runtime memorise aussi toute incoherence residuelle, afin d'eviter une
+nouvelle requete 404 a chaque rerendu du Sac.
+
+Finition mobile du meme jalon : le champ numerique natif des quantites a ete
+retire. Un selecteur tactile commun propose de grandes cibles `-10`, `-1`, `+1`,
+`+10` et `Max`, bornees au stock. Il sert au Bonbon Rare et au jet d'objets, afin
+que les prochains flux quantifies reutilisent la meme interaction sans les petits
+controles de navigateur difficiles a manipuler au telephone.
+
+Premier increment `SOLO-EVOLUTION-1` du 2026-10-08 : l'audit de
+`pokemon-evolution.rb` et des 557 branches extraites confirme 18 methodes utilisees
+par Z. Le resolveur pur en couvre 17 comme evolutions principales : niveau,
+Ninjask, bonheur et bonheur jour/nuit, genre, rapport Attaque/Defense,
+Silcoon/Cascoon, capacite connue, espece presente dans l'equipe, objet tenu de jour
+ou de nuit, pierre et pierre reservee aux femelles. Les bornes jour/nuit suivent
+la source (`06:00-19:59` / `20:00-05:59`), les oeufs, la Pierre Stase et le Pichu
+forme 1 sont bloques. `Shedinja` est volontairement distingue : il s'agit d'une
+creation secondaire apres Ninjask, pas de l'evolution principale.
+
+Une montee de niveau par Bonbon Rare, par le reglement EXP local ou par le
+reglement autoritaire d'un combat partage persiste maintenant le candidat sur le
+Pokemon personnel, puis lance automatiquement le conducteur de progression des
+que le combat est ferme. Il resout d'abord chaque
+capacite en attente, puis ouvre l'ecran d'evolution. Il n'existe pas de choix
+`Evoluer` dans l'Equipe : l'annulation n'est offerte que pendant l'animation,
+comme dans Z. Une evolution non annulee conserve identite, Dresseur,
+IV, EV, bonheur, shiny, rubans et degats, passe a la forme 0, recalcule les
+statistiques, transpose le talent au meme emplacement lorsque possible, consomme
+l'objet tenu des methodes jour/nuit et propose les capacites de la nouvelle espece
+au niveau courant. L'annulation retire l'offre comme l'arret de la scene source.
+
+Les 21 parametres d'objet presents dans les donnees (`Item`/`ItemFemale`) sont
+actifs depuis le Sac et consommes atomiquement uniquement sur une cible eligible.
+Cela inclut les neuf pierres `*IMBUIDA`, qui ajoutent le `+7` source a chaque IV
+avant l'evolution. Les mutations restent personnelles et persistantes en solo,
+chez l'hote et chez l'invite ; seules les informations tactiques normales du
+Pokemon rejoignent ensuite un combat partage.
+
+Le premier ecran visuel alterne les deux battlers pendant 3,2 secondes et bloque
+les controles du monde ; `prefers-reduced-motion` le raccourcit. Une sauvegarde ou
+reconnexion avec une capacite/evolution en attente reprend automatiquement ce
+conducteur, l'etat persiste n'etant donc pas une option de menu differee.
+
+Dettes explicites avant fermeture : rapprocher la scene des effets exacts de Z
+(musique, cris, flashes et silhouette), faire passer les pierres par cette meme
+presentation non annulable, creer Munja avec une Poke Ball et une place libre,
+puis raccorder le futur registre Pokedex vu/possede. Le noyau ne simule pas Munja
+en silence.
 
 Correctif Coop du 2026-10-08 : la validation runtime des equipes de combat ne
 maintient plus une liste partielle d'objets tenus distincte du moteur. Elle utilise

@@ -1,6 +1,6 @@
 import { isHeldItemSupported, type PlayerInventory } from "@pokemon-z-battle/player-state";
 import type { SourceShopItem } from "./source-economy.js";
-import { sourceItemIconUrl } from "./source-bag.js";
+import { sourceItemIconFallbackUrl, sourceItemIconUrl } from "./source-bag.js";
 
 export interface SourceHeldItemEntry {
   readonly item: SourceShopItem;
@@ -45,6 +45,6 @@ export function sourceHeldItemManagerHtml(pokemonName: string, heldItem: string 
 
 export function bindSourceHeldItemIconFallback(root: ParentNode): void {
   root.querySelectorAll<HTMLImageElement>("[data-source-item-icon]").forEach((image) => {
-    image.addEventListener("error", () => { image.src = sourceItemIconUrl(0); }, { once: true });
+    image.addEventListener("error", () => { image.src = sourceItemIconFallbackUrl(image.src); }, { once: true });
   });
 }

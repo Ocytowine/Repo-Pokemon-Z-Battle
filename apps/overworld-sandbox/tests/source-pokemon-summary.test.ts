@@ -3,7 +3,8 @@ import { createPersistentPokemon, type PlayerDetailsCatalog, type PokemonTrainin
   from "@pokemon-z-battle/player-state";
 import type { PokemonAssetsManifest, PokemonSummaryAssets } from "@pokemon-z-battle/local-assets";
 import { createSourcePokemonCollection } from "../src/source-pokemon-collection.js";
-import { createPublicSourcePokemonSummary, createSourcePokemonSummary, sourceHiddenPowerType, sourcePokemonCharacteristic }
+import { createPublicSourcePokemonSummary, createSourcePokemonSummary, sourceHiddenPowerType,
+  sourcePokemonCharacteristic, sourcePokemonHappinessPresentation }
   from "../src/source-pokemon-summary.js";
 
 const values = (value: number): PokemonTrainingValues => ({ hp: value, attack: value, defense: value,
@@ -22,6 +23,12 @@ const catalog = { pokemon: [{ id: 650, internalName: "CHESPIN", name: "Marisson"
     description: "Renforce les capacités Plante en cas de besoin." }] } as PlayerDetailsCatalog;
 
 describe("Pokemon Z summary read model", () => {
+  it("presents happiness as an exact value, a gauge and a readable mood", () => {
+    expect(sourcePokemonHappinessPresentation(220)).toEqual({ valueLabel: "220 / 255", mood: "Très bon", percent: 86 });
+    expect(sourcePokemonHappinessPresentation(255)).toEqual({ valueLabel: "255 / 255", mood: "Maximum", percent: 100 });
+    expect(sourcePokemonHappinessPresentation(null)).toEqual({ valueLabel: "Inconnu", mood: "Non renseigné", percent: 0 });
+  });
+
   it("reproduces the source characteristic tie-break and Hidden Power type order", () => {
     expect(sourcePokemonCharacteristic(4, values(0))).toBe("Très curieux.");
     expect(sourceHiddenPowerType(values(0))).toBe("FIGHTING");

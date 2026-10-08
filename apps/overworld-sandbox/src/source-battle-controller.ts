@@ -106,6 +106,7 @@ export interface SourceBattleCallbacks {
   readonly getEventState: () => SourceEventState;
   readonly updateEventState: (state: SourceEventState) => void;
   readonly getResources: () => SourceBattleResources | null;
+  readonly getEvolutionHour?: () => number;
   readonly getPokemonCreationContext: (mapId: number, ballId: string) => PokemonCreationContext;
   readonly setNotice: (notice: string) => void;
   readonly render: () => void;
@@ -301,7 +302,8 @@ export class SourceBattleController {
         this.battle = replacements.state;
         if (this.battle.status === "finished") {
           const encounterCompletion = this.encounterCompletion;
-          const settlement = settleSourceEncounter(eventState.party, this.battle, this.callbacks.getResources()?.catalog);
+          const settlement = settleSourceEncounter(eventState.party, this.battle,
+            this.callbacks.getResources()?.catalog, this.callbacks.getEvolutionHour?.());
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
           this.closeFinishedLocalSession(this.battle);
@@ -491,7 +493,8 @@ export class SourceBattleController {
         }
         const winner = this.battle.winner;
         const resources = this.callbacks.getResources();
-        const settlement = settleSourceEncounter(eventState.party, this.battle, resources?.catalog);
+        const settlement = settleSourceEncounter(eventState.party, this.battle,
+          resources?.catalog, this.callbacks.getEvolutionHour?.());
         let nextState = { ...eventState, party: settlement.party };
         const trainerCompletion = this.trainerCompletion;
         const encounterCompletion = this.encounterCompletion;

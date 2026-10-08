@@ -64,6 +64,12 @@ export interface SourcePokemonSummaryCallbacks {
   readonly onMoveReorder: (pokemonId: string, fromIndex: number, toIndex: number) => void;
 }
 
+export interface SourcePokemonHappinessPresentation {
+  readonly valueLabel: string;
+  readonly mood: string;
+  readonly percent: number;
+}
+
 const SUMMARY_PAGES: readonly { readonly id: SourcePokemonSummaryPage; readonly label: string }[] = [
   { id: "identity", label: "Identité" }, { id: "history", label: "Historique" },
   { id: "stats", label: "Stats" }, { id: "moves", label: "Capacités" },
@@ -106,6 +112,14 @@ const BALL_TYPES: Readonly<Record<string, number>> = Object.freeze({
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+}
+
+export function sourcePokemonHappinessPresentation(value: number | null): SourcePokemonHappinessPresentation {
+  if (value === null || !Number.isFinite(value)) return { valueLabel: "Inconnu", mood: "Non renseigné", percent: 0 };
+  const happiness = Math.max(0, Math.min(255, Math.round(value)));
+  const mood = happiness === 255 ? "Maximum" : happiness >= 200 ? "Très bon" : happiness >= 150 ? "Bon"
+    : happiness >= 100 ? "Neutre" : happiness >= 50 ? "Faible" : "Très faible";
+  return { valueLabel: `${happiness} / 255`, mood, percent: Math.round((happiness / 255) * 100) };
 }
 
 function sourceUrl(path: string): string {
@@ -356,11 +370,16 @@ export class SourcePokemonSummaryView {
     const spriteMarkup = model.spriteUrl === null || model.spriteAnimation === null ? "?"
       : `<canvas data-summary-sprite width="${model.spriteAnimation.frameWidth}" height="${model.spriteAnimation.frameHeight}" style="width:${Math.round(model.spriteAnimation.frameWidth * spriteScale)}px;height:${Math.round(model.spriteAnimation.frameHeight * spriteScale)}px" role="img" aria-label="${escapeHtml(entry.displayName)}"></canvas>`;
     const tabs = SUMMARY_PAGES.map((candidate) => `<button type="button" data-summary-page="${candidate.id}" class="${candidate.id === this.page ? "active" : ""}">${candidate.label}</button>`).join("");
+    const happiness = sourcePokemonHappinessPresentation(pokemon.metadata.happiness);
     root.innerHTML = `<header><div><small>${view.context === "team" ? "ÉQUIPE" : view.context === "ranch" ? "RANCH" : "COMBAT · LECTURE SEULE"}</small><strong>Résumé Pokémon</strong></div><span>${index + 1}/${view.entries.length}</span><button type="button" data-summary-close aria-label="Fermer">×</button></header>
       <nav class="source-summary-tabs" aria-label="Pages du résumé">${tabs}</nav>
       <div class="source-summary-layout"><aside><div class="source-summary-name"><strong>${escapeHtml(entry.displayName)}</strong><span>N.${pokemon.level} <b class="${pokemon.metadata.gender ?? "unknown"}">${genderSymbol(pokemon.metadata.gender)}</b></span></div>
         <div class="source-summary-sprite">${spriteMarkup}</div>
         <div class="source-summary-flags">${flags}</div><div class="source-summary-form">${escapeHtml(model.formName ?? "Forme normale")}</div>
+        <div class="source-summary-happiness" aria-label="Bonheur : ${escapeHtml(happiness.valueLabel)}, ${escapeHtml(happiness.mood)}">
+          <div><small>Bonheur</small><strong>${escapeHtml(happiness.valueLabel)}</strong><span>${escapeHtml(happiness.mood)}</span></div>
+          <i aria-hidden="true"><b style="width:${happiness.percent}%"></b></i>
+        </div>
         <div class="source-summary-object">${model.ballUrl === null ? "" : `<img src="${model.ballUrl}" alt="">`}<span><small>${escapeHtml(model.ballName)}</small><strong>${escapeHtml(model.heldItemName)}</strong></span></div>
         <div class="source-summary-marks" aria-label="Marques">${marks}</div></aside>
         <section class="source-summary-page">${pageHtml(this.page, model, view.summaryAssets, this.advancedStats,

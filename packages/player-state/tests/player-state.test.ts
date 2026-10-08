@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, calculatePokemonStats, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
   createEmptyPlayerPokemonStorage,
-  createPersistentPokemon, createPersistentPokemonMetadata, createPlayerTrainerIdentity, experienceAtLevel, grantPokemonExperience,
+  createPersistentPokemon, createPersistentPokemonMetadata, createPlayerTrainerIdentity, declinePendingPokemonMove,
+  experienceAtLevel, grantPokemonExperience,
+  learnPendingPokemonMove, pokemonEvolutionCandidates, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
+  resolvePendingPokemonEvolution,
+  usePokemonEvolutionItem, useRareCandy,
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience, publicPokemonIdentity, recalculatePersistentPokemonStats,
@@ -213,7 +217,7 @@ describe("persistent player party", () => {
   it("projects decimal PBS weights to the integer battle unit used by capture", () => {
     const captureCatalog: PlayerBattleCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
       captureRate: 190, weight: 6.9,
-      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 } }] };
+      baseStats: { speed: 90 } }] };
 
     expect(playerPartyToBattleTeam(party, captureCatalog).members[0]?.capture)
       .toEqual({ rate: 190, baseSpeed: 90, weight: 69 });
@@ -301,6 +305,85 @@ describe("persistent player party", () => {
     const result = grantPokemonExperience(damaged, experienceAtLevel(6, "Parabolic") - created.experience, creationCatalog);
     expect(result).toMatchObject({ gained: 44, levelsGained: 1, pokemon: { level: 6, experience: 179 } });
     expect(result.pokemon.stats.maxHp - result.pokemon.hp).toBe(4);
+  });
+
+  it("uses Rare Candies up to Z's story cap and exposes evolution candidates", () => {
+    const pikachu = { ...catalog.pokemon[0]!,
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities: ["STATIC"], growthRate: "Parabolic", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }, { level: 6, move: "GROWL" }],
+      evolutions: [{ species: "RAICHU", method: "Level", parameter: "6" }] };
+    const raichu = { ...pikachu, internalName: "RAICHU", name: "Raichu", abilities: ["SURGE"],
+      baseStats: { hp: 60, attack: 90, defense: 55, specialAttack: 90, specialDefense: 80, speed: 110 },
+      levelUpMoves: [{ level: 6, move: "GROWL" }], evolutions: [] };
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [pikachu, raichu],
+      moves: [...catalog.moves, { ...catalog.moves[0]!, internalName: "GROWL", name: "Rugissement", pp: 40 }] };
+    const created = createPersistentPokemon("candy-mon", "PIKACHU", 5, creationCatalog);
+    const result = useRareCandy({ RARECANDY: 5 }, { schemaVersion: 1, activeIndex: 0, members: [created] },
+      created.id, 3, 6, creationCatalog);
+    expect(result).toMatchObject({ ok: true, inventory: { RARECANDY: 4 }, consumed: 1, levelsGained: 1,
+      pokemon: { level: 6, pendingEvolution: { species: "RAICHU", method: "Level", parameter: "6" } }, learnedMoves: ["GROWL"],
+      evolutionCandidates: [{ species: "RAICHU", method: "Level", parameter: "6" }] });
+    if (!result.ok) throw new Error("Bonbon Rare attendu.");
+    expect(resolvePendingPokemonEvolution(result.party, created.id, true, creationCatalog))
+      .toMatchObject({ ok: true, previousSpecies: "PIKACHU",
+        pokemon: { species: "RAICHU", ability: "SURGE" } });
+    expect(pokemonZLevelCap({})).toBe(17);
+    expect(pokemonZLevelCap({ "88": true, "97": true })).toBe(36);
+  });
+
+  it("keeps full-moveset level attacks pending until an explicit replacement", () => {
+    const full = { ...party.members[0]!, id: "pending-mon",
+      moves: ["TACKLE", "A", "B", "C"].map((internalName) => ({ internalName, pp: 10, maxPp: 10 })),
+      pendingMoves: ["GROWL"] };
+    const currentParty = { schemaVersion: 1 as const, activeIndex: 0, members: [full] };
+    expect(learnPendingPokemonMove(currentParty, full.id, { internalName: "GROWL", pp: 40 }))
+      .toMatchObject({ ok: false, reason: "replacement-required" });
+    expect(learnPendingPokemonMove(currentParty, full.id, { internalName: "GROWL", pp: 40 }, 2))
+      .toMatchObject({ ok: true, forgottenMove: "B", pokemon: { pendingMoves: [],
+        moves: [{ internalName: "TACKLE" }, { internalName: "A" }, { internalName: "GROWL", pp: 40 },
+          { internalName: "C" }] } });
+    expect(declinePendingPokemonMove(currentParty, full.id, "GROWL"))
+      .toMatchObject({ ok: true, pokemon: { moves: full.moves } });
+    expect(pokemonLevelEvolutionCandidates(full, { ...catalog, pokemon: [] })).toEqual([]);
+  });
+
+  it("uses source evolution stones atomically and applies imbued IV gains", () => {
+    const base = party.members[0]!;
+    const source = { ...base, species: "PIKACHU", heldItem: null,
+      metadata: { ...base.metadata, gender: "female" as const,
+        ivs: { hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 } } };
+    const definition = { id: 25, internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"],
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }],
+      evolutions: [{ species: "RAICHU", method: "Item", parameter: "THUNDERSTONEIMBUIDA" }] };
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [definition,
+      { ...definition, id: 26, internalName: "RAICHU", name: "Raichu", abilities: ["SURGE"], evolutions: [] }] };
+    const result = usePokemonEvolutionItem({ THUNDERSTONEIMBUIDA: 1 },
+      { schemaVersion: 1, activeIndex: 0, members: [source] }, source.id, "THUNDERSTONEIMBUIDA", creationCatalog);
+    expect(result).toMatchObject({ ok: true, inventory: {}, individualValuesRaised: 42,
+      pokemon: { species: "RAICHU", ability: "SURGE" } });
+  });
+
+  it("evaluates Z's time, held-item and party evolution contexts", () => {
+    const base = { ...party.members[0]!, metadata: { ...party.members[0]!.metadata, happiness: 220 },
+      heldItem: "KINGSROCK" };
+    const companion = { ...party.members[0]!, id: "moon", species: "LUNATONE" };
+    const definition = { id: 1, internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"],
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      levelUpMoves: [{ level: 1, move: "TACKLE" }], evolutions: [
+        { species: "DAYMON", method: "HappinessDay", parameter: null },
+        { species: "KINGMON", method: "DayHoldItem", parameter: "KINGSROCK" },
+        { species: "PARTYMON", method: "HasInParty", parameter: "LUNATONE" },
+      ] };
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [definition] };
+    expect(pokemonEvolutionCandidates(base, creationCatalog,
+      { trigger: "level", hour: 12, party: { schemaVersion: 1, activeIndex: 0, members: [base, companion] } })
+      .map((candidate) => candidate.method)).toEqual(["HappinessDay", "DayHoldItem", "HasInParty"]);
+    expect(pokemonEvolutionCandidates(base, creationCatalog, { trigger: "level", hour: 23 })
+      .map((candidate) => candidate.method)).toEqual([]);
   });
 });
 

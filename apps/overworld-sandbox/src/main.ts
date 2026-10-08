@@ -5,9 +5,12 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  changePokemonCollectionHeldItem, discardInventoryItem, isPokemonItemUsableInBattle,
-  recalculatePlayerPokemonCollection,
+  changePokemonCollectionHeldItem, declinePendingPokemonMove, discardInventoryItem, isPokemonItemUsableInBattle,
+  isPokemonEvolutionItem, learnPendingPokemonMove, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
+  recalculatePersistentPokemonStats,
+  recalculatePlayerPokemonCollection, resolvePendingPokemonEvolution,
   reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
+  usePokemonEvolutionItem, useRareCandy,
   teachPokemonMachineMove,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
@@ -53,6 +56,7 @@ import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
+import { SourceProgressionView } from "./source-progression-view.js";
 import { networkBattleEventsForViewer, networkBattleForViewer, networkBattleTrainerIds }
   from "./network-battle-presentation.js";
 import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
@@ -69,7 +73,7 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
-import { grantSourceTestItems, sourceBagEntries } from "./source-bag.js";
+import { configureSourceItemIconAvailability, grantSourceTestItems, sourceBagEntries } from "./source-bag.js";
 import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
@@ -106,6 +110,8 @@ let sourceEventState = loadSourceEventState();
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 let sourceNewGameActive = !sourceAdventureSaveExists(localStorage);
+const sourceProgressionQueue: string[] = [];
+let activeSourceProgressionPokemonId: string | null = null;
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
 let pendingSourceNpcContact: SourceNpcEventContact | null = null;
@@ -790,7 +796,17 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDiscardItem: discardSourceItem,
   onTeachMachineMove: teachSourcePokemonMachineMove,
   onUsePokemonItem: useSourcePokemonItem,
+  onUseRareCandy: useSourceRareCandy,
   onUsePokemonPartyItem: useSourcePokemonPartyItem,
+});
+const sourceProgressionView = new SourceProgressionView({
+  onLearnMove: learnSourcePendingMove,
+  onDeclineMove: declineSourcePendingMove,
+  onResolveEvolution: resolveSourcePokemonEvolution,
+  onComplete: () => {
+    activeSourceProgressionPokemonId = null;
+    maybeStartSourceProgression();
+  },
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
@@ -816,6 +832,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     const previousState = sourceEventState;
     sourceEventState = nextState;
     persistSourceEventState();
+    enqueueAllSourceProgressions();
     queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
   },
   getResources: () => importedAssets === null ? null : {
@@ -825,6 +842,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
   },
+  getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
   setNotice: (notice) => { importedNotice = notice; },
   render,
@@ -961,9 +979,10 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog,
       settlement.capturedPokemon === undefined ? undefined
         : activePokemonCreationContext(networkBattleContexts.get(settlement.battleId)?.mapId
-          ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId));
+          ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId), new Date().getHours());
     sourceEventState = result.state;
     persistSourceEventState();
+    if (result.applied) enqueueAllSourceProgressions();
     if (result.applied) networkBattleOutcomes.set(settlement.battleId, {
       experiences: sharedBattleExperiencePresentations(previousParty, result.state.party,
         result.gains, assets.battleCatalog),
@@ -1414,7 +1433,7 @@ function sourceSceneActivity(): SourceSceneActivity {
   return { dialogue: sourceDialogues.current !== null,
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
-    transition: sourceTransitionInProgress, sequence: sourceSequences.current !== null,
+    transition: sourceTransitionInProgress || sourceProgressionView.open, sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
 
@@ -1735,15 +1754,22 @@ function teachSourcePokemonMachineMove(itemId: string, pokemonId: string, replac
   return { ok: true, message, eventState: sourceEventState };
 }
 
+const SOURCE_TRAINING_STAT_LABELS = {
+  hp: "PV", attack: "Attaque", defense: "Défense", specialAttack: "Attaque Spéciale",
+  specialDefense: "Défense Spéciale", speed: "Vitesse",
+} as const;
+
 function useSourcePokemonItem(itemId: string, pokemonId: string, moveIndex?: number): {
   readonly ok: boolean;
   readonly message: string;
   readonly eventState: SourceEventState;
 } {
+  if (isPokemonEvolutionItem(itemId)) return useSourcePokemonEvolutionItem(itemId, pokemonId);
   const result = usePokemonItem(sourceEventState.inventory, sourceEventState.party, itemId, pokemonId, {
     context: "field",
     revivalAllowed: sourceEventState.switches["320"] !== true,
-  }, moveIndex);
+  }, moveIndex, importedAssets === null ? undefined
+    : (pokemon) => recalculatePersistentPokemonStats(pokemon, importedAssets!.battleCatalog));
   if (!result.ok) {
     const message = result.reason === "unsupported-item" ? "L'effet de cet objet n'est pas encore porté."
       : result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
@@ -1761,11 +1787,214 @@ function useSourcePokemonItem(itemId: string, pokemonId: string, moveIndex?: num
   const pokemonName = result.pokemon.nickname ?? species?.name ?? result.pokemon.species;
   const effects = [result.effect.hpRestored > 0 ? `${result.effect.hpRestored} PV restaurés` : null,
     result.effect.ppRestored > 0 ? `${result.effect.ppRestored} PP restaurés` : null,
+    (result.effect.maximumPpRaised ?? 0) > 0 ? `maximum de PP +${result.effect.maximumPpRaised}` : null,
+    result.effect.individualValuesRaised !== undefined
+      ? `${result.effect.trainingStat === undefined ? "Potentiel global" : SOURCE_TRAINING_STAT_LABELS[result.effect.trainingStat]} +${result.effect.trainingValueRaised} IV`
+      : result.effect.effortValuesChanged !== undefined && result.effect.trainingStat === undefined
+        ? `EV totaux +${result.effect.trainingValueRaised}`
+      : (result.effect.trainingValueRaised ?? 0) > 0
+      ? `${result.effect.trainingStat === undefined ? "Statistique" : SOURCE_TRAINING_STAT_LABELS[result.effect.trainingStat]} +${result.effect.trainingValueRaised} EV` : null,
+    (result.effect.trainingValueRaised ?? 0) < 0 && result.effect.trainingStat !== undefined
+      ? `${SOURCE_TRAINING_STAT_LABELS[result.effect.trainingStat]} ${result.effect.trainingValueRaised} EV` : null,
+    result.effect.natureChanged === undefined ? null : "nature modifiée",
     result.effect.statusCured === null ? null : "statut soigné",
     result.effect.revived ? "Pokémon ranimé" : null,
-    result.effect.happinessChanged < 0 ? `bonheur ${result.effect.happinessChanged}` : null]
+    result.effect.happinessChanged !== 0
+      ? `bonheur ${result.effect.happinessChanged > 0 ? "+" : ""}${result.effect.happinessChanged}` : null]
     .filter((entry): entry is string => entry !== null);
   const message = `${pokemonName} : ${effects.join(" · ")}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function useSourcePokemonEvolutionItem(itemId: string, pokemonId: string): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  if (importedAssets === null) return { ok: false, message: "Catalogue Pokémon indisponible.", eventState: sourceEventState };
+  const result = usePokemonEvolutionItem(sourceEventState.inventory, sourceEventState.party, pokemonId, itemId,
+    importedAssets.battleCatalog);
+  if (!result.ok) {
+    const message = result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
+      : result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+        : result.reason === "invalid-evolution" ? "Les données de cette évolution sont invalides."
+          : "Cet objet n'a aucun effet sur ce Pokémon.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  persistSourceEventState();
+  const previousName = importedAssets.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === result.previousSpecies)?.name ?? result.previousSpecies;
+  const nextName = importedAssets.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === result.pokemon.species)?.name ?? result.pokemon.species;
+  const message = `${previousName} évolue en ${nextName}`
+    + `${result.individualValuesRaised > 0 ? ` · potentiel total +${result.individualValuesRaised} IV` : ""}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function useSourceRareCandy(pokemonId: string, quantity: number): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  if (importedAssets === null) return { ok: false, message: "Catalogue Pokémon indisponible.", eventState: sourceEventState };
+  const result = useRareCandy(sourceEventState.inventory, sourceEventState.party, pokemonId, quantity,
+    pokemonZLevelCap(sourceEventState.switches), importedAssets.battleCatalog, { hour: new Date().getHours() });
+  if (!result.ok) {
+    const message = result.reason === "item-not-owned" ? "Vous n'avez plus de Bonbon Rare."
+      : result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+        : result.reason === "invalid-quantity" ? "Quantité de Bonbons Rares invalide."
+          : "Ce Pokémon a atteint la limite de niveau actuelle.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  persistSourceEventState();
+  enqueueSourceProgression(pokemonId);
+  const name = result.pokemon.nickname
+    ?? importedAssets.battleCatalog.pokemon.find((pokemon) => pokemon.internalName === result.pokemon.species)?.name
+    ?? result.pokemon.species;
+  const learned = result.learnedMoves.map((moveId) => importedAssets!.battleCatalog.moves
+    .find((move) => move.internalName === moveId)?.name ?? moveId);
+  const pending = result.pendingMoves.map((moveId) => importedAssets!.battleCatalog.moves
+    .find((move) => move.internalName === moveId)?.name ?? moveId);
+  const evolution = result.evolutionCandidates[0];
+  const evolutionName = evolution === undefined ? null : importedAssets.battleCatalog.pokemon
+    .find((pokemon) => pokemon.internalName === evolution.species)?.name ?? evolution.species;
+  const message = `${name} monte au niveau ${result.pokemon.level} avec ${result.consumed} Bonbon${result.consumed > 1 ? "s" : ""} Rare${result.consumed > 1 ? "s" : ""}`
+    + `${learned.length === 0 ? "" : ` · apprend ${learned.join(", ")}`}`
+    + `${pending.length === 0 ? "" : ` · choix de capacité en attente : ${pending.join(", ")}`}`
+    + `${evolutionName === null ? "" : ` · évolution disponible vers ${evolutionName}`}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function learnSourcePendingMove(pokemonId: string, moveId: string, replacementIndex?: number): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const move = importedAssets?.battleCatalog.moves.find((candidate) => candidate.internalName === moveId);
+  if (move === undefined) {
+    return { ok: false, message: "Cette capacité est absente du catalogue.", eventState: sourceEventState };
+  }
+  const result = learnPendingPokemonMove(sourceEventState.party, pokemonId, move, replacementIndex);
+  if (!result.ok) {
+    const message = result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+      : result.reason === "move-not-pending" ? "Cette capacité n'est plus en attente."
+        : result.reason === "replacement-required" ? "Choisissez une capacité à oublier."
+          : "La capacité à remplacer est invalide.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, party: sourcePartyWithPendingEvolution(result.party, pokemonId) };
+  persistSourceEventState();
+  const pokemonName = result.pokemon.nickname
+    ?? importedAssets?.battleCatalog.pokemon.find((candidate) => candidate.internalName === result.pokemon.species)?.name
+    ?? result.pokemon.species;
+  const forgottenName = result.forgottenMove === null ? null : importedAssets?.battleCatalog.moves
+    .find((candidate) => candidate.internalName === result.forgottenMove)?.name ?? result.forgottenMove;
+  const message = `${pokemonName} apprend ${move.name}`
+    + `${forgottenName === null ? "" : ` à la place de ${forgottenName}`}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function declineSourcePendingMove(pokemonId: string, moveId: string): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const moveName = importedAssets?.battleCatalog.moves.find((move) => move.internalName === moveId)?.name ?? moveId;
+  const result = declinePendingPokemonMove(sourceEventState.party, pokemonId, moveId);
+  if (!result.ok) {
+    const message = result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+      : "Cette capacité n'est plus en attente.";
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, party: sourcePartyWithPendingEvolution(result.party, pokemonId) };
+  persistSourceEventState();
+  const message = `${result.pokemon.nickname ?? result.pokemon.species} n'apprend pas ${moveName}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function sourcePartyWithPendingEvolution(party: SourceEventState["party"], pokemonId: string): SourceEventState["party"] {
+  if (importedAssets === null) return party;
+  const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  const pokemon = party.members[index];
+  if (pokemon === undefined || (pokemon.pendingMoves?.length ?? 0) > 0 || pokemon.pendingEvolution !== undefined) return party;
+  const evolution = pokemonLevelEvolutionCandidates(pokemon, importedAssets.battleCatalog,
+    { hour: new Date().getHours(), party })[0];
+  if (evolution === undefined) return party;
+  return { ...party, members: party.members.map((candidate, memberIndex) => memberIndex === index
+    ? { ...candidate, pendingEvolution: evolution } : candidate) };
+}
+
+function enqueueSourceProgression(pokemonId: string): void {
+  const pokemon = sourceEventState.party.members.find((candidate) => candidate.id === pokemonId);
+  if (pokemon === undefined || (pokemon.pendingMoves?.length ?? 0) === 0 && pokemon.pendingEvolution === undefined) return;
+  if (activeSourceProgressionPokemonId !== pokemonId && !sourceProgressionQueue.includes(pokemonId)) {
+    sourceProgressionQueue.push(pokemonId);
+  }
+  maybeStartSourceProgression();
+}
+
+function enqueueAllSourceProgressions(): void {
+  for (const pokemon of sourceEventState.party.members) enqueueSourceProgression(pokemon.id);
+}
+
+function maybeStartSourceProgression(): void {
+  if (sourceProgressionView.open || importedAssets === null) return;
+  const activity = sourceSceneActivity();
+  if (activity.battle || activity.transition) return;
+  while (sourceProgressionQueue.length > 0) {
+    const pokemonId = sourceProgressionQueue.shift()!;
+    const pokemon = sourceEventState.party.members.find((candidate) => candidate.id === pokemonId);
+    if (pokemon === undefined || (pokemon.pendingMoves?.length ?? 0) === 0 && pokemon.pendingEvolution === undefined) continue;
+    activeSourceProgressionPokemonId = pokemonId;
+    sourceProgressionView.show(pokemonId, { eventState: sourceEventState,
+      catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+    return;
+  }
+}
+
+function resolveSourcePokemonEvolution(pokemonId: string, accept: boolean): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  if (importedAssets === null) return { ok: false, message: "Catalogue Pokémon indisponible.", eventState: sourceEventState };
+  const before = sourceEventState.party.members.find((pokemon) => pokemon.id === pokemonId);
+  const result = resolvePendingPokemonEvolution(sourceEventState.party, pokemonId, accept,
+    importedAssets.battleCatalog);
+  if (!result.ok) {
+    const message = result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+      : result.reason === "evolution-not-pending" ? "Aucune évolution n'est en attente."
+        : "Les données de cette évolution sont invalides.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, party: result.party };
+  persistSourceEventState();
+  const oldName = before?.nickname ?? importedAssets.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === result.previousSpecies)?.name ?? result.previousSpecies;
+  const newName = importedAssets.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === result.pokemon.species)?.name ?? result.pokemon.species;
+  const message = accept ? `Félicitations ! ${oldName} évolue en ${newName}.`
+    : `L'évolution de ${oldName} est arrêtée.`;
   importedNotice = message;
   renderImportedView();
   return { ok: true, message, eventState: sourceEventState };
@@ -1849,6 +2078,7 @@ function renderImportedView(): void {
   renderSourcePokemonSummary();
   publishCurrentSourceActors();
   publishCurrentSourceScene();
+  maybeStartSourceProgression();
 }
 
 function renderSourceDialogue(): void {
@@ -2061,6 +2291,7 @@ function synchronizeSourceFollower(): void {
 
 function activateSourceWorld(world: LoadedSourceWorld): void {
   importedAssets = world.assets;
+  configureSourceItemIconAvailability(world.assets.availableItemIconIds);
   const reconciled = recalculatePlayerPokemonCollection(sourceEventState.party, sourceEventState.ranch,
     world.assets.battleCatalog);
   if (reconciled.party !== sourceEventState.party || reconciled.storage !== sourceEventState.ranch) {
@@ -2076,6 +2307,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   sourceNpcMotions.reset(world.assets.map.id, world.assets.events, performance.now());
   sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
+  enqueueAllSourceProgressions();
   queueMicrotask(publishCurrentSourceWorld);
   queueMicrotask(publishCurrentSourceActors);
 }
