@@ -1,9 +1,10 @@
-import { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode,
+import { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField,
+  pokemonItemTargetMode,
   type PokemonItemUseEffect, type PokemonItemUseFailure as CorePokemonItemUseFailure,
   type PokemonItemUsePolicy } from "@pokemon-z-battle/battle-engine";
 import type { PersistentPokemon, PlayerPartyState } from "./index.js";
 
-export { isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode };
+export { isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField, pokemonItemTargetMode };
 
 export type PlayerInventory = Readonly<Record<string, number>>;
 export type PokemonItemUseContext = PokemonItemUsePolicy["context"];

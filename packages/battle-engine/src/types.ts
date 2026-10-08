@@ -76,6 +76,8 @@ export interface BattlerState {
   readonly stats: BattleStats;
   readonly stages: StatStages;
   readonly hp: number;
+  /** Combat-relevant friendship value; null is preserved for legacy saves. */
+  readonly happiness?: number | null;
   readonly majorStatus: MajorStatusState | null;
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
@@ -228,7 +230,8 @@ export type TeamBattleEvent =
       readonly ppRestored: number; readonly movePp: readonly number[] | null;
       readonly targetMoveIndex: number | null;
       readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean;
-      readonly statRaised: BattleStat | null; readonly stagesRaised: number };
+      readonly statRaised: BattleStat | null; readonly stagesRaised: number;
+      readonly happinessChanged: number };
 
 export type DoubleBattleEvent = TeamBattleEvent | {
   readonly type: "positionedActionResolved";

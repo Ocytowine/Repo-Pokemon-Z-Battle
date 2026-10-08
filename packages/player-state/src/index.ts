@@ -13,7 +13,7 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
-export { isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode,
+export { isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField, pokemonItemTargetMode,
   discardInventoryItem, usePokemonItem, type DiscardInventoryItemResult,
   type PlayerInventory, type PokemonItemUseContext,
   type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
@@ -726,7 +726,8 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
   return { id: member.id, species: member.species, name: member.nickname ?? definition.name, level: member.level,
     types: [...definition.types], stats: { ...member.stats },
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
-    hp: member.hp, majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
+    hp: member.hp, happiness: member.metadata.happiness,
+    majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),
     // PBS exposes kilograms with one decimal (6.9), while Pokemon Z's compiled
@@ -824,6 +825,8 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
     if (result === undefined) throw new Error(`Résultat de combat incomplet pour ${member.id}.`);
     const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      metadata: result.happiness === undefined ? member.metadata
+        : { ...member.metadata, happiness: result.happiness },
       heldItem: result.heldItem,
       moves: member.moves.map((slot) => {
         const current = pp.get(slot.internalName);
@@ -856,6 +859,8 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     if (result === undefined) return pokemon;
     const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      metadata: result.happiness === undefined ? pokemon.metadata
+        : { ...pokemon.metadata, happiness: result.happiness },
       heldItem: result.heldItem,
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });

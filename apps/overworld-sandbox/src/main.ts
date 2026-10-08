@@ -5,7 +5,8 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  changePokemonCollectionHeldItem, discardInventoryItem, isPokemonItemUseSupported, recalculatePlayerPokemonCollection,
+  changePokemonCollectionHeldItem, discardInventoryItem, isPokemonItemUsableInBattle,
+  recalculatePlayerPokemonCollection,
   reorderPokemonMoves, usePokemonItem,
   teachPokemonMachineMove,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
@@ -2179,7 +2180,7 @@ function render(): void {
 
 function battleItemInventory(): Readonly<Record<string, number>> {
   return Object.fromEntries(Object.entries(sourceEventState.inventory)
-    .filter(([itemId, quantity]) => (isPokemonItemUseSupported(itemId) || isPokemonBallSupported(itemId))
+    .filter(([itemId, quantity]) => (isPokemonItemUsableInBattle(itemId) || isPokemonBallSupported(itemId))
       && Number.isSafeInteger(quantity) && quantity > 0));
 }
 
@@ -2224,7 +2225,7 @@ function renderEncounter(): void {
     : network?.battleInventory ?? sourceEventState.inventory;
   const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
     visibleBattleInventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity,
-      usable: isPokemonItemUseSupported(item.internalName) || isPokemonBallSupported(item.internalName) }));
+      usable: isPokemonItemUsableInBattle(item.internalName) || isPokemonBallSupported(item.internalName) }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     waitingForJoin: networkBattle?.sourceContext?.origin === "source-trainer"

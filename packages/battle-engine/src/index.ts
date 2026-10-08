@@ -13,7 +13,7 @@ export { SeededRandom } from "./rng.js";
 export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
   settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";
 export { MAX_TEAM_SIZE, activeBattlers, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn } from "./team-battle.js";
-export { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInField,
+export { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField,
   pokemonItemTargetMode } from "./pokemon-item.js";
 export type { PokemonItemTargetMode, PokemonItemUseEffect, PokemonItemUseFailure,
   PokemonItemUsePolicy } from "./pokemon-item.js";

@@ -3,7 +3,7 @@ import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
-import { isPokemonBallSupported, isPokemonItemUseSupported, pokemonItemTargetMode,
+import { isPokemonBallSupported, isPokemonItemUsableInBattle, pokemonItemTargetMode,
   type BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
@@ -65,7 +65,7 @@ function isBattleAction(value: unknown): boolean {
     && (value.activeSlot === undefined || safeInteger(value.activeSlot, 0, 1));
   const item = isRecord(value) && ["kind", "itemId", "targetTeamIndex"].every((key) => key in value)
     && Object.keys(value).every((key) => ["kind", "itemId", "targetTeamIndex", "targetMoveIndex"].includes(key))
-    && value.kind === "item" && typeof value.itemId === "string" && isPokemonItemUseSupported(value.itemId)
+    && value.kind === "item" && typeof value.itemId === "string" && isPokemonItemUsableInBattle(value.itemId)
     && safeInteger(value.targetTeamIndex, 0, 5)
     && (pokemonItemTargetMode(value.itemId) === "move"
       ? safeInteger(value.targetMoveIndex, 0, 3) : value.targetMoveIndex === undefined);
@@ -79,7 +79,7 @@ function isBattleAction(value: unknown): boolean {
 
 function isSourceBattleInventory(value: unknown): boolean {
   return isRecord(value) && Object.keys(value).length <= 128
-    && Object.entries(value).every(([itemId, quantity]) => (isPokemonItemUseSupported(itemId) || isPokemonBallSupported(itemId))
+    && Object.entries(value).every(([itemId, quantity]) => (isPokemonItemUsableInBattle(itemId) || isPokemonBallSupported(itemId))
       && safeInteger(quantity, 1, 999));
 }
 
@@ -122,7 +122,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -140,7 +140,9 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     const stages = member.stages;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
       || !hasExactKeys(stages, BATTLE_STAGES) || !BATTLE_STAGES.every((stat) => safeInteger(stages[stat], -6, 6))
-      || !safeInteger(member.hp, 0, Number(stats.maxHp)) || !isMajorStatus(member.majorStatus)
+      || !safeInteger(member.hp, 0, Number(stats.maxHp))
+      || member.happiness !== undefined && member.happiness !== null && !safeInteger(member.happiness, 0, 255)
+      || !isMajorStatus(member.majorStatus)
       || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
       || member.heldItem !== null && !HELD_ITEMS.has(String(member.heldItem))
     ) return false;

@@ -18,18 +18,23 @@ export interface PokemonItemUseEffect {
   readonly revived: boolean;
   readonly statRaised: BattleStat | null;
   readonly stagesRaised: number;
+  readonly happinessChanged: number;
 }
 
 export type PokemonItemTargetMode = "pokemon" | "move" | "active";
 
 type ItemEffect =
   | { readonly kind: "heal-hp"; readonly amount: number | "full" | "quarter";
-    readonly battleAmount?: number | "full" | "quarter" }
-  | { readonly kind: "cure-status"; readonly status: MajorStatusState["kind"] | "all" }
+    readonly battleAmount?: number | "full" | "quarter"; readonly happiness?: HappinessChange }
+  | { readonly kind: "cure-status"; readonly status: MajorStatusState["kind"] | "all";
+    readonly happiness?: HappinessChange }
   | { readonly kind: "full-restore" }
-  | { readonly kind: "revive"; readonly amount: "half" | "full" }
+  | { readonly kind: "revive"; readonly amount: "half" | "full"; readonly happiness?: HappinessChange;
+    readonly bypassRevivalRestriction?: boolean; readonly fieldOnly?: boolean }
   | { readonly kind: "restore-pp"; readonly amount: number | "full"; readonly allMoves: boolean }
   | { readonly kind: "raise-stage"; readonly stat: BattleStat; readonly amount: number };
+
+type HappinessChange = "powder" | "energy-root" | "revival-herb";
 
 const ITEM_EFFECTS = new Map<string, ItemEffect>();
 
@@ -60,6 +65,12 @@ register(["FULLHEAL", "LAVACOOKIE", "OLDGATEAU", "CASTELIACONE", "LUMIOSEGALETTE
 register(["FULLRESTORE"], { kind: "full-restore" });
 register(["REVIVE"], { kind: "revive", amount: "half" });
 register(["MAXREVIVE"], { kind: "revive", amount: "full" });
+register(["ENERGYPOWDER"], { kind: "heal-hp", amount: 50, happiness: "powder" });
+register(["ENERGYROOT"], { kind: "heal-hp", amount: 200, happiness: "energy-root" });
+register(["HEALPOWDER"], { kind: "cure-status", status: "all", happiness: "powder" });
+register(["REVIVALHERB"], { kind: "revive", amount: "full", happiness: "revival-herb",
+  bypassRevivalRestriction: true });
+register(["Cenizas"], { kind: "revive", amount: "full", bypassRevivalRestriction: true, fieldOnly: true });
 register(["ETHER", "LEPPABERRY"], { kind: "restore-pp", amount: 10, allMoves: false });
 register(["MAXETHER"], { kind: "restore-pp", amount: "full", allMoves: false });
 register(["ELIXIR"], { kind: "restore-pp", amount: 10, allMoves: true });
@@ -98,6 +109,11 @@ export function isPokemonItemUseSupported(item: string): boolean {
   return ITEM_EFFECTS.has(item);
 }
 
+export function isPokemonItemUsableInBattle(item: string): boolean {
+  const definition = ITEM_EFFECTS.get(item);
+  return definition !== undefined && !(definition.kind === "revive" && definition.fieldOnly === true);
+}
+
 export function pokemonItemTargetMode(item: string): PokemonItemTargetMode | null {
   const definition = ITEM_EFFECTS.get(item);
   if (definition === undefined) return null;
@@ -119,11 +135,29 @@ function healingAmount(pokemon: Pick<BattlerState, "hp" | "stats">,
 type PokemonItemMoveSlot = { readonly pp: number; readonly maxPp?: number;
   readonly move?: { readonly pp: number } };
 type PokemonItemState = Pick<BattlerState, "hp" | "stats" | "majorStatus">
-  & { readonly moves?: readonly PokemonItemMoveSlot[]; readonly stages?: BattlerState["stages"] };
+  & { readonly moves?: readonly PokemonItemMoveSlot[]; readonly stages?: BattlerState["stages"];
+    readonly happiness?: number | null; readonly metadata?: { readonly happiness: number | null } };
 
 function emptyEffect(): PokemonItemUseEffect {
   return { hpRestored: 0, ppRestored: 0, movePp: null, targetMoveIndex: null, statusCured: null,
-    revived: false, statRaised: null, stagesRaised: 0 };
+    revived: false, statRaised: null, stagesRaised: 0, happinessChanged: 0 };
+}
+
+function withHappiness<T extends PokemonItemState>(pokemon: T, effect: PokemonItemUseEffect,
+  method?: HappinessChange): { readonly pokemon: T; readonly effect: PokemonItemUseEffect } {
+  const current = pokemon.happiness === undefined ? pokemon.metadata?.happiness : pokemon.happiness;
+  if (method === undefined || current === undefined || current === null) {
+    return { pokemon, effect };
+  }
+  const loss = method === "powder" ? current < 200 ? 5 : 10
+    : method === "energy-root" ? current < 200 ? 10 : 15
+      : current < 200 ? 15 : 20;
+  const happiness = Math.max(0, current - loss);
+  const updated = pokemon.happiness !== undefined
+    ? { ...pokemon, happiness }
+    : { ...pokemon, metadata: { ...pokemon.metadata!, happiness } };
+  return { pokemon: updated as T,
+    effect: { ...effect, happinessChanged: happiness - current } };
 }
 
 function maximumPp(slot: PokemonItemMoveSlot): number {
@@ -136,6 +170,9 @@ export function applyPokemonItemEffect<T extends PokemonItemState>(
 ): { readonly pokemon: T; readonly effect: PokemonItemUseEffect } | PokemonItemUseFailure {
   const definition = ITEM_EFFECTS.get(item);
   if (definition === undefined) return "unsupported-item";
+  if (policy.context === "battle" && definition.kind === "revive" && definition.fieldOnly === true) {
+    return "unsupported-item";
+  }
   if (policy.context === "field" && definition.kind === "raise-stage") return "unsupported-item";
   if (policy.context === "battle" && policy.battleHealingAllowed === false
     && definition.kind !== "raise-stage") return "battle-healing-disabled";
@@ -145,14 +182,14 @@ export function applyPokemonItemEffect<T extends PokemonItemState>(
       ? definition.battleAmount : definition.amount;
     const hpRestored = Math.min(pokemon.stats.maxHp - pokemon.hp,
       Math.max(1, healingAmount(pokemon, configured)));
-    return { pokemon: { ...pokemon, hp: pokemon.hp + hpRestored },
-      effect: { ...emptyEffect(), hpRestored } };
+    return withHappiness({ ...pokemon, hp: pokemon.hp + hpRestored },
+      { ...emptyEffect(), hpRestored }, definition.happiness);
   }
   if (definition.kind === "cure-status") {
     if (pokemon.hp <= 0 || pokemon.majorStatus === null
       || definition.status !== "all" && pokemon.majorStatus.kind !== definition.status) return "no-effect";
-    return { pokemon: { ...pokemon, majorStatus: null },
-      effect: { ...emptyEffect(), statusCured: pokemon.majorStatus.kind } };
+    return withHappiness({ ...pokemon, majorStatus: null },
+      { ...emptyEffect(), statusCured: pokemon.majorStatus.kind }, definition.happiness);
   }
   if (definition.kind === "full-restore") {
     if (pokemon.hp <= 0 || pokemon.hp >= pokemon.stats.maxHp && pokemon.majorStatus === null) return "no-effect";
@@ -161,11 +198,12 @@ export function applyPokemonItemEffect<T extends PokemonItemState>(
       effect: { ...emptyEffect(), hpRestored, statusCured: pokemon.majorStatus?.kind ?? null } };
   }
   if (definition.kind === "revive") {
-    if (!policy.revivalAllowed) return "revival-disabled";
+    if (!policy.revivalAllowed && definition.bypassRevivalRestriction !== true) return "revival-disabled";
     if (pokemon.hp > 0) return "no-effect";
     const hp = definition.amount === "full" ? pokemon.stats.maxHp : Math.max(1, Math.floor(pokemon.stats.maxHp / 2));
-    return { pokemon: { ...pokemon, hp, majorStatus: null },
-      effect: { ...emptyEffect(), hpRestored: hp, statusCured: pokemon.majorStatus?.kind ?? null, revived: true } };
+    return withHappiness({ ...pokemon, hp, majorStatus: null },
+      { ...emptyEffect(), hpRestored: hp, statusCured: pokemon.majorStatus?.kind ?? null, revived: true },
+      definition.happiness);
   }
   if (definition.kind === "restore-pp") {
     if (pokemon.moves === undefined || pokemon.hp <= 0) return "no-effect";
