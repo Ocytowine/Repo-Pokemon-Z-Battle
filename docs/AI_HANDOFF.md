@@ -1452,7 +1452,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 477 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 482 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1838,6 +1838,36 @@ sans etat de Sac replique. Audit source restant : `HM05/WATERFALL` et `HM06/DIVE
 ont un objet mais aucune section dans `tm.txt`, donc Apprendre reste desactive pour
 ces deux cas plutot que d'inventer une compatibilite ; six sections de `tm.txt`
 n'ont inversement aucun objet machine associe.
+
+Huitieme increment `SOLO-ITEMS-1` du 2026-10-08 : les medecines ameres de Z sont
+portees depuis leurs handlers Ruby. `ENERGYPOWDER` restaure 50 PV,
+`ENERGYROOT` 200 PV, `HEALPOWDER` soigne les statuts majeurs et
+`REVIVALHERB` ranime completement. Leurs diminutions de bonheur respectent les
+seuils exacts de `changeHappiness` et suivent le Pokemon dans l'etat tactique,
+le reglement personnel et la reconnexion Coop. Comme dans la source,
+`REVIVALHERB` contourne la restriction Nuzlocke. `Cenizas`, objet propre a Z,
+ranime aussi completement sans perte de bonheur et reste reserve au terrain car
+aucun handler de combat ne lui est associe.
+
+`SACREDASH` utilise une transaction personnelle d'equipe distincte : une seule
+unite ranime tous les Pokemon K.O. non oeufs et restaure PV, statut et PP. Le Sac
+demande une confirmation d'equipe plutot qu'une cible individuelle. Ces usages
+hors combat sont locaux a la sauvegarde du proprietaire chez le joueur solo,
+l'hote et l'invite ; en combat, la room reste autoritaire et ne restitue que le
+bonheur et les ressources du Pokemon possede. Dette explicite : la branche
+Confusion de `HEALPOWDER` sera ajoutee avec les etats volatils, la Confusion
+n'etant pas encore representee dans le moteur.
+
+Correctif Coop du 2026-10-08 : la validation runtime des equipes de combat ne
+maintient plus une liste partielle d'objets tenus distincte du moteur. Elle utilise
+desormais `isHeldItemSupported`, autorite canonique commune aux projections solo,
+PvP et combats source. Les cinq objets jusque-la oublies par le protocole
+(`EXPERTBELT`, `FOCUSSASH`, `LIFEORB`, `ROCKYHELMET`, `WIDELENS`) ne rendent donc
+plus `respondPlayerChallenge` ni `openSourceBattle` mal formes. Le correctif ne
+change ni l'autorite de la room, ni la persistance personnelle de l'objet : seule
+sa projection tactique minimale est repliquee aux participants. Un test parcourt
+les onze objets supportes sur l'acceptation d'un duel et l'ouverture d'un combat
+sauvage, tout en maintenant le rejet d'un identifiant inconnu.
 
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements

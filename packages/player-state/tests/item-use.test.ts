@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { createPersistentPokemonMetadata, discardInventoryItem, isPokemonItemUseSupported, usePokemonItem,
+import { createPersistentPokemonMetadata, discardInventoryItem, isPokemonItemUsableInBattle,
+  isPokemonItemUseSupported, usePokemonItem,
+  usePokemonPartyItem,
   type PersistentPokemon, type PlayerPartyState } from "../src/index.js";
 
 function pokemon(input: Partial<PersistentPokemon> = {}): PersistentPokemon {
@@ -102,5 +104,53 @@ describe("personal Pokemon item use", () => {
     expect(usePokemonItem({ XATTACK: 1 }, party(pokemon()), "XATTACK", "owner-mon",
       { context: "field", revivalAllowed: true })).toMatchObject({ ok: false,
       inventory: { XATTACK: 1 }, reason: "unsupported-item" });
+  });
+
+  it("reproduces Pokemon Z bitter medicines and their happiness thresholds", () => {
+    const high = pokemon({ hp: 1, metadata: { ...pokemon().metadata, happiness: 220 } });
+    expect(usePokemonItem({ ENERGYPOWDER: 1 }, party(high), "ENERGYPOWDER", high.id,
+      { context: "field", revivalAllowed: true })).toMatchObject({ ok: true, inventory: {},
+      party: { members: [{ hp: 40, metadata: { happiness: 210 } }] },
+      effect: { hpRestored: 39, happinessChanged: -10 } });
+
+    const poisoned = pokemon({ majorStatus: { kind: "poison", toxicCounter: null },
+      metadata: { ...pokemon().metadata, happiness: 150 } });
+    expect(usePokemonItem({ HEALPOWDER: 1 }, party(poisoned), "HEALPOWDER", poisoned.id,
+      { context: "field", revivalAllowed: true })).toMatchObject({ ok: true,
+      party: { members: [{ majorStatus: null, metadata: { happiness: 145 } }] },
+      effect: { statusCured: "poison", happinessChanged: -5 } });
+  });
+
+  it("keeps the two source Nuzlocke revival exceptions distinct from battle items", () => {
+    const fainted = pokemon({ hp: 0, metadata: { ...pokemon().metadata, happiness: 205 } });
+    expect(usePokemonItem({ REVIVALHERB: 1 }, party(fainted), "REVIVALHERB", fainted.id,
+      { context: "field", revivalAllowed: false })).toMatchObject({ ok: true,
+      party: { members: [{ hp: 40, metadata: { happiness: 185 } }] },
+      effect: { revived: true, happinessChanged: -20 } });
+    expect(usePokemonItem({ Cenizas: 1 }, party(fainted), "Cenizas", fainted.id,
+      { context: "field", revivalAllowed: false })).toMatchObject({ ok: true,
+      party: { members: [{ hp: 40, metadata: { happiness: 205 } }] } });
+    expect(isPokemonItemUseSupported("Cenizas")).toBe(true);
+    expect(isPokemonItemUsableInBattle("Cenizas")).toBe(false);
+    expect(isPokemonItemUsableInBattle("REVIVALHERB")).toBe(true);
+  });
+
+  it("uses Sacred Ash once to fully restore every fainted non-egg party member", () => {
+    const first = pokemon({ id: "first", hp: 0, majorStatus: { kind: "burn" },
+      moves: [{ internalName: "TACKLE", pp: 0, maxPp: 35 }] });
+    const egg = pokemon({ id: "egg", hp: 0,
+      metadata: { ...pokemon().metadata, eggSteps: 20 } });
+    const healthy = pokemon({ id: "healthy", hp: 12 });
+    const original = { schemaVersion: 1 as const, activeIndex: 2, members: [first, egg, healthy] };
+    expect(usePokemonPartyItem({ SACREDASH: 2 }, original, "SACREDASH")).toMatchObject({
+      ok: true, inventory: { SACREDASH: 1 }, revived: 1,
+      party: { members: [
+        { id: "first", hp: 40, majorStatus: null, moves: [{ pp: 35 }] },
+        { id: "egg", hp: 0 },
+        { id: "healthy", hp: 12 },
+      ] },
+    });
+    expect(usePokemonPartyItem({ SACREDASH: 1 }, party(healthy), "SACREDASH"))
+      .toMatchObject({ ok: false, reason: "no-effect", inventory: { SACREDASH: 1 } });
   });
 });

@@ -1,4 +1,5 @@
-import { isHeldItemSupported, isPokemonItemUsableInField, pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
+import { isHeldItemSupported, isPokemonItemUsableInField, isPokemonPartyItemUsableInField,
+  pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
 import type { SourceActionWheelAction } from "./source-action-wheel.js";
 import type { SourceShopItem } from "./source-economy.js";
 
@@ -13,7 +14,7 @@ export interface SourceItemActionOptions {
 
 export interface SourceItemTargetFlow {
   readonly action: "use" | "give" | "teach";
-  readonly stages: readonly ("pokemon" | "move" | "compatibility" | "replace-move" | "confirmation")[];
+  readonly stages: readonly ("party" | "pokemon" | "move" | "compatibility" | "replace-move" | "confirmation")[];
 }
 
 /** Keeps the source item identity while making the separately stored machine move visible in the Bag. */
@@ -27,6 +28,9 @@ export function sourceItemDisplayName(item: SourceShopItem, machineMoveName?: st
 /** Declares the UI stages independently from their future rules and mutations. */
 export function sourceItemTargetFlow(item: SourceShopItem, action: "use" | "give" | "teach"): SourceItemTargetFlow {
   if (action === "give") return { action, stages: ["pokemon", "confirmation"] };
+  if (action === "use" && isPokemonPartyItemUsableInField(item.internalName)) {
+    return { action, stages: ["party", "confirmation"] };
+  }
   if (action === "teach" || item.machineMove !== null && item.machineMove !== undefined) {
     return { action: "teach", stages: ["pokemon", "compatibility", "replace-move", "confirmation"] };
   }
@@ -42,7 +46,8 @@ export function isSourceItemDiscardable(item: SourceShopItem): boolean {
 /** Extension-ready item menu: item-specific actions are appended by feature modules through options. */
 export function sourceItemActions(item: SourceShopItem,
   options: SourceItemActionOptions): readonly SourceActionWheelAction<SourceItemActionId>[] {
-  const usable = isPokemonItemUsableInField(item.internalName);
+  const usable = isPokemonItemUsableInField(item.internalName)
+    || isPokemonPartyItemUsableInField(item.internalName);
   const giveable = isHeldItemSupported(item.internalName);
   const discardable = isSourceItemDiscardable(item) && options.quantity > 0;
   const primary: SourceActionWheelAction<SourceItemActionId> = item.machineMove !== null

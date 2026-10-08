@@ -7,7 +7,7 @@ import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessi
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
   changePokemonCollectionHeldItem, discardInventoryItem, isPokemonItemUsableInBattle,
   recalculatePlayerPokemonCollection,
-  reorderPokemonMoves, usePokemonItem,
+  reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
   teachPokemonMachineMove,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
@@ -790,6 +790,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDiscardItem: discardSourceItem,
   onTeachMachineMove: teachSourcePokemonMachineMove,
   onUsePokemonItem: useSourcePokemonItem,
+  onUsePokemonPartyItem: useSourcePokemonPartyItem,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
@@ -1761,8 +1762,32 @@ function useSourcePokemonItem(itemId: string, pokemonId: string, moveIndex?: num
   const effects = [result.effect.hpRestored > 0 ? `${result.effect.hpRestored} PV restaurés` : null,
     result.effect.ppRestored > 0 ? `${result.effect.ppRestored} PP restaurés` : null,
     result.effect.statusCured === null ? null : "statut soigné",
-    result.effect.revived ? "Pokémon ranimé" : null].filter((entry): entry is string => entry !== null);
+    result.effect.revived ? "Pokémon ranimé" : null,
+    result.effect.happinessChanged < 0 ? `bonheur ${result.effect.happinessChanged}` : null]
+    .filter((entry): entry is string => entry !== null);
   const message = `${pokemonName} : ${effects.join(" · ")}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function useSourcePokemonPartyItem(itemId: string): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const result = usePokemonPartyItem(sourceEventState.inventory, sourceEventState.party, itemId);
+  if (!result.ok) {
+    const message = result.reason === "unsupported-item" ? "L'effet de cet objet n'est pas encore porté."
+      : result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
+        : "Aucun Pokémon K.O. ne peut être ranimé.";
+    importedNotice = message;
+    renderImportedView();
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  persistSourceEventState();
+  const message = `${result.revived} Pokémon ${result.revived > 1 ? "ont été ranimés" : "a été ranimé"} et complètement soigné${result.revived > 1 ? "s" : ""}.`;
   importedNotice = message;
   renderImportedView();
   return { ok: true, message, eventState: sourceEventState };

@@ -1715,6 +1715,11 @@ emploient ce meme noyau local sans publier inventaire ou Ranch dans la room. Les
 autres objets tenus restent invisibles dans ce selecteur tant que leur hook source
 n'est pas porte, mais un objet historique inerte peut toujours etre retire.
 
+Correctif Coop du 2026-10-08 : les projections de combat PvP et sauvage valident
+maintenant ces onze objets via le registre canonique du moteur. La liste partielle
+du protocole, qui bloquait l'acceptation d'un duel et la demande de combat sauvage
+de l'hote pour cinq objets, a ete supprimee et couverte sur les deux messages.
+
 Sixieme increment objets du 2026-10-08 : la roue radiale est devenue un composant
 generique commun aux Pokemon et au Sac. Chaque entree du Sac expose Utiliser,
 Donner et Jeter, avec annulation par le centre ; les actions indisponibles restent
@@ -1734,6 +1739,15 @@ Pokemon Z ayant `INFINITETMS=true`, CT et CS sont conservees et ne peuvent etre
 jetees ou donnees. Les PP de la capacite remplacee suivent exactement le handler
 Ruby. WATERFALL et DIVE restent des exceptions auditees : leurs objets existent
 mais leurs sections manquent du `tm.txt` source.
+
+Huitieme increment objets du 2026-10-08 : Poudrenergie, Racine Energie, Poudre
+Soin, Herbe Rappel et les Cendres Sacrees propres a Z utilisent le noyau commun.
+Les soins, exceptions Nuzlocke et pertes de bonheur reproduisent les handlers
+source en exploration et en combat solo/Coop ; le bonheur tactique est restitue
+au seul proprietaire apres reconnexion. La Cendre Sacree d'equipe ranime en une
+transaction tous les membres K.O. non oeufs et restaure PV, statut et PP depuis
+une confirmation dediee du Sac. La guerison de la Confusion par Poudre Soin reste
+liee au futur etat volatil Confusion.
 
 La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche

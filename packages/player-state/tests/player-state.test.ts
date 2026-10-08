@@ -165,13 +165,15 @@ describe("persistent player party", () => {
     const visualParty = { ...party, members: party.members.map((member) => ({ ...member,
       metadata: { ...member.metadata, form: 2, shiny: true, gender: "female" as const } })) };
     const team = playerPartyToBattleTeam(visualParty, catalog);
-    expect(team.members[0]).toMatchObject({ species: "PIKACHU", name: "Pikachu", hp: 4, ability: "QUICKFEET",
+    expect(team.members[0]).toMatchObject({ species: "PIKACHU", name: "Pikachu", hp: 4,
+      happiness: visualParty.members[0]!.metadata.happiness, ability: "QUICKFEET",
       appearance: { form: 2, shiny: true, gender: "female" },
       moves: [{ pp: 2, move: { internalName: "TACKLE", name: "Charge" } }] });
-    const result = { ...team, members: team.members.map((member) => ({ ...member, hp: 1, majorStatus: { kind: "burn" as const },
+    const result = { ...team, members: team.members.map((member) => ({ ...member, hp: 1, happiness: 12,
+      majorStatus: { kind: "burn" as const },
       moves: member.moves.map((slot) => ({ ...slot, pp: 1 })) })) };
     expect(storeBattleTeam(visualParty, result).members[0]).toMatchObject({ hp: 1, majorStatus: { kind: "burn" },
-      metadata: { form: 2, shiny: true, gender: "female" }, moves: [{ pp: 1 }] });
+      metadata: { form: 2, shiny: true, gender: "female", happiness: 12 }, moves: [{ pp: 1 }] });
   });
 
   it("preserves inert source abilities and still blocks malformed or unsupported battle mechanics", () => {

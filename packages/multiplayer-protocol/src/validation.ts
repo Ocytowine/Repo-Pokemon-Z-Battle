@@ -3,7 +3,7 @@ import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
-import { isPokemonBallSupported, isPokemonItemUsableInBattle, pokemonItemTargetMode,
+import { isHeldItemSupported, isPokemonBallSupported, isPokemonItemUsableInBattle, pokemonItemTargetMode,
   type BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
@@ -88,7 +88,6 @@ const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "
 const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020",
   "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
 const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
-const HELD_ITEMS = new Set(["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"]);
 
 function boundedString(value: unknown, max = 64): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
@@ -144,7 +143,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || member.happiness !== undefined && member.happiness !== null && !safeInteger(member.happiness, 0, 255)
       || !isMajorStatus(member.majorStatus)
       || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
-      || member.heldItem !== null && !HELD_ITEMS.has(String(member.heldItem))
+      || member.heldItem !== null && (typeof member.heldItem !== "string" || !isHeldItemSupported(member.heldItem))
     ) return false;
     return member.moves.every((slot) => {
       if (!isRecord(slot) || !hasExactKeys(slot, ["move", "pp"]) || !isRecord(slot.move)) return false;

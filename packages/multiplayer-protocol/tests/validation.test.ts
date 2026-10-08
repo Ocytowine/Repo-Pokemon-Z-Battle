@@ -13,7 +13,7 @@ import {
   type ClientMessage,
 } from "../src/index.js";
 import { createDefaultPlayerProfile } from "@pokemon-z-battle/player-state";
-import { MINIMAL_MOVE_CATALOG } from "@pokemon-z-battle/battle-engine";
+import { MINIMAL_MOVE_CATALOG, SUPPORTED_HELD_ITEMS } from "@pokemon-z-battle/battle-engine";
 
 const duelTeam = { activeIndex: 0, members: [{ id: "p1", species: "EEVEE", name: "Eevee", level: 10,
   types: ["NORMAL"], stats: { maxHp: 30, attack: 20, defense: 20, specialAttack: 20, specialDefense: 20, speed: 20 },
@@ -130,6 +130,34 @@ describe("multiplayer protocol", () => {
       requestId: "source-capture", context, playerTeam: captureTeam, opponentTeam: captureTeam,
       battleItems: { POKEBALL: 2 } })))
       .toMatchObject({ type: "openSourceBattle", opponentTeam: { members: [{ capture: { weight: 69 } }] } });
+  });
+
+  it("accepts every engine-supported held item in PvP responses and shared battle openings", () => {
+    const context = { origin: "source-wild", mapId: 3, format: "single", escapable: true,
+      healingItemsAllowed: true, narrativeOwnerId: "host-1", presentation: { battlebackId: "forest",
+        battleMusicId: "Battle wild", victoryMusicId: "Victory", opponentTrainer: null, defeatText: null },
+      rewards: { opponents: [{ memberId: "p1", species: "EEVEE", level: 10, baseExperience: 65 }],
+        trainerBaseMoney: null, experience: { levelCap: 17, experienceDisabled: false,
+          boostTenPercent: false, boostTwentyPercent: false } }, continuation: "pending-encounter" } as const;
+
+    for (const heldItem of SUPPORTED_HELD_ITEMS) {
+      const team = { ...duelTeam, members: [{ ...duelTeam.members[0], heldItem }] };
+      expect(parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+        requestId: `challenge-${heldItem}`, team })))
+        .toMatchObject({ type: "challengePlayer", team: { members: [{ heldItem }] } });
+      expect(parseClientMessage(JSON.stringify({ type: "respondPlayerChallenge", version: 15,
+        requestId: `duel-${heldItem}`, accept: true, team })))
+        .toMatchObject({ type: "respondPlayerChallenge", team: { members: [{ heldItem }] } });
+      expect(parseClientMessage(JSON.stringify({ type: "openSourceBattle", version: 15,
+        requestId: `wild-${heldItem}`, context, playerTeam: team, opponentTeam: duelTeam,
+        battleItems: { POKEBALL: 2 } })))
+        .toMatchObject({ type: "openSourceBattle", playerTeam: { members: [{ heldItem }] } });
+    }
+
+    const invalidTeam = { ...duelTeam, members: [{ ...duelTeam.members[0], heldItem: "NOT_AN_ITEM" }] };
+    expect(() => parseClientMessage(JSON.stringify({ type: "respondPlayerChallenge", version: 15,
+      requestId: "duel-invalid-item", accept: true, team: invalidTeam })))
+      .toThrow("respondPlayerChallenge mal forme");
   });
 
   it("validates battle join proposals and responses", () => {

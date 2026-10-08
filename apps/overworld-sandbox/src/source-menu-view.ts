@@ -11,7 +11,7 @@ import { sourceMovementCapabilityLabel, type SourceMovementCapability,
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
-import { pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
+import { isPokemonPartyItemUsableInField, pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
 import { bindSourceHeldItemIconFallback, canManageSourceHeldItem, sourceHeldItemManagerHtml }
   from "./source-held-item-view.js";
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
@@ -98,6 +98,11 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onUsePokemonPartyItem: (itemId: string) => {
+    readonly ok: boolean;
+    readonly message: string;
+    readonly eventState: SourceEventState;
+  };
 }
 
 export class SourceMenuView {
@@ -105,7 +110,7 @@ export class SourceMenuView {
   private selectedTeamPokemonId: string | null = null;
   private selectedBagItemId: string | null = null;
   private selectedBagPokemonId: string | null = null;
-  private bagAction: "wheel" | "use" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
+  private bagAction: "wheel" | "use" | "use-party-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
   private discardQuantity = 1;
   private selectedBagReplacementIndex: number | null = null;
   private bagResult: { readonly message: string; readonly itemId: string; readonly repeatAction: "use" | "give" | null } | null = null;
@@ -238,6 +243,8 @@ export class SourceMenuView {
           : targetChoices}</div>`}</section></div>`;
     const discardPanel = selectedEntry === null || this.bagAction !== "discard" ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-discard"><header><div><small>JETER</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header><label>Quantité <input type="number" min="1" max="${selectedEntry.quantity}" value="${Math.min(this.discardQuantity, selectedEntry.quantity)}" data-source-bag-discard-quantity></label><button type="button" class="danger" data-source-bag-discard-confirm>Jeter</button></section></div>`;
+    const partyUsePanel = selectedEntry === null || this.bagAction !== "use-party-confirm" ? ""
+      : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>SOIGNER L'ÉQUIPE</small><strong>${escapeSourceHtml(selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header><p>Ranimer et soigner complètement tous les Pokémon K.O. de l'équipe ?</p><footer><button type="button" data-source-party-item-confirm>Utiliser</button></footer></section></div>`;
     const teachTarget = selectedTarget === null ? null : teamEntries.find((entry) => entry.pokemon.id === selectedTarget.id) ?? null;
     const teachPanel = selectedEntry === null || machineMove === null || machineSpecies === undefined
       || !["teach", "teach-replace", "teach-confirm"].includes(this.bagAction ?? "") ? ""
@@ -259,7 +266,7 @@ export class SourceMenuView {
           const moveName = item.machineMove === null || item.machineMove === undefined ? undefined
             : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name;
           return `<button type="button" class="source-bag-entry${item.internalName === this.selectedBagItemId ? " selected" : ""}" data-source-bag-item="${escapeSourceHtml(item.internalName)}" title="Ouvrir les actions"><img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><div><strong>${escapeSourceHtml(sourceItemDisplayName(item, moveName))}</strong><small>${escapeSourceHtml(item.description)}</small></div><span>×${quantity}</span></button>`;
-        }).join("")}</div>${actionWheel}${targetPanel}${discardPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+        }).join("")}</div>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>("[data-source-pocket]").forEach((button) => button.addEventListener("click", () => {
       const pocketId = Number(button.dataset.sourcePocket);
@@ -304,11 +311,21 @@ export class SourceMenuView {
       button.addEventListener("click", () => {
         const action = button.dataset.sourceWheelAction;
         if (action === "use" || action === "give" || action === "discard" || action === "teach") {
-          this.bagAction = action;
+          this.bagAction = action === "use" && this.selectedBagItemId !== null
+            && isPokemonPartyItemUsableInField(this.selectedBagItemId) ? "use-party-confirm" : action;
           this.selectedBagPokemonId = null;
           this.renderBag(content, model);
         }
       }));
+    content.querySelector<HTMLButtonElement>("[data-source-party-item-confirm]")?.addEventListener("click", () => {
+      if (this.selectedBagItemId === null) return;
+      const itemId = this.selectedBagItemId;
+      const result = this.callbacks.onUsePokemonPartyItem(itemId);
+      this.bagNotice = result.message;
+      this.bagAction = null;
+      this.bagResult = { message: result.message, itemId, repeatAction: result.ok ? "use" : null };
+      this.renderBag(content, { ...model, eventState: result.eventState });
+    });
     content.querySelectorAll<HTMLButtonElement>("[data-source-machine-target]").forEach((button) =>
       button.addEventListener("click", () => {
         const pokemonId = button.dataset.sourceMachineTarget;
@@ -398,7 +415,8 @@ export class SourceMenuView {
       if (action !== "use" && action !== "give") return;
       this.selectedBagItemId = this.bagResult?.itemId ?? null;
       this.selectedBagPokemonId = null;
-      this.bagAction = action;
+      this.bagAction = action === "use" && this.selectedBagItemId !== null
+        && isPokemonPartyItemUsableInField(this.selectedBagItemId) ? "use-party-confirm" : action;
       this.bagResult = null;
       this.renderBag(content, model);
     });

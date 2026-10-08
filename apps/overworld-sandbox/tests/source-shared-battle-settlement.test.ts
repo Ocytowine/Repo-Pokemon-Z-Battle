@@ -22,7 +22,7 @@ describe("shared source battle settlement", () => {
     const defeated = { ...team.members[0]!, id: "wild-mon" };
     const finalState = { ...createTeamBattleState({ player: team.members, opponent: [defeated] }),
       status: "finished" as const, winner: "player" as const,
-      teams: { player: { activeIndex: 0, members: [{ ...team.members[0]!, hp: 5,
+      teams: { player: { activeIndex: 0, members: [{ ...team.members[0]!, hp: 5, happiness: 60,
         moves: [{ ...team.members[0]!.moves[0]!, pp: 2 }] }] },
       opponent: { activeIndex: 0, members: [{ ...defeated, hp: 0 }] } } };
     const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
@@ -44,9 +44,9 @@ describe("shared source battle settlement", () => {
     const applied = applySourceBattleSettlement(initial, settlement, "host", catalog);
     expect(applied).toMatchObject({ applied: true, moneyDelta: 500,
       state: { money: 3500, inventory: { POTION: 2 }, appliedBattleSettlementIds: ["battle-1-host"],
-        party: { members: [{ id: "host-mon", hp: 7, moves: [{ pp: 2 }] }] } } });
+        party: { members: [{ id: "host-mon", hp: 7, metadata: { happiness: 60 }, moves: [{ pp: 2 }] }] } } });
     expect(applied.gains[0]).toMatchObject({ recipientMemberId: "host-mon", gained: 113 });
-    expect(applied.state.party.members[0]?.metadata).toEqual(pokemon.metadata);
+    expect(applied.state.party.members[0]?.metadata).toEqual({ ...pokemon.metadata, happiness: 60 });
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog))
       .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0 });
   });

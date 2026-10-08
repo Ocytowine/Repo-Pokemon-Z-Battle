@@ -159,6 +159,31 @@ describe("team battles", () => {
       opponent: { kind: "wait" } }, new ScriptedRandom([]))).toThrow("no-effect");
   });
 
+  it("applies bitter medicine happiness and source revival exceptions in battle", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("lead", "player", { hp: 20, happiness: 210 }),
+        pokemon("fainted", "player", { hp: 0, happiness: 205 })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const healed = resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "ENERGYPOWDER", targetTeamIndex: 0 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]));
+    expect(healed.state.teams.player.members[0]).toMatchObject({ hp: 70, happiness: 200 });
+    expect(healed.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed",
+      itemId: "ENERGYPOWDER", happinessChanged: -10 }));
+
+    const revived = resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "REVIVALHERB", targetTeamIndex: 1 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]), { context: "battle", revivalAllowed: false });
+    expect(revived.state.teams.player.members[1]).toMatchObject({ hp: 100, happiness: 185 });
+    expect(() => resolveTeamTurn(state, {
+      player: { kind: "item", itemId: "Cenizas", targetTeamIndex: 1 },
+      opponent: { kind: "wait" },
+    }, new ScriptedRandom([]))).toThrow("unsupported-item");
+  });
+
   it("restores a selected move's PP and raises only the active Pokemon's battle stage", () => {
     const depleted = pokemon("lead", "player", { moves: [
       { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 1 },

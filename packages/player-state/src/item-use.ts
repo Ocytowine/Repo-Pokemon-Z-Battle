@@ -22,6 +22,35 @@ export type DiscardInventoryItemResult =
   | { readonly ok: false; readonly inventory: PlayerInventory;
       readonly reason: "invalid-quantity" | "item-not-owned" | "not-discardable" };
 
+export type PokemonPartyItemUseResult =
+  | { readonly ok: true; readonly inventory: PlayerInventory; readonly party: PlayerPartyState;
+      readonly revived: number }
+  | { readonly ok: false; readonly inventory: PlayerInventory; readonly party: PlayerPartyState;
+      readonly reason: "unsupported-item" | "item-not-owned" | "no-effect" };
+
+export function isPokemonPartyItemUsableInField(item: string): boolean {
+  return item === "SACREDASH";
+}
+
+/** Source-wide personal party transaction. SACREDASH revives and fully heals each non-egg fainted member. */
+export function usePokemonPartyItem(inventory: PlayerInventory, party: PlayerPartyState,
+  item: string): PokemonPartyItemUseResult {
+  if (!isPokemonPartyItemUsableInField(item)) return { ok: false, inventory, party, reason: "unsupported-item" };
+  const quantity = inventory[item] ?? 0;
+  if (!Number.isSafeInteger(quantity) || quantity <= 0) return { ok: false, inventory, party, reason: "item-not-owned" };
+  let revived = 0;
+  const members = party.members.map((pokemon) => {
+    if (pokemon.hp > 0 || pokemon.metadata.eggSteps > 0) return pokemon;
+    revived += 1;
+    return { ...pokemon, hp: pokemon.stats.maxHp, majorStatus: null,
+      moves: pokemon.moves.map((slot) => ({ ...slot, pp: slot.maxPp })) };
+  });
+  if (revived === 0) return { ok: false, inventory, party, reason: "no-effect" };
+  const nextInventory = { ...inventory };
+  if (quantity === 1) delete nextInventory[item]; else nextInventory[item] = quantity - 1;
+  return { ok: true, inventory: nextInventory, party: { ...party, members }, revived };
+}
+
 /** Personal inventory mutation used identically by solo, host and guest adapters. */
 export function discardInventoryItem(inventory: PlayerInventory, item: string, quantity: number,
   discardable: boolean): DiscardInventoryItemResult {

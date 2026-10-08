@@ -95,7 +95,8 @@ describe("source battle presentation sequence", () => {
   it("presents authoritative PP and temporary stage item effects", () => {
     const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
     const common = { type: "trainerItemUsed" as const, side: "player" as const,
-      targetIndex: 0, target: "Héros", hpRestored: 0, statusCured: null, revived: false };
+      targetIndex: 0, target: "Héros", hpRestored: 0, statusCured: null, revived: false,
+      happinessChanged: 0 };
     const sequence = buildSourceBattlePresentationSequence(state, [
       { ...common, itemId: "ETHER", ppRestored: 5, movePp: [15], targetMoveIndex: 0,
         statRaised: null, stagesRaised: 0 },

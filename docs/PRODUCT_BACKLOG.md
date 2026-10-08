@@ -390,8 +390,13 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   CT/CS possedent deja un flux type cible/compatibilite/remplacement/confirmation,
   et `tm.txt` est maintenant extrait : l'apprentissage est actif, preserve les PP
   lors d'un remplacement et respecte les CT infinies de Z. WATERFALL/DIVE restent
-  sans compatibilite source dans ce fichier. Les autres effets d'objets tenus et
-  les pierres restent a porter avant fermeture.
+  sans compatibilite source dans ce fichier.
+- Increment medecines secondaires du 2026-10-08 : les quatre remedes amers,
+  `Cenizas` et la Cendre Sacree d'equipe sont fonctionnels avec consommation,
+  bonheur, Nuzlocke et persistance solo/Coop. Poudre Soin attend encore l'etat
+  volatil Confusion pour couvrir cette branche precise du handler source.
+- Les autres effets d'objets tenus, objets de combat volatils et pierres restent
+  a porter avant fermeture.
 
 ### SOLO-CAPTURE-1 — Capture complete
 

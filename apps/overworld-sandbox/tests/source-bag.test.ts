@@ -48,6 +48,9 @@ describe("source bag", () => {
       .toMatchObject({ id: "teach", enabled: true });
     expect(sourceItemTargetFlow(machine, "teach").stages)
       .toEqual(["pokemon", "compatibility", "replace-move", "confirmation"]);
+    const sacredAsh = { ...potion, internalName: "SACREDASH" };
+    expect(sourceItemActions(sacredAsh, { quantity: 1 })[0]).toMatchObject({ id: "use", enabled: true });
+    expect(sourceItemTargetFlow(sacredAsh, "use").stages).toEqual(["party", "confirmation"]);
   });
 
   it("adds the localized move name after a machine number without changing regular items", () => {

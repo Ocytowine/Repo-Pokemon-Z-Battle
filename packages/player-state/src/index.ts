@@ -14,7 +14,8 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
 export { isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField, pokemonItemTargetMode,
-  discardInventoryItem, usePokemonItem, type DiscardInventoryItemResult,
+  discardInventoryItem, isPokemonPartyItemUsableInField, usePokemonItem, usePokemonPartyItem,
+  type DiscardInventoryItemResult, type PokemonPartyItemUseResult,
   type PlayerInventory, type PokemonItemUseContext,
   type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
   type PokemonItemUseResult } from "./item-use.js";
