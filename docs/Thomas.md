@@ -61,3 +61,25 @@ Le fonctionnement est similaire au PVP à 2 joueurs, mais en duo.
 
 À voir :
 Ajouter ou non des bonus trouvables dans le « MONDE » ou sélectionnables après une victoire en arène.
+
+
+
+
+Test à faire :
+
+tester les différents mode de jeu:
+- difficulté normal
+- difficulté difficile
+- difficulté héroique
+(APRES CONTROL, il manque l'explication de la difficulté et y a pas de mode "difficile" mais un mode "facile")
+- nuzlock
+(APRES CONTROL, il manque le nuzlock assisté et peut être ajouter un explication entre le nuzlock et nuzlock assisté)
+- la team d'un type
+
+Tester comment interagisse le mode multi lorsque les joueurs ont une difficulté/mode différent
+
+je vien de tester le choix des couleurs du perso, et je trouve que la couleur de l'écriture en noir, ne ressort pas assez par rapport au vert (on vois pas bien du tout)
+
+Après les tests suivant, j'ai mit la difficulté en "classique", le mode en "normal", les starter "Kalos", choisi le héros "A dark" black gold navy, et je n'arrive pas à lancer le jeu. le bouton réessayer apparait à la place du bouton "commencer le voyage" mais plus rien ne se passe. Même en appuyant sur le bouton "relire le résumé" puis skip le resumé, je n'arrive pas à lancer le jeu.
+
+après nettoyage des sauvegarde, il est plus possible de lancer le jeu
