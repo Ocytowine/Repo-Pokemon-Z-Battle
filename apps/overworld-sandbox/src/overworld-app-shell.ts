@@ -18,16 +18,15 @@ export function mountOverworldApp(): HTMLCanvasElement {
           <section id="player-duel-prompt" class="player-duel-prompt" hidden aria-label="Défi entre joueurs"></section>
           <section id="battle-join-prompt" class="battle-join-prompt" hidden aria-label="Rejoindre le combat"></section>
           <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
-            <header class="source-menu-header"><div><small>MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
+            <header class="source-menu-header"><div><small id="source-menu-context">MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><span id="source-menu-meta" class="source-menu-header-meta"></span><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
             <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
               <button data-source-menu-tab="team"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><span>Équipe</span></button>
               <button data-source-menu-tab="bag"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><span>Sac</span></button>
-              <button data-source-menu-tab="movement"><span class="source-menu-symbol">↟</span><span>Déplacements</span></button>
+              <button data-source-menu-tab="movement"><span class="source-menu-symbol">DEV</span><span>Test dev</span></button>
               <button data-source-menu-tab="save"><span class="source-menu-symbol">S</span><span>Sauvegarde</span></button>
               <button data-source-menu-tab="coop"><span class="source-menu-symbol">2</span><span>Coop</span></button>
               <button data-source-menu-tab="options"><span class="source-menu-symbol">⚙</span><span>Options</span></button>
             </nav><div id="source-menu-content" class="source-menu-content"></div></div>
-            <footer class="source-menu-footer"><span><kbd>Échap</kbd> Fermer</span><span>Les données affichées viennent de la partie en cours</span></footer>
           </section>
           <section id="encounter-panel" class="encounter-panel source-battle-overlay" hidden aria-label="Combat en cours">
             <div id="source-battle-stage" class="source-battle-stage incomplete-scene" hidden>

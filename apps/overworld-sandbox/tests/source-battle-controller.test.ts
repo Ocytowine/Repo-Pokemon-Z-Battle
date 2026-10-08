@@ -205,7 +205,8 @@ describe("source battle controller", () => {
     const controller = new SourceBattleController(visuals, {
       getEventState: () => eventState, updateEventState: (nextState) => { eventState = nextState; },
       getResources: () => ({ catalog, mapId: 7, battleback: "forest", battleMusic: "wild.ogg",
-        victoryMusic: "victory.ogg" }), setNotice: vi.fn(), render: vi.fn(), openSharedBattle,
+        victoryMusic: "victory.ogg" }), getExperienceLevelCap: () => 100,
+      setNotice: vi.fn(), render: vi.fn(), openSharedBattle,
     });
 
     expect(controller.startPendingEncounter(completed)).toBe(true);
@@ -214,7 +215,7 @@ describe("source battle controller", () => {
     expect(visuals.startBattle).not.toHaveBeenCalled();
     expect(openSharedBattle).toHaveBeenCalledWith(expect.objectContaining({
       context: expect.objectContaining({ origin: "source-wild", mapId: 7,
-        rewards: expect.objectContaining({ experience: expect.objectContaining({ levelCap: 27,
+        rewards: expect.objectContaining({ experience: expect.objectContaining({ levelCap: 100,
           boostTenPercent: true }) }) }),
       opponentTeam: expect.objectContaining({ members: [expect.objectContaining({ species: "BIDOOF" })] }),
     }));

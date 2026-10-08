@@ -1,6 +1,8 @@
 import type { ImportedAvatar, ImportedMapAssets } from "./imported-map.js";
-import { SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagPocketCounts, sourceItemIconUrl,
+import { SOURCE_BAG_PAGE_SIZE, SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagFamilyEntries, sourceBagNodes,
+  sourceBagPage, sourceBagPocketCounts, sourceBagSubfamily, sourceItemIconUrl,
   sourceItemIconFallbackUrl, sourcePocketIconUrl } from "./source-bag.js";
+import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
 import type { SourceEventState } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
@@ -51,6 +53,13 @@ export interface SourceMenuViewModel {
   readonly worldSave: SourceWorldSave | null;
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
+  readonly dev: SourceMenuDevModel;
+}
+
+export interface SourceMenuDevModel {
+  readonly storyLevelCap: number;
+  readonly effectiveLevelCap: number;
+  readonly levelCapOverride: number | null;
 }
 
 export interface SourceMenuMovementModel {
@@ -81,7 +90,10 @@ export interface SourceMenuViewCallbacks {
   readonly onEditProfile: () => void;
   readonly onMovementMode: (mode: "walk" | "mount") => void;
   readonly onMovementTestOverride: (enabled: boolean) => void;
-  readonly onGrantTestItems: () => void;
+  readonly onGrantTestItems: (pocket: number, itemId: string | null, quantity: number) => void;
+  readonly onResetTestItemPocket: (pocket: number) => void;
+  readonly onDevLevelCap: (levelCap: number | null) => void;
+  readonly onGrantTestPokemon: (species: string, level: number) => void;
   readonly onDive: () => void;
   readonly onPokemonLead: (pokemonId: string) => void;
   readonly onPokemonDetails: (pokemonId: string) => void;
@@ -121,6 +133,8 @@ export class SourceMenuView {
   private selectedPocket = 1;
   private selectedTeamPokemonId: string | null = null;
   private selectedBagItemId: string | null = null;
+  private selectedBagFamilyId: string | null = null;
+  private bagPage = 0;
   private selectedBagPokemonId: string | null = null;
   private bagAction: "wheel" | "use" | "use-party-confirm" | "rare-candy-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
   private discardQuantity = 1;
@@ -129,6 +143,9 @@ export class SourceMenuView {
   private bagResult: { readonly message: string; readonly itemId: string; readonly repeatAction: "use" | "give" | null } | null = null;
   private heldItemPokemonId: string | null = null;
   private bagNotice: string | null = null;
+  private selectedDevPocket = 2;
+  private selectedDevItemId: string | null = null;
+  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" = "movement";
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -138,14 +155,25 @@ export class SourceMenuView {
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
     if (!model.open) return;
-    const location = document.querySelector<HTMLElement>("#source-menu-location");
-    if (location !== null) location.textContent = model.assets.map.name;
+    content.classList.toggle("source-menu-content-bag", model.tab === "bag");
+    const header = model.tab === "team"
+      ? { context: "COMPAGNONS", title: "Équipe Pokémon", meta: `${model.eventState.party.members.length}/6` }
+      : model.tab === "movement"
+        ? { context: "OUTILS LOCAUX", title: "Test dev", meta: "PERSONNEL" }
+        : model.tab === "save"
+          ? { context: "PROGRESSION", title: "Sauvegarde", meta: model.worldSave === null ? "VIDE" : "MANUELLE" }
+          : model.tab === "coop"
+            ? { context: "AVENTURE PARTAGÉE", title: "Coopération", meta: model.coop.state }
+            : model.tab === "options"
+              ? { context: "PRÉFÉRENCES", title: "Options", meta: "LOCAL" }
+              : { context: "SAC", title: "Inventaire", meta: `${model.eventState.money.toLocaleString("fr-FR")} ₽` };
+    this.setMenuHeader(header.context, header.title, header.meta);
     document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
       button.classList.toggle("active", button.dataset.sourceMenuTab === model.tab);
     });
     if (model.tab === "team") this.renderTeam(content, model);
     else if (model.tab === "bag") this.renderBag(content, model);
-    else if (model.tab === "movement") this.renderMovement(content, model.movement);
+    else if (model.tab === "movement") this.renderDevTools(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
     else if (model.tab === "coop") this.renderCoop(content, model.coop);
     else this.renderOptions(content);
@@ -168,10 +196,13 @@ export class SourceMenuView {
           selected.pokemon.heldItem) }));
     const heldItemPanel = heldItemTarget === null ? "" : sourceHeldItemManagerHtml(heldItemTarget.displayName,
       heldItemTarget.pokemon.heldItem, model.eventState.inventory, model.assets.items);
-    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${members.length === 0
-      ? '<div class="source-menu-empty"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Équipe vide</strong><small>Choisissez votre premier Pokémon pour commencer.</small></div>'
-      : entries.map((entry) => sourcePokemonCardHtml(entry, { active: entry.teamIndex === model.eventState.party.activeIndex,
-        selected: entry.pokemon.id === this.selectedTeamPokemonId })).join("")}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${wheel}${heldItemPanel}`;
+    const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml(entry, {
+      active: entry.teamIndex === model.eventState.party.activeIndex,
+      selected: entry.pokemon.id === this.selectedTeamPokemonId,
+    })).join("");
+    const emptySlots = Array.from({ length: Math.max(0, 6 - entries.length) }, (_, index) =>
+      `<article class="source-team-empty-slot" aria-label="Emplacement ${entries.length + index + 1} libre"><span>${entries.length + index + 1}</span><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Emplacement libre</strong></article>`).join("");
+    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -216,9 +247,34 @@ export class SourceMenuView {
       }));
   }
 
+  private setMenuHeader(context: string, title: string, meta: string): void {
+    const contextElement = document.querySelector<HTMLElement>("#source-menu-context");
+    const titleElement = document.querySelector<HTMLElement>("#source-menu-location");
+    const metaElement = document.querySelector<HTMLElement>("#source-menu-meta");
+    if (contextElement !== null) contextElement.textContent = context;
+    if (titleElement !== null) titleElement.textContent = title;
+    if (metaElement !== null) {
+      metaElement.textContent = meta;
+      metaElement.hidden = meta.length === 0;
+    }
+  }
+
   private renderBag(content: HTMLElement, model: SourceMenuViewModel): void {
     const counts = sourceBagPocketCounts(model.eventState.inventory, model.assets.items);
     const entries = sourceBagEntries(model.eventState.inventory, model.assets.items, this.selectedPocket);
+    let familyEntries = this.selectedBagFamilyId === null ? []
+      : sourceBagFamilyEntries(entries, this.selectedBagFamilyId);
+    if (this.selectedBagFamilyId !== null && familyEntries.length === 0) {
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
+      familyEntries = [];
+    }
+    const visibleNodes = this.selectedBagFamilyId === null ? sourceBagNodes(entries)
+      : familyEntries.map((entry) => ({ kind: "item" as const, entry }));
+    const pageSize = window.matchMedia("(max-width: 430px)").matches ? 4 : SOURCE_BAG_PAGE_SIZE;
+    const pagedNodes = sourceBagPage(visibleNodes, this.bagPage, pageSize);
+    this.bagPage = pagedNodes.page;
+    const selectedFamily = familyEntries[0] === undefined ? null : sourceBagSubfamily(familyEntries[0].item);
     if (this.selectedBagItemId !== null
       && !entries.some(({ item }) => item.internalName === this.selectedBagItemId)) this.selectedBagItemId = null;
     const selectedEntry = entries.find(({ item }) => item.internalName === this.selectedBagItemId) ?? null;
@@ -237,7 +293,6 @@ export class SourceMenuView {
       : teamEntries.map((entry) => `<button type="button" class="source-bag-target-card" data-source-bag-target="${escapeSourceHtml(entry.pokemon.id)}">${sourcePokemonIconHtml(entry)}<span><strong>${escapeSourceHtml(entry.displayName)}</strong><small>N.${entry.pokemon.level} · ${entry.pokemon.hp}/${entry.pokemon.stats.maxHp} PV${entry.pokemon.majorStatus === null ? "" : ` · ${escapeSourceHtml(entry.pokemon.majorStatus.kind)}`}</small></span></button>`).join("");
     const pocket = SOURCE_BAG_POCKETS.find((candidate) => candidate.id === this.selectedPocket)
       ?? SOURCE_BAG_POCKETS[0]!;
-    const totalTypes = [...counts.values()].reduce((sum, count) => sum + count, 0);
     const machineMove = selectedEntry?.item.machineMove ?? null;
     const machineSpecies = machineMove === null ? undefined : model.assets.machineCompatibility.get(machineMove);
     const machineMoveName = machineMove === null ? undefined
@@ -273,16 +328,19 @@ export class SourceMenuView {
     const resultMoveName = resultItem?.machineMove === null || resultItem?.machineMove === undefined ? undefined
       : model.assets.battleCatalog.moves.find((move) => move.internalName === resultItem.machineMove)?.name;
     const resultPanel = this.bagResult === null ? "" : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-result"><header><div><small>RÉSULTAT</small><strong>${escapeSourceHtml(resultItem === undefined ? this.bagResult.itemId : sourceItemDisplayName(resultItem, resultMoveName))}</strong></div></header><p>${escapeSourceHtml(this.bagResult.message)}</p><footer>${this.bagResult.repeatAction !== null && (model.eventState.inventory[this.bagResult.itemId] ?? 0) > 0 ? `<button type="button" data-source-bag-repeat="${this.bagResult.repeatAction}">Recommencer</button>` : ""}<button type="button" data-source-bag-result-close>Continuer</button></footer></section></div>`;
-    content.innerHTML = `<div class="source-menu-title"><div><small>INVENTAIRE · ${escapeSourceHtml(pocket.name)}</small><h3>Sac</h3></div><span>${model.eventState.money.toLocaleString("fr-FR")} ₽ · ${totalTypes} type${totalTypes > 1 ? "s" : ""}</span></div>
-      <nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
+    const inventoryGrid = entries.length === 0
+      ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>Poche vide</strong><small>Aucun objet dans la catégorie ${escapeSourceHtml(pocket.name)}.</small></div>`
+      : sourceBagGridHtml(pagedNodes.entries, { itemAttribute: "data-source-bag-item",
+        familyAttribute: "data-source-bag-family", selectedItemId: this.selectedBagItemId,
+        displayName: ({ item }) => { const moveName = item.machineMove === null || item.machineMove === undefined
+          ? undefined : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name;
+        return sourceItemDisplayName(item, moveName); } });
+    this.setMenuHeader("SAC", selectedFamily?.name ?? pocket.name,
+      `${model.eventState.money.toLocaleString("fr-FR")} ₽`);
+    content.innerHTML = `<nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
         `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === this.selectedPocket ? "active" : ""}" title="${escapeSourceHtml(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeSourceHtml(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
-      <div class="source-bag-list">${entries.length === 0
-        ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>Poche vide</strong><small>Aucun objet dans la catégorie ${escapeSourceHtml(pocket.name)}.</small></div>`
-        : entries.map(({ item, quantity }) => {
-          const moveName = item.machineMove === null || item.machineMove === undefined ? undefined
-            : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name;
-          return `<button type="button" class="source-bag-entry${item.internalName === this.selectedBagItemId ? " selected" : ""}" data-source-bag-item="${escapeSourceHtml(item.internalName)}" title="Ouvrir les actions"><img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt=""><div><strong>${escapeSourceHtml(sourceItemDisplayName(item, moveName))}</strong><small>${escapeSourceHtml(item.description)}</small></div><span>×${quantity}</span></button>`;
-        }).join("")}</div>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+      ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.length} sortes · ${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
+      <section class="source-inventory-browser"><div class="source-bag-list">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>("[data-source-quantity-delta]").forEach((button) =>
       button.addEventListener("click", () => {
@@ -306,6 +364,8 @@ export class SourceMenuView {
       const pocketId = Number(button.dataset.sourcePocket);
       if (!Number.isInteger(pocketId) || !SOURCE_BAG_POCKETS.some((candidate) => candidate.id === pocketId)) return;
       this.selectedPocket = pocketId;
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
       this.selectedBagItemId = null;
       this.selectedBagPokemonId = null;
       this.selectedBagReplacementIndex = null;
@@ -314,6 +374,27 @@ export class SourceMenuView {
       this.bagNotice = null;
       this.render(model);
     }));
+    content.querySelectorAll<HTMLButtonElement>("[data-source-bag-family]").forEach((button) => button.addEventListener("click", () => {
+      this.selectedBagFamilyId = button.dataset.sourceBagFamily ?? null;
+      this.bagPage = 0;
+      this.selectedBagItemId = null;
+      this.bagAction = null;
+      this.renderBag(content, model);
+    }));
+    content.querySelector<HTMLButtonElement>("[data-source-bag-family-back]")?.addEventListener("click", () => {
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
+      this.selectedBagItemId = null;
+      this.bagAction = null;
+      this.renderBag(content, model);
+    });
+    content.querySelectorAll<HTMLButtonElement>("[data-source-inventory-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.bagPage = Number(button.dataset.sourceInventoryPage);
+        this.selectedBagItemId = null;
+        this.bagAction = null;
+        this.renderBag(content, model);
+      }));
     content.querySelectorAll<HTMLButtonElement>("[data-source-bag-item]").forEach((button) => button.addEventListener("click", () => {
       this.selectedBagItemId = button.dataset.sourceBagItem ?? null;
       this.selectedBagPokemonId = null;
@@ -490,15 +571,38 @@ export class SourceMenuView {
     });
   }
 
-  private renderMovement(content: HTMLElement, movement: SourceMenuMovementModel): void {
+  private renderDevTools(content: HTMLElement, model: SourceMenuViewModel): void {
+    const movement = model.movement;
     const capabilities = (["sprint", "mount", "climb", "surf", "dive", "waterfall"] as const)
       .map((capability: SourceMovementCapability) => `<li class="${movement.unlocks[capability] ? "ready" : "locked"}"><i></i><span><strong>${sourceMovementCapabilityLabel(capability)}</strong><small>${movement.unlocks[capability] ? "Disponible" : "Encore verrouillé par la progression"}</small></span></li>`).join("");
     const diveLabel = movement.canSurfaceHere ? "Remonter à la surface" : "Plonger";
-    content.innerHTML = `<div class="source-menu-title"><div><small>EXPLORATION</small><h3>Déplacements</h3></div><span>${escapeSourceHtml(movement.mode.toUpperCase())}</span></div>
-      <div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div>
-      <label class="source-movement-test"><span><strong>Déplacements de test</strong><small>Autorise localement toutes les capacités dès le début, sans donner d'objet, de badge ou de capacité à la sauvegarde.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label>
-      <button type="button" id="source-grant-test-items">Donner tous les objets de test<small>Ajoute 99 exemplaires de chaque objet extrait à cette sauvegarde personnelle.</small></button>
-      <ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf s'active avec Espace/Entrée face à l'eau. Les corniches, la glace, les cascades et les parois Chevroum se déclenchent depuis le terrain ou leurs événements source.</p>`;
+    const pockets = SOURCE_BAG_POCKETS.map((pocket) => `<option value="${pocket.id}"${pocket.id === this.selectedDevPocket ? " selected" : ""}>${escapeSourceHtml(pocket.name)}</option>`).join("");
+    const pocketItems = [...model.assets.items.values()].filter((item) => item.pocket === this.selectedDevPocket)
+      .sort((left, right) => left.id - right.id);
+    if (this.selectedDevItemId !== null && !pocketItems.some((item) => item.internalName === this.selectedDevItemId)) {
+      this.selectedDevItemId = null;
+    }
+    const items = [`<option value=""${this.selectedDevItemId === null ? " selected" : ""}>Toute la catégorie</option>`,
+      ...pocketItems.map((item) => `<option value="${escapeSourceHtml(item.internalName)}"${item.internalName === this.selectedDevItemId ? " selected" : ""}>${escapeSourceHtml(item.name)} · ${escapeSourceHtml(item.internalName)}</option>`)].join("");
+    const quantities = [1, 5, 10, 50, 99, 999].map((quantity) =>
+      `<option value="${quantity}"${quantity === 99 ? " selected" : ""}>${quantity}</option>`).join("");
+    const levelCaps = [17, 27, 36, 42, 50, 56, 70, 75, 80, 85, 94, 100].map((level) =>
+      `<option value="${level}"${model.dev.levelCapOverride === level ? " selected" : ""}>Niveau ${level}</option>`).join("");
+    const pokemon = [...model.assets.battleCatalog.pokemon].sort((left, right) => left.name.localeCompare(right.name, "fr"));
+    const pokemonOptions = pokemon.map((entry) => `<option value="${escapeSourceHtml(entry.internalName)}">${escapeSourceHtml(entry.name)}</option>`).join("");
+    const pokemonLevels = Array.from({ length: 100 }, (_, index) => index + 1).map((level) =>
+      `<option value="${level}"${level === 5 ? " selected" : ""}>Niveau ${level}</option>`).join("");
+    content.innerHTML = `<div class="source-menu-title"><div><small>OUTILS LOCAUX</small><h3>Test dev</h3></div><span>PERSONNEL</span></div><div class="source-dev-tools">
+      <details data-dev-section="movement"${this.openDevSection === "movement" ? " open" : ""}><summary>Déplacements <small>${escapeSourceHtml(movement.mode.toUpperCase())}</small></summary><div class="source-dev-section"><div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div><ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf : interaction face à l'eau. Corniches, glace, cascades et parois restent pilotées par le terrain source.</p></div></details>
+      <details data-dev-section="unlocks"${this.openDevSection === "unlocks" ? " open" : ""}><summary>Déblocages <small>Cap effectif ${model.dev.effectiveLevelCap}</small></summary><div class="source-dev-section"><label class="source-movement-test"><span><strong>Tous les déplacements</strong><small>Ignore localement leurs prérequis sans modifier badges, objets ou histoire.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label><label class="source-dev-field"><span>Cap de niveau</span><select id="source-dev-level-cap"><option value=""${model.dev.levelCapOverride === null ? " selected" : ""}>Progression normale · ${model.dev.storyLevelCap}</option>${levelCaps}</select><small>Le cap simulé sert aux Bonbons Rares et aux combats ouverts par ce navigateur.</small></label></div></details>
+      <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items">Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
+      <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form"><label><span>Espèce</span><input id="source-dev-pokemon" list="source-dev-pokemon-list" value="NINCADA" autocomplete="off"><datalist id="source-dev-pokemon-list">${pokemonOptions}</datalist></label><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon</button><small>Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch. Exemple évolution : NINCADA niveau 19.</small></div></details>
+      </div>`;
+    content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((details) => {
+      details.addEventListener("toggle", () => {
+        if (details.open) this.openDevSection = details.dataset.devSection as typeof this.openDevSection;
+      });
+    });
     content.querySelectorAll<HTMLButtonElement>("[data-movement-mode]").forEach((button) => button.addEventListener("click", () => {
       const mode = button.dataset.movementMode;
       if (mode === "walk" || mode === "mount") this.callbacks.onMovementMode(mode);
@@ -506,8 +610,32 @@ export class SourceMenuView {
     content.querySelector<HTMLInputElement>("#source-movement-test")?.addEventListener("change", (event) => {
       this.callbacks.onMovementTestOverride((event.currentTarget as HTMLInputElement).checked);
     });
-    content.querySelector<HTMLButtonElement>("#source-grant-test-items")?.addEventListener("click", this.callbacks.onGrantTestItems);
     content.querySelector<HTMLButtonElement>("#source-movement-dive")?.addEventListener("click", this.callbacks.onDive);
+    content.querySelector<HTMLSelectElement>("#source-dev-level-cap")?.addEventListener("change", (event) => {
+      const value = (event.currentTarget as HTMLSelectElement).value;
+      this.callbacks.onDevLevelCap(value === "" ? null : Number(value));
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-pocket")?.addEventListener("change", (event) => {
+      this.selectedDevPocket = Number((event.currentTarget as HTMLSelectElement).value);
+      this.selectedDevItemId = null;
+      this.openDevSection = "bag";
+      this.renderDevTools(content, model);
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-item")?.addEventListener("change", (event) => {
+      this.selectedDevItemId = (event.currentTarget as HTMLSelectElement).value || null;
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-grant-items")?.addEventListener("click", () => {
+      const quantity = Number(content.querySelector<HTMLSelectElement>("#source-dev-item-quantity")?.value ?? 99);
+      this.callbacks.onGrantTestItems(this.selectedDevPocket, this.selectedDevItemId, quantity);
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-reset-pocket")?.addEventListener("click", () => {
+      if (window.confirm("Vider tous les objets de cette catégorie ?")) this.callbacks.onResetTestItemPocket(this.selectedDevPocket);
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-grant-pokemon")?.addEventListener("click", () => {
+      const species = content.querySelector<HTMLInputElement>("#source-dev-pokemon")?.value.trim() ?? "";
+      const level = Number(content.querySelector<HTMLSelectElement>("#source-dev-pokemon-level")?.value ?? 5);
+      this.callbacks.onGrantTestPokemon(species, level);
+    });
   }
 
   private renderCoop(content: HTMLElement, coop: SourceMenuCoopModel): void {

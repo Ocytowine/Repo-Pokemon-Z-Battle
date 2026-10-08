@@ -18,6 +18,26 @@ Une correction doit autant que possible profiter a toutes les cartes. Ne pas cod
 une regle metier a partir de `Map002`, `EV017`, du switch 67 ou de Keunotor si la
 structure de la commande source permet une detection generique.
 
+## Contrat UI/UX multi-ecran
+
+L'application vise le telephone comme le PC. Deux familles de surfaces doivent
+rester distinctes :
+
+- les scenes issues du jeu (`overworld`, combat, evolution et cinematiques)
+  conservent le cadre 4:3 du portage, sont montees dans `#world-stage` et sont
+  redimensionnees comme un bloc unique, sans deborder dans la page ;
+- les interfaces de gestion (menu, Equipe, Sac, Ranch, resume, Coop et options)
+  sont responsives. Elles utilisent l'espace disponible, une colonne en portrait
+  et plusieurs panneaux lorsque le paysage ou le bureau le permet. Elles ne
+  doivent pas heriter artificiellement des dimensions internes du jeu source.
+
+Les dialogues et effets appartenant a une scene sont ancres dans cette scene.
+Les fenetres ajoutees directement a `document.body`, les dimensions dependantes
+de `vw` sans rapport avec le conteneur et les petites cibles tactiles sont a
+eviter. Une action principale doit rester utilisable au tactile (cible d'environ
+44 px), sans survol obligatoire. Chaque nouveau visuel doit etre verifie au moins
+en telephone portrait, telephone paysage et bureau avant fermeture du lot.
+
 ## Etat Git au moment de cette note
 
 Le dernier commit connu est `4120978 MODIF : Notes`. Le worktree contient le lot
@@ -130,8 +150,9 @@ Cascade. `$PokemonGlobal.runningShoes` et les tests Ruby de quantite du Sac sont
 convertis en commandes declaratives et audites. Les metadonnees `Outdoor`,
 `Bicycle`, `BicycleAlways` et `DiveMap` sont extraites generiquement des 507 cartes.
 
-Le menu en jeu possede un onglet `Deplacements`. Son interrupteur
-`Deplacements de test` debloque localement toutes les capacites des le debut, sans
+Le menu en jeu possede un onglet `Test dev`, qui regroupe les commandes de
+deplacement dans un sous-menu. Son interrupteur de deblocage des mouvements rend
+localement toutes les capacites disponibles des le debut, sans
 ajouter de badge, objet, CS ou interrupteur a la progression. Il est persiste dans
 une cle locale distincte et vaut independamment pour chaque joueur Coop. Le mode
 courant est enregistre avec la position ; les anciennes sauvegardes migrent vers
@@ -139,7 +160,7 @@ courant est enregistre avec la position ; les anciennes sauvegardes migrent vers
 restent pour ce premier lot controles par le client, car inventaire et equipe ne
 sont volontairement pas publies dans la room.
 
-Recette manuelle : ouvrir `Menu > Deplacements`, activer le mode test, verifier le
+Recette manuelle : ouvrir `Menu > Test dev > Deblocages`, activer les mouvements de test, verifier le
 sprint avec Maj et Chevroum ; tester une corniche, une plaque de glace et une rive.
 Sur une eau profonde associee a `DiveMap`, utiliser Plonger puis Remonter. Refaire
 les pas avec deux navigateurs et verifier le sprite et la trajectoire distante.
@@ -1452,7 +1473,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 499 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 507 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1811,6 +1832,52 @@ encore portees restent visibles mais desactivees avec leur raison. Le contrat
 pierres, etc.) d'ajouter leurs choix sans dupliquer la roue. Inventaire et effets
 restent personnels et persistants en solo/hote/invite, sans replication du Sac.
 
+Jalon ergonomique `UI-BAG-1` du 2026-10-08 : les listes verticales du Sac et du
+Sac de combat utilisent maintenant la meme grille de cartes a taille fixe. Nom,
+icone, description multilignes et quantite mise en valeur partagent un composant ;
+la pagination remplace le defilement interne (neuf cartes dans le menu, quatre sur
+petit ecran et en combat). La page est bornee apres toute consommation afin de ne
+jamais rester sur une page devenue vide.
+
+Un classifieur semantique pur place les objets dans des sous-familles (Baies,
+Menthes, materiaux, familles de soins, Balls specialisees, equipements tenus,
+Pierres, Fossiles, Mega-Gemmes, boosts de combat, outils, cles, etc.). Un dossier
+virtuel n'apparait qu'a partir de huit references distinctes possedees ; en dessous,
+les objets restent directement visibles. Le dossier affiche simultanement le
+nombre de sortes et la quantite cumulee. Il n'existe qu'un niveau de dossier.
+La poche CT/CS est une exception explicite : elle reste plate et paginee, sans
+dossier CT ou CS. Un filtre propre a ce catalogue sera ajoute dans un lot ulterieur.
+
+Finition `UI-BAG-1` du 2026-10-08 : objet et dossier sont rendus par la meme
+primitive `InventoryCard`. Icone, bloc nom/description, quantite principale et
+compteur secondaire possedent des zones de grille reservees ; aucun badge n'est
+superpose au texte. Le titre conserve le contexte `Sac · poche`, la grille est
+isolee du debordement et la pagination occupe une rangee stable. Le contrat reste
+partage entre Sac d'exploration et Sac de combat.
+
+Refonte du menu principal du 2026-10-08 : le bandeau superieur porte desormais le
+contexte, le titre de l'onglet et sa metadonnee utile (argent, taille d'equipe,
+etat de sauvegarde ou Coop). Les titres internes redondants et le pied de page ont
+ete retires de la composition visuelle ; la navigation et le contenu utilisent
+toute la hauteur restante. Sur grand ecran, la navigation reste laterale. Sous
+430 px, le menu devient une modale plein viewport avec navigation basse afin de
+ne plus etre contraint par le cadre 4:3 de l'overworld. Cet etat est purement
+visuel et personnel : aucune donnee supplementaire n'est repliquee en Coop.
+
+L'onglet Equipe exploite cette nouvelle surface avec une grille fixe de deux
+colonnes sur trois lignes. Les six emplacements sont toujours visibles : une
+carte occupee conserve sprite anime, identite, niveau, types, PV et quatre
+capacites ; une place vacante affiche un slot neutre non interactif. Les actions
+restent celles de la carte partagee Equipe/Ranch et l'etat reste personnel.
+
+Le meme classifieur et le meme composant alimentent l'exploration et le combat.
+Le combat projette d'abord le stock personnel autorise par le noyau local ou la
+room, retire les objets inutilisables, puis construit ses dossiers ; aucun stock
+prive supplementaire n'est replique. Autorite et persistance restent donc celles
+de l'inventaire personnel de l'hote ou de l'invite. Dossier et page sont un etat
+visuel local non persiste, reconstruit apres reconnexion, visible seulement par le
+joueur concerne.
+
 Correctif de boucle UI du 2026-10-08 : les choix de cible n'apparaissent plus sous
 la longue liste du Sac. Utiliser et Donner ouvrent une etape modale visible avec
 les membres de l'equipe, leurs sprites, niveaux, PV et objet tenu pertinent. Les
@@ -2006,16 +2073,50 @@ avant l'evolution. Les mutations restent personnelles et persistantes en solo,
 chez l'hote et chez l'invite ; seules les informations tactiques normales du
 Pokemon rejoignent ensuite un combat partage.
 
-Le premier ecran visuel alterne les deux battlers pendant 3,2 secondes et bloque
-les controles du monde ; `prefers-reduced-motion` le raccourcit. Une sauvegarde ou
+L'ecran visuel reprend le fond GIF `evolutionbg`, le cri initial, la musique
+`evolv`, l'alternance acceleree des deux silhouettes pendant sept secondes, le
+flash final, le cri de la nouvelle espece et le jingle `EvolutionSuccess`. Il
+bloque les controles du monde ; `prefers-reduced-motion` le raccourcit. Une sauvegarde ou
 reconnexion avec une capacite/evolution en attente reprend automatiquement ce
 conducteur, l'etat persiste n'etant donc pas une option de menu differee.
 
-Dettes explicites avant fermeture : rapprocher la scene des effets exacts de Z
-(musique, cris, flashes et silhouette), faire passer les pierres par cette meme
-presentation non annulable, creer Munja avec une Poke Ball et une place libre,
+Deuxieme increment `SOLO-EVOLUTION-1` du 2026-10-08 : les pierres et autres objets
+d'evolution passent maintenant par la meme presentation bloquante apres leur
+transaction atomique. Contrairement aux evolutions de niveau, aucun bouton
+d'annulation n'est affiche. L'espece, les IV des pierres impregnees et l'inventaire
+sont persistes avant la presentation : une fermeture ou reconnexion ne peut donc
+ni rendre l'objet ni appliquer deux fois l'evolution.
+
+Correctif de fidelite visuelle du 2026-10-08 : la scene suit maintenant quatre
+temps explicites du script source. Elle montre d'abord le Pokemon colore avec
+`Quoi ? [nom] evolue !`, ne blanchit et n'alterne les deux silhouettes que pendant
+la transformation, puis montre la nouvelle espece coloree avec le message de
+felicitations ; une annulation restaure de meme l'ancienne espece coloree et son
+message. Le decor `evolutionbg` occupe le cadre rectangulaire 4:3 d'origine, sans
+masque ovale. Les battlers de Z etant des planches horizontales (71 frames pour
+Goupix, 53 pour Feunard), le rendu les decoupe et les anime frame par frame au
+lieu d'afficher la bande complete aplatie. Forme, chromatisme et sexe sont resolus
+une fois au debut de la scene et restent stables apres la mutation persistante.
+
+Dettes explicites avant fermeture : valider manuellement le cadrage et les
+temporisations sur plusieurs tailles de Pokemon, creer Munja avec une Poke Ball et une place libre,
 puis raccorder le futur registre Pokedex vu/possede. Le noyau ne simule pas Munja
 en silence.
+
+Outils de recette du 2026-10-08 : l'ancien onglet `Deplacements` s'appelle
+desormais `Test dev` et separe quatre sous-menus : mouvements, deblocages, Sac et
+don de Pokemon. Le Sac peut ajouter une quantite choisie d'un objet ou de toute
+une poche, puis vider uniquement la poche confirmee. Le don recherche une espece
+dans le catalogue extrait, choisit son niveau et l'envoie dans l'equipe ou au
+Ranch selon la place disponible. Le cap de niveau peut suivre l'histoire ou etre
+simule jusqu'a 100 ; cette preference et le deblocage des mouvements restent dans
+le stockage local de developpement et ne changent aucun switch narratif.
+
+Les objets et Pokemon donnes modifient en revanche la sauvegarde personnelle du
+navigateur, comme l'indique l'interface. En Coop, hote et invite possedent leurs
+propres outils et collections ; le cap simule de l'initiateur est inscrit dans le
+contrat du prochain combat source partage, sans publier son Sac ni son equipe
+complete. Une reconnexion conserve les mutations personnelles normalement.
 
 Correctif Coop du 2026-10-08 : la validation runtime des equipes de combat ne
 maintient plus une liste partielle d'objets tenus distincte du moteur. Elle utilise

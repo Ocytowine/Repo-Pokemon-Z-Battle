@@ -1,14 +1,13 @@
 import { pokemonItemTargetMode, type BattlePosition, type BattleSide, type BattleTeam,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
-import { sourceItemIconUrl } from "./source-bag.js";
+import { SOURCE_BATTLE_BAG_PAGE_SIZE, sourceBagFamilyEntries, sourceBagNodes, sourceBagPage,
+  sourceBagSubfamily, sourceItemIconFallbackUrl, type SourceBagEntry } from "./source-bag.js";
+import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
+import type { SourceShopItem } from "./source-economy.js";
 
-export interface SourceBattleBagEntry {
-  readonly id: number;
-  readonly internalName: string;
-  readonly name: string;
-  readonly description: string;
+export interface SourceBattleBagEntry extends SourceShopItem {
   readonly quantity: number;
   readonly usable?: boolean;
 }
@@ -73,6 +72,8 @@ export class SourceBattleOverlay {
   private pendingMoveIndex: number | null = null;
   private pendingItemId: string | null = null;
   private pendingItemTargetIndex: number | null = null;
+  private selectedBagFamilyId: string | null = null;
+  private bagPage = 0;
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {}
 
@@ -92,6 +93,8 @@ export class SourceBattleOverlay {
       this.pendingMoveIndex = null;
       this.pendingItemId = null;
       this.pendingItemTargetIndex = null;
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
     }
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
     if (visualStage !== null) {
@@ -164,7 +167,8 @@ export class SourceBattleOverlay {
   private renderRoot(actions: HTMLElement, model: SourceBattleOverlayModel, team: BattleTeam, blocked: boolean): void {
     const activeIndices = team.activeIndices ?? [team.activeIndex];
     const reserves = team.members.filter((member, index) => !activeIndices.includes(index) && member.hp > 0).length;
-    const bagCount = model.bag.balls.length + model.bag.medicine.length + model.bag.battleItems.length;
+    const bagCount = [...model.bag.balls, ...model.bag.medicine, ...model.bag.battleItems]
+      .filter((entry) => entry.usable !== false).length;
     const activePicker = activeIndices.length < 2 ? "" : `<div class="source-battle-active-picker">${activeIndices.map((index, slot) => `<button data-active-slot="${slot}"${disabled(model.submittedActiveSlots.includes(slot))}>${escapeSourceHtml(team.members[index]!.name)}${slot === this.activeSlot ? " ✓" : ""}</button>`).join("")}</div>`;
     actions.innerHTML = `${activePicker}<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
@@ -179,6 +183,8 @@ export class SourceBattleOverlay {
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
       this.render(model);
     }));
     actions.querySelectorAll<HTMLButtonElement>("[data-active-slot]").forEach((button) => button.addEventListener("click", () => {
@@ -255,33 +261,70 @@ export class SourceBattleOverlay {
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {
     const categories = [
-      { id: "balls", label: "Poké Balls", hint: model.capturable ? "Pokémon sauvage" : "Cible non capturable", count: model.bag.balls.length, unavailable: !model.capturable },
-      { id: "medicine", label: "Soins", hint: "PV et statuts", count: model.bag.medicine.length, unavailable: false },
-      { id: "battle-items", label: "Objets combat", hint: "Bonus temporaires", count: model.bag.battleItems.length, unavailable: false },
+      { id: "balls", label: "Poké Balls", hint: model.capturable ? "Pokémon sauvage" : "Cible non capturable", count: model.bag.balls.filter((entry) => entry.usable !== false).length, unavailable: !model.capturable },
+      { id: "medicine", label: "Soins", hint: "PV et statuts", count: model.bag.medicine.filter((entry) => entry.usable !== false).length, unavailable: false },
+      { id: "battle-items", label: "Objets combat", hint: "Bonus temporaires", count: model.bag.battleItems.filter((entry) => entry.usable !== false).length, unavailable: false },
     ] as const;
     actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>SAC</small><strong>Choisir une catégorie</strong></div></header><div class="source-battle-bag-categories">${categories.map((category) => `<button data-battle-menu="${category.id}"${disabled(blocked || category.unavailable)}><b>${category.count}</b><span>${category.label}</span><small>${category.hint}</small></button>`).join("")}</div></div>`;
     this.bindBack(actions, model);
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
       this.render(model);
     }));
   }
 
   private renderBagItems(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean,
     category: "balls" | "medicine" | "battle-items"): void {
-    const entries = category === "balls" ? model.bag.balls
+    const sourceEntries = category === "balls" ? model.bag.balls
       : category === "medicine" ? model.bag.medicine : model.bag.battleItems;
+    const entries: readonly SourceBagEntry[] = sourceEntries.filter((entry) => entry.usable !== false)
+      .map((item) => ({ item, quantity: item.quantity }));
+    let familyEntries = this.selectedBagFamilyId === null ? []
+      : sourceBagFamilyEntries(entries, this.selectedBagFamilyId);
+    if (this.selectedBagFamilyId !== null && familyEntries.length === 0) {
+      this.selectedBagFamilyId = null;
+      this.bagPage = 0;
+      familyEntries = [];
+    }
+    const nodes = this.selectedBagFamilyId === null ? sourceBagNodes(entries)
+      : familyEntries.map((entry) => ({ kind: "item" as const, entry }));
+    const page = sourceBagPage(nodes, this.bagPage, SOURCE_BATTLE_BAG_PAGE_SIZE);
+    this.bagPage = page.page;
+    const family = familyEntries[0] === undefined ? null : sourceBagSubfamily(familyEntries[0].item);
     const title = category === "balls" ? "Poké Balls" : category === "medicine" ? "Soins" : "Objets combat";
-    const usable = true;
     const unavailable = category === "balls" ? "Ce Pokémon ne peut pas être capturé."
       : "L'effet de cet objet n'est pas disponible.";
     const list = entries.length === 0 ? '<p class="source-battle-empty">Aucun objet de cette catégorie.</p>'
-      : entries.map((entry) => `<button class="source-battle-item" data-battle-item="${escapeSourceHtml(entry.internalName)}"${disabled(blocked || !usable || entry.usable === false)} title="${escapeSourceHtml(usable && entry.usable !== false ? entry.description : unavailable)}"><img src="${sourceItemIconUrl(entry.id)}" alt=""><span><strong>${escapeSourceHtml(entry.name)}</strong><small>${escapeSourceHtml(entry.description)}</small></span><b>×${entry.quantity}</b></button>`).join("");
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-bag-items"><header><button data-battle-back="bag" aria-label="Retour">‹</button><div><small>SAC</small><strong>${title}</strong></div></header><div>${list}</div><footer>${blocked ? "Action en cours." : usable ? "Choisissez un objet puis votre Pokémon." : unavailable}</footer></div>`;
-    this.bindBack(actions, model, "bag");
+      : sourceBagGridHtml(page.entries, { itemAttribute: "data-battle-item",
+        familyAttribute: "data-battle-bag-family", disabled: () => blocked });
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-bag-items"><header><button data-battle-back="${family === null ? "bag" : category}" aria-label="Retour">‹</button><div><small>SAC · ${title}</small><strong>${family === null ? "Choisir un objet" : escapeSourceHtml(family.name)}</strong></div></header>${family === null ? "" : `<div class="source-battle-family-summary"><span>${familyEntries.length} sortes</span><b>${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</b></div>`}<div class="source-battle-inventory-page">${list}</div>${sourceBagPaginationHtml(page.page, page.pageCount)}<footer>${blocked ? "Action en cours." : entries.length > 0 ? "Choisissez un objet puis votre Pokémon." : unavailable}</footer></div>`;
+    actions.querySelectorAll<HTMLImageElement>("[data-source-item-icon]").forEach((image) =>
+      image.addEventListener("error", () => { image.src = sourceItemIconFallbackUrl(image.src); }, { once: true }));
+    actions.querySelector<HTMLButtonElement>("[data-battle-back]")?.addEventListener("click", () => {
+      if (family !== null) {
+        this.selectedBagFamilyId = null;
+        this.bagPage = 0;
+      } else this.menu = "bag";
+      this.render(model);
+    });
+    actions.querySelectorAll<HTMLButtonElement>("[data-battle-bag-family]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.selectedBagFamilyId = button.dataset.battleBagFamily ?? null;
+        this.bagPage = 0;
+        this.render(model);
+      }));
+    actions.querySelectorAll<HTMLButtonElement>("[data-source-inventory-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.bagPage = Number(button.dataset.sourceInventoryPage);
+        this.render(model);
+      }));
     if (category === "balls") actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
       button.addEventListener("click", () => {
         this.menu = "root";
+        this.selectedBagFamilyId = null;
+        this.bagPage = 0;
         this.callbacks.onCapture(button.dataset.battleItem!, model.local, this.activeSlot);
       }));
     else actions.querySelectorAll<HTMLButtonElement>("[data-battle-item]").forEach((button) =>
@@ -294,6 +337,8 @@ export class SourceBattleOverlay {
           const itemId = this.pendingItemId;
           this.pendingItemId = null;
           this.menu = "root";
+          this.selectedBagFamilyId = null;
+          this.bagPage = 0;
           this.callbacks.onItem(itemId, targetTeamIndex, model.local, this.activeSlot);
         } else {
           this.menu = "item-targets";

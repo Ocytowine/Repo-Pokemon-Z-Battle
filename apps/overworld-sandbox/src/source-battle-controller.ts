@@ -108,6 +108,7 @@ export interface SourceBattleCallbacks {
   readonly getResources: () => SourceBattleResources | null;
   readonly getEvolutionHour?: () => number;
   readonly getPokemonCreationContext: (mapId: number, ballId: string) => PokemonCreationContext;
+  readonly getExperienceLevelCap?: () => number;
   readonly setNotice: (notice: string) => void;
   readonly render: () => void;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
@@ -573,6 +574,8 @@ export class SourceBattleController {
       return { memberId: member.id, species: member.species, level: member.level,
         baseExperience: definition.baseExperience };
     });
+    const experience = sourceBattleExperiencePolicy(eventState);
+    const levelCap = this.callbacks.getExperienceLevelCap?.() ?? experience.levelCap;
     return { origin: input.origin, mapId: resources.mapId, format: state.format ?? "single", escapable: input.escapable,
       healingItemsAllowed: eventState.switches["666"] !== true,
       presentation: { battlebackId: resources.battleback,
@@ -581,7 +584,7 @@ export class SourceBattleController {
         opponentTrainer: input.opponentTrainer,
         defeatText: input.defeatText ?? null },
       rewards: { opponents, trainerBaseMoney: input.trainerBaseMoney,
-        experience: sourceBattleExperiencePolicy(eventState) }, continuation: input.continuation };
+        experience: { ...experience, levelCap } }, continuation: input.continuation };
   }
 
   private createLocalSession(origin: "source-wild" | "source-trainer", mapId: number): SharedBattleSession {

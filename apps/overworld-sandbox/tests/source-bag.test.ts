@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { configureSourceItemIconAvailability, grantSourceTestItems, sourceBagEntries, sourceBagPocketCounts, sourceItemIconFallbackUrl,
+import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceTestItemPocket, sourceBagEntries,
+  sourceBagFamilyEntries, sourceBagNodes, sourceBagPage, sourceBagPocketCounts, sourceItemIconFallbackUrl,
   sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
 import type { SourceShopItem } from "../src/source-economy.js";
 import { sourceActionWheelHtml } from "../src/source-action-wheel.js";
+import { sourceBagGridHtml, sourceBagPaginationHtml } from "../src/source-bag-grid.js";
 import { isSourceItemDiscardable, sourceItemActions, sourceItemDisplayName, sourceItemTargetFlow } from "../src/source-item-actions.js";
 
 const potion: SourceShopItem = { id: 217, internalName: "POTION", name: "Potion",
@@ -29,6 +31,59 @@ describe("source bag", () => {
     const inventory = { POTION: 2 };
     expect(grantSourceTestItems(inventory, catalog)).toEqual({ POTION: 99, POKEBALL: 99 });
     expect(inventory).toEqual({ POTION: 2 });
+  });
+
+  it("creates a virtual family only after its distinct-item threshold", () => {
+    const berries = Array.from({ length: 9 }, (_, index): SourceShopItem => ({ id: 389 + index,
+      internalName: `BERRY_${index}BERRY`, name: `Baie ${index + 1}`, description: "Une Baie.",
+      pocket: 5, price: 20, itemType: 5 }));
+    const entries = [...berries.map((item, index) => ({ item, quantity: index + 1 })),
+      { item: { id: 751, internalName: "MADERA", name: "Bois", description: "Du bois.", pocket: 5, price: 0 }, quantity: 3 }];
+    const nodes = sourceBagNodes(entries, 8);
+    expect(nodes).toHaveLength(2);
+    expect(nodes[0]).toMatchObject({ kind: "family", family: { id: "berries", name: "Sac de Baies" },
+      typeCount: 9, totalQuantity: 45 });
+    expect(nodes[1]).toMatchObject({ kind: "item", entry: { quantity: 3 } });
+    expect(sourceBagFamilyEntries(entries, "berries")).toHaveLength(9);
+    expect(sourceBagNodes(entries.slice(0, 7), 8)).toHaveLength(7);
+  });
+
+  it("paginates grids without leaving an empty page after inventory changes", () => {
+    const values = Array.from({ length: 13 }, (_, index) => index);
+    expect(sourceBagPage(values, 1, 6)).toEqual({ entries: [6, 7, 8, 9, 10, 11], page: 1, pageCount: 3 });
+    expect(sourceBagPage(values.slice(0, 5), 2, 6)).toEqual({ entries: [0, 1, 2, 3, 4], page: 0, pageCount: 1 });
+  });
+
+  it("renders the same quantity-rich grid contract for items and virtual folders", () => {
+    const itemHtml = sourceBagGridHtml(sourceBagNodes([{ item: potion, quantity: 27 }]), {
+      itemAttribute: "data-source-bag-item", familyAttribute: "data-source-bag-family",
+    });
+    expect(itemHtml).toContain("source-inventory-grid");
+    expect(itemHtml).toContain('data-source-bag-item="POTION"');
+    expect(itemHtml).toContain('data-source-inventory-kind="item"');
+    expect(itemHtml).toContain("source-inventory-copy");
+    expect(itemHtml).toContain("source-inventory-primary-count");
+    expect(itemHtml).toContain("×27");
+    expect(sourceBagPaginationHtml(1, 3)).toContain("Page <b>2</b> / 3");
+  });
+
+  it("keeps the CT/CS pocket flat for its future dedicated filter", () => {
+    const machines = Array.from({ length: 12 }, (_, index) => ({
+      item: { ...potion, id: 300 + index, pocket: 4, internalName: `TM${String(index + 1).padStart(2, "0")}` },
+      quantity: 1,
+    }));
+    const nodes = sourceBagNodes(machines, 8);
+    expect(nodes).toHaveLength(12);
+    expect(nodes.every((node) => node.kind === "item")).toBe(true);
+  });
+
+  it("grants a configurable pocket or item and resets only the selected pocket", () => {
+    expect(grantSourceTestItems({ POTION: 2 }, catalog, 5, { pocket: 2, mode: "add" }))
+      .toEqual({ POTION: 7 });
+    expect(grantSourceTestItems({ POTION: 998 }, catalog, 5, { itemId: "POTION", mode: "add" }))
+      .toEqual({ POTION: 999 });
+    expect(resetSourceTestItemPocket({ POTION: 3, POKEBALL: 4 }, catalog, 2))
+      .toEqual({ POKEBALL: 4 });
   });
 
   it("remembers a missing source icon and uses the generic fallback on later renders", () => {

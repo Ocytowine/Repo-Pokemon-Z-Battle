@@ -1691,9 +1691,9 @@ l'intention, puis la room valide cible sauvage, stock et proprietaire avant les
 tirages. Le reglement ne remet le Pokemon qu'au lanceur ; son client conserve les
 faits tactiques et cree les metadonnees personnelles avant insertion dans l'equipe
 ou au Ranch. Consommation et acquisition sont idempotentes apres reconnexion. Le
-solo reutilise le meme noyau avec un adaptateur local. L'onglet Deplacements offre
-aussi une action explicite qui donne 99 exemplaires de chaque objet extrait a la
-sauvegarde personnelle pour la recette.
+solo reutilise le meme noyau avec un adaptateur local. L'ancien don global de 99
+objets a ete remplace dans `Test dev` par une selection de poche, d'objet et de
+quantite, avec remise a zero confirmee par poche.
 
 Quatrieme increment objets du 2026-10-07 : Ether, Ether Max, Elixir, Elixir Max et
 Baie Mepo restaurent maintenant les PP avec le meme noyau en exploration et en
@@ -1794,6 +1794,36 @@ inexistante par l'icone generique, sans rafale de 404 dans la console.
 Le choix de quantite du Bonbon Rare et du jet d'objets emploie aussi un selecteur
 tactile commun (`-10/-1/+1/+10/Max`) a la place de l'incrementateur natif mobile.
 
+Jalon `UI-BAG-1` : le Sac d'exploration et celui des combats partagent desormais
+une grille paginee sans liste defilante. Les cartes ont une taille stable, une
+description multilignes et une quantite accentuee. Un classifieur commun cree a
+partir de huit references possedees des dossiers semantiques a un seul niveau et
+affiche sur chacun le nombre de sortes et la quantite totale. Les objets isoles
+restent au niveau de la poche. Le combat filtre d'abord les objets autorises puis
+reutilise le meme classement, y compris pour soins, Balls et boosts. Navigation et
+pagination sont locales et volatiles ; l'inventaire personnel et son autorite
+solo/hote/invite ne changent pas.
+
+Finition `UI-BAG-1` : items et dossiers utilisent maintenant une unique primitive
+`InventoryCard`, avec zones reservees au texte et aux quantites pour eviter toute
+collision sur desktop, mobile et dans le Sac de combat. Le navigateur de grille
+isole les debordements et garde une pagination compacte sous une grille generale
+de trois lignes par trois colonnes. Le mobile et le combat restent limites a quatre
+cartes par page. Exception fonctionnelle
+validee : la poche CT/CS ne cree jamais de dossier ; elle reste plate et paginee
+jusqu'au futur filtre dedie a ce catalogue.
+
+Refonte du menu principal : le bandeau global remplace les titres de contenu
+dupliques et affiche la metadonnee propre a chaque onglet. Le pied de page a ete
+supprime, la navigation laterale occupe toute la hauteur sur desktop et devient
+une barre basse sous 430 px. Dans ce mode etroit, le menu utilise le viewport
+complet au lieu de rester enferme dans la scene overworld 4:3.
+
+L'onglet Equipe affiche maintenant les six places simultanement dans une grille
+2 x 3, sans retirer les informations existantes des cartes Pokemon. Les places
+vacantes restent visibles mais non interactives ; les places occupees continuent
+d'utiliser la carte commune Equipe/Ranch et sa roue contextuelle.
+
 La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
@@ -1812,8 +1842,23 @@ jour espece, talent, statistiques, forme, objet tenu et capacites
 du niveau. Les 21 pierres/objets d'evolution sont actifs, dont les neuf pierres
 imprégnees et leur `+7` IV par statistique. Autorite et sauvegarde restent
 personnelles en solo/hote/invite. Une premiere animation bloquante est raccordee ;
-restent sa fidelite audiovisuelle, son raccord aux pierres, la creation de Munja
-et le registre Pokedex.
+Les pierres et objets d'evolution utilisent desormais cette presentation apres
+leur transaction atomique, sans possibilite d'annulation ; leur mutation et leur
+consommation sont persistees avant l'effet visuel pour rendre une interruption
+inoffensive. La scene reutilise maintenant le fond anime, les cris, la musique
+`evolv`, l'alternance acceleree des silhouettes, le flash et le jingle de succes
+observes dans le script source. Sa reprise de fidelite ajoute les ecrans colores
+avant/apres et leurs messages, retire le masque ovale au profit du cadre 4:3 et
+decoupe correctement les planches de battlers animees au lieu de les aplatir.
+Restent sa validation visuelle fine sur plusieurs gabarits, la creation
+de Munja et le registre Pokedex.
+
+Outil de recette associe : l'onglet `Test dev` permet maintenant de simuler un cap
+de niveau jusqu'a 100 et de creer une espece extraite au niveau choisi, dans
+l'equipe ou au Ranch. Ces fonctions evitent de modifier artificiellement les
+switches d'histoire pour tester apprentissages et evolutions. Les preferences de
+deblocage sont locales ; les objets et Pokemon crees restent des donnees
+personnelles persistantes, y compris pour chaque participant Coop.
 
 ### Phase 12 - Extensions Coop
 
@@ -1832,6 +1877,9 @@ existants et ne creent pas de logique de gameplay parallele.
 ## Regles transversales
 
 - aucun fichier source du fangame dans Git ;
+- UI multi-ecran : overworld, combat, evolution et cinematiques restent dans une
+  scene 4:3 redimensionnee ; menus, Sac, Equipe, Ranch, resume et Coop utilisent
+  une surface responsive portrait/paysage, avec cibles tactiles d'au moins 44 px ;
 - toute nouvelle mecanique doit partager son noyau entre solo et Coop dans le meme
   lot : autorite, domaine d'etat, persistance, audience et replication sont definis
   avant le code, puis testes en solo, comme hote, comme invite et apres reconnexion ;
