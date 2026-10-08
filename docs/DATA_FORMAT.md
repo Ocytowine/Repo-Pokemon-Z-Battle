@@ -216,6 +216,7 @@ Ces anomalies sont conservees comme donnees a arbitrer. Aucune entree n'est supp
 - objets sauvages et encens ;
 - espece cible, methode et parametre de chaque evolution ;
 - attaque associee aux objets machines.
+- capacite de chaque section de `tm.txt` et especes compatibles associees ;
 - type de chaque dresseur ;
 - especes, objets de sac, objets portes et attaques explicites des equipes ;
 - especes de chaque emplacement de rencontre.
@@ -223,10 +224,10 @@ Ces anomalies sont conservees comme donnees a arbitrer. Aucune entree n'est supp
 
 Les parametres d'evolution sont interpretes selon la table `PBEvolution::EVOPARAM` extraite des scripts du jeu. Le validateur distingue les parametres numeriques et les references vers un objet, une attaque, une espece ou un type.
 
-Resultat apres la Phase 1.4 :
+Resultat apres l'ajout de `tm.txt` du 2026-10-08 :
 
-- 33 224 references controlees ;
-- 33 222 references valides et non ambigues ;
+- 60 140 references controlees ;
+- 60 138 references valides et non ambigues ;
 - aucune reference vers une definition absente ;
 - deux references ambigues a `SECRETSWORD`, pour Samurott et Keldeo ;
 - cinq collisions de definition : `SECRETSWORD`, ID objet 692, `SASSYMINT`, et
@@ -234,10 +235,31 @@ Resultat apres la Phase 1.4 :
 - aucune divergence entre les 730 attaques PBS et `Data/moves.dat` ;
 - taille et nombre d'enregistrements coherents entre les 1 018 Pokemon et `Data/dexdata.dat`.
 
+### Exception source CT/CS : Cascade et Plongee
+
+L'audit croise des objets machines et de `PBS/tm.txt` confirme une asymetrie dans
+Pokemon Z v2.12 FR : les objets `HM05/WATERFALL` (Cascade) et `HM06/DIVE`
+(Plongee) existent bien dans le catalogue, mais aucune section `WATERFALL` ou
+`DIVE` ne definit les especes compatibles dans `tm.txt`.
+
+Ce n'est donc ni une perte de l'extracteur ni un probleme de l'interface. Tant
+qu'une autre source fiable du jeu n'a pas fourni ces compatibilites, le moteur
+conserve les deux objets mais desactive leur action `Apprendre`. Il ne doit pas
+deduire une liste depuis les jeux officiels, depuis les prerequis de deplacement
+ou depuis une liste inventee : cette version peut avoir ses propres choix
+d'equilibrage. Cette exception devra etre levee uniquement apres verification
+d'une autre donnee source de Pokemon Z, puis couverte par l'extraction, la
+validation croisee et un test de regression.
+
+L'asymetrie inverse existe aussi : `MIST`, `BRINE`, `ATTRACT`, `FURYCUTTER`,
+`CHARGEBEAM` et `ECHOEDVOICE` ont une section dans `tm.txt`, mais aucun objet
+machine associe. Elles restent donc validees comme donnees de compatibilite sans
+etre proposees dans le Sac.
+
 `Constants.rxdata` contient successivement `SECRETSWORD=95` puis `SECRETSWORD=728`. Le runtime Ruby utilise donc vraisemblablement la derniere affectation, mais l'extracteur ne choisit pas silencieusement l'ID 728 : la collision reste visible jusqu'a l'adoption d'une regle de resolution documentee.
 
 La liste `unreferencedDefinitions` est volontairement marquee provisoire. Elle
-connait maintenant les dresseurs et les rencontres, mais pas encore `tm.txt`, les
+connait maintenant les dresseurs, les rencontres et `tm.txt`, mais pas encore les
 formes codees en Ruby ni les evenements de carte. Une definition non referencee a
 ce stade n'est donc pas consideree comme inutilisable.
 

@@ -5,7 +5,9 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { createPersistentPokemon, loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
-  isPokemonItemUseSupported, recalculatePlayerPokemonCollection, reorderPokemonMoves, usePokemonItem,
+  changePokemonCollectionHeldItem, discardInventoryItem, isPokemonItemUseSupported, recalculatePlayerPokemonCollection,
+  reorderPokemonMoves, usePokemonItem,
+  teachPokemonMachineMove,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
@@ -67,6 +69,7 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
 import { grantSourceTestItems, sourceBagEntries } from "./source-bag.js";
+import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory }
@@ -782,11 +785,14 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDive: requestSourceDive,
   onPokemonLead: setSourcePartyLead,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
+  onPokemonHeldItem: changeSourcePokemonHeldItem,
+  onDiscardItem: discardSourceItem,
+  onTeachMachineMove: teachSourcePokemonMachineMove,
   onUsePokemonItem: useSourcePokemonItem,
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
-  (pokemonId) => openSourcePokemonSummary("ranch", pokemonId));
+  (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem);
 const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   onClose: closeSourcePokemonSummary,
   onPokemonChanged: (pokemonId, cryPath) => {
@@ -1557,7 +1563,8 @@ function closeSourceRanch(): void {
 function renderSourceRanch(): void {
   if (importedAssets === null) return;
   sourceRanchView.render({ open: sourceRanchSequence !== null, party: sourceEventState.party,
-    ranch: sourceEventState.ranch, catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+    ranch: sourceEventState.ranch, catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
+    inventory: sourceEventState.inventory, items: importedAssets.items });
 }
 
 function openSourcePokemonSummary(context: SourcePokemonSummaryContext, pokemonId: string): void {
@@ -1614,6 +1621,36 @@ function reorderSourcePokemonMoves(pokemonId: string, fromIndex: number, toIndex
   renderImportedView();
 }
 
+function changeSourcePokemonHeldItem(pokemonId: string, itemId: string | null): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const result = changePokemonCollectionHeldItem(sourceEventState.inventory, sourceEventState.party,
+    sourceEventState.ranch, pokemonId, itemId);
+  if (!result.ok) {
+    importedNotice = result.reason === "unsupported-item" ? "L'effet de cet objet tenu n'est pas encore porté."
+      : result.reason === "item-not-owned" ? "Cet objet n'est plus dans votre Sac."
+        : result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+          : result.reason === "bag-full" ? "Le Sac ne peut pas reprendre l'ancien objet."
+            : "Ce Pokémon tient déjà cet objet.";
+    renderImportedView();
+    return { ok: false, message: importedNotice, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory,
+    party: result.party, ranch: result.storage };
+  persistSourceEventState();
+  const pokemonName = result.pokemon.nickname
+    ?? importedAssets?.battleCatalog.pokemon.find((candidate) => candidate.internalName === result.pokemon.species)?.name
+    ?? result.pokemon.species;
+  const itemName = result.equipped === null ? null
+    : importedAssets?.items.get(result.equipped)?.name ?? result.equipped;
+  importedNotice = itemName === null ? `${pokemonName} ne tient plus d'objet.`
+    : `${pokemonName} tient maintenant ${itemName}.`;
+  renderImportedView();
+  return { ok: true, message: importedNotice, eventState: sourceEventState };
+}
+
 function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ranch"): void {
   try {
     const result = destination === "team"
@@ -1627,6 +1664,73 @@ function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ra
     importedNotice = error instanceof Error ? error.message : "Transfert du Pokémon impossible.";
     renderSourceRanch();
   }
+}
+
+function discardSourceItem(itemId: string, quantity: number): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const item = importedAssets?.items.get(itemId);
+  const result = discardInventoryItem(sourceEventState.inventory, itemId, quantity,
+    item !== undefined && isSourceItemDiscardable(item));
+  if (!result.ok) {
+    const message = result.reason === "not-discardable" ? "Cet objet important ne peut pas être jeté."
+      : result.reason === "invalid-quantity" ? "La quantité à jeter est invalide."
+        : "Vous ne possédez plus cette quantité.";
+    importedNotice = message;
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory };
+  persistSourceEventState();
+  const name = item?.name ?? itemId;
+  const message = `${result.discarded} × ${name} jeté${result.discarded > 1 ? "s" : ""}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
+}
+
+function teachSourcePokemonMachineMove(itemId: string, pokemonId: string, replacementIndex?: number): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const item = importedAssets?.items.get(itemId);
+  const move = item?.machineMove === null || item?.machineMove === undefined ? undefined
+    : importedAssets?.battleCatalog.moves.find((candidate) => candidate.internalName === item.machineMove);
+  const pokemon = sourceEventState.party.members.find((member) => member.id === pokemonId);
+  const compatible = move !== undefined && pokemon !== undefined
+    && importedAssets?.machineCompatibility.get(move.internalName)?.has(pokemon.species) === true;
+  if (item === undefined || move === undefined) {
+    const message = "Cette CT ou CS ne possède pas de capacité exploitable.";
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  const result = teachPokemonMachineMove(sourceEventState.inventory, sourceEventState.party,
+    pokemonId, itemId, move, compatible, false, replacementIndex);
+  if (!result.ok) {
+    const message = result.reason === "item-not-owned" ? "Cette CT ou CS n'est plus dans votre Sac."
+      : result.reason === "target-not-found" ? "Ce Pokémon ne vous appartient pas."
+        : result.reason === "incompatible" ? "Ce Pokémon n'est pas compatible avec cette capacité."
+          : result.reason === "already-known" ? "Ce Pokémon connaît déjà cette capacité."
+            : result.reason === "replacement-required" ? "Choisissez d'abord une capacité à oublier."
+              : "La capacité à remplacer est invalide.";
+    importedNotice = message;
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  persistSourceEventState();
+  const pokemonName = result.pokemon.nickname
+    ?? importedAssets?.battleCatalog.pokemon.find((candidate) => candidate.internalName === result.pokemon.species)?.name
+    ?? result.pokemon.species;
+  const moveName = move.name;
+  const forgottenName = result.forgottenMove === null ? null
+    : importedAssets?.battleCatalog.moves.find((candidate) => candidate.internalName === result.forgottenMove)?.name
+      ?? result.forgottenMove;
+  const message = forgottenName === null ? `${pokemonName} apprend ${moveName}.`
+    : `${pokemonName} oublie ${forgottenName} et apprend ${moveName}.`;
+  importedNotice = message;
+  renderImportedView();
+  return { ok: true, message, eventState: sourceEventState };
 }
 
 function useSourcePokemonItem(itemId: string, pokemonId: string, moveIndex?: number): {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
-  parseImportedItems, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
+  parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
   selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -212,6 +212,14 @@ describe("imported RPG Maker map", () => {
     } });
     expect(items.get("POTION")).toEqual({ id: 10, internalName: "POTION", name: "Potion",
       description: "Restaure des PV.", pocket: 1, price: 300 });
+  });
+
+  it("loads machine compatibility as move-indexed species sets", () => {
+    const compatibility = parseImportedMachineCompatibility({ kind: "machines", records: [
+      { move: "HONECLAWS", species: ["CHESPIN", "FENNEKIN"] },
+    ] });
+    expect(compatibility.get("HONECLAWS")?.has("CHESPIN")).toBe(true);
+    expect(compatibility.get("HONECLAWS")?.has("FROAKIE")).toBe(false);
   });
 
   it("animates only event pages whose stationary animation is enabled", () => {

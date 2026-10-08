@@ -3,6 +3,7 @@ import { parseAbilities } from "../src/pbs/parse-abilities.js";
 import { analyzeDataset } from "../src/pbs/diagnostics.js";
 import { parseCsvDocument } from "../src/pbs/csv.js";
 import { parseItems } from "../src/pbs/parse-items.js";
+import { parseMachines } from "../src/pbs/parse-machines.js";
 import { parseMoves } from "../src/pbs/parse-moves.js";
 import { parsePokemon } from "../src/pbs/parse-pokemon.js";
 import { parseSectionDocument } from "../src/pbs/sections.js";
@@ -11,6 +12,14 @@ import { parseTypes } from "../src/pbs/parse-types.js";
 const context = { file: "PBS/fixture.txt", sha256: "a".repeat(64) } as const;
 
 describe("normalized PBS parsers", () => {
+  it("parses multiline machine compatibility sections without duplicate species", () => {
+    const dataset = parseMachines("# TMs\n[TESTMOVE]\nTESTMON,OTHERMON,\nTESTMON\n[NEXTMOVE]\nOTHERMON\n", context);
+    expect(dataset.records).toMatchObject([
+      { id: 1, move: "TESTMOVE", species: ["TESTMON", "OTHERMON"] },
+      { id: 2, move: "NEXTMOVE", species: ["OTHERMON"] },
+    ]);
+  });
+
   it("parses a type section", () => {
     const dataset = parseTypes(
       parseSectionDocument(

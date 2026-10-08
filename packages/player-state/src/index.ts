@@ -1,6 +1,7 @@
 import { isHeldItemSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
   type BattleTeam, type BattlerState, type HeldItem,
-  MajorStatusState, SharedBattleOwnerSettlement, SharedBattleParticipation, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+  type MajorStatusState, type SharedBattleOwnerSettlement, type SharedBattleParticipation,
+  type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
 
@@ -13,12 +14,16 @@ export { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, parsePla
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY,
   PLAYER_AVATAR_SELECTION_SCHEMA_VERSION, type PlayerAvatarSelection, type PlayerTrainerIdentity } from "./avatar-selection.js";
 export { isPokemonItemUseSupported, isPokemonItemUsableInField, pokemonItemTargetMode,
-  usePokemonItem, type PlayerInventory, type PokemonItemUseContext,
+  discardInventoryItem, usePokemonItem, type DiscardInventoryItemResult,
+  type PlayerInventory, type PokemonItemUseContext,
   type PokemonItemUseEffect, type PokemonItemUseFailure, type PokemonItemUsePolicy,
   type PokemonItemUseResult } from "./item-use.js";
 export { equipPokemonHeldItem, removePokemonHeldItem, type HeldItemChangeFailure,
-  type HeldItemChangeResult } from "./held-item.js";
+  changePokemonCollectionHeldItem, type HeldItemChangeResult,
+  type PokemonCollectionHeldItemChangeResult } from "./held-item.js";
 export { isHeldItemSupported, SUPPORTED_HELD_ITEMS } from "@pokemon-z-battle/battle-engine";
+export { teachPokemonMachineMove, type MachineLearningFailure,
+  type MachineLearningResult } from "./machine-learning.js";
 
 export const PLAYER_PARTY_SCHEMA_VERSION = 1 as const;
 export const PLAYER_POKEMON_STORAGE_SCHEMA_VERSION = 1 as const;

@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-07.
+Derniere mise a jour : 2026-10-08.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -20,8 +20,8 @@ structure de la commande source permet une detection generique.
 
 ## Etat Git au moment de cette note
 
-Le dernier commit connu est `9abd598 AJOUT : Co-op local en cours`. Le worktree
-contient le premier lot de synchronisation narrative visuelle decrit plus bas.
+Le dernier commit connu est `4120978 MODIF : Notes`. Le worktree contient le lot
+de gestion des objets tenus decrit plus bas.
 
 Le porteur du projet prefere effectuer lui-meme les commits apres validation
 manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
@@ -1452,7 +1452,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 436 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 477 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en
@@ -1778,6 +1778,66 @@ tenus, pierres et CT/CS. `SOLO-CAPTURE-1` possede maintenant sa boucle fonctionn
 solo/Coop ; restent l'animation, le surnom, la capture critique/Pokedex et les
 modificateurs contextuels heure/milieu/type de rencontre. Les sous-categories et
 tris avances du Sac restent planifies dans `UI-BAG-1` apres le noyau metier.
+
+Cinquieme increment `SOLO-ITEMS-1` du 2026-10-08 : les onze objets tenus dont les
+effets sont deja portes dans le moteur (`ASSAULTVEST`, `BLACKSLUDGE`, `EXPERTBELT`,
+`FOCUSSASH`, `LEFTOVERS`, `LIFEORB`, `MUSCLEBAND`, `ROCKYHELMET`, `SCOPELENS`,
+`WIDELENS`, `WISEGLASSES`) peuvent maintenant etre equipes, remplaces ou retires
+depuis la roue d'action commune de l'Equipe et du Ranch. L'ecran ne propose que
+les exemplaires reellement possedes et rend atomiquement l'ancien objet au Sac ;
+la roue reste ouvrable lorsque cette liste est vide afin de ne pas masquer la
+fonction, tandis que toute modification demeure interdite pendant un combat ;
+la limite de 999, une disparition de stock et une cible etrangere annulent toute
+la transaction. Un ancien objet encore inerte peut toujours etre retire afin de
+ne pas enfermer une sauvegarde migree.
+
+Le noyau personnel `changePokemonCollectionHeldItem` traite equipe et stockage
+avec la meme transaction immutable. Il est utilise sans variante par le solo,
+l'hote et l'invite et ne publie ni inventaire ni Ranch dans la room. Le pont de
+combat existant transporte ensuite uniquement l'objet equipe et ses effets deja
+supportes vers le noyau local ou autoritaire. Ce jalon ne pretend pas couvrir tous
+les objets tenus de Z : leurs autres hooks doivent etre ajoutes par lots verticaux
+avant de les rendre selectionnables.
+
+Sixieme increment `SOLO-ITEMS-1` du 2026-10-08 : la roue d'actions n'est plus un
+composant propre aux Pokemon. Le presentateur generique `source-action-wheel`
+sert maintenant aux cartes Pokemon et aux entrees du Sac. Un clic sur n'importe
+quel objet ouvre `Utiliser`, `Donner` et `Jeter`; le centre annule. Utiliser garde
+le choix de Pokemon puis de capacite, Donner rejoint la transaction d'objet tenu,
+et Jeter demande une quantite avant une mutation personnelle atomique. Les objets
+importants (`itemType 6`) et les CS (`fieldUse 4`) sont proteges. Les actions non
+encore portees restent visibles mais desactivees avec leur raison. Le contrat
+`specificActions` permet aux futurs modules (enregistrement, plantation, CT/CS,
+pierres, etc.) d'ajouter leurs choix sans dupliquer la roue. Inventaire et effets
+restent personnels et persistants en solo/hote/invite, sans replication du Sac.
+
+Correctif de boucle UI du 2026-10-08 : les choix de cible n'apparaissent plus sous
+la longue liste du Sac. Utiliser et Donner ouvrent une etape modale visible avec
+les membres de l'equipe, leurs sprites, niveaux, PV et objet tenu pertinent. Les
+objets a PP enchainent ensuite le choix de capacite. Chaque mutation se termine
+par un resultat explicite puis Continuer ou Recommencer si le stock le permet ;
+Retour rejoint la roue et le centre de la roue annule l'interaction. Le contrat
+`sourceItemTargetFlow` a prepare pour les CT/CS les etapes Pokemon, compatibilite,
+remplacement eventuel et confirmation avant leur activation dans l'increment
+suivant.
+
+Septieme increment `SOLO-ITEMS-1` du 2026-10-08 : `PBS/tm.txt` est maintenant
+extrait dans `machines.json`. Les 114 sections et 26 802 liens espece/capacite
+sont parses sur plusieurs lignes, dedupliques et valides contre les catalogues ;
+le rapport controle desormais 60 140 references, dont seules les deux ambiguities
+`SECRETSWORD` deja connues restent en erreur. L'ecran CT/CS annote Compatible,
+Incompatible ou Capacite deja connue, demande une capacite a oublier lorsque les
+quatre emplacements sont occupes, puis confirme et affiche le resultat.
+
+Le noyau personnel `teachPokemonMachineMove` effectue la mutation atomique de
+l'equipe. Il preserve le PP courant de l'emplacement remplace, plafonne au maximum
+de la nouvelle capacite, conformement a `pbLearnMove(..., bymachine=true)`. Le
+script source fixe `INFINITETMS=true` : ni CT ni CS ne sont consommees, jetables
+ou donnables. Solo, hote et invite utilisent leur inventaire/equipe persistants
+sans etat de Sac replique. Audit source restant : `HM05/WATERFALL` et `HM06/DIVE`
+ont un objet mais aucune section dans `tm.txt`, donc Apprendre reste desactive pour
+ces deux cas plutot que d'inventer une compatibilite ; six sections de `tm.txt`
+n'ont inversement aucun objet machine associe.
 
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements

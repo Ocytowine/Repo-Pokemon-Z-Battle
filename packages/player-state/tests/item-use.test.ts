@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPersistentPokemonMetadata, isPokemonItemUseSupported, usePokemonItem,
+import { createPersistentPokemonMetadata, discardInventoryItem, isPokemonItemUseSupported, usePokemonItem,
   type PersistentPokemon, type PlayerPartyState } from "../src/index.js";
 
 function pokemon(input: Partial<PersistentPokemon> = {}): PersistentPokemon {
@@ -16,6 +16,17 @@ function party(member: PersistentPokemon): PlayerPartyState {
 }
 
 describe("personal Pokemon item use", () => {
+  it("discards only an explicit valid quantity from the personal inventory", () => {
+    const inventory = { POTION: 3 };
+    expect(discardInventoryItem(inventory, "POTION", 2, true))
+      .toEqual({ ok: true, inventory: { POTION: 1 }, discarded: 2 });
+    expect(discardInventoryItem(inventory, "POTION", 4, true))
+      .toEqual({ ok: false, inventory, reason: "item-not-owned" });
+    expect(discardInventoryItem(inventory, "POTION", 1, false))
+      .toEqual({ ok: false, inventory, reason: "not-discardable" });
+    expect(inventory).toEqual({ POTION: 3 });
+  });
+
   it("heals and consumes exactly one owned item without mutating its inputs", () => {
     const inventory = { POTION: 2 };
     const original = party(pokemon());

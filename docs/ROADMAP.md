@@ -1706,11 +1706,40 @@ puis conserve consommation et reliquat a travers reconnexion et reglement. Le
 solo, l'hote et l'invite utilisent tous `applyPokemonItemEffect` ; aucun objet ne
 permet de modifier le Pokemon de l'autre Dresseur.
 
+Cinquieme increment objets du 2026-10-08 : la roue commune Equipe/Ranch active la
+gestion des onze objets tenus dont les effets de combat sont deja implementes.
+Le choix vient du stock personnel reel ; equipement, remplacement et retrait sont
+une transaction atomique partagee entre l'equipe et le stockage, avec retour de
+l'ancien objet au Sac et controle de sa limite. Le solo, l'hote et l'invite
+emploient ce meme noyau local sans publier inventaire ou Ranch dans la room. Les
+autres objets tenus restent invisibles dans ce selecteur tant que leur hook source
+n'est pas porte, mais un objet historique inerte peut toujours etre retire.
+
+Sixieme increment objets du 2026-10-08 : la roue radiale est devenue un composant
+generique commun aux Pokemon et au Sac. Chaque entree du Sac expose Utiliser,
+Donner et Jeter, avec annulation par le centre ; les actions indisponibles restent
+lisibles avec leur motif. Le jet choisit sa quantite et preserve objets importants
+et CS. Le contrat accepte des actions specifiques injectees par les futurs lots
+d'objets. Toutes les mutations restent personnelles en solo/hote/invite.
+
+La boucle UI a ensuite ete fermee : cible Pokemon et cible capacite sont des
+modales visibles independamment de la longueur du Sac, suivies d'un resultat et
+d'une reprise optionnelle. Le flux CT/CS reserve compatibilite, remplacement et
+confirmation ; son activation depend de l'extraction fidele de `tm.txt`.
+
+Septieme increment objets du 2026-10-08 : `tm.txt` rejoint `machines.json` et
+l'apprentissage CT/CS est raccorde de bout en bout avec compatibilite source,
+capacite deja connue, remplacement parmi quatre emplacements et confirmation.
+Pokemon Z ayant `INFINITETMS=true`, CT et CS sont conservees et ne peuvent etre
+jetees ou donnees. Les PP de la capacite remplacee suivent exactement le handler
+Ruby. WATERFALL et DIVE restent des exceptions auditees : leurs objets existent
+mais leurs sections manquent du `tm.txt` source.
+
 La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
 Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
-objets tenus, pierres et CT/CS, restent ouverts dans `SOLO-ITEMS-1`.
+effets d'objets tenus non portes et pierres restent ouverts dans `SOLO-ITEMS-1`.
 
 ### Phase 12 - Extensions Coop
 

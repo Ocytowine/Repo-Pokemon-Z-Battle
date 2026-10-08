@@ -16,6 +16,27 @@ export type PokemonItemUseResult =
   | { readonly ok: false; readonly inventory: PlayerInventory; readonly party: PlayerPartyState;
     readonly reason: PokemonItemUseFailure };
 
+export type DiscardInventoryItemResult =
+  | { readonly ok: true; readonly inventory: PlayerInventory; readonly discarded: number }
+  | { readonly ok: false; readonly inventory: PlayerInventory;
+      readonly reason: "invalid-quantity" | "item-not-owned" | "not-discardable" };
+
+/** Personal inventory mutation used identically by solo, host and guest adapters. */
+export function discardInventoryItem(inventory: PlayerInventory, item: string, quantity: number,
+  discardable: boolean): DiscardInventoryItemResult {
+  if (!discardable) return { ok: false, inventory, reason: "not-discardable" };
+  if (!Number.isSafeInteger(quantity) || quantity < 1) {
+    return { ok: false, inventory, reason: "invalid-quantity" };
+  }
+  const owned = inventory[item] ?? 0;
+  if (!Number.isSafeInteger(owned) || owned < quantity) {
+    return { ok: false, inventory, reason: "item-not-owned" };
+  }
+  const next = { ...inventory };
+  if (owned === quantity) delete next[item]; else next[item] = owned - quantity;
+  return { ok: true, inventory: next, discarded: quantity };
+}
+
 /**
  * Applies one source item to one Pokemon owned by the same player. The inventory is consumed only
  * after a valid effect. Solo and Coop adapters must pass the current owner's party and inventory.

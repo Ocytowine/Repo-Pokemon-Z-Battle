@@ -4,6 +4,8 @@ import { createEmptyPlayerParty, createEmptyPlayerPokemonStorage, createPersiste
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "../src/source-pokemon-actions.js";
 import { sourcePokemonCardHtml } from "../src/source-pokemon-card-view.js";
 import { createSourcePokemonCollection } from "../src/source-pokemon-collection.js";
+import { canManageSourceHeldItem, sourceHeldItemEntries, sourceHeldItemManagerHtml }
+  from "../src/source-held-item-view.js";
 
 const pokemon: PersistentPokemon = {
   id: "starter", species: "CHESPIN", nickname: "Marisson", level: 5, experience: 0,
@@ -54,11 +56,39 @@ describe("shared Pokemon card and contextual actions", () => {
   it("offers team actions according to the selected Pokemon state", () => {
     const selected = entry();
     const actions = sourcePokemonActions("team", selected,
-      { partySize: 2, partyFull: false, activePokemonId: "another" });
+      { partySize: 2, partyFull: false, activePokemonId: "another", heldItemManagementAvailable: true });
     expect(actions.map((action) => [action.id, action.enabled])).toEqual([
-      ["details", true], ["make-lead", true], ["give-item", false],
+      ["details", true], ["make-lead", true], ["give-item", true],
     ]);
-    expect(sourcePokemonActionWheelHtml(selected, actions)).toContain('data-pokemon-action="make-lead"');
+    expect(sourcePokemonActionWheelHtml(selected, actions)).toContain('data-source-wheel-action="make-lead"');
+  });
+
+  it("keeps held-item management accessible outside battle when the compatible pocket is empty", () => {
+    const selected = entry();
+    expect(sourcePokemonActions("team", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter", heldItemManagementAvailable: false })
+      .find((action) => action.id === "give-item")).toMatchObject({ enabled: true });
+    expect(sourcePokemonActions("ranch", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter", heldItemManagementAvailable: false })
+      .find((action) => action.id === "give-item")).toMatchObject({ enabled: true });
+    expect(sourcePokemonActions("battle", selected,
+      { partySize: 1, partyFull: false, activePokemonId: "starter", heldItemManagementAvailable: true })
+      .find((action) => action.id === "give-item")).toMatchObject({ enabled: false,
+        hint: "Indisponible pendant le combat" });
+  });
+
+  it("offers only implemented held items and keeps removal available", () => {
+    const items = new Map([
+      ["LEFTOVERS", { id: 93, internalName: "LEFTOVERS", name: "Restes", description: "Restaure des PV.", pocket: 1, price: 200 }],
+      ["POTION", { id: 1, internalName: "POTION", name: "Potion", description: "Restaure des PV.", pocket: 2, price: 300 }],
+    ]);
+    expect(sourceHeldItemEntries({ LEFTOVERS: 2, POTION: 4 }, items))
+      .toEqual([{ item: items.get("LEFTOVERS"), quantity: 2 }]);
+    expect(canManageSourceHeldItem({}, "LEGACYITEM")).toBe(true);
+    const html = sourceHeldItemManagerHtml("Marisson", "LEFTOVERS", { LEFTOVERS: 2, POTION: 4 }, items);
+    expect(html).toContain('data-held-item-equip="LEFTOVERS"');
+    expect(html).toContain("data-held-item-remove");
+    expect(html).not.toContain('data-held-item-equip="POTION"');
   });
 
   it("uses distinct Ranch actions for team and stored Pokemon", () => {

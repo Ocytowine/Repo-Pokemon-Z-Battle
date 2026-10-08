@@ -4,6 +4,7 @@ import type {
   DefinitionCollision,
   EncounterDefinition,
   ItemDefinition,
+  MachineCompatibilityDefinition,
   MoveDefinition,
   NormalizedDataset,
   PokemonDefinition,
@@ -39,6 +40,7 @@ export interface ReferenceValidationInput {
   readonly moves: NormalizedDataset<"moves", MoveDefinition>;
   readonly abilities: NormalizedDataset<"abilities", AbilityDefinition>;
   readonly items: NormalizedDataset<"items", ItemDefinition>;
+  readonly machines: NormalizedDataset<"machines", MachineCompatibilityDefinition>;
   readonly trainerTypes: NormalizedDataset<"trainerTypes", TrainerTypeDefinition>;
   readonly trainers: NormalizedDataset<"trainers", TrainerDefinition>;
   readonly encounters: NormalizedDataset<"encounters", EncounterDefinition>;
@@ -182,6 +184,13 @@ export async function validateReferences(
   for (const item of input.items.records) {
     if (item.machineMove !== null) {
       checkReference("items", item, "machineMove", item.machineMove, "moves", "UNKNOWN_MOVE");
+    }
+  }
+
+  for (const machine of input.machines.records) {
+    checkReference("machines", machine, "move", machine.move, "moves", "UNKNOWN_MOVE");
+    for (const species of machine.species) {
+      checkReference("machines", machine, "species", species, "pokemon", "UNKNOWN_POKEMON");
     }
   }
 
@@ -419,6 +428,7 @@ export async function validateReferences(
   } as const;
   const collisionRecords = {
     ...definitionRecords,
+    machines: input.machines.records,
     trainers: input.trainers.records,
     encounters: input.encounters.records,
   } as const;
@@ -456,7 +466,7 @@ export async function validateReferences(
     issues,
     collisions,
     unreferencedScope:
-      "Provisional: references from the eight Phase 1.4 PBS datasets are counted. TM lists, scripts, forms and map events are not included yet.",
+      "Provisional: references from the nine PBS datasets, including TM lists, are counted. Scripts, forms and map events are not included yet.",
     unreferencedDefinitions,
     compiledComparisons,
   };

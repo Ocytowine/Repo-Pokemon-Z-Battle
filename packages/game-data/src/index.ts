@@ -7,6 +7,7 @@ export type DatasetKind =
   | "moves"
   | "abilities"
   | "items"
+  | "machines"
   | "trainerTypes"
   | "trainers"
   | "encounters";
@@ -149,6 +150,15 @@ export interface ItemDefinition {
   readonly battleUse: number;
   readonly itemType: number | null;
   readonly machineMove: string | null;
+  readonly raw: readonly string[];
+  readonly _source: EntitySource;
+}
+
+export interface MachineCompatibilityDefinition {
+  readonly id: number;
+  readonly internalName: string;
+  readonly move: string;
+  readonly species: readonly string[];
   readonly raw: readonly string[];
   readonly _source: EntitySource;
 }

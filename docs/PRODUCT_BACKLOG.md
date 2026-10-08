@@ -375,7 +375,23 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   appliquent leurs crans temporaires au Pokemon actif. Le protocole v15 conserve
   la cible de capacite et le cloisonnement proprietaire en combat simple/double,
   reconnexion comprise. Puissance et Garde-Stats attendent les etats volatils
-  correspondants ; objets tenus, pierres et CT/CS restent a porter avant fermeture.
+  correspondants.
+- Increment gestion d'objets tenus implemente le 2026-10-08 : les onze objets dont
+  le moteur applique deja l'effet peuvent etre equipes, remplaces ou retires sur
+  un Pokemon de l'Equipe ou du Ranch. Une transaction personnelle unique echange
+  l'objet avec le Sac, protege la limite de 999 et refuse les cibles etrangeres ;
+  elle est identique en solo, chez l'hote et chez l'invite sans replication du Sac.
+- Increment UI du Sac implemente le 2026-10-08 : toute entree ouvre la meme roue
+  generique que les cartes Pokemon avec Utiliser, Donner, Jeter et annulation au
+  centre. Le jet quantifie utilise une mutation personnelle atomique et protege
+  objets importants/CS. Le contrat accepte deja des actions propres a une famille
+  d'objets sans modifier le composant de roue.
+  La selection de cible et le resultat sont des etapes modales completes ; les
+  CT/CS possedent deja un flux type cible/compatibilite/remplacement/confirmation,
+  et `tm.txt` est maintenant extrait : l'apprentissage est actif, preserve les PP
+  lors d'un remplacement et respecte les CT infinies de Z. WATERFALL/DIVE restent
+  sans compatibilite source dans ce fichier. Les autres effets d'objets tenus et
+  les pierres restent a porter avant fermeture.
 
 ### SOLO-CAPTURE-1 — Capture complete
 

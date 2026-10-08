@@ -19,6 +19,10 @@ export interface SourceShopItem {
   readonly description: string;
   readonly pocket: number;
   readonly price: number;
+  readonly fieldUse?: number;
+  readonly battleUse?: number;
+  readonly itemType?: number | null;
+  readonly machineMove?: string | null;
 }
 
 export type SourcePurchaseResult =

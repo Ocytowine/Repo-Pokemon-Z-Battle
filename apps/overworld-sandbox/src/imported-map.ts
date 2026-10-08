@@ -100,6 +100,7 @@ export interface ImportedMapAssets {
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
+  readonly machineCompatibility: ReadonlyMap<string, ReadonlySet<string>>;
   readonly pokemonOverworldPaths: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerDetailsCatalog;
   readonly pokemonAssets: PokemonAssetsManifest;
@@ -509,7 +510,28 @@ export function parseImportedItems(itemsValue: unknown, localizationValue: unkno
     result.set(entry.internalName, { id: entry.id as number, internalName: entry.internalName,
       name: translatedById.get(entry.id as number) ?? entry.name,
       description: translatedDescriptions.get(entry.id as number) ?? entry.description,
-      pocket: entry.pocket as number, price: entry.price as number });
+      pocket: entry.pocket as number, price: entry.price as number,
+      ...(Number.isInteger(entry.fieldUse) ? { fieldUse: entry.fieldUse as number } : {}),
+      ...(Number.isInteger(entry.battleUse) ? { battleUse: entry.battleUse as number } : {}),
+      ...(entry.itemType === null || Number.isInteger(entry.itemType)
+        ? { itemType: entry.itemType as number | null } : {}),
+      ...(entry.machineMove === null || typeof entry.machineMove === "string"
+        ? { machineMove: entry.machineMove } : {}) });
+  }
+  return result;
+}
+
+export function parseImportedMachineCompatibility(value: unknown): ReadonlyMap<string, ReadonlySet<string>> {
+  if (!isRecord(value) || value.kind !== "machines" || !Array.isArray(value.records)) {
+    throw new Error("Le catalogue de compatibilité CT/CS est invalide.");
+  }
+  const result = new Map<string, ReadonlySet<string>>();
+  for (const entry of value.records) {
+    if (!isRecord(entry) || typeof entry.move !== "string" || !Array.isArray(entry.species)
+      || !entry.species.every((species) => typeof species === "string")) {
+      throw new Error("Une compatibilité CT/CS est invalide.");
+    }
+    result.set(entry.move, new Set(entry.species));
   }
   return result;
 }
@@ -679,10 +701,11 @@ function parsePokemonOverworldPaths(value: unknown): ReadonlyMap<string, string>
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
     movesValue, abilitiesValue, encountersValue, battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
+    fetchJson("/__pokemon-z/data/machines.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/pokemon-assets.json"),
     fetchJson("/__pokemon-z/data/asset-manifest.json"), fetchJson("/__pokemon-z/data/moves.json"),
     fetchJson("/__pokemon-z/data/abilities.json"),
@@ -695,6 +718,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const events = parseMapEvents(eventValue);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const items = parseImportedItems(itemsValue, localizationValue);
+  const machineCompatibility = parseImportedMachineCompatibility(machinesValue);
   const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, abilitiesValue, localizationValue);
   const pokemonAssets = parsePokemonAssetsManifest(pokemonAssetsValue);
@@ -717,7 +741,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
-    mapTranslations, itemNames, items, pokemonOverworldPaths, battleCatalog, pokemonAssets, summaryAssets,
+    mapTranslations, itemNames, items, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets, summaryAssets,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }

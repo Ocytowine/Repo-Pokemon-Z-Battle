@@ -1,22 +1,18 @@
 import type { SourcePokemonCollectionEntry } from "./source-pokemon-collection.js";
 import { sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
+import { sourceActionWheelHtml, type SourceActionWheelAction } from "./source-action-wheel.js";
 
 export type SourcePokemonActionContext = "team" | "ranch" | "battle";
 export type SourcePokemonActionId = "details" | "make-lead" | "give-item" | "deposit" | "withdraw"
   | "mark" | "release" | "switch";
 
-export interface SourcePokemonAction {
-  readonly id: SourcePokemonActionId;
-  readonly label: string;
-  readonly symbol: string;
-  readonly enabled: boolean;
-  readonly hint: string;
-}
+export type SourcePokemonAction = SourceActionWheelAction<SourcePokemonActionId>;
 
 export interface SourcePokemonActionOptions {
   readonly partySize: number;
   readonly partyFull: boolean;
   readonly activePokemonId: string | null;
+  readonly heldItemManagementAvailable?: boolean;
 }
 
 const future = (id: SourcePokemonActionId, label: string, symbol: string): SourcePokemonAction =>
@@ -27,7 +23,13 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
   options: SourcePokemonActionOptions): readonly SourcePokemonAction[] {
   const details: SourcePokemonAction = { id: "details", label: "Détails", symbol: "i", enabled: true,
     hint: "Ouvrir le résumé" };
-  const item = future("give-item", entry.pokemon.heldItem === null ? "Donner objet" : "Gérer objet", "◇");
+  const canOpenHeldItemManager = context !== "battle";
+  const item: SourcePokemonAction = { id: "give-item",
+    label: entry.pokemon.heldItem === null ? "Donner objet" : "Gérer objet", symbol: "◇",
+    enabled: canOpenHeldItemManager,
+    hint: !canOpenHeldItemManager ? "Indisponible pendant le combat"
+      : options.heldItemManagementAvailable === true ? "Choisir un objet tenu"
+        : "Ouvrir le Sac · aucun objet compatible actuellement" };
   const alreadyLead = entry.teamIndex === 0 && entry.pokemon.id === options.activePokemonId;
   const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !alreadyLead,
     hint: alreadyLead ? "Déjà en tête" : "Premier de l'équipe" };
@@ -45,20 +47,8 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
   future("mark", "Marquer", "●"), future("release", "Relâcher", "×")];
 }
 
-function escapeHtml(value: string): string {
-  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
 export function sourcePokemonActionWheelHtml(entry: SourcePokemonCollectionEntry,
   actions: readonly SourcePokemonAction[]): string {
-  const actionButtons = actions.map((action, index) => {
-    const angle = -90 + (360 / actions.length) * index;
-    return `<button type="button" class="source-pokemon-wheel-action" style="--action-angle:${angle}deg;--action-counter-angle:${-angle}deg" data-pokemon-action="${action.id}"${action.enabled ? "" : " disabled"} title="${escapeHtml(action.hint)}"><b>${escapeHtml(action.symbol)}</b><span>${escapeHtml(action.label)}</span><small>${escapeHtml(action.hint)}</small></button>`;
-  }).join("");
-  return `<div class="source-pokemon-wheel-backdrop" data-pokemon-wheel-dismiss>
-    <section class="source-pokemon-wheel" role="dialog" aria-modal="true" aria-label="Actions pour ${escapeHtml(entry.displayName)}">
-      ${actionButtons}<button type="button" class="source-pokemon-wheel-center" data-pokemon-wheel-close aria-label="Fermer les actions">${sourcePokemonIconHtml(entry)}<strong>${escapeHtml(entry.displayName)}</strong><small>Fermer</small></button>
-    </section>
-  </div>`;
+  return sourceActionWheelHtml({ label: `Actions pour ${entry.displayName}`, actions,
+    centerHtml: `${sourcePokemonIconHtml(entry)}<strong>${entry.displayName.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")}</strong>` });
 }

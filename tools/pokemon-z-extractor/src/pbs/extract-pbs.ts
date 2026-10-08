@@ -5,6 +5,7 @@ import type {
   EngineSupportReport,
   ExtractionReport,
   ItemDefinition,
+  MachineCompatibilityDefinition,
   MoveDefinition,
   NormalizedDataset,
   PokemonDefinition,
@@ -22,6 +23,7 @@ import { parseAbilities } from "./parse-abilities.js";
 import { createExtractionReport, analyzeDataset } from "./diagnostics.js";
 import { parseCsvDocument } from "./csv.js";
 import { parseItems } from "./parse-items.js";
+import { parseMachines } from "./parse-machines.js";
 import { parseMoves } from "./parse-moves.js";
 import { parsePokemon } from "./parse-pokemon.js";
 import { parseSectionDocument } from "./sections.js";
@@ -39,6 +41,7 @@ const PBS_FILES = {
   moves: "PBS/moves.txt",
   abilities: "PBS/abilities.txt",
   items: "PBS/items.txt",
+  machines: "PBS/tm.txt",
   trainerTypes: "PBS/trainertypes.txt",
   trainers: "PBS/trainers.txt",
   encounters: "PBS/encounters.txt",
@@ -75,13 +78,14 @@ export async function extractPbsData(
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await validatePokemonZSource(paths.source);
 
-  const [typesFile, pokemonFile, movesFile, abilitiesFile, itemsFile, trainerTypesFile,
+  const [typesFile, pokemonFile, movesFile, abilitiesFile, itemsFile, machinesFile, trainerTypesFile,
     trainersFile, encountersFile] = await Promise.all([
     loadPbsFile(paths.source, PBS_FILES.types),
     loadPbsFile(paths.source, PBS_FILES.pokemon),
     loadPbsFile(paths.source, PBS_FILES.moves),
     loadPbsFile(paths.source, PBS_FILES.abilities),
     loadPbsFile(paths.source, PBS_FILES.items),
+    loadPbsFile(paths.source, PBS_FILES.machines),
     loadPbsFile(paths.source, PBS_FILES.trainerTypes),
     loadPbsFile(paths.source, PBS_FILES.trainers),
     loadPbsFile(paths.source, PBS_FILES.encounters),
@@ -107,6 +111,10 @@ export async function extractPbsData(
     parseCsvDocument(itemsFile.text, itemsFile.relativePath),
     context(itemsFile),
   );
+  const machines: NormalizedDataset<"machines", MachineCompatibilityDefinition> = parseMachines(
+    machinesFile.text,
+    context(machinesFile),
+  );
   const trainerTypes: NormalizedDataset<"trainerTypes", TrainerTypeDefinition> = parseTrainerTypes(
     parseCsvDocument(trainerTypesFile.text, trainerTypesFile.relativePath),
     context(trainerTypesFile),
@@ -126,6 +134,7 @@ export async function extractPbsData(
     moves: analyzeDataset("moves", moves.records),
     abilities: analyzeDataset("abilities", abilities.records),
     items: analyzeDataset("items", items.records),
+    machines: analyzeDataset("machines", machines.records),
     trainerTypes: analyzeDataset("trainerTypes", trainerTypes.records),
     trainers: analyzeDataset("trainers", trainers.records),
     encounters: analyzeDataset("encounters", encounters.records, { detectMissingIds: false }),
@@ -136,6 +145,7 @@ export async function extractPbsData(
     moves,
     abilities,
     items,
+    machines,
     trainerTypes,
     trainers,
     encounters,
@@ -151,6 +161,7 @@ export async function extractPbsData(
     writeJsonAtomically(paths.output, "moves.json", moves),
     writeJsonAtomically(paths.output, "abilities.json", abilities),
     writeJsonAtomically(paths.output, "items.json", items),
+    writeJsonAtomically(paths.output, "machines.json", machines),
     writeJsonAtomically(paths.output, "trainer-types.json", trainerTypes),
     writeJsonAtomically(paths.output, "trainers.json", trainers),
     writeJsonAtomically(paths.output, "encounters.json", encounters),

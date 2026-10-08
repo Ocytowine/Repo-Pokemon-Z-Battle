@@ -81,6 +81,7 @@ Evolutions=
       '\uFEFF1,TESTITEM,Test Item,Test Items,1,1,"Fixture",0,0,0\n',
       "utf8",
     ),
+    writeFile(path.join(pbs, "tm.txt"), "\uFEFF[TESTMOVE]\nTESTMON\n", "utf8"),
     writeFile(
       path.join(pbs, "trainertypes.txt"),
       "\uFEFF0,TESTTRAINER,Test Trainer,30,,,,Male,50,\n",
@@ -118,7 +119,7 @@ describe("extractPbsData", () => {
     const second = await extractPbsData(fixture.source, output);
     const secondPokemon = await readFile(path.join(output, "pokemon.json"), "utf8");
 
-    expect(first.files).toHaveLength(11);
+    expect(first.files).toHaveLength(12);
     expect(first.report.datasets.pokemon.records).toBe(1);
     expect(first.report.diagnostics).toEqual([]);
     expect(first.validationReport.summary.errors).toBe(0);
@@ -126,6 +127,10 @@ describe("extractPbsData", () => {
     expect(first.engineSupportReport.summary.supportedMechanics).toBeGreaterThan(0);
     expect(first.report.datasets.trainers.records).toBe(1);
     expect(first.report.datasets.encounters.records).toBe(1);
+    expect(first.report.datasets.machines.records).toBe(1);
+    expect(JSON.parse(await readFile(path.join(output, "machines.json"), "utf8"))).toMatchObject({
+      kind: "machines", records: [{ move: "TESTMOVE", species: ["TESTMON"] }],
+    });
     expect(second.report).toEqual(first.report);
     expect(secondPokemon).toBe(firstPokemon);
     expect(firstPokemon).not.toContain(fixture.source);
