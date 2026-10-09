@@ -4,7 +4,8 @@ import { GAME_DATA_SCHEMA_VERSION, LOCAL_DATA_MANIFEST_SCHEMA_VERSION, LOCAL_DAT
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readExistingLocalTestPaths, writeLocalDataManifest } from "../src/runtime/prepare-local-test.js";
+import { LOCAL_TEST_CONFIG_SCHEMA_VERSION, readExistingLocalTestPaths, writeLocalDataManifest,
+  writeLocalTestConfiguration } from "../src/runtime/prepare-local-test.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -19,7 +20,7 @@ async function temporaryWorkspace(): Promise<string> {
 }
 
 describe("local test configuration", () => {
-  it("reuses the source recorded by the first preparation", async () => {
+  it("still reads the legacy configuration from the default data directory", async () => {
     const workspace = await temporaryWorkspace();
     const output = path.join(workspace, ".pokemon-z", "data");
     const source = path.join(workspace, "Pokemon Z source");
@@ -32,6 +33,26 @@ describe("local test configuration", () => {
   it("explains how to configure a missing local source", async () => {
     const workspace = await temporaryWorkspace();
     await expect(readExistingLocalTestPaths(workspace)).rejects.toThrow("--source et --output");
+  });
+
+  it("gives each workstation an ignored configuration with independent source and data paths", async () => {
+    const workspace = await temporaryWorkspace();
+    const source = path.join(workspace, "Pokemon Z source");
+    const output = path.join(workspace, "extracted elsewhere");
+
+    const configPath = await writeLocalTestConfiguration(workspace,
+      { sourceDirectory: source, outputDirectory: output });
+
+    expect(configPath).toBe(path.join(workspace, ".pokemon-z", "local-test.json"));
+    expect(JSON.parse(await readFile(configPath, "utf8"))).toEqual({
+      schemaVersion: LOCAL_TEST_CONFIG_SCHEMA_VERSION,
+      sourceDirectory: source,
+      dataDirectory: output,
+    });
+    await expect(readExistingLocalTestPaths(workspace)).resolves.toEqual({
+      sourceDirectory: source,
+      outputDirectory: output,
+    });
   });
 
   it("writes the manifest last only when every required runtime file exists", async () => {

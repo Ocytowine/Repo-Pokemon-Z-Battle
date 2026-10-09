@@ -93,10 +93,13 @@ pnpm prepare:local --source "C:\chemin\vers\Pokémon Z V2.12 - Français" --outp
 ```
 
 Cette commande enchaine les extractions PBS, runtime, assets et cartes. Elle
-memorise le chemin source dans `.pokemon-z/data/local-test.json`, fichier local
-ignore par Git. Ensuite, l'Asset Lab et le Battle Sandbox chargent automatiquement
-les manifestes et le dossier source au demarrage ; les selecteurs manuels restent
-disponibles en secours.
+memorise le chemin source et le dossier de donnees dans
+`.pokemon-z/local-test.json`, fichier propre a chaque poste et ignore par Git.
+Les chemins peuvent donc differer entre collegues, y compris le chemin passe a
+`--output`. Ensuite, l'Asset Lab et les sandboxes chargent automatiquement les
+manifestes et le dossier source au demarrage ; les selecteurs manuels restent
+disponibles en secours. L'ancien fichier `.pokemon-z/data/local-test.json` reste
+lu pour migrer les installations deja preparees.
 
 Le premier lancement exige les deux chemins ci-dessus. Les mises a jour suivantes
 reutilisent automatiquement cette configuration :

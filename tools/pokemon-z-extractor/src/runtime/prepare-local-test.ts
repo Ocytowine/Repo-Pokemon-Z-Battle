@@ -22,6 +22,9 @@ export interface LocalTestPaths {
   readonly outputDirectory: string;
 }
 
+export const LOCAL_TEST_CONFIG_SCHEMA_VERSION = "2.0.0" as const;
+export const LOCAL_TEST_CONFIG_RELATIVE_PATH = ".pokemon-z/local-test.json" as const;
+
 async function listRelativeFiles(directory: string, prefix = ""): Promise<string[]> {
   const entries = await readdir(path.join(directory, prefix), { withFileTypes: true });
   const files = await Promise.all(entries.map(async (entry) => {
@@ -47,25 +50,53 @@ export async function writeLocalDataManifest(outputDirectory: string, now = new 
 }
 
 export async function readExistingLocalTestPaths(invocationDirectory: string): Promise<LocalTestPaths> {
-  const outputDirectory = path.resolve(invocationDirectory, ".pokemon-z", "data");
-  const configPath = path.join(outputDirectory, "local-test.json");
+  const defaultOutputDirectory = path.resolve(invocationDirectory, ".pokemon-z", "data");
+  const configPaths = [
+    path.resolve(invocationDirectory, ...LOCAL_TEST_CONFIG_RELATIVE_PATH.split("/")),
+    path.join(defaultOutputDirectory, "local-test.json"),
+  ];
   let value: unknown;
-  try {
-    value = JSON.parse(await readFile(configPath, "utf8")) as unknown;
-  } catch {
-    throw new Error(`Configuration locale introuvable ou invalide : ${configPath}. Lancez une premiere fois prepare:local avec --source et --output.`);
+  let configPath: string | null = null;
+  for (const candidate of configPaths) {
+    try {
+      value = JSON.parse(await readFile(candidate, "utf8")) as unknown;
+      configPath = candidate;
+      break;
+    } catch {
+      value = undefined;
+    }
+  }
+  if (configPath === null) {
+    throw new Error(`Configuration locale introuvable : ${configPaths[0]}. Lancez une premiere fois prepare:local avec --source et --output.`);
   }
   if (typeof value !== "object" || value === null || Array.isArray(value)
-    || !("schemaVersion" in value) || value.schemaVersion !== "1.0.0"
-    || !("sourceDirectory" in value) || typeof value.sourceDirectory !== "string") {
+    || !("schemaVersion" in value) || !("sourceDirectory" in value) || typeof value.sourceDirectory !== "string") {
     throw new Error(`Configuration locale invalide : ${configPath}. Relancez prepare:local avec --source et --output.`);
   }
-  return { sourceDirectory: path.resolve(value.sourceDirectory), outputDirectory };
+  if (value.schemaVersion === LOCAL_TEST_CONFIG_SCHEMA_VERSION
+    && "dataDirectory" in value && typeof value.dataDirectory === "string") {
+    return { sourceDirectory: path.resolve(value.sourceDirectory), outputDirectory: path.resolve(value.dataDirectory) };
+  }
+  if (value.schemaVersion !== "1.0.0") {
+    throw new Error(`Configuration locale incompatible : ${configPath}. Relancez prepare:local avec --source et --output.`);
+  }
+  return { sourceDirectory: path.resolve(value.sourceDirectory), outputDirectory: defaultOutputDirectory };
+}
+
+export async function writeLocalTestConfiguration(invocationDirectory: string,
+  paths: LocalTestPaths): Promise<string> {
+  const configPath = path.resolve(invocationDirectory, ...LOCAL_TEST_CONFIG_RELATIVE_PATH.split("/"));
+  return writeJsonAtomically(path.dirname(configPath), path.basename(configPath), {
+    schemaVersion: LOCAL_TEST_CONFIG_SCHEMA_VERSION,
+    sourceDirectory: paths.sourceDirectory,
+    dataDirectory: paths.outputDirectory,
+  });
 }
 
 export async function prepareLocalTest(
   sourceDirectory: string,
   outputDirectory: string,
+  invocationDirectory = process.cwd(),
 ): Promise<LocalTestPreparationResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await extractPbsData(paths.source, paths.output);
@@ -74,10 +105,8 @@ export async function prepareLocalTest(
   await extractWorldMaps(paths.source, paths.output);
   await extractEvents(paths.source, paths.output);
   await extractScriptHooks(paths.source, paths.output);
-  const configPath = await writeJsonAtomically(paths.output, "local-test.json", {
-    schemaVersion: "1.0.0",
-    sourceDirectory: paths.source,
-  });
   const manifestPath = await writeLocalDataManifest(paths.output);
+  const configPath = await writeLocalTestConfiguration(invocationDirectory,
+    { sourceDirectory: paths.source, outputDirectory: paths.output });
   return { outputDirectory: paths.output, configPath, manifestPath };
 }

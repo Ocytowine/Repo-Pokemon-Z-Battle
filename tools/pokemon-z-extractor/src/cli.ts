@@ -87,7 +87,7 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "prepare-local") {
-    const result = await prepareLocalTest(options.sourceDirectory, options.outputDirectory);
+    const result = await prepareLocalTest(options.sourceDirectory, options.outputDirectory, invocationDirectory);
     process.stdout.write(`Local test data written to: ${result.outputDirectory}\n`);
     process.stdout.write(`Local configuration: ${result.configPath}\n`);
     process.stdout.write(`Local data manifest: ${result.manifestPath}\n`);

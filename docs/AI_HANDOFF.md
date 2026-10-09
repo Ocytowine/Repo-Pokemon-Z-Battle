@@ -2160,6 +2160,16 @@ Autorite et Coop : ce garde-fou est strictement local au client et ne porte aucu
 etat de jeu. Il ne modifie ni la room, ni la persistance, ni la replication ; hote
 et invite valident chacun leur propre extraction avant de charger leurs assets.
 
+Complement multi-postes du meme jalon : la configuration decouvrable vit maintenant
+dans `.pokemon-z/local-test.json`, independamment du dossier d'extraction. Elle
+contient `sourceDirectory` et `dataDirectory`, tous deux propres au poste et ignores
+par Git. Le serveur Vite ne suppose donc plus que les donnees se trouvent dans
+`.pokemon-z/data`. Le premier lancement de chaque collegue utilise `--source` et
+`--output`, puis `corepack pnpm prepare:local` reutilise ses chemins personnels.
+L'ancien `.pokemon-z/data/local-test.json` est encore lu comme format de migration.
+Sans aucune configuration, les routes locales repondent explicitement HTTP 503 et
+l'interface affiche la commande d'initialisation complete au lieu d'une erreur JSON.
+
 ## Commandes utiles
 
 ```powershell

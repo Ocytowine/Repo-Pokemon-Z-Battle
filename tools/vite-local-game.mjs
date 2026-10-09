@@ -3,8 +3,11 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 const workspaceDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const dataDirectory = path.join(workspaceDirectory, ".pokemon-z", "data");
-const configPath = path.join(dataDirectory, "local-test.json");
+const defaultDataDirectory = path.join(workspaceDirectory, ".pokemon-z", "data");
+const configPaths = [
+  path.join(workspaceDirectory, ".pokemon-z", "local-test.json"),
+  path.join(defaultDataDirectory, "local-test.json"),
+];
 
 const mediaTypes = new Map([
   [".json", "application/json; charset=utf-8"],
@@ -39,20 +42,41 @@ function sendFile(response, file) {
   createReadStream(file).pipe(response);
 }
 
+function readLocalConfiguration() {
+  const configPath = configPaths.find((candidate) => existsSync(candidate));
+  if (configPath === undefined) return null;
+  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  const legacy = config?.schemaVersion === "1.0.0" && typeof config.sourceDirectory === "string";
+  const current = config?.schemaVersion === "2.0.0" && typeof config.sourceDirectory === "string"
+    && typeof config.dataDirectory === "string";
+  if (!legacy && !current) {
+    throw new Error(`${configPath} est invalide. Relancez pnpm prepare:local avec --source et --output.`);
+  }
+  return {
+    sourceDirectory: realpathSync(config.sourceDirectory),
+    dataDirectory: realpathSync(current ? config.dataDirectory : defaultDataDirectory),
+  };
+}
+
 export function localPokemonZPlugin() {
   return {
     name: "pokemon-z-local-test-assets",
     apply: "serve",
     configureServer(server) {
-      if (!existsSync(configPath)) return;
-      const config = JSON.parse(readFileSync(configPath, "utf8"));
-      if (config?.schemaVersion !== "1.0.0" || typeof config.sourceDirectory !== "string") {
-        throw new Error(`${configPath} est invalide. Relancez pnpm prepare:local.`);
+      const config = readLocalConfiguration();
+      if (config === null) {
+        server.middlewares.use((request, response, next) => {
+          const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+          if (!pathname.startsWith("/__pokemon-z/")) { next(); return; }
+          response.statusCode = 503;
+          response.setHeader("Content-Type", "application/json; charset=utf-8");
+          response.end(JSON.stringify({ error: "LOCAL_CONFIGURATION_MISSING" }));
+        });
+        return;
       }
-      const sourceDirectory = realpathSync(config.sourceDirectory);
       const routes = [
-        ["/__pokemon-z/data/", realpathSync(dataDirectory)],
-        ["/__pokemon-z/source/", sourceDirectory],
+        ["/__pokemon-z/data/", config.dataDirectory],
+        ["/__pokemon-z/source/", config.sourceDirectory],
       ];
       server.middlewares.use((request, response, next) => {
         const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;

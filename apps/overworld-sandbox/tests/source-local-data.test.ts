@@ -1,7 +1,8 @@
 import { GAME_DATA_SCHEMA_VERSION, LOCAL_DATA_MANIFEST_SCHEMA_VERSION, LOCAL_DATA_REQUIRED_FILES,
   type LocalDataManifest } from "@pokemon-z-battle/game-data";
-import { describe, expect, it } from "vitest";
-import { assertSourceLocalDataFiles, parseSourceLocalDataManifest, sourceLocalDataDiagnostic }
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertSourceLocalDataFiles, clearSourceLocalDataCache, parseSourceLocalDataManifest,
+  sourceLocalDataDiagnostic, validateSourceLocalData }
   from "../src/source-local-data.js";
 
 function manifest(files: readonly string[] = LOCAL_DATA_REQUIRED_FILES): LocalDataManifest {
@@ -14,6 +15,11 @@ function manifest(files: readonly string[] = LOCAL_DATA_REQUIRED_FILES): LocalDa
 }
 
 describe("source local data preflight", () => {
+  afterEach(() => {
+    clearSourceLocalDataCache();
+    vi.unstubAllGlobals();
+  });
+
   it("accepts a compatible complete extraction and requested map files", () => {
     const value = manifest([...LOCAL_DATA_REQUIRED_FILES, "maps/Map002.json", "events/Map002.json"]);
     expect(parseSourceLocalDataManifest(value)).toEqual(value);
@@ -35,6 +41,18 @@ describe("source local data preflight", () => {
       title: "Données locales incomplètes",
       detail: "Fichier manquant : machines.json.",
       command: "corepack pnpm prepare:local",
+    });
+  });
+
+  it("explains the per-workstation setup when no local configuration exists", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ error: "LOCAL_CONFIGURATION_MISSING" }), { status: 503 })));
+
+    await expect(validateSourceLocalData()).rejects.toMatchObject({
+      diagnostic: {
+        title: "Configuration locale absente",
+        command: expect.stringContaining("--source"),
+      },
     });
   });
 });

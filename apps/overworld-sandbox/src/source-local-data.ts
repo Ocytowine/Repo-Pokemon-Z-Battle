@@ -6,7 +6,7 @@ const MANIFEST_URL = `/__pokemon-z/data/${LOCAL_DATA_MANIFEST_FILE}`;
 export interface SourceLocalDataDiagnostic {
   readonly title: string;
   readonly detail: string;
-  readonly command: "corepack pnpm prepare:local";
+  readonly command: string;
 }
 
 export class SourceLocalDataError extends Error {
@@ -51,6 +51,13 @@ export function clearSourceLocalDataCache(): void { manifestRequest = null; }
 
 export async function validateSourceLocalData(additionalFiles: readonly string[] = []): Promise<LocalDataManifest> {
   manifestRequest ??= fetch(MANIFEST_URL, { cache: "no-store" }).then(async (response) => {
+    if (response.status === 503) {
+      throw new SourceLocalDataError({
+        title: "Configuration locale absente",
+        detail: "Chaque poste doit indiquer son propre dossier Pokémon Z et l’emplacement de ses données extraites.",
+        command: 'corepack pnpm prepare:local --source "C:\\chemin\\vers\\Pokémon Z" --output ".pokemon-z\\data"',
+      });
+    }
     if (response.status === 404) {
       throw new SourceLocalDataError({
         title: "Données locales à actualiser",
