@@ -1,5 +1,35 @@
 export const GAME_DATA_SCHEMA_VERSION = "1.0.0" as const;
 
+export const LOCAL_DATA_MANIFEST_SCHEMA_VERSION = "1.0.0" as const;
+export const LOCAL_DATA_MANIFEST_FILE = "local-data-manifest.json" as const;
+
+export const LOCAL_DATA_REQUIRED_FILES = Object.freeze([
+  "abilities.json",
+  "asset-manifest.json",
+  "battle-animations.json",
+  "encounters.json",
+  "items.json",
+  "localization.json",
+  "machines.json",
+  "map-animations.json",
+  "map-battle-metadata.json",
+  "moves.json",
+  "player-avatar-report.json",
+  "player-avatars.json",
+  "pokemon-assets.json",
+  "pokemon.json",
+  "tilesets.json",
+  "trainer-types.json",
+  "trainers.json",
+] as const);
+
+export interface LocalDataManifest {
+  readonly schemaVersion: typeof LOCAL_DATA_MANIFEST_SCHEMA_VERSION;
+  readonly gameDataSchemaVersion: typeof GAME_DATA_SCHEMA_VERSION;
+  readonly generatedAt: string;
+  readonly files: readonly string[];
+}
+
 export type GameDataSchemaVersion = typeof GAME_DATA_SCHEMA_VERSION;
 export type DatasetKind =
   | "types"

@@ -93,6 +93,9 @@ importers:
       '@pokemon-z-battle/game-assets':
         specifier: workspace:*
         version: link:../../packages/game-assets
+      '@pokemon-z-battle/game-data':
+        specifier: workspace:*
+        version: link:../../packages/game-data
       '@pokemon-z-battle/local-assets':
         specifier: workspace:*
         version: link:../../packages/local-assets

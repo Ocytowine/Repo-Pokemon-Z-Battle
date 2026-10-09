@@ -5,6 +5,7 @@ import { parseAssetManifest, parsePokemonAssetsManifest, resolvePokemonSummaryAs
   type PokemonAssetsManifest, type PokemonSummaryAssets } from "@pokemon-z-battle/local-assets";
 import type { SourceShopItem } from "./source-economy.js";
 import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.js";
+import { clearSourceLocalDataCache, validateSourceLocalData } from "./source-local-data.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -639,6 +640,12 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
 const jsonCache = new Map<string, Promise<unknown>>();
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
 
+export function clearImportedMapCaches(): void {
+  jsonCache.clear();
+  imageCache.clear();
+  clearSourceLocalDataCache();
+}
+
 function fetchJson(url: string): Promise<unknown> {
   const cached = jsonCache.get(url);
   if (cached !== undefined) return cached;
@@ -708,6 +715,7 @@ function parsePokemonOverworldPaths(value: unknown): ReadonlyMap<string, string>
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
+  await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`]);
   const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
     movesValue, abilitiesValue, encountersValue, battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),

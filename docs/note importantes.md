@@ -74,3 +74,12 @@ Le multi :
     
 	puis : 
     corepack pnpm sandbox:overworld
+
+Si le jeu est lancé mais qu'il reste tout blanc ou en chargement perpetuel.
+(vérifie la console et si il y'a : 
+
+5174/__pokemon-z/data/machines.json:1  Failed to load resource: the server responded with a status of 404 (Not Found)) 
+
+alors tu coupe la console et tu lance : 
+corepack pnpm prepare:local
+corepack pnpm sandbox:overworld

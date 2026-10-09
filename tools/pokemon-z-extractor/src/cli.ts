@@ -90,6 +90,7 @@ async function main(): Promise<void> {
     const result = await prepareLocalTest(options.sourceDirectory, options.outputDirectory);
     process.stdout.write(`Local test data written to: ${result.outputDirectory}\n`);
     process.stdout.write(`Local configuration: ${result.configPath}\n`);
+    process.stdout.write(`Local data manifest: ${result.manifestPath}\n`);
     return;
   }
   if (command === "extract-events") {

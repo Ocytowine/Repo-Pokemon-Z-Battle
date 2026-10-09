@@ -1,8 +1,10 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { GAME_DATA_SCHEMA_VERSION, LOCAL_DATA_MANIFEST_SCHEMA_VERSION, LOCAL_DATA_REQUIRED_FILES }
+  from "@pokemon-z-battle/game-data";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { readExistingLocalTestPaths } from "../src/runtime/prepare-local-test.js";
+import { readExistingLocalTestPaths, writeLocalDataManifest } from "../src/runtime/prepare-local-test.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -30,5 +32,30 @@ describe("local test configuration", () => {
   it("explains how to configure a missing local source", async () => {
     const workspace = await temporaryWorkspace();
     await expect(readExistingLocalTestPaths(workspace)).rejects.toThrow("--source et --output");
+  });
+
+  it("writes the manifest last only when every required runtime file exists", async () => {
+    const output = await temporaryWorkspace();
+    await Promise.all(LOCAL_DATA_REQUIRED_FILES.map(async (file) => {
+      const destination = path.join(output, ...file.split("/"));
+      await mkdir(path.dirname(destination), { recursive: true });
+      await writeFile(destination, "{}\n", "utf8");
+    }));
+    await mkdir(path.join(output, "maps"), { recursive: true });
+    await writeFile(path.join(output, "maps", "Map003.json"), "{}\n", "utf8");
+
+    const manifestPath = await writeLocalDataManifest(output, new Date("2026-10-09T10:00:00.000Z"));
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as Record<string, unknown>;
+
+    expect(manifest).toMatchObject({ schemaVersion: LOCAL_DATA_MANIFEST_SCHEMA_VERSION,
+      gameDataSchemaVersion: GAME_DATA_SCHEMA_VERSION, generatedAt: "2026-10-09T10:00:00.000Z" });
+    expect(manifest.files).toContain("machines.json");
+    expect(manifest.files).toContain("maps/Map003.json");
+  });
+
+  it("refuses to certify an incomplete extraction", async () => {
+    const output = await temporaryWorkspace();
+    await writeFile(path.join(output, "items.json"), "{}\n", "utf8");
+    await expect(writeLocalDataManifest(output)).rejects.toThrow("machines.json");
   });
 });

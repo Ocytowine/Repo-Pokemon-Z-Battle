@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-08.
+Derniere mise a jour : 2026-10-09.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -2137,6 +2137,28 @@ combats doubles source et leurs variantes hote/invite dependent des scenes et
 regles atteignables. Le statut devient donc `validation partielle suspendue par
 dependances`, sans bloquer objets, capture et les lots verticaux de regles de
 combat. La recette complete reprendra apres ces dependances.
+
+## Garde-fou des donnees locales
+
+Jalon du 2026-10-09 : `prepare:local` ecrit desormais
+`local-data-manifest.json` en dernier, apres toutes les extractions. Ce manifeste
+versionne contient la version du schema, sa date de generation et la liste des
+fichiers reellement produits. La preparation refuse de certifier un lot auquel il
+manque un catalogue requis par le moteur.
+
+L'overworld valide ce manifeste avant la nouvelle partie, la reprise d'une
+sauvegarde et chaque chargement de carte. Une extraction ancienne ou incomplete
+n'aboutit plus a un canvas silencieusement bloque : une vue d'erreur nomme les
+fichiers manquants, affiche `corepack pnpm prepare:local` et permet de reessayer
+sans recharger la page. La nouvelle tentative purge aussi les promesses de donnees
+et d'images precedemment rejetees. Le contrat partage et ses tests couvrent en
+particulier `machines.json`, dont l'ajout au moteur avait rendu les extractions du
+2 octobre incompatibles avec le code du 8 octobre. Un favicon SVG explicite retire
+egalement le 404 sans rapport avec le jeu qui brouillait la console.
+
+Autorite et Coop : ce garde-fou est strictement local au client et ne porte aucun
+etat de jeu. Il ne modifie ni la room, ni la persistance, ni la replication ; hote
+et invite valident chacun leur propre extraction avant de charger leurs assets.
 
 ## Commandes utiles
 

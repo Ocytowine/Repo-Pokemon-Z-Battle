@@ -1,5 +1,8 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage, localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints,
+  clearImportedMapCaches, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage,
+  localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent,
+  type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
@@ -86,6 +89,7 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
   sourceMovementUnlocks, sourceMovementVisualMode, sourceMovementVisualOffset, sourceMovementVisualPattern,
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
+import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
 import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
@@ -716,6 +720,40 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceLoadErrorRoot = requiredAppElement<HTMLElement>("source-load-error");
+const sourceLoadErrorTitle = requiredAppElement<HTMLElement>("source-load-error-title");
+const sourceLoadErrorDetail = requiredAppElement<HTMLElement>("source-load-error-detail");
+const sourceLoadErrorCommand = requiredAppElement<HTMLElement>("source-load-error-command");
+const sourceLoadErrorRetry = requiredAppElement<HTMLButtonElement>("source-load-error-retry");
+let retrySourceLoad: (() => Promise<void>) | null = null;
+
+function hideSourceLoadError(): void {
+  sourceLoadErrorRoot.hidden = true;
+  sourceLoadErrorRetry.disabled = false;
+  sourceLoadErrorRetry.textContent = "Réessayer";
+  retrySourceLoad = null;
+}
+
+function showSourceLoadError(error: unknown, retry: () => Promise<void>): void {
+  const diagnostic = sourceLocalDataDiagnostic(error);
+  importedNotice = `${diagnostic.title} : ${diagnostic.detail}`;
+  sourceLoadErrorTitle.textContent = diagnostic.title;
+  sourceLoadErrorDetail.textContent = diagnostic.detail;
+  sourceLoadErrorCommand.textContent = diagnostic.command;
+  sourceLoadErrorRetry.disabled = false;
+  sourceLoadErrorRetry.textContent = "Réessayer";
+  retrySourceLoad = retry;
+  sourceLoadErrorRoot.hidden = false;
+}
+
+sourceLoadErrorRetry.addEventListener("click", () => {
+  const retry = retrySourceLoad;
+  if (retry === null) return;
+  sourceLoadErrorRetry.disabled = true;
+  sourceLoadErrorRetry.textContent = "Nouvelle tentative…";
+  clearImportedMapCaches();
+  void retry().catch((error: unknown) => { showSourceLoadError(error, retry); });
+});
 const sourceNewGameView = new SourceNewGameView(requiredAppElement("source-new-game"), {
   onCustomize: openPrologueCustomization,
   onStart: startSourceNewGame,
@@ -2331,24 +2369,30 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
 }
 
 async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> {
-  const destination = SOURCE_NEW_GAME_DESTINATION;
-  const world = await loadSourceWorldAt(destination.mapId, destination);
-  sourceEventState = applySourceNewGameAvatar(
-    applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId);
-  persistSourceEventState();
-  persistSourceNewGameSetup(localStorage, choices);
-  sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction);
-  persistSourceWorldSave(localStorage, sourceWorldSave);
-  activateSourceWorld(world);
-  sourceMovementMode = "walk";
-  sourceMovementAction = "idle";
-  sourceNewGameActive = false;
-  sourceNewGameView.hide();
-  viewedMapId = SOURCE_MAP_ID;
-  pendingSourceMapEntryAutorun = destination.mapId;
-  importedNotice = "Prologue condensé terminé. La scène originale de la calèche commence.";
-  render();
-  queueMicrotask(beginPendingSourceMapEntryAutorun);
+  try {
+    hideSourceLoadError();
+    const destination = SOURCE_NEW_GAME_DESTINATION;
+    const world = await loadSourceWorldAt(destination.mapId, destination);
+    sourceEventState = applySourceNewGameAvatar(
+      applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId);
+    persistSourceEventState();
+    persistSourceNewGameSetup(localStorage, choices);
+    sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction);
+    persistSourceWorldSave(localStorage, sourceWorldSave);
+    activateSourceWorld(world);
+    sourceMovementMode = "walk";
+    sourceMovementAction = "idle";
+    sourceNewGameActive = false;
+    sourceNewGameView.hide();
+    viewedMapId = SOURCE_MAP_ID;
+    pendingSourceMapEntryAutorun = destination.mapId;
+    importedNotice = "Prologue condensé terminé. La scène originale de la calèche commence.";
+    render();
+    queueMicrotask(beginPendingSourceMapEntryAutorun);
+  } catch (error) {
+    showSourceLoadError(error, () => startSourceNewGame(choices));
+    throw error;
+  }
 }
 
 async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promise<void> {
@@ -2935,6 +2979,7 @@ render();
 async function initializeSourceWorld(): Promise<void> {
   const requestedSave = sourceWorldSave;
   try {
+    hideSourceLoadError();
     const world = await loadInitialSourceWorld(requestedSave);
     if (world.saveStatus === "discarded") {
       clearSourceWorldSave(localStorage);
@@ -2956,12 +3001,23 @@ async function initializeSourceWorld(): Promise<void> {
     }
     if (resumeOpeningScene) queueMicrotask(beginPendingSourceMapEntryAutorun);
   } catch (error) {
-    importedNotice = error instanceof Error ? error.message : "Impossible de charger la carte locale.";
-    setNetworkText("Données absentes", `${importedNotice} Relancez pnpm prepare:local.`, multiplayer.active);
+    showSourceLoadError(error, initializeSourceWorld);
   }
 }
 
-if (!sourceNewGameActive) {
+async function validateNewGameSourceData(): Promise<void> {
+  const mapFile = `Map${String(SOURCE_NEW_GAME_DESTINATION.mapId).padStart(3, "0")}.json`;
+  try {
+    await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`]);
+    hideSourceLoadError();
+  } catch (error) {
+    showSourceLoadError(error, validateNewGameSourceData);
+  }
+}
+
+if (sourceNewGameActive) {
+  void validateNewGameSourceData();
+} else {
   void initializeSourceWorld();
   multiplayer.restore(activeNetworkPlayerProfile());
 }
