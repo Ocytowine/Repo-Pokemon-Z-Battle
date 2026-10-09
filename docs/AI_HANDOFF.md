@@ -283,9 +283,9 @@ La sauvegarde manuelle utilise `pokemon-z-battle.source-world-save.v1` avec un
 schema interne v2. Elle reste distincte du checkpoint de soin et embarque maintenant
 un instantane valide de `SourceEventState`. La cle
 `pokemon-z-battle.source-event-state.v1` demeure une copie de travail automatique :
-elle protege les mutations et la reconnexion Coop dans le meme onglet, mais ne
-remplace plus le dernier choix explicite de `Sauvegarder ici` lors d'un lancement
-solo a froid. Les anciennes sauvegardes de position v1 restent lisibles ; faute
+elle protege les mutations et la reprise d'un combat Coop effectivement actif,
+mais ne remplace plus le dernier choix explicite de `Sauvegarder ici` lors d'un
+rechargement ordinaire. Les anciennes sauvegardes de position v1 restent lisibles ; faute
 d'instantane historique, leur etat narratif courant sert de migration jusqu'a la
 prochaine sauvegarde manuelle.
 
@@ -294,9 +294,11 @@ mettait immediatement a jour la copie de travail narrative. Quitter sans sauvega
 puis relancer conservait donc le drapeau de victoire et le combat ne pouvait plus
 se declencher, alors que la position provenait de la sauvegarde manuelle precedente.
 Le snapshot v2 restaure desormais ensemble position, equipe, inventaire, progression
-et drapeaux de combat. Pendant une reconnexion Coop active detectee dans
-`sessionStorage`, la copie de travail reste prioritaire afin de ne pas annuler un
-reglement personnel deja accuse a la room.
+et drapeaux de combat. Pendant la reprise d'un combat Coop marque explicitement
+actif dans `sessionStorage`, la copie de travail reste prioritaire afin de ne pas
+annuler un reglement personnel deja accuse a la room. Correctif complementaire :
+la seule presence d'un ancien ticket de room ne suffit plus a activer cette
+exception. Elle faisait ignorer la sauvegarde manuelle a un joueur revenu en solo.
 
 ### 5. Moteur complet des evenements 9.7 — partiel
 

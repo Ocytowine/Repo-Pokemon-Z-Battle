@@ -65,13 +65,13 @@ export function loadSourceWorldSave(storage: Pick<Storage, "getItem" | "removeIt
 }
 
 /**
- * A cold solo launch resumes the last explicit save. During a Coop reconnect in
- * the same tab, the working copy wins so an acknowledged settlement cannot be
- * rolled back before the room restores its authoritative battle.
+ * A cold launch resumes the last explicit save. Only a Coop battle known to be
+ * active may keep the working copy so its settlement cannot be rolled back
+ * before the room restores the authoritative battle.
  */
 export function sourceEventStateForLaunch(workingState: SourceEventState, save: SourceWorldSave | null,
-  reconnectingCoop: boolean): SourceEventState {
-  return reconnectingCoop || save?.eventState === null || save?.eventState === undefined
+  recoveringActiveCoopBattle: boolean): SourceEventState {
+  return recoveringActiveCoopBattle || save?.eventState === null || save?.eventState === undefined
     ? workingState : save.eventState;
 }
 

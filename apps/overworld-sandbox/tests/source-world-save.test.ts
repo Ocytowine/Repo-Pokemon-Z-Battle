@@ -18,7 +18,7 @@ describe("source world save", () => {
       direction: "down", movementMode: "walk", savedAt: 1234, eventState: null });
   });
 
-  it("restores the manual narrative snapshot on a cold launch but preserves a Coop reconnect", () => {
+  it("restores the manual snapshot unless an active Coop battle needs recovery", () => {
     const savedState = { ...createSourceEventState(), switches: { "trainer:won": false } };
     const workingState = { ...createSourceEventState(), switches: { "trainer:won": true } };
     const save = createSourceWorldSave(3, 15, 16, "down", 1234, "walk", savedState);

@@ -1060,8 +1060,10 @@ Sauvegarde cree un emplacement manuel versionne, distinct des checkpoints de soi
 Son schema v2 capture ensemble carte, coordonnees, direction, equipe, Sac et etat
 narratif. Un lancement solo a froid restaure donc les drapeaux de combat de la
 derniere sauvegarde explicite au lieu de conserver une victoire obtenue apres
-celle-ci. La copie de travail automatique reste prioritaire uniquement pendant une
-reconnexion Coop dans le meme onglet, pour proteger les reglements deja accuses.
+celle-ci. La copie de travail automatique reste prioritaire uniquement lorsqu'un
+marqueur confirme qu'un combat Coop etait encore actif, pour proteger les
+reglements deja accuses. Un ancien ticket de room seul ne peut donc plus faire
+ignorer la sauvegarde manuelle pendant une partie solo.
 Les anciennes positions v1 sont migrees sans inventer un etat historique. Une
 position mal formee, inaccessible ou hors carte est rejetee puis ramenee vers
 Bourg Canvas. Le menu minimal couvre desormais equipe, sac, sauvegarde et options ;

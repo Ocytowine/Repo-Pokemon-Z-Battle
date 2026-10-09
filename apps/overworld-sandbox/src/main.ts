@@ -93,6 +93,7 @@ import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-loc
 import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
+const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 
 let viewedMapId = SOURCE_MAP_ID;
 let avatarLabReturnMapId = viewedMapId;
@@ -118,7 +119,8 @@ let sourceEventState = loadSourceEventState();
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 const launchSourceEventState = sourceEventStateForLaunch(sourceEventState, sourceWorldSave,
-  sessionStorage.getItem(STORED_SESSION_KEY) !== null);
+  sessionStorage.getItem(STORED_SESSION_KEY) !== null
+    && sessionStorage.getItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY) !== null);
 if (launchSourceEventState !== sourceEventState) {
   sourceEventState = launchSourceEventState;
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
@@ -1002,7 +1004,10 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     if (networkSourceWorld?.mapId === mapId) networkSourceWorld = { ...networkSourceWorld, actors, actorRevision };
   },
   onSourceSceneState: () => undefined,
-  onBattleStarted: beginNetworkBattlePresentation,
+  onBattleStarted: (battleId, state) => {
+    sessionStorage.setItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY, battleId);
+    beginNetworkBattlePresentation(battleId, state);
+  },
   onBattleExpanded: presentNetworkBattleExpansion,
   onBattleTurnResolved: presentNetworkBattleTurn,
   onBattleReplacementResolved: presentNetworkBattleTurn,
@@ -1054,7 +1059,10 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     render();
     return true;
   },
-  onBattleClosed: closeNetworkBattlePresentation,
+  onBattleClosed: (battleId) => {
+    sessionStorage.removeItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY);
+    closeNetworkBattlePresentation(battleId);
+  },
   onRender: render,
 });
 
@@ -2968,6 +2976,11 @@ window.addEventListener("keyup", (event) => {
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = false;
 });
 window.addEventListener("blur", () => { heldMovementKeys.clear(); sourceSprintHeld = false; });
+window.addEventListener("beforeunload", () => {
+  const battleId = multiplayer.current?.snapshot?.battle?.id;
+  if (battleId === undefined) sessionStorage.removeItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY);
+  else sessionStorage.setItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY, battleId);
+});
 document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
   const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
