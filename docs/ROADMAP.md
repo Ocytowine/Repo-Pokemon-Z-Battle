@@ -750,6 +750,35 @@ une reconnexion restaure camp, places actives, proprietaires, actions encore due
 et battlers. Le controle de chaque action et remplacement appartient au
 proprietaire du slot actif concerne.
 
+Correctif du 2026-10-09 : le ralliement a un combat source utilise l'adjacence
+avec son meneur comme contrat d'interaction. Il ne reutilise plus la visee stricte
+du defi PvP, car l'orientation affichee et son acquittement reseau pouvaient
+diverger pres du PNJ Dresseur et rendre l'hote non interactif. Client et room
+verifient la meme distance d'une case ; carte partagee, presence et fenetre de
+jonction restent obligatoires.
+
+Revision du meme jour : un Dresseur connecte ne rend pas la Coop obligatoire.
+Le cycle autoritaire devient `invite-choice -> join-window -> active`, avec la
+branche directe `invite-choice -> active` lorsque l'initiateur continue seul. La
+presentation atteint d'abord le face-a-face et le message du Dresseur, puis attend
+ce choix avant tout lancer de Poke Ball. La fenetre de jonction n'est visible et
+utilisable par l'autre joueur qu'apres un appel explicite du meneur.
+
+Correctif UI du 2026-10-09 : la proposition confirmee par l'invite prend maintenant
+priorite sur le panneau d'attente de l'hote. Celui-ci recoit le recapitulatif du
+camp et des Pokemon proposes avec les actions accepter/refuser ; il ne reste plus
+bloque sur `Continuer sans lui`. La saisie invite distingue visuellement le camp,
+les Pokemon personnels selectionnables et les membres deja presents en lecture
+seule, avec limites, PV et etat K.O. explicites.
+
+Stabilisation double du 2026-10-09 : le lecteur visuel conserve les degats entre
+actions positionnees, le vrai slot lors des K.O. et remplacements, et l'etat
+autoritaire pendant les animations reseau. Les cibles d'un invite rallie au camp
+adverse sont remises dans la perspective de la room avant validation. La reprise
+de l'introduction consomme la composition double acceptee, affiche le second
+Dresseur a cote de son camp et presente l'annonce d'aide ou le remerciement selon
+le joueur qui regarde la scene.
+
 Premier noyau de ce contrat implemente le 2026-10-04 puis etendu le 2026-10-06 dans
 `battle-engine` : `SharedBattleParticipation` separe format, camps, Dresseurs,
 proprietaire de chaque Pokemon et actifs. Une proposition de jonction valide les
@@ -794,7 +823,8 @@ filtre ces credits par proprietaire et les anciens journaux v9 sont migres lors 
 la restauration.
 
 Deuxieme increment du plan implemente le 2026-10-05 : `SharedBattleSession`
-formalise le cycle irreversible `join-window -> active -> settling -> closed`,
+formalise le cycle irreversible `invite-choice -> join-window -> active -> settling -> closed`
+(avec la branche directe `invite-choice -> active`),
 exige un resultat tactique avant le reglement et conserve un identifiant de
 reglement stable. La projection de chaque K.O. expose aussi le nombre total de
 participants conscients du camp. `player-state` reproduit la branche participant

@@ -732,6 +732,26 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().battle?.session.lifecycle).toBe("active");
   });
 
+  it("lets the trainer battle owner continue alone without opening Coop", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "solo-choice-open",
+      context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player,
+      opponentTeam: initial.teams.opponent });
+    const battleId = room.snapshot().battle!.id;
+    expect(room.snapshot().battle?.session.lifecycle).toBe("invite-choice");
+    const refused = room.receive("bob", { type: "proposeBattleJoin", version: 15,
+      requestId: "join-before-call", battleId, side: "player", team: initial.teams.player,
+      finalMemberIds: ["player"] });
+    expect(refused[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE" });
+    expect(room.receive("alice", { type: "closeBattleJoinWindow", version: 15,
+      requestId: "continue-alone", battleId }).map((entry) => entry.message.type))
+      .toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle?.session.lifecycle).toBe("active");
+  });
+
   it("requires the host to answer a valid composition before closing the join window", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");
@@ -744,17 +764,21 @@ describe("authoritative battle room", () => {
     expect(room.receive("alice", { type: "submitAction", version: 15, requestId: "trainer-too-early",
       battleId, turn: 1, action: { kind: "move", moveIndex: 0 } })[0]?.message)
       .toMatchObject({ type: "error", code: "INVALID_PHASE", message: expect.stringContaining("attend") });
-    expect(room.receive("alice", { type: "closeBattleJoinWindow", version: 15,
-      requestId: "trainer-cannot-skip-guest", battleId })[0]?.message)
-      .toMatchObject({ type: "error", code: "INVALID_PHASE", message: expect.stringContaining("attend") });
+    expect(room.snapshot().battle?.session.lifecycle).toBe("invite-choice");
+    expect(room.receive("alice", { type: "requestBattleJoinWindow", version: 15,
+      requestId: "trainer-call-guest", battleId }).map((entry) => entry.message.type))
+      .toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle?.session.lifecycle).toBe("join-window");
     expect(room.receive("bob", { type: "moveAvatar", version: 15, requestId: "trainer-guest-move-away",
       direction: "left", sequence: 1 }).map((entry) => entry.message.type))
       .toEqual(["ack", "sourceWorldUpdated"]);
+    const guest = { ...battler("opponent"), id: "guest-source-mon" };
+    expect(room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "source-too-far",
+      battleId, side: "opponent", team: { activeIndex: 0, members: [guest] },
+      finalMemberIds: ["opponent", guest.id] })[0]?.message)
+      .toMatchObject({ type: "error", code: "INTERACTION_UNAVAILABLE", message: expect.stringContaining("a cote") });
     room.receive("bob", { type: "moveAvatar", version: 15, requestId: "trainer-guest-move-back",
       direction: "right", sequence: 2 });
-    room.receive("bob", { type: "moveAvatar", version: 15, requestId: "trainer-guest-face-host",
-      direction: "up", sequence: 3 });
-    const guest = { ...battler("opponent"), id: "guest-source-mon" };
     room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "source-proposal",
       battleId, side: "opponent", team: { activeIndex: 0, members: [guest] },
       finalMemberIds: ["opponent", guest.id] });
@@ -844,6 +868,8 @@ describe("authoritative battle room", () => {
     room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "settlement-open",
       context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam });
     const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "requestBattleJoinWindow", version: 15,
+      requestId: "settlement-call", battleId });
     const guest = { ...battler("player"), id: "guest-mon" };
     room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "settlement-join", battleId,
       side: "player", team: { activeIndex: 0, members: [guest] }, finalMemberIds: ["player", guest.id] });
@@ -897,6 +923,8 @@ describe("authoritative battle room", () => {
       context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam,
       battleItems: { POTION: 1, XATTACK: 1 } });
     const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "requestBattleJoinWindow", version: 15,
+      requestId: "item-call", battleId });
     const guest = { ...battler("player"), id: "guest-item-mon", hp: 50 };
     room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "item-join", battleId,
       side: "player", team: { activeIndex: 0, members: [guest] },
@@ -961,6 +989,8 @@ describe("authoritative battle room", () => {
     room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "resume-open",
       context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
     const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "requestBattleJoinWindow", version: 15,
+      requestId: "resume-call", battleId });
     const guest = { ...battler("opponent"), id: "guest-active" };
     room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "resume-join", battleId,
       side: "opponent", team: { activeIndex: 0, members: [guest] }, finalMemberIds: [guest.id] });

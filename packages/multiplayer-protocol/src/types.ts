@@ -90,6 +90,7 @@ export type ClientMessage =
       readonly battleItems?: SourceBattleInventory })
   | (RequestedMessage & { readonly type: "respondBattleJoin"; readonly battleId: string; readonly accept: boolean })
   | (RequestedMessage & { readonly type: "observeBattle"; readonly battleId: string })
+  | (RequestedMessage & { readonly type: "requestBattleJoinWindow"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "closeBattleJoinWindow"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "leaveBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })

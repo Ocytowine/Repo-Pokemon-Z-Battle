@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
-  createTeamBattleState, settleEscapedSharedBattleSession, settleSharedBattleSession } from "../src/index.js";
+  createTeamBattleState, openSharedBattleJoinWindow, settleEscapedSharedBattleSession,
+  settleSharedBattleSession } from "../src/index.js";
 import type { BattlerState } from "../src/index.js";
 
 const battler = (id: string): BattlerState => ({ id, species: id, name: id, level: 5, types: ["NORMAL"],
@@ -23,6 +24,14 @@ describe("shared battle session lifecycle", () => {
     expect(closeSharedBattleSession(settling)).toMatchObject({ lifecycle: "closed",
       settlementId: "source:2:3:1:settlement" });
     expect(() => activateSharedBattleSession(settling)).toThrow("déjà fermée");
+  });
+
+  it("keeps trainer assistance optional before opening the join window", () => {
+    const choice = createSharedBattleSession({ battleId: "trainer:1", origin: "source-trainer",
+      narrativeOwnerId: "host", allowJoin: true, requireInviteChoice: true });
+    expect(choice.lifecycle).toBe("invite-choice");
+    expect(openSharedBattleJoinWindow(choice).lifecycle).toBe("join-window");
+    expect(activateSharedBattleSession(choice).lifecycle).toBe("active");
   });
 
   it("refuses settlement before the tactical result exists", () => {

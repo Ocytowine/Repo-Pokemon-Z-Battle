@@ -16,6 +16,7 @@ import {
   type MultiplayerTicket,
   type StoredOverworldSession,
 } from "./multiplayer-client.js";
+import { networkBattleActionForServer } from "./network-battle-presentation.js";
 
 interface MutableNetworkSession {
   readonly serverUrl: string;
@@ -341,6 +342,11 @@ export class OverworldNetworkSession {
     if (battleId !== undefined) this.sendRequest({ type: "closeBattleJoinWindow", battleId });
   }
 
+  public requestBattleJoinWindow(): void {
+    const battleId = this.activeSession?.snapshot?.battle?.id;
+    if (battleId !== undefined) this.sendRequest({ type: "requestBattleJoinWindow", battleId });
+  }
+
   public leaveBattle(): void {
     const battleId = this.activeSession?.snapshot?.battle?.id;
     if (battleId !== undefined) this.sendRequest({ type: "leaveBattle", battleId });
@@ -354,6 +360,9 @@ export class OverworldNetworkSession {
       || socket.readyState !== WebSocket.OPEN) return;
     session.submittedTurn = battle.state.turn;
     if (!session.submittedActiveSlots.includes(activeSlot)) session.submittedActiveSlots.push(activeSlot);
+    const viewer = battle.duel ? session.ticket.side : (["player", "opponent"] as const).find((side) =>
+      battle.participation?.camps[side].trainerIds.includes(session.ticket.playerId)) ?? "player";
+    const serverAction = networkBattleActionForServer(action, viewer);
     socket.send(JSON.stringify({
       type: "submitAction",
       version: PROTOCOL_VERSION,
@@ -361,7 +370,7 @@ export class OverworldNetworkSession {
       battleId: battle.id,
       turn: battle.state.turn,
       activeSlot,
-      action,
+      action: serverAction,
     }));
     this.callbacks.onRender();
   }
@@ -481,8 +490,9 @@ export class OverworldNetworkSession {
       } else if (previousBattle !== null && snapshot.battle !== null
         && previousBattle.id === snapshot.battle.id
         && previousBattle.sourceContext?.origin === "source-trainer"
-        && previousBattle.session.lifecycle === "join-window"
-        && snapshot.battle.session.lifecycle !== "join-window") {
+        && (previousBattle.session.lifecycle === "invite-choice"
+          || previousBattle.session.lifecycle === "join-window")
+        && snapshot.battle.session.lifecycle === "active") {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
       } else if (previousBattle !== null && snapshot.battle !== null
         && previousBattle.id === snapshot.battle.id

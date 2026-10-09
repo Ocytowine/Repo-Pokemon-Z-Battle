@@ -16,7 +16,7 @@ export interface SourceBattleOverlayModel {
   readonly state: TeamBattleState | null;
   readonly local: boolean;
   readonly animating: boolean;
-  readonly waitingForJoin: boolean;
+  readonly joinPause: "choice" | "waiting" | null;
   readonly networkSide: BattleSide | null;
   readonly controllableMemberIds: readonly string[] | null;
   readonly networkSubmittedTurn: number | null;
@@ -99,9 +99,9 @@ export class SourceBattleOverlay {
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
     if (visualStage !== null) {
       visualStage.hidden = false;
-      visualStage.classList.toggle("waiting-for-join", model.waitingForJoin);
+      visualStage.classList.toggle("waiting-for-join", model.joinPause !== null);
     }
-    if (!model.waitingForJoin) this.callbacks.onRenderVisuals(model.state, model.local);
+    if (model.joinPause === null) this.callbacks.onRenderVisuals(model.state, model.local);
     const playerTeam = model.state.teams.player;
     const opponentTeam = model.state.teams.opponent;
     const player = playerTeam.members[playerTeam.activeIndex];
@@ -120,7 +120,7 @@ export class SourceBattleOverlay {
   private renderActions(model: SourceBattleOverlayModel, team: BattleTeam): void {
     const actions = document.querySelector<HTMLElement>("#encounter-actions");
     if (actions === null || model.state === null) return;
-    if (model.waitingForJoin) {
+    if (model.joinPause !== null) {
       actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>En attente de l’autre Dresseur…</p><small>Il doit venir interagir avec vous et choisir son camp.</small></div>';
       return;
     }

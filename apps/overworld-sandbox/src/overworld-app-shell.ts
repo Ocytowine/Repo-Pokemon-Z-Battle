@@ -36,9 +36,11 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
               <div id="source-sendout-flash" class="source-sendout-flash" aria-hidden="true"></div>
               <img id="source-opponent-trainer" class="source-intro-trainer source-opponent-trainer" alt="" hidden>
+              <img id="source-opponent-trainer-2" class="source-intro-trainer source-opponent-trainer source-intro-trainer-2" alt="" hidden>
               <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
               <div id="source-opponent-sprite-2" class="source-battle-sprite source-opponent-sprite source-battle-slot-2 sprite-fallback" hidden>?</div>
               <img id="source-player-trainer" class="source-intro-trainer source-player-trainer" alt="" hidden>
+              <img id="source-player-trainer-2" class="source-intro-trainer source-player-trainer source-intro-trainer-2" alt="" hidden>
               <div id="source-player-ball" class="source-player-ball" aria-hidden="true" hidden></div>
               <div id="source-player-sprite" class="source-battle-sprite source-player-sprite sprite-fallback">?</div>
               <div id="source-player-sprite-2" class="source-battle-sprite source-player-sprite source-battle-slot-2 sprite-fallback" hidden>?</div>

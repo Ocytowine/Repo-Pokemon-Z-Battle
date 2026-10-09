@@ -8,6 +8,7 @@ export interface SourceBattleJoinModel {
   readonly team: BattleTeam | null;
   readonly available: boolean;
   readonly ownerName: string;
+  readonly guestName: string;
   readonly opponentName: string;
 }
 
@@ -20,6 +21,8 @@ export class SourceBattleJoinView {
   public constructor(private readonly callbacks: {
     readonly onPropose: (side: BattleSide, finalMemberIds: readonly string[]) => void;
     readonly onRespond: (accept: boolean) => void;
+    readonly onInvite: () => void;
+    readonly onContinue: () => void;
   }) {}
 
   public open(battleId: string): void { this.#openedBattleId = battleId; }
@@ -35,6 +38,64 @@ export class SourceBattleJoinView {
     }
     const sourceWild = battle.sourceContext?.origin === "source-wild";
     const sourceTrainer = battle.sourceContext?.origin === "source-trainer";
+    const participation = battle.participation;
+    const proposal = battle.joinProposal;
+    panel.classList.remove("compact");
+
+    // Une proposition en attente passe avant le panneau générique de l'hôte :
+    // sinon la room attend une réponse que l'interface ne permet jamais d'envoyer.
+    if (proposal !== null) {
+      if (proposal.joinerId === model.playerId) {
+        panel.hidden = false;
+        const camp = proposal.side === "player"
+          ? `Avec ${escapeSourceHtml(model.ownerName)}`
+          : `Avec ${escapeSourceHtml(model.opponentName)}`;
+        const pokemon = proposal.members.filter((member) => member.ownerId === proposal.joinerId)
+          .map((member) => escapeSourceHtml(member.battler.name)).join(", ");
+        panel.innerHTML = `<strong>Demande envoyée</strong>
+          <p>${escapeSourceHtml(model.ownerName)} doit maintenant accepter ou refuser ta participation.</p>
+          <div class="battle-join-summary"><span>Camp choisi</span><b>${camp}</b>
+            <span>Tes Pokémon</span><b>${pokemon}</b></div>`;
+        return;
+      }
+      if (proposal.requiredApprovals.includes(model.playerId) && !proposal.approvals.includes(model.playerId)) {
+        panel.hidden = false;
+        const camp = proposal.side === "player" ? `Aider ${model.ownerName}` : `Aider ${model.opponentName}`;
+        const guestMembers = proposal.members.filter((member) => member.ownerId === proposal.joinerId);
+        const fixedMembers = proposal.members.filter((member) => member.ownerId !== proposal.joinerId);
+        panel.innerHTML = `<strong>Confirmer la participation</strong>
+          <p>L'autre joueur souhaite rejoindre le combat. Vérifie son camp et ses Pokémon avant de répondre.</p>
+          <div class="battle-join-summary"><span>Camp choisi</span><b>${escapeSourceHtml(camp)}</b>
+            <span>Ses Pokémon</span><b>${guestMembers.map((member) => escapeSourceHtml(member.battler.name)).join(", ")}</b>
+            <span>Déjà dans ce camp</span><b>${fixedMembers.map((member) => escapeSourceHtml(member.battler.name)).join(", ") || "Aucun"}</b></div>
+          <footer><button id="refuse-battle-join">Refuser</button><button id="accept-battle-join" class="primary">Accepter et lancer le combat</button></footer>`;
+        panel.querySelector<HTMLButtonElement>("#accept-battle-join")
+          ?.addEventListener("click", () => this.callbacks.onRespond(true));
+        panel.querySelector<HTMLButtonElement>("#refuse-battle-join")
+          ?.addEventListener("click", () => this.callbacks.onRespond(false));
+        return;
+      }
+    }
+
+    if (sourceTrainer && participation.battleOwnerId === model.playerId
+      && (battle.session.lifecycle === "invite-choice" || battle.session.lifecycle === "join-window")) {
+      panel.classList.add("compact");
+      panel.hidden = false;
+      if (battle.session.lifecycle === "invite-choice") {
+        panel.innerHTML = `<strong>Appeler ${escapeSourceHtml(model.guestName)} ?</strong>
+          <p>Vous pouvez continuer seul ou lui proposer de rejoindre ce combat.</p>
+          <div><button id="continue-trainer-battle">Continuer seul</button><button id="invite-battle-join">Appeler</button></div>`;
+        panel.querySelector<HTMLButtonElement>("#invite-battle-join")?.addEventListener("click", this.callbacks.onInvite);
+      } else {
+        panel.innerHTML = `<strong>${escapeSourceHtml(model.guestName)} a été appelé</strong>
+          <p>Il doit venir interagir avec vous puis choisir son camp et ses Pokémon.</p>
+          <div><button id="continue-trainer-battle">Continuer sans lui</button></div>`;
+      }
+      panel.querySelector<HTMLButtonElement>("#continue-trainer-battle")
+        ?.addEventListener("click", this.callbacks.onContinue);
+      return;
+    }
+
     const joinableLifecycle = sourceWild
       ? battle.session.lifecycle === "join-window" || battle.session.lifecycle === "active"
       : battle.session.lifecycle === "join-window";
@@ -43,27 +104,8 @@ export class SourceBattleJoinView {
       return;
     }
 
-    const participation = battle.participation;
-    const proposal = battle.joinProposal;
     const joinedSide = (["player", "opponent"] as const)
       .find((side) => participation.camps[side].trainerIds.includes(model.playerId!));
-    if (proposal !== null) {
-      if (proposal.joinerId === model.playerId) {
-        panel.hidden = false;
-        panel.innerHTML = `<strong>Participation proposée</strong><p>En attente de l'accord du meneur du combat…</p>`;
-        return;
-      }
-      if (proposal.requiredApprovals.includes(model.playerId) && !proposal.approvals.includes(model.playerId)) {
-        panel.hidden = false;
-        const camp = proposal.side === "player" ? `avec ${model.ownerName}` : `avec ${model.opponentName}`;
-        panel.innerHTML = `<strong>Demande de participation</strong><p>L'invité souhaite combattre ${escapeSourceHtml(camp)} avec ${proposal.finalMemberIds.length} Pokémon.</p>
-          <ul>${proposal.members.map((member) => `<li>${escapeSourceHtml(member.battler.name)} · ${member.ownerId === proposal.joinerId ? "invité" : "équipe actuelle"}${proposal.finalMemberIds.includes(member.battler.id) ? " · retenu" : ""}</li>`).join("")}</ul>
-          <div><button id="accept-battle-join">Accepter</button><button id="refuse-battle-join">Refuser</button></div>`;
-        panel.querySelector<HTMLButtonElement>("#accept-battle-join")?.addEventListener("click", () => this.callbacks.onRespond(true));
-        panel.querySelector<HTMLButtonElement>("#refuse-battle-join")?.addEventListener("click", () => this.callbacks.onRespond(false));
-        return;
-      }
-    }
     if (battle.observerIds.includes(model.playerId) || joinedSide !== undefined) {
       panel.hidden = true;
       return;
@@ -80,9 +122,7 @@ export class SourceBattleJoinView {
     }
     if (!model.available) {
       panel.hidden = false;
-      const reason = !model.available ? "Tu dois être présent sur la carte partagée."
-        : "Un combat double n'accepte pas de participant supplémentaire.";
-      panel.innerHTML = `<strong>Participation indisponible</strong><p>${reason}</p>`;
+      panel.innerHTML = `<strong>Participation indisponible</strong><p>Tu dois être présent sur la carte partagée.</p>`;
       return;
     }
     if (model.team === null) {
@@ -102,24 +142,34 @@ export class SourceBattleJoinView {
       this.#side = "player";
       this.resetSelection(battle, model.team);
     }
+
     const camp = participation.camps[this.#side];
     const existingIds = new Set(camp.members.map((member) => member.battler.id));
     const ownCandidates = model.team.members.filter((member) => !existingIds.has(member.id));
+    const ownLimit = Math.min(3, Math.max(0, 6 - camp.members.length));
+    this.#selected = new Set([...this.#selected]
+      .filter((id) => ownCandidates.some((member) => member.id === id && member.hp > 0)));
     panel.hidden = false;
     const refusal = battle.joinRefusal?.playerId === model.playerId
       ? `<p class="battle-join-refusal">${escapeSourceHtml(battle.joinRefusal.reason)}</p>` : "";
     const title = sourceWild ? `Aider ${escapeSourceHtml(model.ownerName)}` : "Rejoindre ce combat";
     const description = sourceWild ? `Choisis les Pokémon qui aideront ${escapeSourceHtml(model.ownerName)}.`
-      : "Choisis ton camp puis la composition finale (six Pokémon maximum).";
-    const campChoices = sourceWild ? "" : `<nav><button data-join-side="player" class="${this.#side === "player" ? "active" : ""}>Aider ${escapeSourceHtml(model.ownerName)}</button><button data-join-side="opponent" class="${this.#side === "opponent" ? "active" : ""}>Se rallier à ${escapeSourceHtml(model.opponentName)}</button></nav>`;
+      : "Choisis d'abord ton camp, puis uniquement les Pokémon de ton équipe que tu veux engager.";
+    const campChoices = sourceWild ? "" : `<section class="battle-join-step"><h3>1. Choisir ton camp</h3>
+      <nav class="battle-join-side-choices"><button data-join-side="player" class="${this.#side === "player" ? "active" : ""}><small>COOPÉRER</small>Aider ${escapeSourceHtml(model.ownerName)}</button>
+      <button data-join-side="opponent" class="${this.#side === "opponent" ? "active" : ""}><small>S'OPPOSER</small>Aider ${escapeSourceHtml(model.opponentName)}</button></nav></section>`;
+    const fixedNames = camp.members.map((member) => escapeSourceHtml(member.battler.name)).join(", ");
     panel.innerHTML = `<strong>${title}</strong><p>${description}</p>${refusal}${campChoices}
-      <div class="battle-join-members">${camp.members.map((member) =>
-        `<span class="battle-join-fixed">${escapeSourceHtml(member.battler.name)} <small>N.${member.battler.level} · équipe de l'autre Dresseur · conservé</small></span>`).join("")}${ownCandidates.map((member) => {
-        const owner = camp.members.some((entry) => entry.battler.id === member.id) ? "équipe actuelle" : "ton équipe";
-        const active = camp.activeMemberId === member.id ? " · actif" : "";
-        return `<button data-join-member="${escapeSourceHtml(member.id)}" class="${this.#selected.has(member.id) ? "selected" : ""}">${escapeSourceHtml(member.name)} <small>N.${member.level} · ${owner}${active}</small></button>`;
-      }).join("")}</div>
-      <footer><span>${this.#selected.size}/6 retenus</span><button id="dismiss-battle-join">Annuler</button><button id="submit-battle-join" ${this.validSelection(model.team) ? "" : "disabled"}>Confirmer</button></footer>`;
+      <section class="battle-join-step"><h3>${sourceWild ? "1" : "2"}. Choisir tes Pokémon</h3>
+        <p class="battle-join-fixed">Déjà dans ce camp, sans modification : <b>${fixedNames}</b></p>
+        ${ownLimit === 0 ? `<p class="battle-join-refusal">Ce camp possède déjà six Pokémon et ne peut pas recevoir de participant supplémentaire.</p>` : ""}
+        <div class="battle-join-members">${ownCandidates.map((member) => {
+          const selected = this.#selected.has(member.id);
+          const unavailable = member.hp <= 0;
+          return `<button data-join-member="${escapeSourceHtml(member.id)}" class="${selected ? "selected" : ""}" ${unavailable ? "disabled" : ""} aria-pressed="${selected}"><i>${selected ? "✓" : ""}</i><span>${escapeSourceHtml(member.name)} <small>N.${member.level} · ${member.hp}/${member.stats.maxHp} PV${unavailable ? " · K.O." : ""}</small></span></button>`;
+        }).join("")}</div>
+      </section>
+      <footer><span><b>${this.#selected.size}/${ownLimit}</b> de tes Pokémon sélectionnés</span><button id="dismiss-battle-join">Annuler</button><button id="submit-battle-join" class="primary" ${this.validSelection(model.team, ownLimit) ? "" : "disabled"}>Envoyer la demande</button></footer>`;
     for (const button of panel.querySelectorAll<HTMLButtonElement>("[data-join-side]")) button.addEventListener("click", () => {
       this.#side = button.dataset.joinSide as BattleSide;
       this.resetSelection(battle, model.team!);
@@ -128,28 +178,28 @@ export class SourceBattleJoinView {
     for (const button of panel.querySelectorAll<HTMLButtonElement>("[data-join-member]")) button.addEventListener("click", () => {
       const id = button.dataset.joinMember!;
       if (this.#selected.has(id)) this.#selected.delete(id);
-      else {
-        const ownSelected = model.team!.members.filter((member) => this.#selected.has(member.id)).length;
-        if (this.#selected.size < 6 && ownSelected < 3) this.#selected.add(id);
-      }
+      else if (this.#selected.size < ownLimit) this.#selected.add(id);
       this.render(model);
     });
     panel.querySelector<HTMLButtonElement>("#submit-battle-join")?.addEventListener("click", () => {
-      this.callbacks.onPropose(this.#side, [...this.#selected]);
+      this.callbacks.onPropose(this.#side,
+        [...camp.members.map((member) => member.battler.id), ...this.#selected]);
     });
     panel.querySelector<HTMLButtonElement>("#dismiss-battle-join")
       ?.addEventListener("click", () => { this.dismiss(); this.render(model); });
   }
 
   private resetSelection(battle: NonNullable<RoomSnapshot["battle"]>, team: BattleTeam): void {
-    const existing = battle.participation!.camps[this.#side].members.map((member) => member.battler.id);
-    const own = team.members.map((member) => member.id);
-    this.#selected = new Set([...existing, ...own.slice(0, Math.min(3, Math.max(0, 6 - existing.length)))]);
+    const existingCount = battle.participation!.camps[this.#side].members.length;
+    const ownLimit = Math.min(3, Math.max(0, 6 - existingCount));
+    const active = team.members[team.activeIndex];
+    const ordered = [active, ...team.members].filter((member, index, members) => member !== undefined
+      && member.hp > 0 && members.findIndex((candidate) => candidate?.id === member.id) === index);
+    this.#selected = new Set(ordered.slice(0, ownLimit).map((member) => member!.id));
   }
 
-  private validSelection(team: BattleTeam): boolean {
-    return this.#selected.size > 0 && this.#selected.size <= 6
-      && team.members.some((member) => this.#selected.has(member.id))
-      && team.members.filter((member) => this.#selected.has(member.id)).length <= 3;
+  private validSelection(team: BattleTeam, ownLimit: number): boolean {
+    return this.#selected.size > 0 && this.#selected.size <= ownLimit
+      && [...this.#selected].every((id) => team.members.some((member) => member.id === id && member.hp > 0));
   }
 }

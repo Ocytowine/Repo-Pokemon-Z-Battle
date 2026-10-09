@@ -48,6 +48,23 @@ function withActiveIndex(state: TeamBattleState, side: BattleSide, activeIndex: 
     replacementRequired: state.replacementRequired.filter((candidate) => candidate !== side) };
 }
 
+function withSwitchedIndex(state: TeamBattleState, side: BattleSide, fromIndex: number,
+  toIndex: number): TeamBattleState {
+  const team = state.teams[side];
+  if (team.activeIndices === undefined) return withActiveIndex(state, side, toIndex);
+  const slot = team.activeIndices.indexOf(fromIndex);
+  if (slot < 0) return withActiveIndex(state, side, toIndex);
+  const activeIndices = [...team.activeIndices];
+  activeIndices[slot] = toIndex;
+  // activeIndex pointe volontairement vers le slot animé. Le prochain événement
+  // positionné choisira à nouveau son slot et l'état autoritaire final sera rendu
+  // après la séquence.
+  return { ...state, teams: { ...state.teams, [side]: { ...team, activeIndex: toIndex, activeIndices } },
+    replacementRequired: state.replacementRequired.filter((candidate) => candidate !== side),
+    ...(state.slotReplacements === undefined ? {} : { slotReplacements: state.slotReplacements
+      .filter((position) => position.side !== side || position.slot !== slot) }) };
+}
+
 function effectivenessMessage(effectiveness: number): string | null {
   if (effectiveness === 0) return "Cela n'affecte pas la cible…";
   if (effectiveness > 1) return "C'est super efficace !";
@@ -74,6 +91,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
 
   for (const event of events) {
     if (event.type === "positionedActionResolved") {
+      const previousActive = { player: state.teams.player.activeIndex, opponent: state.teams.opponent.activeIndex };
       const actorIndex = state.teams[event.actor.side].activeIndices?.[event.actor.slot];
       const target = event.targets[0];
       const targetIndex = target === undefined ? undefined : state.teams[target.side].activeIndices?.[target.slot];
@@ -82,7 +100,15 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         [event.actor.side]: { ...positioned.teams[event.actor.side], activeIndex: actorIndex } } };
       if (target !== undefined && targetIndex !== undefined) positioned = { ...positioned, teams: { ...positioned.teams,
         [target.side]: { ...positioned.teams[target.side], activeIndex: targetIndex } } };
-      steps.push(...buildSourceBattlePresentationSequence(positioned, event.events));
+      const positionedSteps = buildSourceBattlePresentationSequence(positioned, event.events);
+      steps.push(...positionedSteps);
+      const resolved = positionedSteps.at(-1)?.state ?? positioned;
+      // Conserver les PV/statuts produits par cette action pour la suivante, sans
+      // laisser le pointeur visuel d'un slot devenir le slot logique principal.
+      state = { ...resolved, teams: {
+        player: { ...resolved.teams.player, activeIndex: previousActive.player },
+        opponent: { ...resolved.teams.opponent, activeIndex: previousActive.opponent },
+      } };
     } else if (event.type === "moveUsed") {
       const battler = state.teams[event.side].members[state.teams[event.side].activeIndex];
       const move = battler?.moves.find((slot) => slot.move.internalName === event.move)?.move;
@@ -166,7 +192,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "pokemonSwitched") {
       const fromName = state.teams[event.side].members[event.fromIndex]?.name ?? event.from;
       const toName = state.teams[event.side].members[event.toIndex]?.name ?? event.to;
-      state = withActiveIndex(state, event.side, event.toIndex);
+      state = withSwitchedIndex(state, event.side, event.fromIndex, event.toIndex);
       steps.push({ kind: "replacement", side: event.side,
         message: event.reason === "replacement" ? `${toName}, en avant !` : `${fromName} revient. ${toName}, en avant !`, state });
     } else if (event.type === "battleEnded") {

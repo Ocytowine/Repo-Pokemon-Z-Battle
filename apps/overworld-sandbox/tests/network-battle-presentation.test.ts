@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { networkBattleEventsForViewer, networkBattleForViewer,
+import { networkBattleActionForServer, networkBattleEventsForViewer, networkBattleForViewer,
   networkBattleTrainerIds } from "../src/network-battle-presentation.js";
 import { MINIMAL_MOVE_CATALOG, createTeamBattleState, type BattlerState,
   type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
@@ -13,6 +13,15 @@ function battler(id: string): BattlerState {
 }
 
 describe("network battle presentation", () => {
+  it("maps a target selected from the opposing camp view back to authoritative sides", () => {
+    expect(networkBattleActionForServer({ kind: "move", moveIndex: 0,
+      target: { side: "opponent", slot: 1 } }, "opponent"))
+      .toEqual({ kind: "move", moveIndex: 0, target: { side: "player", slot: 1 } });
+    expect(networkBattleActionForServer({ kind: "move", moveIndex: 0,
+      target: { side: "opponent", slot: 1 } }, "player"))
+      .toEqual({ kind: "move", moveIndex: 0, target: { side: "opponent", slot: 1 } });
+  });
+
   it("presents the guest as the local player and mirrors event sides", () => {
     const state = createTeamBattleState({ player: [battler("host")], opponent: [battler("guest")] });
     expect(networkBattleForViewer(state, "opponent").teams.player.members[0]?.id).toBe("guest");

@@ -81,7 +81,7 @@ import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceT
   sourceBagEntries } from "./source-bag.js";
 import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
-  sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
+  sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory }
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
@@ -175,8 +175,11 @@ let networkRoomCode = "";
 let networkPresentedBattle: { readonly id: string; readonly state: TeamBattleState } | null = null;
 const networkBattleOutcomes = new Map<string, SourceBattleOutcome>();
 const networkBattleContexts = new Map<string, SourceBattleContext>();
+const networkTrainerIntroContinuations = new Map<string, () => void>();
+const networkTrainerIntrosReleased = new Set<string>();
 const networkBattleSettlements = new Map<string, SourceBattleSettlement>();
 let networkBattleAnimating = false;
+let networkBattleAnimationTicket = 0;
 let networkBattlePresentation = Promise.resolve();
 let networkSourceWorld: SourceWorldSnapshot | null = null;
 let guestSourceExcursion = false;
@@ -983,6 +986,8 @@ const sourceBattleJoinView = new SourceBattleJoinView({
     if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds, battleItemInventory());
   },
   onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
+  onInvite: () => { multiplayer.requestBattleJoinWindow(); },
+  onContinue: () => { multiplayer.closeBattleJoinWindow(); },
 });
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onStatus: setNetworkText,
@@ -1091,7 +1096,52 @@ async function networkTrainerVisuals(playerId: string | null): Promise<SourcePla
   }
 }
 
+async function networkJoiningTrainerPresentation(battleId: string, viewer: "player" | "opponent"): Promise<{
+  readonly side: "player" | "opponent"; readonly image: HTMLImageElement | null; readonly message: string;
+} | null> {
+  const session = multiplayer.current;
+  const battle = session?.snapshot?.battle;
+  const participation = battle?.participation;
+  if (session === null || battle?.id !== battleId || participation === null || participation === undefined
+    || participation.format !== "double" || battle.sourceContext?.origin !== "source-trainer") return null;
+  const ownerId = participation.battleOwnerId;
+  const joined = (["player", "opponent"] as const).flatMap((side) => participation.camps[side].trainerIds
+    .filter((trainerId) => trainerId !== ownerId).map((trainerId) => ({ side, trainerId })))[0];
+  if (joined === undefined) return null;
+  const joiner = session.snapshot?.players.find((player) => player.playerId === joined.trainerId);
+  const owner = session.snapshot?.players.find((player) => player.playerId === ownerId);
+  const joinerName = joiner?.profile.profile.displayName ?? "L'autre Dresseur";
+  const ownerName = owner?.profile.profile.displayName ?? "Dresseur";
+  const presentedSide = joined.side === viewer ? "player" as const : "opponent" as const;
+  const visuals = await networkTrainerVisuals(joined.trainerId);
+  const ownerSide = (["player", "opponent"] as const)
+    .find((side) => participation.camps[side].trainerIds.includes(ownerId));
+  const helpsOwner = joined.side === ownerSide;
+  const opponentName = battle.sourceContext.presentation.opponentTrainer?.name ?? "le Dresseur adverse";
+  const message = session.ticket.playerId === ownerId
+    ? helpsOwner ? `${joinerName} : J'arrive t'aider, ${ownerName} !`
+      : `${joinerName} se rallie à ${opponentName} !`
+    : helpsOwner ? `${ownerName} : Merci, ${joinerName} !`
+      : `Tu te rallies à ${opponentName}.`;
+  const image = session.ticket.playerId === joined.trainerId && !helpsOwner ? null
+    : presentedSide === "player" ? visuals?.battleBack ?? null : visuals?.battleFront ?? null;
+  return { side: presentedSide, image,
+    message };
+}
+
 function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState): void {
+  const continuation = networkTrainerIntroContinuations.get(battleId);
+  if (continuation !== undefined) {
+    networkTrainerIntroContinuations.delete(battleId);
+    networkPresentedBattle = { id: battleId, state };
+    continuation();
+    return;
+  }
+  if (networkPresentedBattle?.id === battleId) {
+    networkPresentedBattle = { id: battleId, state };
+    networkTrainerIntrosReleased.add(battleId);
+    return;
+  }
   sourceBattles.acknowledgeSharedBattleOpened();
   const side = networkBattleViewerSide();
   const visibleBattle = multiplayer.current?.snapshot?.battle;
@@ -1100,7 +1150,6 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
   networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
-  if (sourceContext?.origin === "source-trainer" && visibleBattle?.session.lifecycle === "join-window") return;
   networkBattlePresentation = networkBattlePresentation.then(async () => {
     if (networkPresentedBattle?.id !== battleId) return;
     const trainerIds = visibleBattle?.participation === null || visibleBattle?.participation === undefined
@@ -1111,18 +1160,34 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     ]);
     if (networkPresentedBattle?.id !== battleId) return;
     const sourceContext = networkBattleContexts.get(battleId) ?? null;
+    const sourceTrainerFacesViewer = sourceContext?.origin === "source-trainer" && side === "player";
     sourceBattleVisuals.setPlayerTrainerImage(ownVisuals?.battleBack ?? null);
-    sourceBattleVisuals.setOpponentTrainerImage(sourceContext === null
-      ? opponentVisuals?.battleFront ?? null : null);
+    sourceBattleVisuals.setOpponentTrainerImage(sourceTrainerFacesViewer
+      ? null : opponentVisuals?.battleFront ?? null);
     const opponentName = multiplayer.current?.snapshot?.players
       .find((player) => player.playerId === trainerIds.opponent)?.profile.profile.displayName ?? "L'autre Dresseur";
     await sourceBattleVisuals.startBattle(networkBattleForViewer(state, side), {
       battleback: sourceContext?.presentation.battlebackId ?? importedAssets?.battleback ?? "snow",
       battleMusic: sourceContext?.presentation.battleMusicId ?? importedAssets?.wildBattleBgm ?? null,
       victoryMusic: sourceContext?.presentation.victoryMusicId ?? importedAssets?.wildVictoryMe ?? null,
-      ...(sourceContext?.presentation.opponentTrainer !== null
-        ? { opponentTrainer: sourceContext?.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
-        : sourceContext === null ? { opponentTrainer: { id: 0, name: opponentName } } : {}),
+      ...(sourceTrainerFacesViewer
+        ? { opponentTrainer: sourceContext.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
+        : sourceContext?.origin === "source-trainer" || sourceContext === null
+          ? { opponentTrainer: { id: 0, name: opponentName } } : {}),
+      stateBeforeSendOut: () => {
+        const current = multiplayer.current?.snapshot?.battle;
+        const currentSide = networkBattleViewerSide();
+        return current?.id === battleId ? networkBattleForViewer(current.state, currentSide)
+          : networkBattleForViewer(state, side);
+      },
+      joiningTrainer: () => networkJoiningTrainerPresentation(battleId, networkBattleViewerSide()),
+      ...(sourceContext?.origin === "source-trainer"
+        && (visibleBattle?.session.lifecycle === "invite-choice"
+          || visibleBattle?.session.lifecycle === "join-window")
+        ? { waitBeforeSendOut: () => networkTrainerIntrosReleased.delete(battleId)
+          ? Promise.resolve() : new Promise<void>((resolve) => {
+            networkTrainerIntroContinuations.set(battleId, resolve);
+          }) } : {}),
     });
     if (networkPresentedBattle?.id === battleId) {
       networkBattleAnimating = false;
@@ -1169,6 +1234,8 @@ function presentNetworkBattleExpansion(battleId: string, before: TeamBattleState
 function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, state: TeamBattleState,
   events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): void {
   const side = networkBattleViewerSide();
+  const animationTicket = ++networkBattleAnimationTicket;
+  if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
   networkBattlePresentation = networkBattlePresentation.then(async () => {
@@ -1176,21 +1243,19 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
     await sourceBattleVisuals.playTurn(networkBattleForViewer(before, side),
       networkBattleEventsForViewer(events, side));
     if (networkPresentedBattle?.id !== battleId) return;
-    networkPresentedBattle = { id: battleId, state };
     const presented = networkBattleForViewer(state, side);
     await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
     if (state.status === "finished") {
       await sourceBattleVisuals.endBattle(presented.winner, networkBattleOutcome(battleId, state));
       requestNetworkSourceBattleClose(battleId);
     }
-    if (networkPresentedBattle?.id === battleId) {
+    if (networkPresentedBattle?.id === battleId && animationTicket === networkBattleAnimationTicket) {
       networkBattleAnimating = false;
       render();
     }
   }).catch((error: unknown) => {
     console.warn(`[network-battle] ${error instanceof Error ? error.message : "animation impossible"}`);
-    networkPresentedBattle = { id: battleId, state };
-    networkBattleAnimating = false;
+    if (animationTicket === networkBattleAnimationTicket) networkBattleAnimating = false;
     if (state.status === "finished") requestNetworkSourceBattleClose(battleId);
     render();
   });
@@ -1235,6 +1300,8 @@ function closeNetworkBattlePresentation(battleId: string): void {
   networkBattleOutcomes.delete(battleId);
   networkBattleContexts.delete(battleId);
   networkBattleSettlements.delete(battleId);
+  networkTrainerIntroContinuations.delete(battleId);
+  networkTrainerIntrosReleased.delete(battleId);
   networkBattleAnimating = false;
   sourceBattleVisuals.setOpponentTrainerImage(null);
   sourceBattleVisuals.setPlayerTrainerImage(sourcePlayerVisuals?.battleBack ?? null);
@@ -2620,8 +2687,9 @@ function renderEncounter(): void {
       usable: isPokemonItemUsableInBattle(item.internalName) || isPokemonBallSupported(item.internalName) }));
   sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
-    waitingForJoin: networkBattle?.sourceContext?.origin === "source-trainer"
-      && networkBattle.session.lifecycle === "join-window",
+    joinPause: networkBattle?.sourceContext?.origin !== "source-trainer" ? null
+      : networkBattle.session.lifecycle === "invite-choice" ? "choice"
+        : networkBattle.session.lifecycle === "join-window" ? "waiting" : null,
     networkSide: networkBattle !== null && network !== null
       && (networkBattle.duel || networkBattle.participation !== null
         && networkController === network.ticket.playerId)
@@ -2647,13 +2715,15 @@ function renderEncounter(): void {
   const duel = network?.snapshot?.duelChallenge ?? null;
   const battleOwnerName = network?.snapshot?.players.find((player) =>
     player.playerId === joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "le meneur";
+  const guestName = network?.snapshot?.players.find((player) =>
+    player.playerId !== joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "l'autre joueur";
   sourcePlayerDuelView.render({ challenge: duel, battleActive: network?.roomBattleActive === true, side,
     players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
   sourceBattleJoinView.render({ battle: joinableBattle, playerId: network?.ticket.playerId ?? null,
     team: currentPlayerDuelTeam(), available: joinableBattle?.sourceContext === null || side === null
       ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared",
-    ownerName: battleOwnerName,
+    ownerName: battleOwnerName, guestName,
     opponentName: joinableBattle?.sourceContext?.presentation.opponentTrainer?.name ?? "le Dresseur adverse" });
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
@@ -2682,6 +2752,14 @@ function remotePlayerAhead(): boolean {
     : session?.ticket.side === "opponent" ? "player" : null;
   return session !== null && remoteSide !== null && networkPlayerConnections[remoteSide] === "connected"
     && sourcePlayersFaceForDuel(networkSourceWorld, session.ticket.side);
+}
+
+function remotePlayerAdjacent(): boolean {
+  const session = multiplayer.current;
+  const remoteSide: AvatarId | null = session?.ticket.side === "player" ? "opponent"
+    : session?.ticket.side === "opponent" ? "player" : null;
+  return session !== null && remoteSide !== null && networkPlayerConnections[remoteSide] === "connected"
+    && sourcePlayersAdjacent(networkSourceWorld, session.ticket.side);
 }
 
 function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
@@ -2769,7 +2847,10 @@ function interact(playerId: AvatarId): void {
     if (target === null && trySourceTraversalInteraction()) return;
     const joinableBattle = multiplayer.current?.joinableBattle;
     const remoteAhead = multiplayer.active && !guestSourceExcursion && remotePlayerAhead();
-    const interactionTarget = joinableBattle !== null && joinableBattle !== undefined && remoteAhead
+    const battleOwnerAdjacent = joinableBattle !== null && joinableBattle !== undefined
+      && joinableBattle.session.lifecycle === "join-window"
+      && multiplayer.active && !guestSourceExcursion && remotePlayerAdjacent();
+    const interactionTarget = battleOwnerAdjacent
       ? "player" : sourceInteractionTarget(target !== null, remoteAhead);
     if (interactionTarget === "player") {
       if (joinableBattle !== null && joinableBattle !== undefined) {

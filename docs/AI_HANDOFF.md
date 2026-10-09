@@ -300,6 +300,61 @@ annuler un reglement personnel deja accuse a la room. Correctif complementaire :
 la seule presence d'un ancien ticket de room ne suffit plus a activer cette
 exception. Elle faisait ignorer la sauvegarde manuelle a un joueur revenu en solo.
 
+Correctif de ralliement du 2026-10-09 : pendant la fenetre d'attente d'un combat
+de Dresseur, l'invite ouvre maintenant le choix de participation en etant adjacent
+a l'hote puis en utilisant l'interaction. L'ancien garde reutilisait la visee
+stricte du defi PvP : la direction devait deja etre acquittee par la room et pointer
+exactement vers l'hote. Une collision avec le Dresseur ou un retard de confirmation
+pouvait donc rendre l'hote visible mais non interactif. Client et serveur partagent
+desormais la regle d'adjacence ; la visee stricte reste propre aux duels PvP. Le
+serveur continue de verifier carte partagee, presence, proprietaire du combat et
+fenetre de ralliement avant d'accepter la composition.
+
+Revision du flux Dresseur du 2026-10-09 : la presence d'un second joueur ne force
+jamais un combat Coop. Un combat de Dresseur partage entre d'abord dans l'etat
+`invite-choice` : la transition et la musique normales se jouent, les deux
+Dresseurs apparaissent face a face et le message de defi est presente, mais aucune
+Poke Ball n'est encore lancee. Une petite boite propose alors au proprietaire
+narratif `Continuer seul` ou `Appeler [nom]`. Continuer active immediatement le
+combat simple. Appeler ouvre seulement alors `join-window` ; l'autre joueur peut
+venir, interagir, choisir son camp et ses propres Pokemon selon les limites deja
+portees. Le meneur peut encore continuer sans lui. L'acceptation de la composition
+ferme la fenetre, convertit le combat en double et reprend la meme introduction aux
+lancers de Poke Ball, sans redemarrer la transition.
+
+Autorite : le choix d'appel est une intention du proprietaire narratif validee et
+repliquee par la room. L'invite ne peut proposer une composition avant l'appel.
+Les etats `invite-choice -> join-window -> active` (ou `invite-choice -> active`)
+sont persistants et restaurables ; le solo conserve son adaptateur direct sans
+afficher ce choix lorsqu'aucune room n'est active.
+
+Correctif de confirmation du 2026-10-09 : une proposition de l'invite est rendue
+avant le panneau generique d'attente du meneur. L'hote voit donc le camp demande,
+les Pokemon personnels proposes et les membres deja presents, puis doit choisir
+`Accepter et lancer le combat` ou `Refuser`. L'ancien ordre d'affichage masquait
+ces boutons derriere `Continuer sans lui`, alors que la room attendait toujours
+l'accord. Cote invite, l'interface separe maintenant le choix du camp de celui de
+ses propres Pokemon ; les membres de l'autre Dresseur sont affiches en lecture
+seule, les K.O. ne sont pas selectionnables et le total personnel est borne a
+trois ainsi qu'aux six places du camp. Apres envoi, un recapitulatif confirme
+clairement que la demande attend la decision de l'hote.
+
+Correctif de boucle double du 2026-10-09 : la presentation cumule maintenant les
+mutations de chaque action positionnee au lieu de repartir de l'etat du debut du
+tour. Les PV ne reviennent donc plus a une ancienne valeur entre deux attaques.
+Le slot exact est conserve pendant un K.O. et un remplacement ; un sprite a zero
+PV reste masque meme si le rendu recharge l'autre combattant, et l'interface de
+remplacement suit aussitot le snapshot autoritaire au lieu de rester ouverte sur
+l'ancien actif. Pour un invite rallie au camp adverse, les cibles choisies dans
+la vue miroir sont reconverties vers les camps autoritaires avant l'envoi.
+
+La reprise d'introduction relit desormais l'etat double accepte avant les lancers
+de Ball. Le Dresseur arrivant est affiche a cote de son camp avec son visuel de
+profil, puis un message contextualise est presente : le meneur voit l'aide
+annoncer son arrivee et l'aide voit le remerciement du meneur. Un ralliement au
+camp adverse utilise le visuel du joueur adverse plutot que de continuer a
+presenter le PNJ comme s'il etait encore l'unique Dresseur de ce point de vue.
+
 ### 5. Moteur complet des evenements 9.7 — partiel
 
 Etat actuel :
@@ -1146,7 +1201,7 @@ snapshots/reconnexions. Il reste a convertir ces credits avec les courbes source
 
 Le plan d'integration complet est consigne dans
 [`SHARED_SOURCE_BATTLE_PLAN.md`](SHARED_SOURCE_BATTLE_PLAN.md). Il fixe l'ordre des
-lots, l'autorite, le cycle `join-window -> active -> settling -> closed`, les
+lots, l'autorite, le cycle `invite-choice -> join-window -> active -> settling -> closed`, les
 credits d'EXP par K.O., les reglements personnels idempotents et la reprise
 narrative. Cette planification ne declare pas le raccord termine : les combats de
 `SourceBattleController` restent locaux jusqu'au lot de publication dans la room.
@@ -1167,7 +1222,7 @@ propres a Z, les switches 661/252/624, l'Oeuf Chance et le plafond lie aux badge
 puis applique seulement la part du proprietaire vise. Partage Exp et Exp Tous
 restent reportes avec les effets d'objets car ils creditent des non-participants.
 
-`SharedBattleSession` porte le cycle pur `join-window -> active -> settling ->
+`SharedBattleSession` porte le cycle pur `invite-choice -> join-window -> active -> settling ->
 closed`. Le premier tour ferme irreversiblement la fenetre, un resultat tactique
 termine est requis avant `settling` et l'identifiant `${battleId}:settlement` reste
 stable apres fermeture pour la future idempotence/reconnexion. Ce cycle n'est pas

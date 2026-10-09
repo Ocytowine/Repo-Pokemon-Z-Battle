@@ -80,3 +80,13 @@ export function sourcePlayersFaceForDuel(world: SourceWorldSnapshot | null,
     ? { x: 0, y: 1 } : avatar.direction === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
   return avatar.x + delta.x === target.x && avatar.y + delta.y === target.y;
 }
+
+/** Joining a source battle is an interaction with the adjacent battle owner, not a duel aiming check. */
+export function sourcePlayersAdjacent(world: SourceWorldSnapshot | null,
+  side: "player" | "opponent"): boolean {
+  if (world === null || world.presence.player !== "shared" || world.presence.opponent !== "shared") return false;
+  const otherSide = side === "player" ? "opponent" : "player";
+  const avatar = world.avatars[side];
+  const target = world.avatars[otherSide];
+  return Math.abs(avatar.x - target.x) + Math.abs(avatar.y - target.y) === 1;
+}

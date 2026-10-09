@@ -1,7 +1,7 @@
 import type { TeamBattleState } from "./types.js";
 
 export type SharedBattleOrigin = "source-wild" | "source-trainer" | "player-duel" | "room-encounter";
-export type SharedBattleLifecycle = "join-window" | "active" | "settling" | "closed";
+export type SharedBattleLifecycle = "invite-choice" | "join-window" | "active" | "settling" | "closed";
 
 /**
  * Platform-neutral lifecycle used by the solo adapter and, later, by the authoritative room.
@@ -26,16 +26,25 @@ export function createSharedBattleSession(input: {
   readonly origin: SharedBattleOrigin;
   readonly narrativeOwnerId: string;
   readonly allowJoin: boolean;
+  readonly requireInviteChoice?: boolean;
 }): SharedBattleSession {
   return { battleId: identifier(input.battleId, "Le combat"), origin: input.origin,
     narrativeOwnerId: identifier(input.narrativeOwnerId, "Le propriétaire narratif"),
-    lifecycle: input.allowJoin ? "join-window" : "active", settlementId: null };
+    lifecycle: input.requireInviteChoice && input.allowJoin ? "invite-choice"
+      : input.allowJoin ? "join-window" : "active", settlementId: null };
+}
+
+export function openSharedBattleJoinWindow(session: SharedBattleSession): SharedBattleSession {
+  if (session.lifecycle !== "invite-choice") throw new Error("Le choix d'appel de ce combat est deja traite.");
+  return { ...session, lifecycle: "join-window" };
 }
 
 /** Closes the optional join window. This transition is irreversible for a given battle id. */
 export function activateSharedBattleSession(session: SharedBattleSession): SharedBattleSession {
   if (session.lifecycle === "active") return session;
-  if (session.lifecycle !== "join-window") throw new Error("La fenêtre de participation de ce combat est déjà fermée.");
+  if (session.lifecycle !== "invite-choice" && session.lifecycle !== "join-window") {
+    throw new Error("La fenêtre de participation de ce combat est déjà fermée.");
+  }
   return { ...session, lifecycle: "active" };
 }
 

@@ -168,6 +168,9 @@ describe("multiplayer protocol", () => {
       battleId: "battle-1", accept: true }))).toMatchObject({ type: "respondBattleJoin", accept: true });
     expect(parseClientMessage(JSON.stringify({ type: "observeBattle", version: 15, requestId: "join-3",
       battleId: "battle-1" }))).toMatchObject({ type: "observeBattle", battleId: "battle-1" });
+    expect(parseClientMessage(JSON.stringify({ type: "requestBattleJoinWindow", version: 15,
+      requestId: "join-call", battleId: "battle-1" })))
+      .toMatchObject({ type: "requestBattleJoinWindow", battleId: "battle-1" });
     expect(parseClientMessage(JSON.stringify({ type: "closeBattleJoinWindow", version: 15, requestId: "join-4",
       battleId: "battle-1" }))).toMatchObject({ type: "closeBattleJoinWindow", battleId: "battle-1" });
   });

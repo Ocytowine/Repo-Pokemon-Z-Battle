@@ -314,6 +314,7 @@ export function parseClientMessage(payload: string): ClientMessage {
       }
       return value as unknown as ClientMessage;
     case "observeBattle":
+    case "requestBattleJoinWindow":
     case "closeBattleJoinWindow":
       if (!hasExactKeys(value, ["type", "version", "requestId", "battleId"])
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) {

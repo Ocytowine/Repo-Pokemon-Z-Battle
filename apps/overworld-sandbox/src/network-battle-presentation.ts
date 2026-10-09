@@ -1,8 +1,14 @@
-import type { BattleSide, DoubleBattleEvent, SharedBattleParticipation, TeamBattleEvent,
+import type { BattleSide, DoubleBattleEvent, SharedBattleParticipation, TeamBattleAction, TeamBattleEvent,
   TeamBattleState } from "@pokemon-z-battle/battle-engine";
 
 export function oppositeBattleSide(side: BattleSide): BattleSide {
   return side === "player" ? "opponent" : "player";
+}
+
+/** Converts a target selected in the mirrored guest view back to room-authoritative sides. */
+export function networkBattleActionForServer(action: TeamBattleAction, viewer: BattleSide): TeamBattleAction {
+  if (viewer === "player" || !("target" in action) || action.target === undefined) return action;
+  return { ...action, target: { ...action.target, side: oppositeBattleSide(action.target.side) } };
 }
 
 function activeTrainerId(participation: SharedBattleParticipation, side: BattleSide): string | null {

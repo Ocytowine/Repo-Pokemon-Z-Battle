@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
-  sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersFaceForDuel,
+  sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
@@ -51,7 +51,14 @@ describe("guest source event policy", () => {
       avatars: { player: { x: 4, y: 4, direction: "down" }, opponent: { x: 4, y: 5, direction: "up" } } } as const;
     expect(sourcePlayersFaceForDuel(world, "player")).toBe(true);
     expect(sourcePlayersFaceForDuel(world, "opponent")).toBe(true);
+    expect(sourcePlayersAdjacent(world, "player")).toBe(true);
+    expect(sourcePlayersAdjacent({ ...world, avatars: { ...world.avatars,
+      opponent: { ...world.avatars.opponent, direction: "down" } } }, "opponent")).toBe(true);
+    expect(sourcePlayersAdjacent({ ...world, avatars: { ...world.avatars,
+      opponent: { ...world.avatars.opponent, y: 6 } } }, "player")).toBe(false);
     expect(sourcePlayersFaceForDuel({ ...world,
+      presence: { player: "shared", opponent: "away" } }, "player")).toBe(false);
+    expect(sourcePlayersAdjacent({ ...world,
       presence: { player: "shared", opponent: "away" } }, "player")).toBe(false);
   });
 

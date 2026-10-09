@@ -3,7 +3,8 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   applyPokemonItemEffect,
   battleMemberIndicesOwnedBy,
   canCaptureSharedBattleTarget, canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
-  closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession, createTeamBattleState,
+  closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession,
+  createTeamBattleState, openSharedBattleJoinWindow,
   pokemonItemTargetMode, proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
   resolveDoubleTeamTurn, resolveTeamTurn,
   settleEscapedSharedBattleSession, settleSharedBattleSession,
@@ -456,6 +457,9 @@ export class AuthoritativeBattleRoom {
       return this.respondBattleJoin(player, message.requestId, message.battleId, message.accept);
     }
     if (message.type === "observeBattle") return this.observeBattle(player, message.requestId, message.battleId);
+    if (message.type === "requestBattleJoinWindow") {
+      return this.requestBattleJoinWindow(player, message.requestId, message.battleId);
+    }
     if (message.type === "closeBattleJoinWindow") {
       return this.closeBattleJoinWindow(player, message.requestId, message.battleId);
     }
@@ -666,7 +670,8 @@ export class AuthoritativeBattleRoom {
     if (this.#battleJoinProposal !== null) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "La proposition de participation doit d'abord être traitée.")];
     }
-    if (source?.origin === "source-trainer" && this.#battleSession?.lifecycle === "join-window") {
+    if (source?.origin === "source-trainer"
+      && (this.#battleSession?.lifecycle === "invite-choice" || this.#battleSession?.lifecycle === "join-window")) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
         "Le combat attend le choix de participation de l'autre Dresseur.")];
     }
@@ -1236,10 +1241,9 @@ export class AuthoritativeBattleRoom {
         candidate.playerId === this.#battleParticipation?.battleOwnerId);
       const avatar = this.#sourceWorldState.avatars[player.side];
       const target = owner === undefined ? undefined : this.#sourceWorldState.avatars[owner.side];
-      const delta = SOURCE_DELTAS[avatar.direction];
-      if (target === undefined || avatar.x + delta.x !== target.x || avatar.y + delta.y !== target.y) {
+      if (target === undefined || Math.abs(avatar.x - target.x) + Math.abs(avatar.y - target.y) !== 1) {
         return [this.error(player.playerId, message.requestId, "INTERACTION_UNAVAILABLE",
-          "Placez-vous face au meneur du combat pour le rejoindre.")];
+          "Placez-vous a cote du meneur du combat pour le rejoindre.")];
       }
     }
     try {
@@ -1341,9 +1345,11 @@ export class AuthoritativeBattleRoom {
       this.#battleJoinRefusal = null;
       this.#sourceBattleContext = message.context;
       const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
-        && candidate.connected && world.presence[candidate.side] === "shared");
+        && candidate.connected && (message.context.origin === "source-trainer"
+          || world.presence[candidate.side] === "shared"));
       this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
-        origin: message.context.origin, narrativeOwnerId: player.playerId, allowJoin: guestAvailable });
+        origin: message.context.origin, narrativeOwnerId: player.playerId, allowJoin: guestAvailable,
+        requireInviteChoice: message.context.origin === "source-trainer" });
       this.#activeEncounter = null;
       this.#activeDuel = false;
       this.#pendingActions.clear();
@@ -1478,9 +1484,26 @@ export class AuthoritativeBattleRoom {
     ];
   }
 
+  private requestBattleJoinWindow(player: RoomPlayer, requestId: string,
+    battleId: string): readonly RoomDispatch[] {
+    if (this.#battleId !== battleId || this.#battleSession?.lifecycle !== "invite-choice") {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE", "Le choix d'appel est deja traite.")];
+    }
+    if (this.#battleSession.narrativeOwnerId !== player.playerId) {
+      return [this.error(player.playerId, requestId, "HOST_ONLY", "Seul le meneur peut appeler l'autre joueur.")];
+    }
+    this.#battleSession = openSharedBattleJoinWindow(this.#battleSession);
+    this.#revision += 1;
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+      { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+    ];
+  }
+
   private closeBattleJoinWindow(player: RoomPlayer, requestId: string,
     battleId: string): readonly RoomDispatch[] {
-    if (this.#battleId !== battleId || this.#battleSession?.lifecycle !== "join-window") {
+    if (this.#battleId !== battleId || this.#battleSession === null
+      || !["invite-choice", "join-window"].includes(this.#battleSession.lifecycle)) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "La fenetre de participation est deja fermee.")];
     }
     if (this.#battleSession.narrativeOwnerId !== player.playerId) {
@@ -1489,17 +1512,6 @@ export class AuthoritativeBattleRoom {
     if (this.#battleJoinProposal !== null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE",
         "La proposition de participation doit d'abord etre acceptee ou refusee.")];
-    }
-    const waitingGuest = this.#sourceBattleContext?.origin === "source-trainer"
-      && [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
-        && candidate.connected && this.#sourceWorldState?.presence[candidate.side] === "shared"
-        && !this.#battleObserverIds.includes(candidate.playerId)
-        && this.#battleParticipation !== null
-        && !Object.values(this.#battleParticipation.camps)
-          .some((camp) => camp.trainerIds.includes(candidate.playerId)));
-    if (waitingGuest) {
-      return [this.error(player.playerId, requestId, "INVALID_PHASE",
-        "Le combat de Dresseur attend le choix de l'invite.")];
     }
     this.#battleSession = activateSharedBattleSession(this.#battleSession);
     this.#revision += 1;

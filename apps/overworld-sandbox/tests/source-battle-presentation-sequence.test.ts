@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState,
+import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState,
   type TeamBattleEvent } from "@pokemon-z-battle/battle-engine";
 import { buildSourceBattlePresentationSequence } from "../src/source-battle-presentation-sequence.js";
 
@@ -78,6 +78,46 @@ describe("source battle presentation sequence", () => {
     expect(sequence.map((step) => step.kind)).toEqual(["impact", "health", "faint", "replacement"]);
     expect(sequence.at(-1)).toMatchObject({ message: "Réserve, en avant !",
       state: { teams: { player: { activeIndex: 1 } } } });
+  });
+
+  it("keeps damage from earlier double slots while presenting the next action", () => {
+    const state = createDoubleTeamBattleState({
+      player: [battler("Allié 1"), battler("Allié 2")],
+      opponent: [battler("Adverse 1"), battler("Adverse 2")],
+    });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "positionedActionResolved", actor: { side: "player", slot: 0 },
+        targets: [{ side: "opponent", slot: 0 }], events: [
+          { type: "damageApplied", source: "player", target: "opponent", amount: 10, hp: 10,
+            critical: false, effectiveness: 1 },
+        ] },
+      { type: "positionedActionResolved", actor: { side: "player", slot: 1 },
+        targets: [{ side: "opponent", slot: 1 }], events: [
+          { type: "damageApplied", source: "player", target: "opponent", amount: 15, hp: 5,
+            critical: false, effectiveness: 1 },
+          { type: "fainted", side: "opponent" },
+        ] },
+    ]);
+    const last = sequence.at(-1);
+    expect(last).toMatchObject({ kind: "faint", state: { teams: { opponent: {
+      activeIndex: 1, members: [{ hp: 10 }, { hp: 0 }],
+    } } } });
+  });
+
+  it("updates the replaced slot instead of collapsing a double team onto slot one", () => {
+    const state = createDoubleTeamBattleState({
+      player: [battler("Actif 1"), battler("Actif 2", 0), battler("Réserve")],
+      opponent: [battler("Adverse 1"), battler("Adverse 2")],
+    });
+    const sequence = buildSourceBattlePresentationSequence({ ...state, teams: { ...state.teams,
+      player: { ...state.teams.player, activeIndex: 0, activeIndices: [0, 1] } },
+      slotReplacements: [{ side: "player", slot: 1 }] }, [
+      { type: "pokemonSwitched", side: "player", fromIndex: 1, toIndex: 2,
+        from: "Actif 2", to: "Réserve", reason: "replacement" },
+    ]);
+    expect(sequence[0]).toMatchObject({ kind: "replacement", state: { teams: { player: {
+      activeIndex: 2, activeIndices: [0, 2],
+    } }, slotReplacements: [] } });
   });
 
   it("keeps reduced-motion independent messages for residual damage and defeat", () => {

@@ -10,7 +10,7 @@ export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSour
   chooseSourceBattleReplacement } from "./battle-tactics.js";
 export { resolveTurn } from "./resolve-turn.js";
 export { SeededRandom } from "./rng.js";
-export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession,
+export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession, openSharedBattleJoinWindow,
   settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";
 export { MAX_TEAM_SIZE, activeBattlers, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn } from "./team-battle.js";
 export { applyPokemonItemEffect, isPokemonItemUseSupported, isPokemonItemUsableInBattle, isPokemonItemUsableInField,

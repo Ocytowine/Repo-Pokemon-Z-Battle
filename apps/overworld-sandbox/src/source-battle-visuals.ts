@@ -197,13 +197,21 @@ export class SourceBattleVisuals {
 
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null; readonly battleback?: string;
-    readonly opponentTrainer?: { readonly id: number; readonly name: string } } = {}): Promise<void> {
+    readonly opponentTrainer?: { readonly id: number; readonly name: string };
+    readonly waitBeforeSendOut?: () => Promise<void>;
+    readonly stateBeforeSendOut?: () => TeamBattleState;
+    readonly joiningTrainer?: () => Promise<{ readonly side: BattleSide; readonly image: HTMLImageElement | null;
+      readonly message: string } | null> } = {}): Promise<void> {
     this.stopAudio();
     this.#battleback = audio.battleback ?? "snow";
     this.#renderedSpecies = "";
     this.resetBattlerTransforms();
     const panel = document.getElementById("encounter-panel");
     const stage = document.getElementById("source-battle-stage");
+    for (const side of ["player", "opponent"] as const) {
+      const secondTrainer = document.getElementById(`source-${side}-trainer-2`) as HTMLImageElement | null;
+      if (secondTrainer !== null) secondTrainer.hidden = true;
+    }
     panel?.classList.remove("leaving");
     panel?.classList.add("entering");
     panel?.classList.add("intro-playing");
@@ -231,39 +239,56 @@ export class SourceBattleVisuals {
         battleMusic, victoryMusic, { player: player.appearance, opponent: opponent.appearance });
       this.#victoryMusicPath = selectedAudio.victoryMusic;
       await this.render(state, this.#battleback);
+      if (session !== this.#audioSession) return;
+      await this.playOpeningTransition(session);
+      if (session !== this.#audioSession) return;
+      if (this.#battleMusic !== null) this.#battleMusic.volume = 0.55;
+      if (audio.opponentTrainer !== undefined && audio.waitBeforeSendOut !== undefined) {
+        await this.playTrainerFaceOff(audio.opponentTrainer, session);
+        if (session !== this.#audioSession) return;
+        await audio.waitBeforeSendOut();
+        if (session !== this.#audioSession) return;
+      }
+      const sendOutState = audio.stateBeforeSendOut?.() ?? state;
+      await this.render(sendOutState, this.#battleback);
+      const sendOutPlayer = sendOutState.teams.player.members[sendOutState.teams.player.activeIndex] ?? player;
+      const sendOutOpponent = sendOutState.teams.opponent.members[sendOutState.teams.opponent.activeIndex] ?? opponent;
       const additional = (["opponent", "player"] as const).flatMap((side) =>
-        (state.teams[side].activeIndices ?? [state.teams[side].activeIndex]).slice(1).flatMap((index, offset) => {
-          const battler = state.teams[side].members[index];
-          return battler === undefined ? [] : [{ side, slot: offset + 1, battler }];
-        }));
+        (sendOutState.teams[side].activeIndices ?? [sendOutState.teams[side].activeIndex]).slice(1)
+          .flatMap((index, offset) => {
+            const battler = sendOutState.teams[side].members[index];
+            return battler === undefined ? [] : [{ side, slot: offset + 1, battler }];
+          }));
       for (const { side, slot } of additional) {
         const suffix = `-${slot + 1}`;
         document.getElementById(`source-${side}-sprite${suffix}`)?.classList.add("joining");
         document.getElementById(`source-${side}-hud${suffix}`)?.classList.add("joining");
       }
-      if (session !== this.#audioSession) return;
-      await this.playOpeningTransition(session);
-      if (session !== this.#audioSession) return;
-      if (this.#battleMusic !== null) this.#battleMusic.volume = 0.55;
+      const joiningTrainer = await audio.joiningTrainer?.() ?? null;
+      if (joiningTrainer !== null) await this.playJoiningTrainerArrival(joiningTrainer, session);
       if (audio.opponentTrainer !== undefined) {
-        await this.playOpponentEntrance(audio.opponentTrainer, opponent.name, session, selectedAudio.sendOut,
+        await this.playOpponentEntrance(audio.opponentTrainer, sendOutOpponent.name, session, selectedAudio.sendOut,
           selectedAudio.opponentCry);
       } else {
-        await this.playWildOpponentEntrance(opponent.name, session, selectedAudio.opponentCry);
+        await this.playWildOpponentEntrance(sendOutOpponent.name, session, selectedAudio.opponentCry);
       }
       for (const arrival of additional.filter((candidate) => candidate.side === "opponent")) {
         const suffix = `-${arrival.slot + 1}`;
         const sprite = document.getElementById(`source-opponent-sprite${suffix}`);
         if (sprite === null) continue;
+        const trainer = document.getElementById("source-opponent-trainer-2") as HTMLImageElement | null;
+        if (trainer !== null) trainer.hidden = true;
         this.message(`${arrival.battler.name} entre aussi en combat !`);
         await this.playJoinedBattlerSendOut("opponent", sprite, arrival.battler, manifests, selectedAudio.sendOut);
         document.getElementById(`source-opponent-hud${suffix}`)?.classList.remove("joining");
       }
-      await this.playPlayerEntrance(player.name, session, selectedAudio.sendOut, selectedAudio.playerCry);
+      await this.playPlayerEntrance(sendOutPlayer.name, session, selectedAudio.sendOut, selectedAudio.playerCry);
       for (const arrival of additional.filter((candidate) => candidate.side === "player")) {
         const suffix = `-${arrival.slot + 1}`;
         const sprite = document.getElementById(`source-player-sprite${suffix}`);
         if (sprite === null) continue;
+        const trainer = document.getElementById("source-player-trainer-2") as HTMLImageElement | null;
+        if (trainer !== null) trainer.hidden = true;
         this.message(`En avant, ${arrival.battler.name} !`);
         await this.playJoinedBattlerSendOut("player", sprite, arrival.battler, manifests, selectedAudio.sendOut);
         document.getElementById(`source-player-hud${suffix}`)?.classList.remove("joining");
@@ -335,6 +360,7 @@ export class SourceBattleVisuals {
     this.#battleback = battleback;
     document.getElementById("source-battle-stage")?.classList.toggle("double-battle", state.format === "double");
     this.updateHud(state);
+    this.synchronizeFaintedSprites(state);
     const playerIndices = state.teams.player.activeIndices ?? [state.teams.player.activeIndex];
     const opponentIndices = state.teams.opponent.activeIndices ?? [state.teams.opponent.activeIndex];
     const player = state.teams.player.members[playerIndices[0]!];
@@ -374,6 +400,7 @@ export class SourceBattleVisuals {
     })();
     this.#rendering = rendering;
     await rendering;
+    this.synchronizeFaintedSprites(state);
     if (this.#rendering === rendering) this.#rendering = null;
   }
 
@@ -574,6 +601,66 @@ export class SourceBattleVisuals {
     flashAnimation.cancel();
   }
 
+  private async playTrainerFaceOff(trainerData: { readonly id: number; readonly name: string },
+    session: number): Promise<void> {
+    const opponent = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
+    const player = document.getElementById("source-player-trainer") as HTMLImageElement | null;
+    if (opponent === null || player === null) return;
+    const customOpponent = this.#opponentTrainerImage;
+    const customPlayer = this.#playerTrainerImage;
+    opponent.src = customOpponent?.src ?? sourceUrl(`Graphics/Characters/trainer${String(trainerData.id).padStart(3, "0")}.png`);
+    player.src = customPlayer?.src ?? sourceUrl("Graphics/Characters/trback000.png");
+    try { await Promise.all([opponent.decode(), player.decode()]); } catch { return; }
+    if (session !== this.#audioSession) return;
+    this.placeTrainer(opponent, "opponent", customOpponent?.naturalWidth ?? opponent.naturalWidth,
+      customOpponent?.naturalHeight ?? opponent.naturalHeight);
+    this.placeTrainer(player, "player", customPlayer?.naturalWidth ?? player.naturalWidth,
+      customPlayer?.naturalHeight ?? player.naturalHeight);
+    opponent.hidden = false;
+    player.hidden = false;
+    this.message(`${trainerData.name} vous défie !`);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const opponentArrival = opponent.animate([
+      { transform: "translateX(-208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+    const playerArrival = player.animate([
+      { transform: "translateX(208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+    await Promise.all([opponentArrival.finished.catch(() => undefined), playerArrival.finished.catch(() => undefined)]);
+  }
+
+  private async playJoiningTrainerArrival(joining: { readonly side: BattleSide;
+    readonly image: HTMLImageElement | null; readonly message: string }, session: number): Promise<void> {
+    const primary = document.getElementById(`source-${joining.side}-trainer`) as HTMLImageElement | null;
+    const trainer = document.getElementById(`source-${joining.side}-trainer-2`) as HTMLImageElement | null;
+    if (primary === null || trainer === null || joining.image === null) {
+      this.message(joining.message);
+      await readableMessageDelay(750);
+      return;
+    }
+    trainer.src = joining.image.src;
+    try { await trainer.decode(); } catch { return; }
+    if (session !== this.#audioSession) return;
+    const width = joining.image.naturalWidth || trainer.naturalWidth;
+    const height = joining.image.naturalHeight || trainer.naturalHeight;
+    const placement = sourceTrainerSpritePlacement(joining.side, width, height);
+    const direction = joining.side === "player" ? 1 : -1;
+    const separation = 38;
+    primary.style.left = sourceBattlePercent(placement.left - direction * separation, "x");
+    trainer.style.left = sourceBattlePercent(placement.left + direction * separation, "x");
+    trainer.style.top = sourceBattlePercent(placement.top, "y");
+    trainer.style.width = sourceBattlePercent(placement.width, "x");
+    trainer.style.height = sourceBattlePercent(placement.height, "y");
+    trainer.hidden = false;
+    this.message(joining.message);
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const arrival = trainer.animate([
+      { transform: `translateX(${direction * 180}px)`, opacity: 0 },
+      { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 560, easing: "ease-out", fill: "forwards" });
+    await Promise.all([arrival.finished.catch(() => undefined), readableMessageDelay(850)]);
+  }
+
   private async playOpponentEntrance(trainerData: { readonly id: number; readonly name: string }, pokemonName: string,
     session: number, sendOutSound: string | null, opponentCry: string | null): Promise<void> {
     const trainer = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
@@ -718,6 +805,18 @@ export class SourceBattleVisuals {
         const secondHud = document.getElementById(`source-${side}-hud-2`);
         if (secondHud !== null) secondHud.hidden = true;
       }
+    }
+  }
+
+  private synchronizeFaintedSprites(state: TeamBattleState): void {
+    for (const side of ["player", "opponent"] as const) {
+      const team = state.teams[side];
+      const active = team.activeIndices ?? [team.activeIndex];
+      active.forEach((index, slot) => {
+        const suffix = slot === 0 ? "" : `-${slot + 1}`;
+        document.getElementById(`source-${side}-sprite${suffix}`)
+          ?.classList.toggle("fainted", (team.members[index]?.hp ?? 0) <= 0);
+      });
     }
   }
 
