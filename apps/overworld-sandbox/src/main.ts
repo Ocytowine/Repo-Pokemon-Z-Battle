@@ -68,7 +68,7 @@ import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
 import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
-  type SourceWorldSave } from "./source-world-save.js";
+  sourceEventStateForLaunch, type SourceWorldSave } from "./source-world-save.js";
 import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGameSetup, sourceAdventureSaveExists,
   sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_DESTINATION,
   type SourceNewGameChoices } from "./source-new-game.js";
@@ -117,6 +117,12 @@ let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
+const launchSourceEventState = sourceEventStateForLaunch(sourceEventState, sourceWorldSave,
+  sessionStorage.getItem(STORED_SESSION_KEY) !== null);
+if (launchSourceEventState !== sourceEventState) {
+  sourceEventState = launchSourceEventState;
+  localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
+}
 let sourceNewGameActive = !sourceAdventureSaveExists(localStorage);
 const sourceProgressionQueue: string[] = [];
 let activeSourceProgressionPokemonId: string | null = null;
@@ -1486,7 +1492,8 @@ function sourceSceneActivity(): SourceSceneActivity {
 function saveCurrentSourceWorld(): void {
   if (importedAssets === null) return;
   sourceWorldSave = createSourceWorldSave(importedAssets.map.id, importedAvatar.x, importedAvatar.y,
-    importedAvatar.direction, Date.now(), sourceMovementMode === "run" ? "walk" : sourceMovementMode);
+    importedAvatar.direction, Date.now(), sourceMovementMode === "run" ? "walk" : sourceMovementMode,
+    sourceEventState);
   persistSourceWorldSave(localStorage, sourceWorldSave);
   persistSourceEventState();
   importedNotice = `Partie sauvegardée dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
@@ -2377,7 +2384,8 @@ async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> 
       applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId);
     persistSourceEventState();
     persistSourceNewGameSetup(localStorage, choices);
-    sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction);
+    sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction,
+      Date.now(), "walk", sourceEventState);
     persistSourceWorldSave(localStorage, sourceWorldSave);
     activateSourceWorld(world);
     sourceMovementMode = "walk";

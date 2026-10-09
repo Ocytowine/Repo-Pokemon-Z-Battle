@@ -316,6 +316,19 @@ describe("stat stages, power abilities and held battle items", () => {
     expect(result.trace).toContainEqual({ type: "rng", purpose: "additional-effect", maxExclusive: 100, value: 0 });
   });
 
+  it("applies the Route 2 Agility function as a two-stage speed boost", () => {
+    const agility: BattleMove = { id: 1, internalName: "AGILITY", name: "Hate", functionCode: "030", power: 0,
+      type: "PSYCHIC", category: "Status", accuracy: 0, pp: 30, priority: 0, effectChance: 0 };
+    const player = battler("player", { moves: [{ move: agility, pp: agility.pp }] });
+    const result = resolveTurn(battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 1, 15]));
+
+    expect(result.state.battlers.player.stages.speed).toBe(2);
+    expect(result.events).toContainEqual({ type: "statStageChanged", source: "player", target: "player",
+      stat: "speed", delta: 2, stage: 2 });
+  });
+
   it("supports Huge Power, Pure Power, Muscle Band and Wise Glasses", () => {
     const neutralPhysical = calculateDamage("player", battler("player"), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
     const hugePower = calculateDamage("player", battler("player", { ability: "HUGEPOWER" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
@@ -352,6 +365,20 @@ describe("stat stages, power abilities and held battle items", () => {
     const overgrow = calculateDamage("player", battler("player", { types: ["GRASS"], hp: 33, ability: "OVERGROW" }),
       battler("opponent"), MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
     expect(overgrow).toBeGreaterThan(neutral);
+  });
+
+  it("applies Floracion to Grass attacks without an HP threshold", () => {
+    const neutral = calculateDamage("player", battler("player", { types: ["FAIRY"] }), battler("opponent"),
+      MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
+    const flowering = calculateDamage("player", battler("player", { types: ["FAIRY"], ability: "FLORACION" }),
+      battler("opponent"), MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
+    const nonGrass = calculateDamage("player", battler("player", { ability: "FLORACION" }), battler("opponent"),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const neutralNonGrass = calculateDamage("player", battler("player"), battler("opponent"),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+
+    expect(flowering).toBeGreaterThan(neutral);
+    expect(nonGrass).toBe(neutralNonGrass);
   });
 
   it("doubles stat changes received by a battler with Simple", () => {

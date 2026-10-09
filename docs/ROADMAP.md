@@ -14,8 +14,8 @@
 | 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
 | 8 - Prototype coop | Terminee | Interactions et evenements classes |
 | 9 - Import progressif du monde | En cours | Cartes compatibles importees par lots |
-| 10 - Stabilisation du vertical jouable | Planifiee, lots P0 ouverts | Combat lisible, collisions et presence Coop coherentes |
-| 11 - Mecanismes solo structurants | Planifiee | Objets, capture, evolution et Pokedex raccordes au noyau commun |
+| 10 - Stabilisation du vertical jouable | En cours, quatre lots clos | `STAB-BATTLE-1` valide apres ses dependances et musique des lieux restauree |
+| 11 - Mecanismes solo structurants | En cours, noyaux objets/capture/evolution fonctionnels | Fidelite de combat verticale, Pokedex puis finitions capture/evolution |
 | 12 - Extensions Coop | Planifiee | Capture, loot, Ranch et chat selon contrats autoritaires |
 | 13 - Plateforme et ergonomie | A qualifier | Cloud, import de sauvegarde, responsive et Android cadres |
 
@@ -24,6 +24,15 @@ Les constats produit ajoutes le 2026-10-05 sont normalises dans
 `docs/PRODUCT_BACKLOG.md`. `docs/note importantes.md` reste la note d'origine ; le
 backlog est la reference de travail pour les priorites, dependances et contrats
 solo/Coop.
+
+Audit d'alignement du 2026-10-09 : `STAB-NET-1`, `STAB-NET-2`,
+`STAB-WORLD-1` et `STAB-WORLD-2` sont clos. Les objets personnels, la boucle de
+capture, le classement principal du Sac et 17 des 18 methodes d'evolution sont
+fonctionnels ; la phase 11 n'est donc plus seulement planifiee. Le goulet P0 est
+la fidelite des combats du prochain parcours, puis le registre Pokedex personnel.
+Les rapports de support doivent etre regeneres apres toute evolution de ces
+registres afin que les anciens constats historiques ne soient pas pris pour l'etat
+courant.
 
 ## Phase 0 - Analyse terminee
 
@@ -1046,12 +1055,18 @@ memorise le volume. Le fond, la Poké Ball, les poches et le curseur reutilisent
 assets originaux locaux sans les versionner. Ce premier lot laissait la sauvegarde
 generique de la position au noyau suivant.
 
-Dixieme noyau 9.7 implemente le 2026-09-29 : l'onglet Sauvegarde cree un emplacement
-manuel versionne, distinct de l'etat narratif et des checkpoints de soin. Carte,
-coordonnees, direction et date sont restaurees au prochain lancement. Une position
-mal formee, inaccessible ou hors carte est rejetee puis ramenee vers Bourg Canvas.
-Le menu minimal couvre desormais equipe, sac, sauvegarde et options ; le volume est
-memorise en attente du raccordement des commandes audio de cinematique.
+Dixieme noyau 9.7 implemente le 2026-09-29, corrige le 2026-10-09 : l'onglet
+Sauvegarde cree un emplacement manuel versionne, distinct des checkpoints de soin.
+Son schema v2 capture ensemble carte, coordonnees, direction, equipe, Sac et etat
+narratif. Un lancement solo a froid restaure donc les drapeaux de combat de la
+derniere sauvegarde explicite au lieu de conserver une victoire obtenue apres
+celle-ci. La copie de travail automatique reste prioritaire uniquement pendant une
+reconnexion Coop dans le meme onglet, pour proteger les reglements deja accuses.
+Les anciennes positions v1 sont migrees sans inventer un etat historique. Une
+position mal formee, inaccessible ou hors carte est rejetee puis ramenee vers
+Bourg Canvas. Le menu minimal couvre desormais equipe, sac, sauvegarde et options ;
+le volume est memorise en attente du raccordement des commandes audio de
+cinematique.
 
 Onzieme noyau 9.7 implemente le 2026-09-29 : le combat source est rendu directement
 au-dessus du canvas overworld et un fondu couvre son entree et sa sortie. La fin de
@@ -1637,9 +1652,10 @@ Ordre convenu :
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
   placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
   implementes ;
-  dette ouverte : un changement croise hote/invite a ete observe ; retablir le
-  controle strict par proprietaire, puis qualifier separement un partage tactique
-  precombat uniquement sur consentement des deux joueurs ;
+  le changement et le remplacement croises observes pendant la recette sont
+  maintenant refuses par la room en simple et en double ; le partage tactique
+  precombat reste une extension distincte, uniquement sur consentement des deux
+  joueurs ;
   recette solo et deux navigateurs a valider ;
 - [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
 
@@ -1657,16 +1673,26 @@ doit masquer un P0 ouvert.
 
 ### Phase 11 - Mecanismes solo structurants
 
-L'audit source cible du 2026-10-05 confirme que les donnees importees masquent un
-ecart de comportement important : 23/353 fonctions d'attaque, 13/255 talents,
-aucune famille d'objets complete et aucune des 18 methodes d'evolution sont
-executees. L'ordre de dependance devient donc : fidelite du combat par lots
+L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les
+donnees importees masquent encore un ecart de comportement important : 24/353
+fonctions d'attaque et 14/255 talents sont executes. Les objets sont avances mais
+aucune famille source n'est encore declaree complete ; 17 des 18 methodes
+d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
+L'ordre de dependance devient donc : fidelite du combat par lots
 verticaux, utilisation des objets, capture, evolution, Pokedex, puis rencontres
 de terrain avancees, apprentissage/rappel, Mega-Evolution, Pokévial, oeufs/Pension,
 Carte/Boussole, Alchimie et Succes. DexNav, Nuzlocke/Monotype, Échange Miracle et
 Tour de Combat sont inventories dans `docs/PRODUCT_BACKLOG.md` sans devancer les
 P0. Chaque mecanique est concue une fois pour l'adaptateur local et la room
 autoritaire.
+
+Premier lot vertical de combat du 2026-10-09 : Jean puis les trois variantes de
+Melia sur le parcours suivant ont ete pris comme frontiere, sans logique liee a
+leur carte ou leur nom. La fonction `030` d'Agilite ajoute deux crans de Vitesse
+et le talent `FLORACION` renforce de 50 % les capacites Plante dans le noyau de
+degats. Le simple, le double local et le double autoritaire reutilisent ces memes
+fonctions. `CHEEKPOUCH`, present sur le Sapereau de Jean mais inactif sans Baie
+tenue, reste rattache au futur lot generique de consommation des Baies.
 
 Premier increment objets du 2026-10-07 : un registre pur dans `player-state`
 applique hors combat les soins de PV, soins de statut, Restauration Totale et
@@ -1828,9 +1854,8 @@ La finition visuelle de capture et le surnom sont reportes a la reprise des visu
 Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
 Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
-effets d'objets tenus non portes et pierres restent ouverts dans `SOLO-ITEMS-1`.
-La mutation/scene d'evolution et les methodes non liees au niveau passent dans
-`SOLO-EVOLUTION-1`, dont le resolveur d'eligibilite possede maintenant son socle.
+effets d'objets tenus non portes restent ouverts dans `SOLO-ITEMS-1`. Les 21
+pierres/objets d'evolution sont deja fonctionnels dans `SOLO-EVOLUTION-1`.
 
 Premier increment evolution du 2026-10-08 : 17 des 18 methodes reellement utilisees
 par Z sont resolues dans un noyau commun ; la dix-huitieme, `Shedinja`, est une

@@ -49,7 +49,7 @@ function statusKind(move: BattleMove): MajorStatusState["kind"] | null {
 interface StatChangeEffect {
   readonly target: "self" | "opponent";
   readonly stat: BattleStat;
-  readonly delta: -1 | 1;
+  readonly delta: -1 | 1 | 2;
 }
 
 function statChangeEffect(move: BattleMove): StatChangeEffect | null {
@@ -58,6 +58,7 @@ function statChangeEffect(move: BattleMove): StatChangeEffect | null {
     case "01D": return { target: "self", stat: "defense", delta: 1 };
     case "01F": return { target: "self", stat: "speed", delta: 1 };
     case "020": return { target: "self", stat: "specialAttack", delta: 1 };
+    case "030": return { target: "self", stat: "speed", delta: 2 };
     case "042": return { target: "opponent", stat: "attack", delta: -1 };
     case "043": return { target: "opponent", stat: "defense", delta: -1 };
     case "044": return { target: "opponent", stat: "speed", delta: -1 };

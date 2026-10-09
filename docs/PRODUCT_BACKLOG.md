@@ -1,6 +1,6 @@
 # Backlog produit et technique
 
-Derniere mise a jour : 2026-10-07.
+Derniere mise a jour : 2026-10-09.
 
 Ce document transforme `docs/note importantes.md` en lots exploitables par une IA
 de code. La note d'origine reste la source des constats du porteur ; ce backlog
@@ -33,26 +33,36 @@ ici, dans `AI_HANDOFF.md` et dans la roadmap.
 
 ## Ordre de travail recommande
 
-1. Stabiliser le cycle de vie reseau et les collisions partagees.
-2. Synchroniser les PNJ mobiles et leur occupation.
-3. Fiabiliser la file de presentation des combats et l'audio.
-4. Terminer les briques solo dont dependent les ajouts Coop : objets, capture,
-   evolution et Pokedex.
-5. Ajouter les extensions Coop, puis les services de plateforme.
-6. Terminer l'ergonomie responsive et les interfaces secondaires.
+Les quatre lots reseau/monde initiaux sont clos. La reprise suit maintenant cinq
+portes de validation, dans cet ordre :
 
-## Audit cible du jeu source — 2026-10-05
+1. porter verticalement les fonctions de capacites, talents et objets tenus requis
+   par les prochains Dresseurs atteignables, puis reprendre `STAB-BATTLE-1` ;
+2. ajouter un registre Pokedex personnel persistant, alimente par rencontre,
+   capture et evolution, sans publication de la collection privee dans la room ;
+3. terminer evolution et capture : Munja, enregistrement Pokedex, surnom,
+   animation et modificateurs de Balls dependants du contexte ;
+4. fermer `STAB-AUDIO-1` avec la musique des cartes et sa restauration ;
+5. executer la matrice manuelle solo/hote/invite/double/reconnexion et ne fermer
+   les lots qu'apres validation du porteur.
+
+Les extensions Coop, la plateforme et les interfaces secondaires reprennent apres
+ces cinq portes. Les ajouts de combat restent des lots generiques bornes par le
+parcours ; ils ne doivent pas devenir des correctifs propres a Jean ou Sapereau.
+
+## Audit cible du jeu source — 2026-10-05, actualise le 2026-10-09
 
 Cet inventaire est derive des rapports locaux de la distribution v2.12 FR et des
 262 scripts Ruby extraits. Il mesure le support reel du moteur, pas seulement la
 presence des donnees dans les JSON :
 
 - les 19 interactions de types sont supportees ;
-- seulement 23 codes de fonction d'attaque sur 353 sont portes ;
-- seulement 13 talents sur 255 ont un effet execute ;
+- seulement 24 codes de fonction d'attaque sur 353 sont portes ;
+- seulement 14 talents sur 255 ont un effet execute ;
 - aucune des six familles d'objets n'est completement supportee ; la famille
   generique est seulement partielle ;
-- aucune des 18 methodes d'evolution rencontrees n'est executee ;
+- 17 des 18 methodes d'evolution rencontrees sont maintenant resolues ; la
+  dix-huitieme, `Shedinja`, exige une creation secondaire encore ouverte ;
 - 170 199 commandes d'evenement sur 188 037 sont converties, mais 15 649 lignes
   Ruby et 2 177 conditions Ruby restent des references a classifier et porter ;
 - le monde extrait est complet structurellement : 507 cartes, 2 613 transferts
@@ -258,10 +268,12 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   room attend toutes les intentions possedees, complete celles de l'IA et persiste
   les slots actifs pour la reconnexion. L'interface projette jusqu'a quatre
   battlers et demande une cible lorsque plusieurs adversaires sont valides.
-- Dette observee pendant la recette du 2026-10-07 : en combat double Coop, l'hote
-  a pu choisir comme remplacement un Pokemon appartenant a l'invite. Cela contredit
-  le contrat actuel de controle par proprietaire et devra etre bloque avant de
-  terminer ce lot. Une variante volontaire peut etre conservee comme extension :
+- Dette observee puis corrigee dans le code : en combat double Coop, l'hote avait
+  pu choisir comme remplacement un Pokemon appartenant a l'invite. La room refuse
+  maintenant explicitement un changement ou remplacement dont `ownerId` differe
+  de celui du demandeur, en simple comme en double. Cette protection reste a
+  confirmer dans la recette a deux navigateurs. Une variante volontaire peut etre
+  conservee comme extension :
   avant le combat, les deux joueurs accepteraient explicitement un partage tactique
   des remplacements. Cette permission serait autoritaire dans la room, limitee au
   combat courant, restauree apres reconnexion et ne transfererait jamais la
@@ -339,7 +351,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 ### CORE-BATTLE-RULES-1 — Fidelite des regles de combat
 
 - Priorite/statut : `P0` continu / `A planifier par lots verticaux`.
-- Constat source : 23/353 fonctions d'attaque et 13/255 talents sont executes.
+- Constat source : 24/353 fonctions d'attaque et 14/255 talents sont executes.
   Une attaque extraite avec nom, puissance et animation n'est donc pas forcement
   fidele a Z ; meme constat pour un talent seulement affiche.
 - Strategie : registres explicites et lots bornes par rencontres/dresseurs du
@@ -347,6 +359,16 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Autorite : noyau de combat partage ; RNG locale en solo, room en multijoueur.
 - Replication : intentions seulement, puis evenements et snapshot autoritaires.
 - Dependances : objets tenus, meteo/terrains, formes, Mega-Evolution et IA.
+- Premier lot vertical du 2026-10-09 : les equipes immediatement atteignables de
+  Jean et des trois variantes de Melia ont ete auditees. La fonction `030`
+  d'Agilite applique maintenant deux crans de Vitesse et le talent propre a Z
+  `FLORACION` multiplie par 1,5 les attaques Plante, conformement aux handlers
+  Ruby. Toutes leurs autres fonctions de capacite sont deja dans le registre ;
+  `CHEEKPOUCH` reste sans effet dans l'equipe de Jean faute de Baie tenue, mais son
+  hook generique sera porte avec les Baies consommables. Le meme noyau couvre le
+  simple et le double ; la room ne recoit aucune nouvelle intention. Un test double
+  protege aussi les effets ciblant l'utilisateur, dont l'ancien etat etait
+  auparavant reecrit apres leur resolution.
 
 ### SOLO-ITEMS-1 — Utilisation des objets
 
@@ -417,8 +439,9 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   Le resolveur expose deja les
   evolutions devenues eligibles, mais la transformation et sa scene restent dans
   `SOLO-EVOLUTION-1`.
-- Les autres effets d'objets tenus, objets de combat volatils et pierres restent
-  a porter avant fermeture.
+- Les autres effets d'objets tenus et objets de combat volatils restent a porter
+  avant fermeture. Les 21 pierres/objets d'evolution sont deja raccordes au lot
+  evolution et ne constituent plus une dette de ce lot.
 
 ### SOLO-CAPTURE-1 — Capture complete
 
@@ -572,7 +595,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### UI-BAG-1 — Classement avance du Sac
 
-- Priorite/statut : `P1` / partiellement pret.
+- Priorite/statut : `P1` / noyau de classement fonctionnel, recherche et tris avances ouverts.
 - Reutiliser les poches source, puis ajouter familles, baies, pierres, CT/CS et
   tris par type, effet et puissance. Les filtres ne modifient pas l'inventaire.
 

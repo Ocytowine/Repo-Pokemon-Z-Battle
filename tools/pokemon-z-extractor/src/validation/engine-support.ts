@@ -20,12 +20,18 @@ export interface EngineSupportInput {
 
 const SUPPORTED_MOVE_FUNCTION_CODES = new Set([
   "000", "003", "005", "006", "007", "00A", "00C",
-  "01C", "01D", "01F", "020",
+  "01C", "01D", "01F", "020", "030",
   "042", "043", "044", "045", "046", "047",
   "06F", "0A5", "0D8", "0DD", "159", "906",
 ]);
-const SUPPORTED_ABILITIES = new Set(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW",
+const SUPPORTED_ABILITIES = new Set(["BIGPECKS", "BLAZE", "CHLOROPHYLL", "FLORACION", "GUTS", "HUGEPOWER", "MAGICGUARD", "OVERGROW",
   "PUREPOWER", "QUICKFEET", "SHIELDDUST", "SIMPLE", "STATIC", "TORRENT"]);
+const SUPPORTED_EVOLUTION_METHODS = new Set([
+  "AtkDefEqual", "AttackGreater", "Cascoon", "DayHoldItem", "DefenseGreater",
+  "Happiness", "HappinessDay", "HappinessNight", "HasInParty", "HasMove",
+  "Item", "ItemFemale", "Level", "LevelFemale", "LevelMale", "Ninjask",
+  "Silcoon",
+]);
 
 function entries(
   keys: Iterable<string>,
@@ -63,6 +69,7 @@ export function createEngineSupportReport(input: EngineSupportInput): EngineSupp
       input.pokemon.records.flatMap((record) =>
         record.evolutions.map((evolution) => evolution.method),
       ),
+      SUPPORTED_EVOLUTION_METHODS,
     ),
   } as const;
   const extractedMechanics = Object.values(categories).reduce(

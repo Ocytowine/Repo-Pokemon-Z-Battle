@@ -1,5 +1,5 @@
 import { MINIMAL_MOVE_CATALOG, createDoubleTeamBattleState, resolveDoubleTeamTurn,
-  type BattleSide, type BattlerState, type RandomSource } from "../src/index.js";
+  type BattleMove, type BattleSide, type BattlerState, type RandomSource } from "../src/index.js";
 import { describe, expect, it } from "vitest";
 
 const rng: RandomSource = { nextInt: () => 0 };
@@ -51,6 +51,25 @@ describe("double team battles", () => {
     expect(result.state.teams.opponent.members[0]!.hp).toBeLessThan(120);
     expect(result.state.teams.opponent.members[1]!.hp).toBeLessThan(120);
     expect(result.state.teams.player.members[0]!.moves[0]!.pp).toBe(MINIMAL_MOVE_CATALOG.TACKLE.pp - 1);
+  });
+
+  it("reuses self stat moves for one precise active slot", () => {
+    const agility: BattleMove = { id: 1, internalName: "AGILITY", name: "Hate", functionCode: "030", power: 0,
+      type: "PSYCHIC", category: "Status", accuracy: 0, pp: 30, priority: 0, effectChance: 0, targetCode: "10" };
+    const agile = { ...pokemon("p1", "player", 100), moves: [{ move: agility, pp: agility.pp }] };
+    const state = createDoubleTeamBattleState({
+      player: [agile, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+
+    expect(result.state.teams.player.members[0]?.stages.speed).toBe(2);
+    expect(result.state.teams.player.members[1]?.stages.speed).toBe(0);
   });
 
   it("lets one active slot spend its action healing an owned reserve", () => {

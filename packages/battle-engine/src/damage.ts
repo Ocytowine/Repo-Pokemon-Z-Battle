@@ -43,6 +43,7 @@ export function calculateDamage(
   const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
     : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
   if (lowHpAbilityType === move.type && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
+  if (attacker.ability === "FLORACION" && move.type === "GRASS") attack = Math.round(attack * 1.5);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * move.power * attack) / defense) / 50) + 2;

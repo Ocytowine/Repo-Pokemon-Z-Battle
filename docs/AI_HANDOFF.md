@@ -40,11 +40,32 @@ en telephone portrait, telephone paysage et bureau avant fermeture du lot.
 
 ## Etat Git au moment de cette note
 
-Le dernier commit connu est `4120978 MODIF : Notes`. Le worktree contient le lot
-de gestion des objets tenus decrit plus bas.
+Le dernier commit observe lors de l'audit du 2026-10-09 est `9d816c0 FIX : Import
+v2`. Le worktree etait propre avant la mise a jour documentaire de reprise.
 
 Le porteur du projet prefere effectuer lui-meme les commits apres validation
 manuelle. Ne pas supprimer ou restaurer ce lot pendant une reprise.
+
+### Ordre de reprise valide le 2026-10-09
+
+L'etat reel a depasse plusieurs resumes historiques de la roadmap : objets
+personnels, capture fonctionnelle, classement du Sac et evolution principale sont
+deja en place. La suite est organisee en cinq portes :
+
+1. fidelite de combat par lot vertical sur les prochains Dresseurs atteignables ;
+2. registre Pokedex personnel persistant ;
+3. fermeture evolution/capture, dont Munja, surnom et animation ;
+4. musique des cartes et restauration apres combat ;
+5. matrice manuelle solo, hote, invite, doubles et reconnexion avant cloture.
+
+Le premier lot ne doit pas viser les 353 fonctions de capacite en bloc. Il audite
+les equipes du prochain parcours, implemente generiquement les fonctions, talents
+et objets tenus effectivement requis, puis ajoute leurs preuves en simple/double
+et dans la room. L'autorite des regles et du RNG reste le noyau local en solo et la
+room en Coop ; les joueurs n'envoient que leurs intentions. Les ressources,
+inventaires et progressions demeurent personnels, tandis que les evenements et le
+snapshot tactiques sont presentes aux participants. Une reconnexion restaure
+l'etat autoritaire sans rejouer les tours.
 
 ## Ordre de travail convenu
 
@@ -241,9 +262,9 @@ Etat : perimetre minimal termine ; validation manuelle a effectuer.
 - Le menu s'ouvre avec `Echap`, `M` ou le bouton du sandbox et gele joueur, PNJ et
   interactions.
 - Les onglets Equipe et Sac affichent les vraies donnees persistantes.
-- Sauvegarde enregistre manuellement carte, position, direction et date. Le lancement
-  suivant recharge cette carte et cette position ; une donnee invalide revient
-  proprement a Bourg Canvas.
+- Sauvegarde enregistre manuellement un instantane coherent : carte, position,
+  direction, equipe, Sac et etat narratif. Un lancement solo a froid revient a cet
+  instantane ; une donnee invalide revient proprement a Bourg Canvas.
 - Options memorise le volume choisi et le raccorde aux musiques et effets des
   cinematiques. Le lecteur audio du combat conserve encore son reglage propre.
 - Le visuel reutilise les assets locaux `partybg.png`, `partyBall.PNG`,
@@ -258,9 +279,24 @@ perimetre :
 - options : volume et commandes essentielles ;
 - ouverture/fermeture par clavier avec gel de l'overworld.
 
-La sauvegarde manuelle de position utilise `pokemon-z-battle.source-world-save.v1`.
-Elle reste distincte du checkpoint de soin et de l'etat narratif persiste dans
-`pokemon-z-battle.source-event-state.v1`.
+La sauvegarde manuelle utilise `pokemon-z-battle.source-world-save.v1` avec un
+schema interne v2. Elle reste distincte du checkpoint de soin et embarque maintenant
+un instantane valide de `SourceEventState`. La cle
+`pokemon-z-battle.source-event-state.v1` demeure une copie de travail automatique :
+elle protege les mutations et la reconnexion Coop dans le meme onglet, mais ne
+remplace plus le dernier choix explicite de `Sauvegarder ici` lors d'un lancement
+solo a froid. Les anciennes sauvegardes de position v1 restent lisibles ; faute
+d'instantane historique, leur etat narratif courant sert de migration jusqu'a la
+prochaine sauvegarde manuelle.
+
+Correctif de sauvegarde du 2026-10-09 : auparavant, la victoire contre un Dresseur
+mettait immediatement a jour la copie de travail narrative. Quitter sans sauvegarder
+puis relancer conservait donc le drapeau de victoire et le combat ne pouvait plus
+se declencher, alors que la position provenait de la sauvegarde manuelle precedente.
+Le snapshot v2 restaure desormais ensemble position, equipe, inventaire, progression
+et drapeaux de combat. Pendant une reconnexion Coop active detectee dans
+`sessionStorage`, la copie de travail reste prioritaire afin de ne pas annuler un
+reglement personnel deja accuse a la room.
 
 ### 5. Moteur complet des evenements 9.7 — partiel
 
@@ -1310,6 +1346,30 @@ couverts dans le moteur de combat. Tests ajoutes : conversion personnelle avec
 talent source inerte, validation reseau bornee et combat de Dresseur Sapereau avec
 `CHEEKPOUCH` jusqu'a la resolution d'un tour.
 
+Premier lot vertical de fidelite du 2026-10-09 : l'audit des equipes de Jean puis
+des trois variantes de Melia montre que toutes leurs fonctions de capacite etaient
+deja supportees sauf `030`, utilisee par Agilite. Le noyau applique maintenant ses
+deux crans de Vitesse, y compris en double via le meme resolveur. Le talent propre
+a Z `FLORACION`, porte par Flabebe, applique aussi le multiplicateur source de 1,5
+aux capacites Plante dans le calculateur commun de degats. `CHEEKPOUCH` n'a aucun
+effet dans l'equipe actuelle de Jean, son Sapereau ne tenant pas de Baie ; son hook
+reste volontairement lie au futur lot generique de consommation des Baies. La room
+continue de recevoir les seules intentions et replique l'etat tactique calcule ;
+aucune ressource personnelle supplementaire n'est exposee. Le rapport moteur
+regenere passe a 24/353 fonctions, 14/255 talents et 17/18 evolutions, soit 74/651
+mecanismes. Le test double d'Agilite a aussi revele puis corrige un ecrasement
+generique des effets ciblant l'utilisateur : l'etat du defenseur factice ne
+remplace plus l'acteur lorsqu'acteur et cible designent le meme slot. Tests
+complets, build et typecheck overworld passent.
+
+Correctif de presentation du 2026-10-09 : pendant un combat de Dresseur, la fin
+de l'envoi adverse retirait trop tot la classe `revealing-opponent`. Comme la scene
+restait encore en mode `intro-playing`, le CSS remasquait alors le Pokemon adverse
+pendant toute l'entree du Pokemon joueur, avant de le faire reapparaitre au premier
+tour. L'envoi adverse conserve maintenant sa classe de revelation jusqu'au
+nettoyage global termine apres les deux entrees. Le chemin sauvage la conservait
+deja correctement ; aucun etat tactique, reseau ou persistant n'est modifie.
+
 La phrase de defaite `_I("...")` de `pbTrainerBattle` est conservee dans
 `request-trainer-battle`, localisee avec le catalogue de la carte puis transmise
 comme `presentation.defeatText` dans le contexte public borne. Elle ne contient ni
@@ -1321,8 +1381,9 @@ recombattable et active son dialogue d'apres-combat.
 
 L'audit local reconnait 516 appels `pbTrainerBattle` sur 522. Le port conserve
 aussi `canLose` : une defaite ne coupe la suite de l'evenement que lorsque la
-source l'interdit. Le drapeau double est conserve mais provoque un arret explicite
-au lieu de lancer a tort un combat simple. Les six appels restants sont les formes
+source l'interdit. Le drapeau double ouvre maintenant le moteur double commun au
+lieu de lancer a tort un combat simple ; une bataille deja double n'accepte pas de
+ralliement supplementaire dans le contrat actuel. Les six appels restants sont les formes
 a arguments par defaut du Doppelganger Majara sur Map263 ; ils restent documentes
 avec les variantes, sans incidence sur les premiers Dresseurs du parcours.
 
@@ -1453,9 +1514,12 @@ avant/apres mouvement, persistence/reconnexion et interpolation. Le porteur a
 juge la recette deux navigateurs acceptable le 2026-10-06 ; `STAB-WORLD-2` est
 clos.
 
-Audit source cible du 2026-10-05 : `engine-support-report.json` confirme 19/19
-interactions de types, mais seulement 23/353 fonctions d'attaque, 13/255 talents,
-aucune famille d'objets complete et 0/18 methodes d'evolution. Les rapports de
+Audit source cible du 2026-10-05, actualise le 2026-10-09 :
+`engine-support-report.json` confirme 19/19 interactions de types, mais seulement
+24/353 fonctions d'attaque et 14/255 talents. Son registre declare maintenant
+17/18 methodes d'evolution supportees ; `Shedinja` reste explicitement non porte
+car il cree un second Pokemon. Aucune famille source d'objets n'est encore declaree
+complete. Le rapport regenere compte 74 mecanismes supportes sur 651. Les rapports de
 cartes sont structurellement complets (507 cartes et 2 613 transferts simples sans
 cible invalide) ; le prochain goulet n'est donc pas une nouvelle extraction des
 maps. `docs/PRODUCT_BACKLOG.md` inventorie desormais les systemes Ruby de Z jusque
@@ -1473,7 +1537,7 @@ Ne pas creer un gros test propre a chaque cinematique. Privilegier :
 - quelques recettes fonctionnelles representatives, dont `EV017` ;
 - audit automatique pour detecter une commande, une cible ou un asset oublie.
 
-Au moment de cette note, la suite complete contient 507 tests et passe avec le build.
+Au moment de cette note, la suite complete contient 520 tests et passe avec le build.
 La recette `test:multiplayer:e2e` passe egalement jusqu'au retour de l'invite dans
 la carte source. Son profil de fixture respecte la limite publique de 12 caracteres
 et l'attente du retour ignore les anciens snapshots `shared` encore en file en

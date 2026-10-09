@@ -1,19 +1,37 @@
 import { describe, expect, it, vi } from "vitest";
 import { SOURCE_WORLD_SAVE_KEY, clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave,
-  parseSourceWorldSave, persistSourceWorldSave } from "../src/source-world-save.js";
+  parseSourceWorldSave, persistSourceWorldSave, sourceEventStateForLaunch } from "../src/source-world-save.js";
+import { createSourceEventState } from "../src/source-event-state.js";
 
 describe("source world save", () => {
   it("creates and parses a versioned map position", () => {
-    const save = createSourceWorldSave(3, 15, 16, "down", 1234);
-    expect(parseSourceWorldSave(save)).toEqual({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
-      direction: "down", movementMode: "walk", savedAt: 1234 });
+    const eventState = createSourceEventState();
+    const save = createSourceWorldSave(3, 15, 16, "down", 1234, "walk", eventState);
+    expect(parseSourceWorldSave(save)).toEqual({ schemaVersion: 2, mapId: 3, x: 15, y: 16,
+      direction: "down", movementMode: "walk", savedAt: 1234, eventState });
+    expect(createSourceWorldSave(3, 15, 16, "down", 1234, "surf", eventState).movementMode).toBe("surf");
+  });
+
+  it("migrates a legacy position-only save without inventing a narrative snapshot", () => {
     expect(parseSourceWorldSave({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
-      direction: "down", savedAt: 1234 }).movementMode).toBe("walk");
-    expect(createSourceWorldSave(3, 15, 16, "down", 1234, "surf").movementMode).toBe("surf");
+      direction: "down", savedAt: 1234 })).toEqual({ schemaVersion: 2, mapId: 3, x: 15, y: 16,
+      direction: "down", movementMode: "walk", savedAt: 1234, eventState: null });
+  });
+
+  it("restores the manual narrative snapshot on a cold launch but preserves a Coop reconnect", () => {
+    const savedState = { ...createSourceEventState(), switches: { "trainer:won": false } };
+    const workingState = { ...createSourceEventState(), switches: { "trainer:won": true } };
+    const save = createSourceWorldSave(3, 15, 16, "down", 1234, "walk", savedState);
+    expect(sourceEventStateForLaunch(workingState, save, false).switches["trainer:won"]).toBe(false);
+    expect(sourceEventStateForLaunch(workingState, save, true).switches["trainer:won"]).toBe(true);
+    expect(sourceEventStateForLaunch(workingState,
+      parseSourceWorldSave({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
+        direction: "down", savedAt: 1234 }), false)).toBe(workingState);
   });
 
   it.each([
-    null, {}, { schemaVersion: 2, mapId: 3, x: 1, y: 1, direction: "down", savedAt: 1 },
+    null, {}, { schemaVersion: 3, mapId: 3, x: 1, y: 1, direction: "down", savedAt: 1 },
+    { schemaVersion: 2, mapId: 3, x: 1, y: 1, direction: "down", savedAt: 1, eventState: null },
     { schemaVersion: 1, mapId: 0, x: 1, y: 1, direction: "down", savedAt: 1 },
     { schemaVersion: 1, mapId: 3, x: -1, y: 1, direction: "down", savedAt: 1 },
     { schemaVersion: 1, mapId: 3, x: 1, y: 1, direction: "diagonal", savedAt: 1 },
@@ -27,7 +45,7 @@ describe("source world save", () => {
     const storage = { getItem: (key: string) => values.get(key) ?? null,
       setItem: (key: string, value: string) => { values.set(key, value); },
       removeItem: vi.fn((key: string) => { values.delete(key); }) };
-    const save = createSourceWorldSave(7, 4, 8, "left", 5678);
+    const save = createSourceWorldSave(7, 4, 8, "left", 5678, "walk", createSourceEventState());
     persistSourceWorldSave(storage, save);
     expect(loadSourceWorldSave(storage)).toEqual(save);
     values.set(SOURCE_WORLD_SAVE_KEY, "not-json");

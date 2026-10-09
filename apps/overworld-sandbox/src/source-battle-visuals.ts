@@ -609,7 +609,9 @@ export class SourceBattleVisuals {
     ], { duration: reduced ? 20 : 760, delay: reduced ? 0 : 260, easing: "cubic-bezier(.2,.8,.2,1)", fill: "forwards" });
     await Promise.all([trainerAnimation.finished.catch(() => undefined), pokemonAnimation.finished.catch(() => undefined)]);
     trainerAnimation.cancel(); pokemonAnimation.cancel(); trainer.hidden = true;
-    stage.classList.remove("opponent-intro", "revealing-opponent");
+    // Keep the opponent revealed while the player performs their own send-out.
+    // The global intro cleanup removes this class once both entrances are done.
+    stage.classList.remove("opponent-intro");
   }
 
   private async playExperience(experience: SourceBattleExperiencePresentation, session: number): Promise<void> {

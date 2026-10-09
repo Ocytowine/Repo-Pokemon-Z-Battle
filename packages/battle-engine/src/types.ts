@@ -15,7 +15,7 @@ export interface BattleMove {
   readonly internalName: string;
   readonly name: string;
   readonly functionCode: "000" | "003" | "005" | "006" | "007" | "00A" | "00C"
-    | "01C" | "01D" | "01F" | "020"
+    | "01C" | "01D" | "01F" | "020" | "030"
     | "042" | "043" | "044" | "045" | "046" | "047"
     | "06F" | "0A5" | "0D8" | "0DD" | "159" | "906";
   readonly power: number;
@@ -30,7 +30,7 @@ export interface BattleMove {
   readonly targetCode?: string;
 }
 
-export type ImplementedBattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
+export type ImplementedBattleAbility = "BIGPECKS" | "BLAZE" | "CHLOROPHYLL" | "FLORACION" | "GUTS" | "HUGEPOWER" | "MAGICGUARD" | "OVERGROW"
   | "PUREPOWER" | "QUICKFEET" | "SHIELDDUST" | "SIMPLE" | "STATIC" | "TORRENT";
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});

@@ -120,7 +120,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         ? attacker.moves[index]! : slot) };
     }
     storeBattler(teams, actor, nextAttacker);
-    storeBattler(teams, target, result.state.battlers[miniTarget]);
+    if (key(target) !== key(actor)) storeBattler(teams, target, result.state.battlers[miniTarget]);
     events.push(...result.events.filter((event) => !["turnStarted", "actionOrdered", "turnEnded", "battleEnded"].includes(event.type)));
     trace.push(...result.trace);
     first = false;

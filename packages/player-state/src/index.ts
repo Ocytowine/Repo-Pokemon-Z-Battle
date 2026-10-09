@@ -980,7 +980,7 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
+const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "030", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
   if (value === null) return null;
