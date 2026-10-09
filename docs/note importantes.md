@@ -63,6 +63,8 @@ corepack pnpm test
 corepack pnpm typecheck
 corepack pnpm build
 
+corepack pnpm prepare:local --source "C:\Users\tbouillou\Documents\GitHub\Pokémon Z V2.12 - Français" --output ".pokemon-z\data"
+
 Le solo :
 
 corepack pnpm sandbox:overworld
