@@ -1,4 +1,4 @@
-import { resolveSelectedMoves } from "./resolve-turn.js";
+import { resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import type {
@@ -25,6 +25,16 @@ export function createDoubleTeamBattleState(members: Readonly<Record<BattleSide,
       members: members[side].map((member) => ({ ...member, stages: { ...member.stages },
         moves: member.moves.map((slot) => ({ ...slot, move: { ...slot.move } })) })) }];
   })) as unknown as Record<BattleSide, BattleTeam>;
+  for (const side of SIDES) for (const index of activeTeamIndices(teams[side])) {
+    if (teams[side].members[index]!.ability !== "INTIMIDATE") continue;
+    const other = otherSide(side);
+    const opposing = new Set(activeTeamIndices(teams[other]));
+    teams[other] = { ...teams[other], members: teams[other].members.map((member, memberIndex) => {
+      if (!opposing.has(memberIndex)) return member;
+      const delta = member.ability === "SIMPLE" ? -2 : -1;
+      return { ...member, stages: { ...member.stages, attack: Math.max(-6, member.stages.attack + delta) } };
+    }) };
+  }
   return { turn: 1, status: "active", winner: null, format: "double", teams,
     replacementRequired: [], slotReplacements: [] };
 }
@@ -47,6 +57,7 @@ function cloneTeam(team: BattleTeam): BattleTeam {
   return { ...team, activeIndex: indices[0]!, activeIndices: indices,
     members: team.members.map((member) => ({ ...member, stages: { ...member.stages },
       majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
+      ...(member.volatile === undefined ? {} : { volatile: { ...member.volatile } }),
       moves: member.moves.map((entry) => ({ ...entry, move: { ...entry.move } })) })) };
 }
 
@@ -99,7 +110,9 @@ function storeBattler(teams: Record<BattleSide, BattleTeam>, position: BattlePos
 
 function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>, actor: BattlePosition,
   action: Extract<TeamBattleAction, { kind: "move" }>, targets: readonly BattlePosition[], rng: RandomSource,
-): { readonly events: readonly BattleEvent[]; readonly trace: DoubleTurnResult["trace"] } {
+  submitted: readonly PositionedTeamBattleAction[], effects: TeamBattleState["effects"],
+): { readonly events: readonly BattleEvent[]; readonly trace: DoubleTurnResult["trace"];
+  readonly effects: TeamBattleState["effects"] } {
   const events: BattleEvent[] = [];
   const trace: DoubleTurnResult["trace"][number][] = [];
   let first = true;
@@ -110,10 +123,16 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     const miniSide = actor.side;
     const miniTarget = otherSide(miniSide);
     const mini: BattleState = { turn: state.turn, status: "active", winner: null,
-      battlers: { [miniSide]: attacker, [miniTarget]: defender } as Readonly<Record<BattleSide, BattlerState>> };
+      battlers: { [miniSide]: attacker, [miniTarget]: defender } as Readonly<Record<BattleSide, BattlerState>>,
+      ...(effects === undefined ? {} : { effects }) };
+    const targetEntry = submitted.find((entry) => key(entry.actor) === key(target));
+    const targetAction = targetEntry?.action.kind === "move" ? targetEntry.action : undefined;
     const result = resolveSelectedMoves(mini, { [miniSide]: action }, rng,
       { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1,
-        attackerHeldItemAfterDamage: targetIndex === targets.length - 1 });
+        attackerHeldItemAfterDamage: targetIndex === targets.length - 1,
+        switchingTarget: targetEntry?.action.kind === "switch" ? target.side : null,
+        ...(targetAction === undefined ? {} : { targetPlannedAction: targetAction }) });
+    effects = result.state.effects;
     let nextAttacker = result.state.battlers[miniSide];
     if (!first) {
       nextAttacker = { ...nextAttacker, moves: nextAttacker.moves.map((slot, index) => index === action.moveIndex
@@ -125,22 +144,54 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     trace.push(...result.trace);
     first = false;
   }
-  return { events, trace };
+  return { events, trace, effects };
 }
 
-function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, teamIndex: number): DoubleBattleEvent {
+function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, teamIndex: number): readonly DoubleBattleEvent[] {
   const team = teams[actor.side];
   const indices = [...activeTeamIndices(team)];
   const fromIndex = indices[actor.slot];
   if (fromIndex === undefined || teamIndex < 0 || teamIndex >= team.members.length
     || indices.includes(teamIndex) || team.members[teamIndex]!.hp <= 0) throw new Error("Remplacement double invalide.");
   indices[actor.slot] = teamIndex;
+  let healed = 0;
+  const members = team.members.map((member, index) => {
+    if (index !== fromIndex) return member;
+    const { volatile: _volatile, ...persistent } = member;
+    const hp = member.ability === "REGENERATOR" && member.hp > 0
+      ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
+    healed = hp - member.hp;
+    return { ...persistent, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
+      speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: member.majorStatus?.kind === "poison"
+      && member.majorStatus.toxicCounter !== null ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
+  });
   teams[actor.side] = { ...team, activeIndex: indices[0]!, activeIndices: indices };
-  return { type: "pokemonSwitched", side: actor.side, fromIndex, toIndex: teamIndex,
-    from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason: "voluntary" };
+  teams[actor.side] = { ...teams[actor.side], members };
+  const output: DoubleBattleEvent[] = [];
+  if (healed > 0) output.push({ type: "abilityActivated", side: actor.side,
+    ability: "REGENERATOR", effect: "heal-on-switch" }, { type: "hpRestored", side: actor.side,
+    source: "move", move: "REGENERATOR", amount: healed, hp: team.members[fromIndex]!.hp + healed });
+  output.push({ type: "pokemonSwitched", side: actor.side, fromIndex, toIndex: teamIndex,
+    from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason: "voluntary" });
+  const entering = teams[actor.side].members[teamIndex]!;
+  if (entering.ability === "INTIMIDATE") {
+    const other = otherSide(actor.side);
+    const opposing = new Set(activeTeamIndices(teams[other]));
+    teams[other] = { ...teams[other], members: teams[other].members.map((member, index) => {
+      if (!opposing.has(index)) return member;
+      const delta = member.ability === "SIMPLE" ? -2 : -1;
+      const stage = Math.max(-6, member.stages.attack + delta);
+      if (stage !== member.stages.attack) output.push({ type: "statStageChanged", source: actor.side,
+        target: other, stat: "attack", delta: stage - member.stages.attack, stage });
+      return { ...member, stages: { ...member.stages, attack: stage } };
+    }) };
+    output.unshift({ type: "abilityActivated", side: actor.side, ability: "INTIMIDATE", effect: "lower-attack" });
+  }
+  return output;
 }
 
-function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>): DoubleBattleEvent[] {
+function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>,
+  rng: RandomSource, trace: DoubleTurnResult["trace"][number][]): DoubleBattleEvent[] {
   const output: DoubleBattleEvent[] = [];
   for (const position of activeBattlePositions({ ...state, teams })) {
     const index = activeTeamIndices(teams[position.side])[position.slot]!;
@@ -162,19 +213,14 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       inner.push({ type: "statusContinued", side: position.side, status: status.kind });
     }
     if (battler.hp > 0) {
-      const heals = battler.heldItem === "LEFTOVERS"
-        || battler.heldItem === "BLACKSLUDGE" && battler.types.includes("POISON");
-      if (heals && battler.hp < battler.stats.maxHp) {
-        const amount = Math.min(battler.stats.maxHp - battler.hp, Math.max(1, Math.floor(battler.stats.maxHp / 16)));
-        battler = { ...battler, hp: battler.hp + amount };
-        inner.push({ type: "itemActivated", side: position.side,
-          item: battler.heldItem as "LEFTOVERS" | "BLACKSLUDGE", effect: "heal", amount, hp: battler.hp });
-      } else if (battler.heldItem === "BLACKSLUDGE" && battler.ability !== "MAGICGUARD") {
-        const amount = Math.min(battler.hp, Math.max(1, Math.floor(battler.stats.maxHp / 8)));
-        battler = { ...battler, hp: battler.hp - amount };
-        inner.push({ type: "itemActivated", side: position.side, item: "BLACKSLUDGE",
-          effect: "damage", amount, hp: battler.hp });
-      }
+      const volatile = resolveBattleVolatileEndOfTurn(battler, position.side);
+      battler = volatile.battler;
+      inner.push(...volatile.events);
+    }
+    if (battler.hp > 0) {
+      const passive = resolveBattlePassiveEndOfTurn(battler, position.side, rng, trace);
+      battler = passive.battler;
+      inner.push(...passive.events);
     }
     if (battler.hp === 0) inner.push({ type: "fainted", side: position.side });
     storeBattler(teams, position, battler);
@@ -190,15 +236,23 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   if ((state.slotReplacements?.length ?? 0) > 0) throw new Error("Les remplacements doubles doivent etre resolus avant le tour.");
   const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
   const required = activeBattlePositions(state).filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
-  const byActor = new Map(submitted.map((entry) => [key(entry.actor), entry]));
-  if (byActor.size !== submitted.length || required.some((position) => !byActor.has(key(position)))) {
+  const effectiveSubmitted = submitted.map((entry): PositionedTeamBattleAction => {
+    if (entry.action.kind !== "move") return entry;
+    const battler = battlerAtPosition(state, entry.actor);
+    const encore = battler?.volatile;
+    if (battler === undefined || !encore || encore.encoreTurns <= 0 || encore.encoreMove === null) return entry;
+    const moveIndex = battler.moves.findIndex((slot) => slot.move.internalName === encore.encoreMove && slot.pp > 0);
+    return moveIndex < 0 ? entry : { ...entry, action: { ...entry.action, moveIndex } };
+  });
+  const byActor = new Map(effectiveSubmitted.map((entry) => [key(entry.actor), entry]));
+  if (byActor.size !== effectiveSubmitted.length || required.some((position) => !byActor.has(key(position)))) {
     throw new Error("Chaque Pokemon actif doit choisir exactement une action.");
   }
-  const switchEntries = submitted.filter((entry) => entry.action.kind === "switch");
-  const itemEntries = submitted.filter((entry) => entry.action.kind === "item");
-  const captureEntries = submitted.filter((entry) => entry.action.kind === "capture");
+  const switchEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "switch");
+  const itemEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "item");
+  const captureEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "capture");
   const events: DoubleBattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
-  for (const entry of switchEntries) events.push(switchAt(teams, entry.actor, (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex));
+  for (const entry of switchEntries) events.push(...switchAt(teams, entry.actor, (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex));
   for (const entry of itemEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "item" }>;
     const team = teams[entry.actor.side];
@@ -211,7 +265,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     events.push({ type: "trainerItemUsed", side: entry.actor.side, itemId: action.itemId,
       targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
   }
-  const moves = submitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } => entry.action.kind === "move")
+  const moves = effectiveSubmitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } => entry.action.kind === "move")
     .map((entry) => { const battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
@@ -221,10 +275,11 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     ...switchEntries.map((entry) => ({ side: entry.actor.side, kind: "switch" as const })),
     ...itemEntries.map((entry) => ({ side: entry.actor.side, kind: "item" as const })),
     ...captureEntries.map((entry) => ({ side: entry.actor.side, kind: "capture" as const })),
-    ...submitted.filter((entry) => entry.action.kind === "wait").map((entry) => ({ side: entry.actor.side, kind: "wait" as const })),
+    ...effectiveSubmitted.filter((entry) => entry.action.kind === "wait").map((entry) => ({ side: entry.actor.side, kind: "wait" as const })),
     ...moves.map((entry) => ({ side: entry.actor.side, kind: "move" as const })),
   ] });
   const trace: DoubleTurnResult["trace"][number][] = [];
+  let effects = state.effects;
   for (const entry of captureEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "capture" }>;
     const enemies = activeTeamIndices(teams[otherSide(entry.actor.side)]).map((_, slot) =>
@@ -254,11 +309,12 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const liveState: TeamBattleState = { ...state, teams };
     if ((battlerAtPosition(liveState, entry.actor)?.hp ?? 0) <= 0) continue;
     const targets = moveTargets(liveState, entry.actor, entry.action, rng);
-    const result = executeMove(state, teams, entry.actor, entry.action, targets, rng);
+    const result = executeMove(state, teams, entry.actor, entry.action, targets, rng, effectiveSubmitted, effects);
+    effects = result.effects;
     events.push({ type: "positionedActionResolved", actor: entry.actor, targets, events: result.events });
     trace.push(...result.trace);
   }
-  events.push(...applyDoubleEndOfTurn(state, teams));
+  events.push(...applyDoubleEndOfTurn(state, teams, rng, trace));
   const slotReplacements: BattlePosition[] = [];
   let winner: BattleSide | null = null;
   for (const side of SIDES) {
@@ -274,9 +330,15 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   }
   if (winner !== null) events.push({ type: "battleEnded", winner });
   events.push({ type: "turnEnded", turn: state.turn });
+  if (effects !== undefined) effects = { sides: {
+    player: { reflectTurns: Math.max(0, effects.sides.player.reflectTurns - 1),
+      luckyChantTurns: Math.max(0, effects.sides.player.luckyChantTurns - 1) },
+    opponent: { reflectTurns: Math.max(0, effects.sides.opponent.reflectTurns - 1),
+      luckyChantTurns: Math.max(0, effects.sides.opponent.luckyChantTurns - 1) },
+  }, waterSportTurns: Math.max(0, effects.waterSportTurns - 1) };
   return { state: { ...state, turn: state.turn + 1, teams, winner,
     status: winner === null ? "active" : "finished", replacementRequired: [],
-    slotReplacements: winner === null ? slotReplacements : [] }, events, trace };
+    slotReplacements: winner === null ? slotReplacements : [], ...(effects === undefined ? {} : { effects }) }, events, trace };
 }
 
 export function replaceFaintedDoublePokemon(state: TeamBattleState, position: BattlePosition,

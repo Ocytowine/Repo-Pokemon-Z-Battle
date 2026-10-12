@@ -17,7 +17,8 @@ import { POKEMON_PRESETS, findPreset, type PokemonPreset } from "./presets.js";
 export const SCENARIO_VERSION = 2 as const;
 
 export const SANDBOX_ABILITIES = ["GUTS", "HUGEPOWER", "MAGICGUARD", "PUREPOWER", "QUICKFEET"] as const satisfies readonly BattleAbility[];
-export const SANDBOX_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "LEFTOVERS", "MUSCLEBAND", "SCOPELENS", "WISEGLASSES"] as const satisfies readonly HeldItem[];
+export const SANDBOX_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "BUGGEM", "EVIOLITE", "FIGHTINGGEM",
+  "LEFTOVERS", "MUSCLEBAND", "ORANBERRY", "PAYAPABERRY", "SCOPELENS", "WISEGLASSES"] as const satisfies readonly HeldItem[];
 
 export interface ScenarioTurn {
   readonly playerMove: number;
@@ -177,7 +178,7 @@ export function parseScenario(value: unknown): BattleScenario {
   };
   const item = (candidate: unknown, label: string): HeldItem | null => {
     if (candidate === undefined || candidate === null) return null;
-    if (typeof candidate !== "string" || !SANDBOX_ITEMS.includes(candidate as HeldItem)) throw new Error(`${label} inconnu.`);
+    if (typeof candidate !== "string" || !(SANDBOX_ITEMS as readonly string[]).includes(candidate)) throw new Error(`${label} inconnu.`);
     return candidate as HeldItem;
   };
   return {

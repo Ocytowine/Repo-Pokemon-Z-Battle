@@ -369,6 +369,22 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   simple et le double ; la room ne recoit aucune nouvelle intention. Un test double
   protege aussi les effets ciblant l'utilisateur, dont l'ancien etat etait
   auparavant reecrit apres leur resolution.
+- Deuxieme lot vertical du 2026-10-12 : les 21 especes terrestres uniques de
+  Map007/009/014/016 et l'equipe de Vin sont constructibles sans filtrer leurs
+  capacites. Les fonctions `00F`, `013`, `023`, `027`, `028`, `077`, `09A`,
+  `0A7`, `0B9`, `0BC`, `0CF`, `10D` et `110` sont dans le noyau autoritaire.
+  Leurs effets temporaires suivent le snapshot et le switch en solo/double/Coop.
+  Voir `docs/COMBAT_VERTICAL_AUDIT.md`. Prochaine frontiere : Map017 et Forteresse,
+  avec les objets tenus source. Peche et Surf restent hors scope tant que leurs
+  declencheurs overworld ne sont pas portes.
+- Troisieme lot vertical du 2026-10-12 : les six especes terrestres de Map017 et
+  Alexandre/Micael/Maria versions 0/1 puis Canola version 0 sont projetes sans
+  filtrage. Vingt-et-une fonctions supplementaires, cinq objets tenus consommables,
+  les effets de camp/terrain et les talents requis utilisent le noyau autoritaire
+  commun en simple et double. Les 74 emplacements de capacites de la frontiere ont
+  ete resolus sur les donnees 2.12 FR. Restent P0 dans ce lot : l'objet de Sac de
+  Canola pilote par l'IA, l'interception exacte de Poursuite, les impacts visuels
+  par frappe multiple et la probabilite des protections consecutives.
 
 ### SOLO-ITEMS-1 — Utilisation des objets
 

@@ -11,7 +11,15 @@ export function chooseSourceBattleAction(state: TeamBattleState, side: BattleSid
     throw new Error("L'IA ne peut pas choisir d'action dans cet état de combat.");
   }
   const active = activeBattlers(state)[side];
-  const moves = active.moves.map((slot, moveIndex) => ({ slot, moveIndex })).filter(({ slot }) => slot.pp > 0);
+  const disabledMove = active.volatile?.disableTurns && active.volatile.disableTurns > 0
+    ? active.volatile.disabledMove : null;
+  const encoreMove = active.volatile?.encoreTurns && active.volatile.encoreTurns > 0
+    ? active.volatile.encoreMove : null;
+  const moves = active.moves.map((slot, moveIndex) => ({ slot, moveIndex }))
+    .filter(({ slot }) => slot.pp > 0 && slot.move.internalName !== disabledMove
+      && (encoreMove === null || slot.move.internalName === encoreMove)
+      && !(active.volatile?.tauntTurns && active.volatile.tauntTurns > 0 && slot.move.category === "Status")
+      && !(slot.move.functionCode === "012" && (active.volatile?.activeTurns ?? 0) > 0));
   if (moves.length === 0) throw new Error("Le Pokémon contrôlé par l'IA n'a plus de capacité disponible.");
   const selected = moves[rng.nextInt(moves.length)];
   if (selected === undefined) throw new Error("Le Pokémon contrôlé par l'IA n'a plus de capacité disponible.");

@@ -1,4 +1,4 @@
-import { MINIMAL_MOVE_CATALOG, createDoubleTeamBattleState, resolveDoubleTeamTurn,
+import { MINIMAL_MOVE_CATALOG, activeBattlePositions, createDoubleTeamBattleState, resolveDoubleTeamTurn,
   type BattleMove, type BattleSide, type BattlerState, type RandomSource } from "../src/index.js";
 import { describe, expect, it } from "vitest";
 
@@ -72,6 +72,43 @@ describe("double team battles", () => {
     expect(result.state.teams.player.members[1]?.stages.speed).toBe(0);
   });
 
+  it("keeps early-route volatile and compound stat effects scoped to their double-battle slot", () => {
+    const workUp: BattleMove = { id: 2, internalName: "WORKUP", name: "Rengorgement", functionCode: "027",
+      power: 0, type: "NORMAL", category: "Status", accuracy: 0, pp: 30, priority: 0, effectChance: 0,
+      targetCode: "10" };
+    const boosted = { ...pokemon("p1", "player", 100), moves: [{ move: workUp, pp: workUp.pp }] };
+    const state = createDoubleTeamBattleState({
+      player: [boosted, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+
+    expect(result.state.teams.player.members[0]?.stages).toMatchObject({ attack: 1, specialAttack: 1 });
+    expect(result.state.teams.player.members[1]?.stages).toMatchObject({ attack: 0, specialAttack: 0 });
+  });
+
+  it("ticks replicated binding effects once per double-battle turn", () => {
+    const bound = { ...pokemon("p1", "player", 100), volatile: { confusionTurns: 0, flinched: false,
+      focusEnergy: 0, identified: false, disabledMove: null, disableTurns: 0, encoreMove: null,
+      encoreTurns: 0, bindingMove: "WRAP", bindingTurns: 5, cursed: false, lastMoveUsed: null } };
+    const state = createDoubleTeamBattleState({
+      player: [bound, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, activeBattlePositions(state).map((actor) =>
+      ({ actor, action: { kind: "wait" as const } })), rng);
+
+    expect(result.state.teams.player.members[0]).toMatchObject({ hp: 113,
+      volatile: { bindingMove: "WRAP", bindingTurns: 4 } });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, events: [expect.objectContaining({ type: "bindingDamage", amount: 7 })] }));
+  });
+
   it("lets one active slot spend its action healing an owned reserve", () => {
     const reserve = { ...pokemon("reserve", "player", 60), hp: 10 };
     const state = createDoubleTeamBattleState({
@@ -88,5 +125,21 @@ describe("double team battles", () => {
     expect(result.events).toContainEqual(expect.objectContaining({ type: "trainerItemUsed", side: "player",
       itemId: "POTION", targetIndex: 2, target: "reserve", hpRestored: 20,
       statusCured: null, revived: false }));
+  });
+
+  it("reuses the held-Berry passive hook for every active double-battle slot", () => {
+    const berryHolder = { ...pokemon("p1", "player", 100), hp: 40,
+      heldItem: "ORANBERRY" as const, ability: "CHEEKPOUCH" as const };
+    const state = createDoubleTeamBattleState({
+      player: [berryHolder, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, activeBattlePositions(state).map((actor) =>
+      ({ actor, action: { kind: "wait" as const } })), rng);
+    expect(result.state.teams.player.members[0]).toMatchObject({ heldItem: null, hp: 90 });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, events: expect.arrayContaining([
+        expect.objectContaining({ type: "heldItemConsumed", item: "ORANBERRY" }),
+      ]) }));
   });
 });

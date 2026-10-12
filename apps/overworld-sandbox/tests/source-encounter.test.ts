@@ -20,7 +20,7 @@ const catalog: PlayerCreationCatalog = {
       levelUpMoves: [{ level: 1, move: "TACKLE" }] },
     { internalName: "BIDOOF", name: "Keunotor", types: ["NORMAL"],
       baseStats: { hp: 59, attack: 45, defense: 40, speed: 31, specialAttack: 35, specialDefense: 40 },
-      abilities: ["SIMPLE"], growthRate: "Medium", baseExperience: 50, genderRate: "Female50Percent", happiness: 70,
+      abilities: ["SIMPLE", "MOODY"], growthRate: "Medium", baseExperience: 50, genderRate: "Female50Percent", happiness: 70,
       levelUpMoves: [{ level: 1, move: "TACKLE" }] },
     { internalName: "BUNNELBY", name: "Sapereau", types: ["NORMAL"],
       baseStats: { hp: 38, attack: 36, defense: 38, speed: 57, specialAttack: 32, specialDefense: 36 },
@@ -151,6 +151,15 @@ describe("source encounter bridge", () => {
       pokemon: [{ species: "BIDOOF", level: 3, moves: ["TACKLE", null, null, null] }] }, catalog);
     expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 3,
       moves: [{ move: { internalName: "TACKLE" }, pp: 35 }] });
+  });
+
+  it("preserves the source trainer held item and forced ability slot", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "RIVAL", name: "Crisanto", version: 1,
+      pokemon: [{ species: "BIDOOF", level: 3, heldItem: "ORANBERRY", abilityIndex: 1,
+        moves: ["TACKLE", null, null, null] }] }, catalog);
+    expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", heldItem: "ORANBERRY",
+      ability: "MOODY" });
   });
 
   it("starts a trainer battle while preserving a source ability whose effect is not implemented yet", () => {

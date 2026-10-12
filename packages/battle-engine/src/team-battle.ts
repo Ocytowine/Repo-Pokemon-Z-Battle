@@ -41,6 +41,7 @@ function cloneBattler(battler: BattlerState): BattlerState {
     stats: { ...battler.stats },
     stages: { ...battler.stages },
     majorStatus: battler.majorStatus === null ? null : { ...battler.majorStatus },
+    ...(battler.volatile === undefined ? {} : { volatile: { ...battler.volatile } }),
     moves: battler.moves.map((slot) => ({ ...slot, move: { ...slot.move } })),
   };
 }
@@ -115,26 +116,48 @@ function switchPokemon(
   side: BattleSide,
   toIndex: number,
   reason: "voluntary" | "replacement",
-): TeamBattleEvent {
+): readonly TeamBattleEvent[] {
   const team = teams[side];
   validateSwitch(team, toIndex, side);
   const fromIndex = team.activeIndex;
   const from = activePokemon(team);
   const to = team.members[toIndex];
   if (to === undefined) throw new RangeError(`Invalid switch index for ${side}.`);
-  const members = team.members.map((member, index) =>
-    index === fromIndex
-      ? {
-          ...member,
+  let healed = 0;
+  const members = team.members.map((member, index) => {
+    if (index !== fromIndex) return member;
+    const { volatile: _volatile, ...persistent } = member;
+    const hp = member.ability === "REGENERATOR" && member.hp > 0
+      ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
+    healed = hp - member.hp;
+    return {
+          ...persistent,
+          hp,
           stages: { ...ZERO_STAGES },
           majorStatus: member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
             ? { kind: "poison" as const, toxicCounter: 0 }
             : member.majorStatus,
-        }
-      : member,
-  );
+        };
+  });
   teams[side] = { activeIndex: toIndex, members };
-  return { type: "pokemonSwitched", side, fromIndex, toIndex, from: from.id, to: to.id, reason };
+  const events: TeamBattleEvent[] = [];
+  if (healed > 0) {
+    events.push({ type: "abilityActivated", side, ability: "REGENERATOR", effect: "heal-on-switch" },
+      { type: "hpRestored", side, source: "move", move: "REGENERATOR", amount: healed, hp: from.hp + healed });
+  }
+  events.push({ type: "pokemonSwitched", side, fromIndex, toIndex, from: from.id, to: to.id, reason });
+  if (to.ability === "INTIMIDATE") {
+    const other = opponentOf(side);
+    const opponent = activePokemon(teams[other]);
+    const delta = opponent.ability === "SIMPLE" ? -2 : -1;
+    const stage = Math.max(-6, opponent.stages.attack + delta);
+    teams[other] = { ...teams[other], members: teams[other].members.map((member, index) => index === teams[other].activeIndex
+      ? { ...member, stages: { ...member.stages, attack: stage } } : member) };
+    events.push({ type: "abilityActivated", side, ability: "INTIMIDATE", effect: "lower-attack" });
+    if (stage !== opponent.stages.attack) events.push({ type: "statStageChanged", source: side, target: other,
+      stat: "attack", delta: stage - opponent.stages.attack, stage });
+  }
+  return events;
 }
 
 function duelState(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>): BattleState {
@@ -143,6 +166,7 @@ function duelState(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>
     status: "active",
     winner: null,
     battlers: { player: activePokemon(teams.player), opponent: activePokemon(teams.opponent) },
+    ...(state.effects === undefined ? {} : { effects: state.effects }),
   };
 }
 
@@ -169,7 +193,7 @@ export function createTeamBattleState(
   members: Readonly<Record<BattleSide, readonly BattlerState[]>>,
   activeIndices: Readonly<Partial<Record<BattleSide, number>>> = {},
 ): TeamBattleState {
-  const state: TeamBattleState = {
+  let state: TeamBattleState = {
     turn: 1,
     status: "active",
     winner: null,
@@ -179,6 +203,16 @@ export function createTeamBattleState(
       opponent: { activeIndex: activeIndices.opponent ?? 0, members: members.opponent.map(cloneBattler) },
     },
   };
+  for (const side of SIDES) {
+    if (activePokemon(state.teams[side]).ability !== "INTIMIDATE") continue;
+    const other = opponentOf(side);
+    const team = state.teams[other];
+    const target = activePokemon(team);
+    const delta = target.ability === "SIMPLE" ? -2 : -1;
+    state = { ...state, teams: { ...state.teams, [other]: { ...team,
+      members: team.members.map((member, index) => index === team.activeIndex
+        ? { ...member, stages: { ...member.stages, attack: Math.max(-6, member.stages.attack + delta) } } : member) } } };
+  }
   validateState(state);
   return state;
 }
@@ -207,7 +241,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   for (const side of switchOrder) {
     const action = actions[side];
     if (action.kind !== "switch") continue;
-    switchEvents.push(switchPokemon(teams, side, action.teamIndex, "voluntary"));
+    switchEvents.push(...switchPokemon(teams, side, action.teamIndex, "voluntary"));
   }
   for (const side of SIDES) {
     const action = actions[side];
@@ -250,7 +284,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     }
   }
 
-  const result = resolveSelectedMoves(duelState(state, teams), moveActions, rng);
+  const result = resolveSelectedMoves(duelState(state, teams), moveActions, rng,
+    { switchingTarget: switchOrder[0] ?? null });
   storeActiveBattlers(teams, result.state);
   const moveEvents: BattleEvent[] = withoutTurnEnvelope(result.events);
   const trace: TeamTurnResult["trace"] = result.trace;
@@ -292,6 +327,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
       winner,
       teams,
       replacementRequired: winner === null ? replacementRequired : [],
+      ...(result.state.effects === undefined ? {} : { effects: result.state.effects }),
     },
     events,
     trace,
@@ -314,7 +350,7 @@ export function replaceFaintedPokemon(
   for (const side of state.replacementRequired) {
     const teamIndex = replacements[side];
     if (teamIndex === undefined) throw new Error(`Missing replacement for ${side}.`);
-    events.push(switchPokemon(teams, side, teamIndex, "replacement"));
+    events.push(...switchPokemon(teams, side, teamIndex, "replacement"));
   }
   return {
     state: { ...state, teams, replacementRequired: [] },

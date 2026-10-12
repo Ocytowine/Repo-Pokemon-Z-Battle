@@ -17,7 +17,8 @@ export interface SourceTrainerDefinition {
   readonly name: string;
   readonly version: number;
   readonly pokemon: readonly { readonly species: string; readonly level: number;
-    readonly moves: readonly (string | null)[] }[];
+    readonly heldItem?: string | null; readonly moves: readonly (string | null)[];
+    readonly abilityIndex?: number | null }[];
 }
 
 function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog) {
@@ -45,6 +46,18 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
   trainer.pokemon.forEach((member, index) => {
     let pokemon = createPersistentPokemon(`trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${index}`,
       member.species, member.level, catalog);
+    const species = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
+    if (species === undefined) throw new Error(`Espèce de Dresseur absente du catalogue : ${member.species}.`);
+    const abilityIndex = member.abilityIndex ?? null;
+    const ability = abilityIndex === null
+      ? pokemon.ability
+      : abilityIndex < species.abilities.length
+        ? species.abilities[abilityIndex] ?? null
+        : species.hiddenAbilities?.[abilityIndex - species.abilities.length] ?? null;
+    if (abilityIndex !== null && ability === null) {
+      throw new Error(`Index de talent invalide pour ${member.species} : ${abilityIndex}.`);
+    }
+    pokemon = { ...pokemon, ability, heldItem: member.heldItem ?? null };
     const explicitMoves = member.moves.filter((move): move is string => move !== null && move !== "");
     if (explicitMoves.length > 0) {
       pokemon = { ...pokemon, moves: explicitMoves.map((internalName) => {

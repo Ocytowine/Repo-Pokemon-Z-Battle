@@ -284,6 +284,9 @@ function describeEvent(event: TeamBattleEvent): string {
     case "moveUsed": return `${event.side} utilise ${moveDisplayName(event.move)}`;
     case "ppChanged": return `${moveDisplayName(event.move)} : ${event.pp} PP restants`;
     case "moveMissed": return `${moveDisplayName(event.move)} échoue`;
+    case "moveFailed": return `${moveDisplayName(event.move)} échoue (${event.reason})`;
+    case "ppReduced": return `${event.move} perd ${event.amount} PP · ${event.pp} PP`;
+    case "battleEffectChanged": return `${event.effect} · ${event.turns} tour(s) restant(s)`;
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
     case "hpRestored": return `${event.side} récupère ${event.amount} PV avec ${moveDisplayName(event.move)} · ${event.hp} PV`;
     case "abilityActivated": return `${event.side} active ${event.ability} (${event.effect})`;
@@ -292,7 +295,13 @@ function describeEvent(event: TeamBattleEvent): string {
     case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;
     case "statusCured": return `${event.side} est libéré de : ${statusName(event.status)}`;
     case "statusDamage": return `${event.side} perd ${event.amount} PV à cause de ${statusName(event.status)} · ${event.hp} PV`;
+    case "volatileApplied": return `${event.target} subit ${event.effect}${event.move === null ? "" : ` (${event.move})`}`;
+    case "volatileEnded": return `${event.side} est libéré de ${event.effect}`;
+    case "confusionDamage": return `${event.side} se blesse dans sa confusion · ${event.amount} dégâts · ${event.hp} PV`;
+    case "bindingDamage": return `${event.side} subit ${event.move} · ${event.amount} dégâts · ${event.hp} PV`;
+    case "curseDamage": return `${event.side} subit la malédiction · ${event.amount} dégâts · ${event.hp} PV`;
     case "itemActivated": return `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
+    case "heldItemConsumed": return `${event.side} consomme ${event.item} (${event.effect})`;
     case "statStageChanged": return `${event.target} · ${event.stat} ${event.delta > 0 ? "+" : ""}${event.delta} · niveau ${event.stage}`;
     case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;
     case "fainted": return `${event.side} est K.O.`;
@@ -523,6 +532,10 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
         sleep: "Le Pokémon dort profondément.",
         paralysis: "Le Pokémon est paralysé et ne peut pas agir !",
         "item-blocked": "La Veste de Combat empêche les capacités de statut.",
+        flinch: "Le Pokémon a peur et ne peut pas agir !",
+        confusion: "Le Pokémon se blesse dans sa confusion !",
+        disabled: "Cette capacité est neutralisée.",
+        taunted: "Provoc empêche cette capacité de statut.",
       } as const;
       presenter.message(skipped[event.reason]);
       await presenter.pause(380);

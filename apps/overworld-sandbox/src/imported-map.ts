@@ -148,7 +148,9 @@ export interface ImportedEncounterTable {
 export interface ImportedTrainerPokemon {
   readonly species: string;
   readonly level: number;
+  readonly heldItem: string | null;
   readonly moves: readonly (string | null)[];
+  readonly abilityIndex: number | null;
 }
 
 export interface ImportedTrainer {
@@ -269,10 +271,15 @@ export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[
     const pokemon = entry.pokemon.map((member) => {
       if (!isRecord(member) || typeof member.species !== "string" || !Number.isInteger(member.level)
         || (member.level as number) < 1 || !Array.isArray(member.moves)
-        || !member.moves.every((move) => move === null || typeof move === "string")) {
+        || !member.moves.every((move) => move === null || typeof move === "string")
+        || (member.heldItem !== null && typeof member.heldItem !== "string")
+        || (member.abilityIndex !== null && (!Number.isInteger(member.abilityIndex)
+          || (member.abilityIndex as number) < 0 || (member.abilityIndex as number) > 5))) {
         throw new Error("Une équipe de Dresseur est invalide.");
       }
-      return { species: member.species, level: member.level as number, moves: member.moves as (string | null)[] };
+      return { species: member.species, level: member.level as number,
+        heldItem: member.heldItem as string | null, moves: member.moves as (string | null)[],
+        abilityIndex: member.abilityIndex as number | null };
     });
     if (pokemon.length < 1 || pokemon.length > 6) throw new Error("Une équipe de Dresseur doit contenir entre un et six Pokémon.");
     return { trainerType: entry.trainerType, name: entry.name, version: entry.version as number, pokemon };

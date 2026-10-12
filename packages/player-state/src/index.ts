@@ -154,7 +154,8 @@ export interface PlayerPokemonCollectionState {
 export interface PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types">
     & { readonly captureRate?: number; readonly weight?: number;
-      readonly baseStats?: Pick<PokemonDefinition["baseStats"], "speed"> })[];
+      readonly baseStats?: Pick<PokemonDefinition["baseStats"], "speed">;
+      readonly evolutions?: PokemonDefinition["evolutions"] })[];
   readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
     & { readonly flags?: string; readonly targetCode?: string })[];
 }
@@ -162,7 +163,8 @@ export interface PlayerBattleCatalog {
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
     & { readonly id?: number; readonly captureRate?: number; readonly weight?: number;
-      readonly evolutions?: PokemonDefinition["evolutions"] })[];
+      readonly evolutions?: PokemonDefinition["evolutions"];
+      readonly hiddenAbilities?: PokemonDefinition["hiddenAbilities"] })[];
 }
 
 /** Runtime catalog required by the detailed Pokemon summary; battle-only callers may keep the smaller contracts above. */
@@ -980,7 +982,9 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020", "030", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
+const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "009", "00A", "00C", "00F", "012", "013",
+  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "049", "04B", "04D",
+  "06F", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0C0", "0CF", "0D8", "0DD", "0E8", "0F4", "10D", "10E", "110", "116", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
   if (value === null) return null;
@@ -997,7 +1001,9 @@ function supportedItem(value: string | null): HeldItem | null {
 function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): BattleMove {
   const definition = catalog.moves.find((candidate) => candidate.internalName === slot.internalName);
   if (definition === undefined) throw new Error(`Capacité absente du catalogue : ${slot.internalName}.`);
-  if (!FUNCTIONS.has(definition.functionCode as BattleMove["functionCode"])) {
+  const normalizedFunction = /^[0-9A-F]{1,3}$/u.test(definition.functionCode)
+    ? definition.functionCode.padStart(3, "0") as BattleMove["functionCode"] : definition.functionCode as BattleMove["functionCode"];
+  if (!FUNCTIONS.has(normalizedFunction)) {
     throw new Error(`Fonction de capacité non supportée : ${definition.internalName} (${definition.functionCode}).`);
   }
   // Le catalogue détaillé contient aussi description/targetCode. Ces données
@@ -1010,7 +1016,7 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
   const rawTarget = definition.targetCode ?? "00";
   const targetCode = targetAliases[rawTarget] ?? rawTarget.toUpperCase().replace(/^0X/u, "");
   return { id: definition.id, internalName: definition.internalName, name: definition.name,
-    functionCode: definition.functionCode as BattleMove["functionCode"], power: definition.power,
+    functionCode: normalizedFunction, power: definition.power,
     type: definition.type, category: definition.category, accuracy: definition.accuracy,
     pp: slot.maxPp, priority: definition.priority, effectChance: definition.effectChance,
     ...(definition.flags === undefined ? {} : { flags: definition.flags }), targetCode };
@@ -1022,7 +1028,7 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
   return { id: member.id, species: member.species, name: member.nickname ?? definition.name, level: member.level,
     types: [...definition.types], stats: { ...member.stats },
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
-    hp: member.hp, happiness: member.metadata.happiness,
+    hp: member.hp, happiness: member.metadata.happiness, canEvolve: (definition.evolutions?.length ?? 0) > 0,
     majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),

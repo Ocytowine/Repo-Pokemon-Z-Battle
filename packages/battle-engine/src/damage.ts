@@ -1,6 +1,12 @@
 import { typeEffectiveness } from "./type-chart.js";
 import type { BattleMove, BattlerState, BattleSide, BattleTrace, RandomSource } from "./types.js";
 
+export interface BattleDamageContext {
+  readonly reflect: boolean;
+  readonly luckyChant: boolean;
+  readonly waterSport: boolean;
+}
+
 function stagedStat(value: number, stage: number): number {
   return stage >= 0
     ? Math.floor((value * (2 + stage)) / 2)
@@ -20,6 +26,7 @@ export function calculateDamage(
   move: BattleMove,
   rng: RandomSource,
   trace: BattleTrace[],
+  context: BattleDamageContext = { reflect: false, luckyChant: false, waterSport: false },
 ): number {
   if (move.functionCode === "06F") {
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
@@ -32,8 +39,9 @@ export function calculateDamage(
   const defenseKey = move.category === "Physical" ? "defense" : "specialDefense";
   const criticalStage = Math.min(4,
     (defender.majorStatus?.kind === "hemorrhage" ? 2 : 0)
+    + (attacker.volatile?.focusEnergy ?? 0)
     + (attacker.heldItem === "SCOPELENS" ? 1 : 0));
-  const critical = draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
+  const critical = !context.luckyChant && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
   const defenseStage = critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
   const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
@@ -44,12 +52,22 @@ export function calculateDamage(
     : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
   if (lowHpAbilityType === move.type && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "FLORACION" && move.type === "GRASS") attack = Math.round(attack * 1.5);
+  if (attacker.ability === "SWARM" && move.type === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
+  if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
-  const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * move.power * attack) / defense) / 50) + 2;
+  if (defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
+  const targetWeight = defender.capture?.weight ?? 0;
+  let power = move.functionCode !== "09A" ? move.power
+    : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
+      : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
+  if (move.functionCode === "07B" && defender.majorStatus?.kind === "poison") power *= 2;
+  const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
   const variance = 85 + draw(rng, trace, "damage-variance", 16);
   const stab = attacker.types.includes(move.type) ? 1.5 : 1;
-  const effectiveness = typeEffectiveness(move.type, defender.types);
+  const defenderTypes = defender.volatile?.identified === true && (move.type === "NORMAL" || move.type === "FIGHTING")
+    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
+  const effectiveness = defenderTypes.length === 0 ? 1 : typeEffectiveness(move.type, defenderTypes);
 
   let result = baseDamage;
   if (critical) result = Math.round(result * 1.5);
@@ -66,6 +84,12 @@ export function calculateDamage(
   if (attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
   if (attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
+  if (defender.ability === "DRYSKIN" && move.type === "FIRE") statusModifier *= 1.25;
+  if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;
+  if (context.waterSport && move.type === "FIRE") statusModifier /= 3;
+  if ((attacker.heldItem === "FIGHTINGGEM" && move.type === "FIGHTING")
+    || (attacker.heldItem === "BUGGEM" && move.type === "BUG")) statusModifier *= 1.3;
+  if (defender.heldItem === "PAYAPABERRY" && move.type === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
   result = Math.round(result * statusModifier);
   if (effectiveness !== 0) result = Math.max(1, result);
 

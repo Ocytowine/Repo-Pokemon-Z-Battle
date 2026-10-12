@@ -199,9 +199,11 @@ describe("imported RPG Maker map", () => {
 
   it("loads the minimal trainer data needed by scripted battles", () => {
     expect(parseImportedTrainers({ records: [{ trainerType: "CRISANTO1", name: "Crisanto", version: 2,
-      pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] }] })).toEqual([
+      pokemon: [{ species: "CHESPIN", level: 5, heldItem: "ORANBERRY",
+        moves: [null, null, null, null], abilityIndex: 1 }] }] })).toEqual([
       { trainerType: "CRISANTO1", name: "Crisanto", version: 2,
-        pokemon: [{ species: "CHESPIN", level: 5, moves: [null, null, null, null] }] },
+        pokemon: [{ species: "CHESPIN", level: 5, heldItem: "ORANBERRY",
+          moves: [null, null, null, null], abilityIndex: 1 }] },
     ]);
     expect(parseImportedTrainerTypes({ records: [{ id: 6, internalName: "CRISANTO1", baseMoney: 80,
       battleBgm: "Rival.ogg", victoryMe: null }] })).toEqual([

@@ -421,4 +421,148 @@ describe("stat stages, power abilities and held battle items", () => {
       { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([0, 0]));
     expect(protectedResult.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "BIGPECKS", effect: "prevent-stat-drop" });
   });
+
+  it("supports Vin's confusion and disable effects as authoritative volatile state", () => {
+    const supersonic: BattleMove = { id: 1, internalName: "SUPERSONIC", name: "Ultrason", functionCode: "013",
+      power: 0, type: "NORMAL", category: "Status", accuracy: 55, pp: 20, priority: 0, effectChance: 0 };
+    const confused = resolveTurn(battle(battler("player", { moves: [{ move: supersonic, pp: 20 }] })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 0, 0, 15]));
+    expect(confused.events).toContainEqual(expect.objectContaining({ type: "volatileApplied", target: "opponent",
+      effect: "confusion" }));
+    expect(confused.events).toContainEqual(expect.objectContaining({ type: "confusionDamage", side: "opponent" }));
+    expect(confused.events).toContainEqual({ type: "actionSkipped", side: "opponent", reason: "confusion" });
+
+    const disable: BattleMove = { id: 2, internalName: "DISABLE", name: "Entrave", functionCode: "0B9",
+      power: 0, type: "NORMAL", category: "Status", accuracy: 100, pp: 20, priority: 0, effectChance: 0 };
+    const target = battler("opponent", { volatile: { confusionTurns: 0, flinched: false, focusEnergy: 0,
+      identified: false, disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
+      bindingMove: null, bindingTurns: 0, cursed: false,
+      lastMoveUsed: "SCRATCH" } });
+    const disabled = resolveTurn(battle(battler("player", { moves: [{ move: disable, pp: 20 }] }), target),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0]));
+    expect(disabled.events).toContainEqual(expect.objectContaining({ type: "volatileApplied", target: "opponent",
+      effect: "disable", move: "SCRATCH" }));
+    expect(disabled.events).toContainEqual({ type: "actionSkipped", side: "opponent", reason: "disabled" });
+  });
+
+  it("supports the early-route Work Up, Growth, Low Kick and Foresight rules", () => {
+    for (const functionCode of ["027", "028"] as const) {
+      const move: BattleMove = { id: 1, internalName: functionCode === "027" ? "WORKUP" : "GROWTH",
+        name: "Renforcement", functionCode, power: 0, type: "NORMAL", category: "Status", accuracy: 0,
+        pp: 20, priority: 0, effectChance: 0 };
+      const result = resolveTurn(battle(battler("player", { moves: [{ move, pp: 20 }] })),
+        { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+        new ScriptedRandom([0, 1, 15]));
+      expect(result.state.battlers.player.stages).toMatchObject({ attack: 1, specialAttack: 1 });
+    }
+
+    const lowKick: BattleMove = { id: 2, internalName: "LOWKICK", name: "Balayette", functionCode: "09A",
+      power: 1, type: "FIGHTING", category: "Physical", accuracy: 100, pp: 20, priority: 0, effectChance: 0 };
+    const light = calculateDamage("player", battler("player", { types: ["FIGHTING"] }),
+      battler("opponent", { capture: { rate: 100, baseSpeed: 50, weight: 99 } }), lowKick,
+      new ScriptedRandom([1, 15]), []);
+    const heavy = calculateDamage("player", battler("player", { types: ["FIGHTING"] }),
+      battler("opponent", { capture: { rate: 100, baseSpeed: 50, weight: 2_000 } }), lowKick,
+      new ScriptedRandom([1, 15]), []);
+    expect(heavy).toBeGreaterThan(light);
+
+    const normal = calculateDamage("player", battler("player"), battler("opponent", { types: ["GHOST"] }),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    const identified = calculateDamage("player", battler("player"), battler("opponent", { types: ["GHOST"],
+      volatile: { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: true, disabledMove: null,
+        disableTurns: 0, encoreMove: null, encoreTurns: 0, bindingMove: null, bindingTurns: 0,
+        cursed: false, lastMoveUsed: null } }),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
+    expect(normal).toBe(0);
+    expect(identified).toBeGreaterThan(0);
+
+    const curse: BattleMove = { id: 3, internalName: "CURSE", name: "Malédiction", functionCode: "10D",
+      power: 0, type: "GHOST", category: "Status", accuracy: 0, pp: 10, priority: 0, effectChance: 0 };
+    const cursed = resolveTurn(battle(battler("player", { types: ["ROCK"], moves: [{ move: curse, pp: 10 }] })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 1, 15]));
+    expect(cursed.state.battlers.player.stages).toMatchObject({ attack: 1, defense: 1, speed: -1 });
+  });
+
+  it("forces the source move selected by Encore", () => {
+    const encore: BattleMove = { id: 1, internalName: "ENCORE", name: "Encore", functionCode: "0BC",
+      power: 0, type: "NORMAL", category: "Status", accuracy: 100, pp: 5, priority: 0, effectChance: 0 };
+    const opponent = battler("opponent", { moves: [
+      { move: MINIMAL_MOVE_CATALOG.SCRATCH, pp: MINIMAL_MOVE_CATALOG.SCRATCH.pp },
+      { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: MINIMAL_MOVE_CATALOG.TACKLE.pp },
+    ], volatile: { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
+      disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0, bindingMove: null,
+      bindingTurns: 0, cursed: false, lastMoveUsed: "SCRATCH" } });
+    const applied = resolveTurn(battle(battler("player", { moves: [{ move: encore, pp: 5 }] }), opponent),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 1 } },
+      new ScriptedRandom([0, 0, 1, 15]));
+    const result = resolveTurn(applied.state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 1 } },
+      new ScriptedRandom([0, 0, 1, 15]));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "moveUsed", side: "opponent", move: "SCRATCH" }));
+    expect(result.state.battlers.opponent.volatile).toMatchObject({ encoreMove: "SCRATCH", encoreTurns: 2 });
+  });
+
+  it("applies the Fortress held-item rules and consumes one-shot items", () => {
+    const fighting: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "KARATECHOP",
+      name: "Poing Karaté", type: "FIGHTING" };
+    const neutral = calculateDamage("player", battler("player", { types: ["FIGHTING"] }),
+      battler("opponent"), fighting, new SeededRandom(41), []);
+    const gemDamage = calculateDamage("player", battler("player", { types: ["FIGHTING"], heldItem: "FIGHTINGGEM" }),
+      battler("opponent"), fighting, new SeededRandom(41), []);
+    const evioliteDamage = calculateDamage("player", battler("player", { types: ["FIGHTING"] }),
+      battler("opponent", { heldItem: "EVIOLITE", canEvolve: true }), fighting, new SeededRandom(41), []);
+    expect(gemDamage).toBeGreaterThan(neutral);
+    expect(evioliteDamage).toBeLessThan(neutral);
+
+    const result = resolveTurn(battle(battler("player", { heldItem: "FIGHTINGGEM",
+      moves: [{ move: fighting, pp: fighting.pp }] })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(7));
+    expect(result.state.battlers.player.heldItem).toBeNull();
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      side: "player", item: "FIGHTINGGEM", effect: "boost" }));
+  });
+
+  it("ports Venoshock, Fake Out, Taunt and team screens through authoritative state", () => {
+    const venoshock: BattleMove = { ...MINIMAL_MOVE_CATALOG.SWIFT, internalName: "VENOSHOCK",
+      name: "Choc Venin", functionCode: "07B", type: "POISON", power: 65 };
+    const healthy = calculateDamage("player", battler("player"), battler("opponent"), venoshock,
+      new SeededRandom(9), []);
+    const poisoned = calculateDamage("player", battler("player"), battler("opponent", {
+      majorStatus: { kind: "poison", toxicCounter: null } }), venoshock, new SeededRandom(9), []);
+    expect(poisoned).toBeGreaterThan(healthy);
+
+    const fakeOut: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FAKEOUT", name: "Bluff",
+      functionCode: "012", priority: 3, effectChance: 100 };
+    const first = resolveTurn(battle(battler("player", { moves: [{ move: fakeOut, pp: fakeOut.pp }] })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(12));
+    expect(first.events).toContainEqual(expect.objectContaining({ type: "volatileApplied", effect: "flinch" }));
+    const second = resolveTurn(first.state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(13));
+    expect(second.events).toContainEqual({ type: "moveFailed", side: "player", move: "FAKEOUT", reason: "condition" });
+
+    const reflect: BattleMove = { ...MINIMAL_MOVE_CATALOG.HOWL, internalName: "REFLECT", name: "Reflet",
+      functionCode: "0A2" };
+    const screened = resolveTurn(battle(battler("player", { moves: [{ move: reflect, pp: reflect.pp }] })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(14));
+    expect(screened.state.effects?.sides.player.reflectTurns).toBe(4);
+    expect(screened.events).toContainEqual({ type: "battleEffectChanged", side: "player", effect: "reflect", turns: 5 });
+
+    const taunt: BattleMove = { ...MINIMAL_MOVE_CATALOG.HOWL, internalName: "TAUNT", name: "Provoc",
+      functionCode: "0BA", accuracy: 100 };
+    const statusTarget = battler("opponent", { moves: [{ move: MINIMAL_MOVE_CATALOG.HOWL, pp: 40 }] });
+    const taunted = resolveTurn(battle(battler("player", { moves: [{ move: taunt, pp: taunt.pp }] }), statusTarget),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(15));
+    expect(taunted.events).toContainEqual({ type: "actionSkipped", side: "opponent", reason: "taunted" });
+  });
+
+  it("heals with Oran Berry and Cheek Pouch in the shared passive hook", () => {
+    const result = resolveTurn(battle(battler("player", { hp: 30, heldItem: "ORANBERRY", ability: "CHEEKPOUCH" })),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(19));
+    expect(result.state.battlers.player.heldItem).toBeNull();
+    expect(result.state.battlers.player.hp).toBeGreaterThan(30);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed", item: "ORANBERRY" }));
+  });
 });

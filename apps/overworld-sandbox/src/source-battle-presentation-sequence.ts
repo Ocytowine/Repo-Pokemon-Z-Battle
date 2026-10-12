@@ -131,6 +131,15 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, `${activeName(state, event.side)} récupère ${event.amount} PV.`);
     } else if (event.type === "moveMissed") {
       message(`${activeName(state, event.side)} rate son attaque.`);
+    } else if (event.type === "moveFailed") {
+      message(event.reason === "protected" ? `${activeName(state, event.side)} est bloqué par la protection adverse.`
+        : event.reason === "taunted" ? `${activeName(state, event.side)} ne peut pas utiliser cette capacité sous l'effet de Provoc.`
+          : "Mais cela échoue !", "status");
+    } else if (event.type === "ppReduced") {
+      message(`${event.move} perd ${event.amount} PP.`, "status");
+    } else if (event.type === "battleEffectChanged") {
+      const label = event.effect === "reflect" ? "Reflet" : event.effect === "lucky-chant" ? "Air Veinard" : "Tourniquet";
+      message(event.turns > 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
     } else if (event.type === "statusApplied") {
       message(`${activeName(state, event.target)} subit ${STATUS_NAMES[event.status]}.`, "status");
     } else if (event.type === "statusApplicationFailed") {
@@ -143,10 +152,39 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       message(`${activeName(state, event.side)} n'est plus affecté par ${STATUS_NAMES[event.status]}.`, "status");
     } else if (event.type === "statusDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${STATUS_NAMES[event.status]} et perd ${event.amount} PV.`);
+    } else if (event.type === "volatileApplied") {
+      const name = activeName(state, event.target);
+      const text = event.effect === "confusion" ? `${name} devient confus.`
+        : event.effect === "flinch" ? `${name} a peur.`
+          : event.effect === "focus-energy" ? `${name} se concentre.`
+            : event.effect === "identified" ? `${name} est identifié.`
+              : event.effect === "disable" ? `${event.move ?? "Une capacité"} de ${name} est neutralisée.`
+                : event.effect === "encore" ? `${name} doit répéter ${event.move ?? "sa dernière capacité"}.`
+                  : event.effect === "curse" ? `${name} est maudit.`
+                    : event.effect === "taunt" ? `${name} est provoqué.`
+                      : event.effect === "protect" ? `${name} se protège.`
+                        : event.effect === "endure" ? `${name} se prépare à tenir le coup.`
+                          : event.effect === "rage" ? `${name} entre en rage.`
+                            : `${name} est pris au piège par ${event.move ?? "l'attaque"}.`;
+      message(text, "status");
+    } else if (event.type === "volatileEnded") {
+      const text = event.effect === "confusion" ? `${activeName(state, event.side)} n'est plus confus.`
+        : event.effect === "disable" ? `${activeName(state, event.side)} peut de nouveau utiliser toutes ses capacités.`
+          : event.effect === "encore" ? `${activeName(state, event.side)} n'est plus sous Encore.`
+            : `${activeName(state, event.side)} est libéré.`;
+      message(text, "status");
+    } else if (event.type === "confusionDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} se blesse dans sa confusion et perd ${event.amount} PV.`);
+    } else if (event.type === "bindingDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${event.move} et perd ${event.amount} PV.`);
+    } else if (event.type === "curseDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} souffre de la malédiction et perd ${event.amount} PV.`);
     } else if (event.type === "itemActivated") {
       health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
+    } else if (event.type === "heldItemConsumed") {
+      message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
     } else if (event.type === "trainerItemUsed") {
       const team = state.teams[event.side];
       const target = team.members[event.targetIndex];
@@ -179,8 +217,12 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "actionSkipped") {
       const reason = event.reason === "sleep" ? "est endormi"
         : event.reason === "paralysis" ? "est paralysé et ne peut pas agir"
+          : event.reason === "flinch" ? "a peur et ne peut pas agir"
+            : event.reason === "confusion" ? "ne peut pas agir à cause de sa confusion"
+              : event.reason === "disabled" ? "ne peut pas utiliser cette capacité"
           : event.reason === "no-pp" ? "n'a plus de PP pour cette capacité"
             : event.reason === "item-blocked" ? "est bloqué par son objet"
+              : event.reason === "taunted" ? "est provoqué et ne peut pas utiliser cette capacité"
               : "est K.O.";
       message(`${activeName(state, event.side)} ${reason}.`, "status");
     } else if (event.type === "fainted") {

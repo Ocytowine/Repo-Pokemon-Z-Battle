@@ -85,8 +85,9 @@ function isSourceBattleInventory(value: unknown): boolean {
 
 const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
 const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
-const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020",
-  "030", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
+const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "009", "00A", "00C", "00F", "012", "013",
+  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "049", "04B", "04D",
+  "06F", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0C0", "0CF", "0D8", "0DD", "0E8", "0F4", "10D", "10E", "110", "116", "159", "906"]);
 const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
 function boundedString(value: unknown, max = 64): value is string {
@@ -108,6 +109,27 @@ function isMajorStatus(value: unknown): boolean {
     && hasExactKeys(value, ["kind"]);
 }
 
+function isBattleVolatile(value: unknown): boolean {
+  if (value === undefined) return true;
+  const legacy = ["confusionTurns", "flinched", "focusEnergy", "identified", "disabledMove", "disableTurns",
+    "encoreMove", "encoreTurns", "bindingMove", "bindingTurns", "cursed", "lastMoveUsed"];
+  const optional = ["activeTurns", "protected", "endured", "tauntTurns", "rage"];
+  if (!isRecord(value) || !legacy.every((key) => key in value)
+    || !Object.keys(value).every((key) => legacy.includes(key) || optional.includes(key))) return false;
+  return safeInteger(value.confusionTurns, 0, 5) && typeof value.flinched === "boolean"
+    && safeInteger(value.focusEnergy, 0, 2) && typeof value.identified === "boolean"
+    && (value.disabledMove === null || boundedString(value.disabledMove)) && safeInteger(value.disableTurns, 0, 5)
+    && (value.encoreMove === null || boundedString(value.encoreMove)) && safeInteger(value.encoreTurns, 0, 4)
+    && (value.bindingMove === null || boundedString(value.bindingMove)) && safeInteger(value.bindingTurns, 0, 8)
+    && typeof value.cursed === "boolean"
+    && (value.lastMoveUsed === null || boundedString(value.lastMoveUsed))
+    && (value.activeTurns === undefined || safeInteger(value.activeTurns, 0, 999))
+    && (value.protected === undefined || typeof value.protected === "boolean")
+    && (value.endured === undefined || typeof value.endured === "boolean")
+    && (value.tauntTurns === undefined || safeInteger(value.tauntTurns, 0, 4))
+    && (value.rage === undefined || typeof value.rage === "boolean");
+}
+
 function isBattleTeam(value: unknown): value is BattleTeam {
   if (!isRecord(value) || !["activeIndex", "members"].every((key) => key in value)
     || !Object.keys(value).every((key) => ["activeIndex", "activeIndices", "members"].includes(key))
@@ -121,7 +143,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -141,7 +163,9 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !hasExactKeys(stages, BATTLE_STAGES) || !BATTLE_STAGES.every((stat) => safeInteger(stages[stat], -6, 6))
       || !safeInteger(member.hp, 0, Number(stats.maxHp))
       || member.happiness !== undefined && member.happiness !== null && !safeInteger(member.happiness, 0, 255)
+      || member.canEvolve !== undefined && typeof member.canEvolve !== "boolean"
       || !isMajorStatus(member.majorStatus)
+      || !isBattleVolatile(member.volatile)
       || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
       || member.heldItem !== null && (typeof member.heldItem !== "string" || !isHeldItemSupported(member.heldItem))
     ) return false;

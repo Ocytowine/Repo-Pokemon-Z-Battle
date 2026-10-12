@@ -1849,6 +1849,24 @@ degats. Le simple, le double local et le double autoritaire reutilisent ces meme
 fonctions. `CHEEKPOUCH`, present sur le Sapereau de Jean mais inactif sans Baie
 tenue, reste rattache au futur lot generique de consommation des Baies.
 
+Deuxieme lot vertical du 2026-10-12 : Vin et les 21 especes terrestres uniques des
+premieres zones (Map007, Map009, Map014 et Map016) sont projetables avec toutes
+leurs capacites de niveau. Treize fonctions generiques ont ete ajoutees, dont
+confusion, peur, Entrave, Encore, ligotage, Malediction, puissance par poids et les
+hausses composees. Leur etat temporaire est calcule par le meme noyau en solo,
+double et room Coop, replique dans le snapshot puis efface au switch. La liste
+exacte et les limites sont dans `docs/COMBAT_VERTICAL_AUDIT.md`. Le prochain lot
+porte Navarroc et la Forteresse, ainsi que les objets tenus des equipes source.
+
+Troisieme lot vertical du 2026-10-12 : Map017 terrestre et les sept definitions
+d'Alexandre, Micael, Maria et Canola sont constructibles avec leurs 74 emplacements
+de capacites, objets tenus et talents forces. Vingt-et-une nouvelles fonctions,
+les Gemmes Combat/Insecte, Evoluroc, Baies Aranja/Payapa et les effets de camp ou
+terrain sont executes dans le noyau commun simple/double/Coop. Les dettes P0
+restantes de cette frontiere sont bornees dans `docs/COMBAT_VERTICAL_AUDIT.md` :
+Super Potion de l'IA de Canola, interception exacte de Poursuite, impacts multiples
+non agreges et protections consecutives.
+
 Premier increment objets du 2026-10-07 : un registre pur dans `player-state`
 applique hors combat les soins de PV, soins de statut, Restauration Totale et
 Rappels controles contre les handlers de Z. La transaction valide possession,

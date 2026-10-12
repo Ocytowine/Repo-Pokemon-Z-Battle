@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-09.
+Derniere mise a jour : 2026-10-12.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -1432,6 +1432,48 @@ generique des effets ciblant l'utilisateur : l'etat du defenseur factice ne
 remplace plus l'acteur lorsqu'acteur et cible designent le meme slot. Tests
 complets, build et typecheck overworld passent.
 
+Deuxieme lot vertical du 2026-10-12 : la frontiere inclut Vin et toutes les
+rencontres terrestres capturables de Map007, Map009, Map014 et Map016, soit 21
+especes uniques. Leur projection au niveau maximal de chaque table et leurs 69
+capacites ont ete executees contre les donnees locales, sans suppression. Treize fonctions ont
+rejoint le noyau commun : peur `00F`, confusion `013`, concentration critique
+`023`, doubles hausses `027/028`, Tornade `077`, puissance par poids `09A`,
+Clairvoyance `0A7`, Entrave `0B9`, Encore `0BC`, ligotage `0CF`, Malediction
+`10D` et Tour Rapide `110`. Les effets temporaires font partie du snapshot de
+combat autoritaire, sont acceptes par le protocole Coop, presentes aux joueurs et
+effaces au switch ; ils ne contaminent jamais la sauvegarde personnelle. Le detail
+de la frontiere et des dettes est conserve dans `docs/COMBAT_VERTICAL_AUDIT.md`.
+
+La peche et Surf ne sont pas inclus : l'overworld ne sait pas encore declencher ces
+methodes. Le prochain lot vertical est Navarroc puis la Forteresse (Alexandre,
+Micael, Maria et Canola), avec le raccord generique des objets tenus source.
+
+Troisieme lot vertical du 2026-10-12 : les rencontres terrestres de Map017 et les
+equipes Alexandre/Micael/Maria versions 0/1 puis Canola version 0 sont maintenant
+projetables sans suppression. L'import Dresseur conserve generiquement
+`heldItem` et `abilityIndex` ; Canola obtient donc bien Peau Seche sur Croagunk.
+Vingt-et-une fonctions rejoignent le registre, dont Bluff, Coup Bas, Choc Venin,
+Reflet, Air Veinard, Tourniquet, Anti-Brume, Provoc, Depit, Detection, Tenacite,
+Piqure et les frappes multiples. Vent Feerique, extrait avec `00`, est normalise
+en `000`. Les effets de camp/terrain et les nouveaux volatiles sont dans le
+snapshot autoritaire et le validateur Coop accepte leur contrat sans dupliquer la
+regle metier.
+
+Les Gemmes Combat/Insecte, Evoluroc, Baie Aranja et Baie Payapa sont executes ;
+leur consommation est persistee uniquement pour le proprietaire. Le meme hook de
+Baie active Bajoues et est appele par le simple comme le double. Peau Seche,
+Contraguardia, Impassible, Regard Vif, Serenite, Mue, Essaim, Synchro,
+Intimidation et Rege-Force disposent de leurs hooks requis. Un audit local a
+projete 19 instances et resolu leurs 74 emplacements de capacites sur les donnees
+2.12 FR. Tests complets, typecheck et build passent sur ce jalon.
+
+Dettes explicites de cette frontiere : la Super Potion de Canola n'est pas encore
+selectionnee par l'IA ; Poursuite sait calculer son bonus mais n'intercepte pas
+encore le Pokemon sortant dans l'ordonnanceur d'equipe ; l'UI agrege les impacts
+des frappes multiples et Detection/Abri n'appliquent pas encore la probabilite
+decroissante des usages consecutifs. Ne pas declarer le combat de Canola fidele de
+bout en bout avant ces quatre raccords. Peche/Surf de Map017 restent hors scope.
+
 Correctif de projection Coop du 2026-10-09 : le validateur strict du protocole
 n'avait pas repris `030` apres son ajout au type et au resolveur du moteur. Une
 equipe contenant Agilite etait donc valide localement, puis rejetee avant la room
@@ -2547,6 +2589,10 @@ première fiche Pokédex utilisait une balise `main` interne et héritait alors 
 `width: fit-content` ainsi que des colonnes de l'application, ce qui contractait
 et superposait toutes ses cartes. La colonne de contenu de la fiche est désormais
 une `section` et occupe toute la seconde colonne de `.source-summary-layout`.
+
+Validation manuelle du 2026-10-12 : le porteur a controle et valide le Pokedex et
+son interface. Le lot est ferme hors zones de capture, qui restent dependantes du
+futur module Carte.
 
 Contrat d'état : `SourceEventState.pokedex` est personnel, persistant dans
 `pokemon-z-battle.source-event-state.v1`, restauré après reconnexion et absent du
