@@ -3,8 +3,9 @@ import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBa
   type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamReplacementResult,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty,
-  playerPartyToBattleTeam, pokemonLevelEvolutionCandidates, storeBattleTeam,
+  playerPartyToBattleTeam, pokemonLevelEvolutionCandidates, storeProjectedBattleTeam,
   type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 
 export interface SourceEncounterRequest {
   readonly species: string;
@@ -19,9 +20,17 @@ export interface SourceTrainerDefinition {
     readonly moves: readonly (string | null)[] }[];
 }
 
+function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog) {
+  const preparation = prepareSourcePlayerBattleTeam(party, catalog);
+  if (preparation.team === null) {
+    throw new Error(preparation.unavailableReason ?? "L'équipe ne peut pas participer à ce combat.");
+  }
+  return preparation.team;
+}
+
 export function createSourceEncounterBattle(party: PlayerPartyState, encounter: SourceEncounterRequest,
   catalog: PlayerCreationCatalog, opponentId: string): TeamBattleState {
-  const player = playerPartyToBattleTeam(party, catalog);
+  const player = sourcePlayerBattleTeam(party, catalog);
   const opponentParty = addPokemonToParty(createEmptyPlayerParty(),
     createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog));
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
@@ -31,7 +40,7 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
   catalog: PlayerCreationCatalog, format: "single" | "double" = "single"): TeamBattleState {
-  const player = playerPartyToBattleTeam(party, catalog);
+  const player = sourcePlayerBattleTeam(party, catalog);
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
     let pokemon = createPersistentPokemon(`trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${index}`,
@@ -98,7 +107,7 @@ export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleSt
 }
 
 export function storeSourceEncounterParty(party: PlayerPartyState, state: TeamBattleState): PlayerPartyState {
-  return storeBattleTeam(party, state.teams.player);
+  return storeProjectedBattleTeam(party, state.teams.player);
 }
 
 export interface SourceEncounterSettlement {

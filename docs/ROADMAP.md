@@ -1787,6 +1787,13 @@ maintenant ces onze objets via le registre canonique du moteur. La liste partiel
 du protocole, qui bloquait l'acceptation d'un duel et la demande de combat sauvage
 de l'hote pour cinq objets, a ete supprimee et couverte sur les deux messages.
 
+Correctif PvP du 2026-10-12 : le duel classique partage maintenant la preparation
+d'equipe tolerante du ralliement Coop. Une capacite ou un objet tenu source non
+encore porte ne transforme plus une equipe consciente en faux K.O. : la mecanique
+est neutralisee dans la seule projection tactique, explicitement signalee, puis
+preservee dans la sauvegarde personnelle au reglement. Le Sac complet reste hors
+du message reseau et n'influence pas l'eligibilite du duel.
+
 Sixieme increment objets du 2026-10-08 : la roue radiale est devenue un composant
 generique commun aux Pokemon et au Sac. Chaque entree du Sac expose Utiliser,
 Donner et Jeter, avec annulation par le centre ; les actions indisponibles restent

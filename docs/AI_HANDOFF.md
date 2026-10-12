@@ -2284,6 +2284,47 @@ sa projection tactique minimale est repliquee aux participants. Un test parcourt
 les onze objets supportes sur l'acceptation d'un duel et l'ouverture d'un combat
 sauvage, tout en maintenant le rejet d'un identifiant inconnu.
 
+Correctif de projection PvP du 2026-10-12 : le refus « Il faut au moins un
+Pokemon en etat de combattre » masquait encore toute exception produite par
+`playerPartyToBattleTeam`. Le symptome suivait donc la sauvegarde du joueur et non
+son role hote/invite. Le contenu du Sac n'entre jamais dans un defi classique ;
+la cause possible est une mecanique portee par l'equipe, notamment un objet tenu
+ou une capacite non encore supportee. Defi PvP et ralliement Coop utilisent
+desormais le meme `prepareSourcePlayerBattleTeam` : les Pokemon conscients et les
+capacites compatibles restent engageables, tandis qu'un objet tenu source non
+supporte est neutralise uniquement dans la projection tactique. La room ne recoit
+ni le Sac ni l'objet neutralise. `storeProjectedBattleTeam` restitue ensuite PV,
+statut, bonheur et PP connus sans supprimer les membres, capacites ou objets
+source absents de cette projection. Le panneau d'acceptation affiche la cause
+reelle s'il reste impossible et signale les mecanismes neutralises sinon.
+
+Correctif de presentation des combats du 2026-10-12 : les variations de PV ne
+reposent plus sur une transition CSS et un delai suppose equivalent. La file
+visuelle anime explicitement la jauge et attend sa promesse de fin avant les
+messages d'efficacite, le K.O. et les enchainements. Le client reseau conserve
+egalement l'ancien etat presente jusqu'a la fin de cette file ; l'etat autoritaire
+recu reste la source de verite, mais la demande de remplacement ne devient visible
+qu'apres le K.O. effectivement joue. Le choix d'un remplacant ferme immediatement
+la liste au profit d'un message d'attente local, conserve meme si l'accuse serveur
+arrive avant la fin de l'animation, puis disparait lorsque l'etat autoritaire
+remplace le Pokemon. Ce verrou est seulement visuel et volatil : aucune nouvelle
+persistance ni regle de combat n'est creee, et le meme animateur sert les combats
+solo, hote et invite.
+
+Correctif de lancement des combats PNJ du 2026-10-12 : les rencontres sauvages et
+les Dresseurs passaient encore directement la sauvegarde personnelle a
+`playerPartyToBattleTeam`, contrairement au PvP et au ralliement Coop. Un objet
+tenu source ou une capacite pas encore portee pouvait donc interrompre la sequence
+apres la marche et le dialogue du PNJ, en particulier chez l'hote Coop. Tous les
+combats source utilisent maintenant le meme preparateur tactique : seuls les
+elements compatibles sont envoyes a la room, sans exposer le Sac. Le reglement
+solo ou autoritaire restaure PV, statut, bonheur et PP par identifiant tout en
+conservant dans la sauvegarde les capacites et objets source neutralises. Une
+validation locale du message `openSourceBattle` empeche enfin de declarer une
+ouverture partagee sur une requete que le protocole refuserait ; le chemin local
+reste alors disponible avec un diagnostic explicite au lieu de suspendre la
+sequence. Autorite narrative et recompenses restent celles de l'hote.
+
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements
 et remplacements multiples dependent d'une acquisition naturelle de plusieurs

@@ -1,5 +1,5 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
-import { PROTOCOL_VERSION, normalizeRoomCode, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
+import { PROTOCOL_VERSION, normalizeRoomCode, parseClientMessage, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
   type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
   type SourceBattleInventory,
@@ -316,8 +316,16 @@ export class OverworldNetworkSession {
     const context = { ...draft.context, narrativeOwnerId: session.ticket.playerId,
       rewards: { ...draft.context.rewards,
         opponents: draft.context.rewards.opponents.filter((opponent) => opponentIds.has(opponent.memberId)) } };
-    socket.send(JSON.stringify({ type: "openSourceBattle", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam, battleItems: draft.battleItems }));
+    const request = { type: "openSourceBattle" as const, version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam, battleItems: draft.battleItems };
+    const payload = JSON.stringify(request);
+    try {
+      parseClientMessage(payload);
+    } catch (error) {
+      this.setStatus("Combat impossible", error instanceof Error ? error.message : "Projection de combat invalide.");
+      return false;
+    }
+    socket.send(payload);
     return true;
   }
 

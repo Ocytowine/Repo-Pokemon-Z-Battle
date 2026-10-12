@@ -8,6 +8,9 @@ export interface SourcePlayerDuelModel {
   readonly side: BattleSide | null;
   readonly players: readonly RoomPlayerSnapshot[];
   readonly canAccept: boolean;
+  readonly unavailableReason?: string | null;
+  readonly teamNotice?: string | null;
+  readonly teamDiagnostic?: string | null;
 }
 
 export class SourcePlayerDuelView {
@@ -27,8 +30,13 @@ export class SourcePlayerDuelView {
     const otherSide = challenged ? challenge.challenger : challenge.challenged;
     const other = model.players.find((player) => player.side === otherSide);
     const name = other?.profile.profile.displayName ?? "L'autre joueur";
+    const unavailable = model.unavailableReason ?? "Il faut au moins un Pokémon en état de combattre.";
+    const diagnostic = model.teamDiagnostic === undefined || model.teamDiagnostic === null ? ""
+      : `<small>État lu par le combat : ${escapeSourceHtml(model.teamDiagnostic)}</small>`;
+    const notice = model.teamNotice === undefined || model.teamNotice === null ? ""
+      : `<small>${escapeSourceHtml(model.teamNotice)}</small>`;
     panel.innerHTML = challenged
-      ? `<strong>${escapeSourceHtml(name)} vous défie !</strong><p>Accepter un combat Pokémon classique ?</p><div><button id="accept-player-duel" ${model.canAccept ? "" : "disabled"}>Accepter</button><button id="refuse-player-duel">Refuser</button></div>${model.canAccept ? "" : "<small>Il faut au moins un Pokémon en état de combattre.</small>"}`
+      ? `<strong>${escapeSourceHtml(name)} vous défie !</strong><p>Accepter un combat Pokémon classique ?</p><div><button id="accept-player-duel" ${model.canAccept ? "" : "disabled"}>Accepter</button><button id="refuse-player-duel">Refuser</button></div>${model.canAccept ? notice : `<small>${escapeSourceHtml(unavailable)}</small>${diagnostic}`}`
       : `<strong>Défi envoyé à ${escapeSourceHtml(name)}</strong><p>En attente de sa réponse…</p><button id="refuse-player-duel">Annuler</button>`;
     panel.querySelector<HTMLButtonElement>("#accept-player-duel")?.addEventListener("click", this.callbacks.onAccept);
     panel.querySelector<HTMLButtonElement>("#refuse-player-duel")?.addEventListener("click", this.callbacks.onRefuse);

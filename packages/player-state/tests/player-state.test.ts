@@ -9,7 +9,8 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience, publicPokemonIdentity, recalculatePersistentPokemonStats,
-  reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
+  reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
+  transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 import { createTeamBattleState, type SharedBattleOwnerSettlement, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
@@ -180,6 +181,18 @@ describe("persistent player party", () => {
       metadata: { form: 2, shiny: true, gender: "female", happiness: 12 }, moves: [{ pp: 1 }] });
   });
 
+  it("restores a reduced battle projection without deleting source-only mechanics", () => {
+    const sourceOnlyMove = { internalName: "FUTUREMOVE", pp: 7, maxPp: 10 };
+    const persistent = { ...party, members: [{ ...party.members[0]!, heldItem: "AMULETCOIN",
+      moves: [...party.members[0]!.moves, sourceOnlyMove] }] };
+    const projected = playerPartyToBattleTeam({ ...party,
+      members: [{ ...party.members[0]!, heldItem: null }] }, catalog);
+    const result = { ...projected, members: projected.members.map((member) => ({ ...member, hp: 1,
+      moves: member.moves.map((slot) => ({ ...slot, pp: 1 })) })) };
+    expect(storeProjectedBattleTeam(persistent, result).members[0]).toMatchObject({ hp: 1,
+      heldItem: "AMULETCOIN", moves: [{ internalName: "TACKLE", pp: 1 }, sourceOnlyMove] });
+  });
+
   it("preserves inert source abilities and still blocks malformed or unsupported battle mechanics", () => {
     expect(playerPartyToBattleTeam({ ...party,
       members: [{ ...party.members[0]!, ability: "CHEEKPOUCH" }] }, catalog).members[0]?.ability)
@@ -247,6 +260,22 @@ describe("persistent player party", () => {
     } };
     expect(storeOwnedBattleResults(party, participation, state, "host").members[0]).toMatchObject({ id: "starter", hp: 1 });
     expect(storeOwnedBattleResults(party, participation, state, "guest").members[0]).toMatchObject({ id: "starter", hp: 4 });
+  });
+
+  it("keeps source-only held items omitted from a shared tactical projection", () => {
+    const sourceParty = { ...party, members: [{ ...party.members[0]!, heldItem: "FUTUREITEM" }] };
+    const projected = playerPartyToBattleTeam(party, catalog);
+    const state = createTeamBattleState({ player: projected.members,
+      opponent: [{ ...projected.members[0]!, id: "wild" }] });
+    const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["host"], activeMemberId: "starter",
+        members: [{ ownerId: "host", battler: state.teams.player.members[0]! }] },
+      opponent: { trainerIds: [], activeMemberId: "wild",
+        members: [{ ownerId: null, battler: state.teams.opponent.members[0]! }] },
+    } };
+
+    expect(storeOwnedBattleResults(sourceParty, participation, state, "host").members[0]?.heldItem)
+      .toBe("FUTUREITEM");
   });
 
   it("matches the source IV, EV and nature formulas in source stat order", () => {

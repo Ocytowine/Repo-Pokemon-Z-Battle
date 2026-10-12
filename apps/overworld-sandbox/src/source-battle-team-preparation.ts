@@ -1,4 +1,4 @@
-import { playerPartyToBattleTeam, type PersistentPokemon, type PlayerBattleCatalog,
+import { isHeldItemSupported, playerPartyToBattleTeam, type PersistentPokemon, type PlayerBattleCatalog,
   type PlayerPartyState } from "@pokemon-z-battle/player-state";
 import type { BattleTeam, BattlerState } from "@pokemon-z-battle/battle-engine";
 
@@ -14,23 +14,26 @@ function errorMessage(error: unknown): string {
 }
 
 function projectJoinMember(party: PlayerPartyState, member: PersistentPokemon,
-  catalog: PlayerBattleCatalog): { readonly battler: BattlerState; readonly omittedMoves: number } {
+  catalog: PlayerBattleCatalog): { readonly battler: BattlerState; readonly omittedMoves: number;
+    readonly omittedHeldItem: boolean } {
   const project = (candidate: PersistentPokemon): BattlerState => playerPartyToBattleTeam(
     { ...party, activeIndex: 0, members: [candidate] }, catalog).members[0]!;
+  const omittedHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
+  const compatibleMember = omittedHeldItem ? { ...member, heldItem: null } : member;
   try {
-    return { battler: project(member), omittedMoves: 0 };
+    return { battler: project(compatibleMember), omittedMoves: 0, omittedHeldItem };
   } catch (originalError) {
-    const compatibleMoves = member.moves.filter((move) => {
+    const compatibleMoves = compatibleMember.moves.filter((move) => {
       try {
-        project({ ...member, moves: [move] });
+        project({ ...compatibleMember, moves: [move] });
         return true;
       } catch {
         return false;
       }
     });
     if (compatibleMoves.length === 0) throw originalError;
-    return { battler: project({ ...member, moves: compatibleMoves }),
-      omittedMoves: member.moves.length - compatibleMoves.length };
+    return { battler: project({ ...compatibleMember, moves: compatibleMoves }),
+      omittedMoves: member.moves.length - compatibleMoves.length, omittedHeldItem };
   }
 }
 
@@ -38,12 +41,12 @@ function projectJoinMember(party: PlayerPartyState, member: PersistentPokemon,
  * Builds the personal team sent with a Coop join intent. One unsupported reserve must not
  * disguise a healthy party as fainted or prevent compatible conscious members from joining.
  */
-export function prepareSourceBattleJoinTeam(party: PlayerPartyState,
+export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
   catalog: PlayerBattleCatalog): SourceBattleTeamPreparation {
   if (party.members.length === 0) return { team: null,
     unavailableReason: "Votre équipe est vide.", requiresHealing: false, notice: null };
   if (party.members.every((member) => member.hp <= 0)) return { team: null,
-    unavailableReason: "Aucun Pokémon conscient n'est disponible pour rejoindre ce combat.",
+    unavailableReason: "Aucun Pokémon conscient n'est disponible pour participer à ce combat.",
     requiresHealing: true, notice: null };
 
   try {
@@ -53,12 +56,14 @@ export function prepareSourceBattleJoinTeam(party: PlayerPartyState,
     const compatible: BattleTeam["members"][number][] = [];
     const failures: string[] = [];
     let omittedMoves = 0;
+    let omittedHeldItems = 0;
     for (const member of party.members) {
       if (member.hp <= 0) continue;
       try {
         const projected = projectJoinMember(party, member, catalog);
         compatible.push(projected.battler);
         omittedMoves += projected.omittedMoves;
+        omittedHeldItems += Number(projected.omittedHeldItem);
       } catch (error) {
         failures.push(`${member.nickname ?? member.species} : ${errorMessage(error)}`);
       }
@@ -71,9 +76,13 @@ export function prepareSourceBattleJoinTeam(party: PlayerPartyState,
         : `${failures.length} Pokémon ${failures.length > 1 ? "ont été écartés" : "a été écarté"}`,
       omittedMoves === 0 ? null
         : `${omittedMoves} capacité${omittedMoves > 1 ? "s non prises" : " non prise"} en charge ${omittedMoves > 1 ? "ont été retirées" : "a été retirée"}`,
+      omittedHeldItems === 0 ? null
+        : `${omittedHeldItems} objet${omittedHeldItems > 1 ? "s tenus ont" : " tenu a"} été neutralisé${omittedHeldItems > 1 ? "s" : ""}`,
     ].filter((notice): notice is string => notice !== null);
     return { team: { activeIndex: 0, members: compatible }, unavailableReason: null,
       requiresHealing: false, notice: notices.length === 0 ? null
-        : `${notices.join(" et ")} pour cette participation. Les données personnelles non engagées restent inchangées.` };
+        : `${notices.join(" et ")} pour ce combat. Les données personnelles restent inchangées.` };
   }
 }
+
+export const prepareSourceBattleJoinTeam = prepareSourcePlayerBattleTeam;

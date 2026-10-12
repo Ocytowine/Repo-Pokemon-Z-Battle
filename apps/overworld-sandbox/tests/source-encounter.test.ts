@@ -161,6 +161,26 @@ describe("source encounter bridge", () => {
     expect(() => resolveSourceEncounterTurn(battle, 0, new SeededRandom(12))).not.toThrow();
   });
 
+  it("projects unsupported personal mechanics without blocking a trainer and restores them afterwards", () => {
+    const unsupported = { ...tackle, id: 2, internalName: "FUTUREMOVE", name: "Capacité future",
+      functionCode: "999" };
+    const extendedCatalog = { ...catalog, moves: [...catalog.moves, unsupported] } as PlayerCreationCatalog;
+    const base = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 8, extendedCatalog));
+    const original = base.members[0]!;
+    const party = { ...base, members: [{ ...original, heldItem: "FUTUREITEM",
+      moves: [...original.moves, { internalName: "FUTUREMOVE", pp: 5, maxPp: 5 }] }] };
+
+    const battle = createSourceTrainerBattle(party, { trainerType: "CAMPESINO", name: "Jean", version: 0,
+      pokemon: [{ species: "BUNNELBY", level: 6, moves: [null, null, null, null] }] }, extendedCatalog);
+
+    expect(battle.teams.player.members[0]).toMatchObject({ heldItem: null,
+      moves: [{ move: { internalName: "TACKLE" } }] });
+    const stored = storeSourceEncounterParty(party, battle);
+    expect(stored.members[0]).toMatchObject({ heldItem: "FUTUREITEM",
+      moves: [{ internalName: "TACKLE" }, { internalName: "FUTUREMOVE", pp: 5 }] });
+  });
+
   it("rejects an exhausted player move before consuming a turn", () => {
     const base = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
     const party = { ...base, members: [{ ...base.members[0]!, moves: [{ ...base.members[0]!.moves[0]!, pp: 0 }] }] };

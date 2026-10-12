@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPersistentPokemon, type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
-import { prepareSourceBattleJoinTeam } from "../src/source-battle-team-preparation.js";
+import { prepareSourceBattleJoinTeam, prepareSourcePlayerBattleTeam }
+  from "../src/source-battle-team-preparation.js";
 
 const catalog: PlayerCreationCatalog = {
   pokemon: [
@@ -49,6 +50,16 @@ describe("Coop battle team preparation", () => {
     expect(result.team?.members[0]?.moves.map((slot) => slot.move.internalName)).toEqual(["TACKLE"]);
     expect(result.requiresHealing).toBe(false);
     expect(result.notice).toContain("1 capacité non prise en charge a été retirée");
+  });
+
+  it("neutralizes an unsupported held item without mutating the personal party", () => {
+    const ready = party(["READY"]);
+    const withItem = { ...ready, members: ready.members.map((member) => ({ ...member,
+      heldItem: "AMULETCOIN" })) };
+    const result = prepareSourcePlayerBattleTeam(withItem, catalog);
+    expect(result.team?.members[0]?.heldItem).toBeNull();
+    expect(result.notice).toContain("objet tenu a été neutralisé");
+    expect(withItem.members[0]?.heldItem).toBe("AMULETCOIN");
   });
 
   it("reserves the healing advice for a genuinely fainted party", () => {

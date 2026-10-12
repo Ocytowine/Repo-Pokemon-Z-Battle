@@ -65,6 +65,13 @@ function hpPercent(hp: number, maximum: number): number {
   return Math.max(0, Math.min(100, Math.round((hp / Math.max(1, maximum)) * 100)));
 }
 
+export function sourceBattleReplacementSubmitted(state: TeamBattleState, submittedTurn: number | null,
+  submittedActiveSlots: readonly number[], activeSlot: number,
+  locallyPending: { readonly turn: number; readonly activeSlot: number } | null = null): boolean {
+  return locallyPending?.turn === state.turn && locallyPending.activeSlot === activeSlot
+    || submittedTurn === state.turn && submittedActiveSlots.includes(activeSlot);
+}
+
 export class SourceBattleOverlay {
   private menu: BattleMenu = "root";
   private renderedTurn: number | null = null;
@@ -74,6 +81,7 @@ export class SourceBattleOverlay {
   private pendingItemTargetIndex: number | null = null;
   private selectedBagFamilyId: string | null = null;
   private bagPage = 0;
+  private pendingReplacement: { readonly turn: number; readonly activeSlot: number } | null = null;
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {}
 
@@ -84,6 +92,7 @@ export class SourceBattleOverlay {
     if (model.state === null) {
       this.menu = "root";
       this.renderedTurn = null;
+      this.pendingReplacement = null;
       return;
     }
     if (this.renderedTurn !== model.state.turn) {
@@ -95,6 +104,7 @@ export class SourceBattleOverlay {
       this.pendingItemTargetIndex = null;
       this.selectedBagFamilyId = null;
       this.bagPage = 0;
+      this.pendingReplacement = null;
     }
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
     if (visualStage !== null) {
@@ -150,9 +160,15 @@ export class SourceBattleOverlay {
       || model.state.slotReplacements?.some((position) => position.side === "player" && position.slot === this.activeSlot) === true);
     if (replacement) {
       this.menu = "pokemon";
+      if (sourceBattleReplacementSubmitted(model.state, model.networkSubmittedTurn,
+        model.submittedActiveSlots, this.activeSlot, this.pendingReplacement)) {
+        actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>Remplaçant choisi</p><small>En attente de la confirmation du combat…</small></div>';
+        return;
+      }
       this.renderPokemon(actions, team, model, blocked, true);
       return;
     }
+    if (this.pendingReplacement?.activeSlot === this.activeSlot) this.pendingReplacement = null;
     if (this.menu === "moves") this.renderMoves(actions, active, model, blocked);
     else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
@@ -256,7 +272,11 @@ export class SourceBattleOverlay {
         this.callbacks.onSwitch(Number(button.dataset.encounterSwitch), model.local, this.activeSlot);
       }));
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-replacement]").forEach((button) =>
-      button.addEventListener("click", () => this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot)));
+      button.addEventListener("click", () => {
+        if (model.state === null) return;
+        this.pendingReplacement = { turn: model.state.turn, activeSlot: this.activeSlot };
+        this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot);
+      }));
   }
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {

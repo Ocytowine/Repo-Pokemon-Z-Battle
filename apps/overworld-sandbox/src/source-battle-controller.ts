@@ -4,7 +4,7 @@ import { activeBattlePositions, activeTeamIndices, closeSharedBattleSession, cre
   type PositionedTeamBattleAction, type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
-  storeBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
+  storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
 import {
@@ -477,7 +477,7 @@ export class SourceBattleController {
               form: target.appearance?.form ?? pokemon.metadata.form,
               shiny: target.appearance?.shiny ?? pokemon.metadata.shiny,
               gender: target.appearance?.gender ?? pokemon.metadata.gender } };
-          const party = storeBattleTeam(eventState.party, before.teams.player);
+          const party = storeProjectedBattleTeam(eventState.party, before.teams.player);
           const destination = party.members.length < 6 ? "team" as const : "ranch" as const;
           const capturedState = destination === "team"
             ? { ...eventState, party: addPokemonToParty(party, pokemon) }

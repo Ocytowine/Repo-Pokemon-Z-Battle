@@ -1143,6 +1143,29 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
   return { ...party, activeIndex, members };
 }
 
+/**
+ * Restores a deliberately reduced battle projection without deleting source-only moves,
+ * unsupported held items or reserve members which were not sent to the battle engine.
+ */
+export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTeam): PlayerPartyState {
+  const byId = new Map(team.members.map((member) => [member.id, member]));
+  const members = party.members.map((member) => {
+    const result = byId.get(member.id);
+    if (result === undefined) return member;
+    const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
+    const preserveHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
+    return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+      metadata: result.happiness === undefined ? member.metadata
+        : { ...member.metadata, happiness: result.happiness },
+      heldItem: preserveHeldItem ? member.heldItem : result.heldItem,
+      moves: member.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
+  });
+  const activeId = team.members[team.activeIndex]?.id;
+  const projectedActiveIndex = members.findIndex((member) => member.id === activeId);
+  return { ...party, members,
+    activeIndex: projectedActiveIndex < 0 ? party.activeIndex : projectedActiveIndex };
+}
+
 /** Restores only the Pokémon owned by one participant from a shared camp battle. */
 export function storeOwnedBattleResults(party: PlayerPartyState, participation: SharedBattleParticipation,
   state: TeamBattleState, ownerId: string): PlayerPartyState {
@@ -1161,10 +1184,11 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     const result = owned.get(pokemon.id)?.battler;
     if (result === undefined) return pokemon;
     const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
+    const preserveSourceHeldItem = pokemon.heldItem !== null && !isHeldItemSupported(pokemon.heldItem);
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? pokemon.metadata
         : { ...pokemon.metadata, happiness: result.happiness },
-      heldItem: result.heldItem,
+      heldItem: preserveSourceHeldItem ? pokemon.heldItem : result.heldItem,
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])

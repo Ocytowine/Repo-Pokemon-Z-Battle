@@ -8,7 +8,7 @@ import { SourceDialogueController, type SourceDialogueSession, type SourceDialog
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
-  movePokemonToPartyFront, playerPartyToBattleTeam, storeBattleTeam, transferPokemonToParty, transferPokemonToStorage,
+  movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
   changePokemonCollectionHeldItem, declinePendingPokemonMove, discardInventoryItem, isPokemonItemUsableInBattle,
   isPokemonEvolutionItem, learnPendingPokemonMove, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
   recalculatePersistentPokemonStats,
@@ -26,7 +26,7 @@ import type { SourceSceneActorSnapshot, SourceScenePresentationCue, SourceSceneS
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { SeededRandom, canCaptureSharedBattleTarget, isPokemonBallSupported,
-  type BattleTeam, type DoubleBattleEvent, type TeamBattleEvent,
+  type DoubleBattleEvent, type TeamBattleEvent,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController, sharedBattleExperiencePresentations,
@@ -57,7 +57,7 @@ import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceBattleJoinView } from "./source-battle-join-view.js";
-import { prepareSourceBattleJoinTeam } from "./source-battle-team-preparation.js";
+import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
@@ -976,7 +976,7 @@ const sourceBattleOverlay = new SourceBattleOverlay({
 });
 const sourcePlayerDuelView = new SourcePlayerDuelView({
   onAccept: () => {
-    const team = currentPlayerDuelTeam();
+    const team = currentPlayerDuelPreparation().team;
     if (team !== null) multiplayer.respondPlayerChallenge(true, team);
   },
   onRefuse: () => { multiplayer.respondPlayerChallenge(false, null); },
@@ -1236,7 +1236,6 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
   events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): void {
   const side = networkBattleViewerSide();
   const animationTicket = ++networkBattleAnimationTicket;
-  if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
   networkBattleAnimating = true;
   render();
   networkBattlePresentation = networkBattlePresentation.then(async () => {
@@ -1245,6 +1244,10 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
       networkBattleEventsForViewer(events, side));
     if (networkPresentedBattle?.id !== battleId) return;
     const presented = networkBattleForViewer(state, side);
+    // L'overlay reste sur l'état précédent pendant la file visuelle : le K.O.,
+    // puis la demande de remplacement, ne deviennent interactifs qu'une fois
+    // la baisse réelle des PV et les messages terminés.
+    networkPresentedBattle = { id: battleId, state };
     await sourceBattleVisuals.render(presented, importedAssets?.battleback ?? "snow");
     if (state.status === "finished") {
       await sourceBattleVisuals.endBattle(presented.winner, networkBattleOutcome(battleId, state));
@@ -1256,6 +1259,7 @@ function presentNetworkBattleTurn(battleId: string, before: TeamBattleState, sta
     }
   }).catch((error: unknown) => {
     console.warn(`[network-battle] ${error instanceof Error ? error.message : "animation impossible"}`);
+    if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
     if (animationTicket === networkBattleAnimationTicket) networkBattleAnimating = false;
     if (state.status === "finished") requestNetworkSourceBattleClose(battleId);
     render();
@@ -2718,9 +2722,11 @@ function renderEncounter(): void {
     player.playerId === joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "le meneur";
   const guestName = network?.snapshot?.players.find((player) =>
     player.playerId !== joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "l'autre joueur";
+  const duelPreparation = currentPlayerDuelPreparation();
   sourcePlayerDuelView.render({ challenge: duel, battleActive: network?.roomBattleActive === true, side,
-    players: network?.snapshot?.players ?? [],
-    canAccept: currentPlayerDuelTeam() !== null });
+    players: network?.snapshot?.players ?? [], canAccept: duelPreparation.team !== null,
+    unavailableReason: duelPreparation.unavailableReason, teamNotice: duelPreparation.notice,
+    teamDiagnostic: sourceBattleJoinTeamDiagnostic() });
   const joinPreparation = currentPlayerBattleJoinPreparation();
   sourceBattleJoinView.render({ battle: joinableBattle, playerId: network?.ticket.playerId ?? null,
     team: joinPreparation.team, teamUnavailableReason: joinPreparation.unavailableReason,
@@ -2733,29 +2739,21 @@ function renderEncounter(): void {
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
     sourceEventState = { ...sourceEventState,
-      party: storeBattleTeam(sourceEventState.party, networkBattle.state.teams[side]) };
+      party: storeProjectedBattleTeam(sourceEventState.party, networkBattle.state.teams[side]) };
     storedPlayerDuelBattleId = networkBattle.id;
     persistSourceEventState();
   }
 }
 
-function currentPlayerDuelTeam(): BattleTeam | null {
-  if (importedAssets === null || sourceEventState.party.members.every((member) => member.hp <= 0)) return null;
-  try {
-    const team = playerPartyToBattleTeam(sourceEventState.party, importedAssets.battleCatalog);
-    if ((team.members[team.activeIndex]?.hp ?? 0) > 0) return team;
-    const activeIndex = team.members.findIndex((member) => member.hp > 0);
-    return activeIndex < 0 ? null : { ...team, activeIndex };
-  } catch {
-    return null;
-  }
+function currentPlayerDuelPreparation(): ReturnType<typeof prepareSourcePlayerBattleTeam> {
+  return currentPlayerBattleJoinPreparation();
 }
 
-function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourceBattleJoinTeam> {
+function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourcePlayerBattleTeam> {
   if (importedAssets === null) return { team: null,
     unavailableReason: "Les données de combat ne sont pas encore chargées.",
     requiresHealing: false, notice: null };
-  return prepareSourceBattleJoinTeam(sourceEventState.party, importedAssets.battleCatalog);
+  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog);
 }
 
 function sourceBattleJoinTeamDiagnostic(): string {
@@ -2884,14 +2882,15 @@ function interact(playerId: AvatarId): void {
         renderImportedView();
         return;
       }
-      const team = currentPlayerDuelTeam();
-      if (team === null) {
-        importedNotice = "Aucun Pokémon en état de combattre.";
+      const preparation = currentPlayerDuelPreparation();
+      if (preparation.team === null) {
+        importedNotice = preparation.unavailableReason ?? "Aucun Pokémon en état de combattre.";
         coopHudNotice = { text: importedNotice, kind: "error", source: "general" };
       }
       else {
-        multiplayer.challengePlayer(team);
-        importedNotice = "Défi PvP envoyé à l'autre Dresseur…";
+        multiplayer.challengePlayer(preparation.team);
+        importedNotice = preparation.notice === null ? "Défi PvP envoyé à l'autre Dresseur…"
+          : `Défi PvP envoyé · ${preparation.notice}`;
       }
       renderImportedView();
       return;

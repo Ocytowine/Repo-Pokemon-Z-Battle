@@ -84,6 +84,11 @@ function readableMessageDelay(milliseconds = 850): Promise<void> {
   });
 }
 
+export function sourceHealthAnimationDuration(from: number, to: number, maximum: number): number {
+  const changedRatio = Math.abs(to - from) / Math.max(1, maximum);
+  return Math.round(Math.max(420, Math.min(900, changedRatio * 1_050)));
+}
+
 export function joinedBattlePositions(before: TeamBattleState, after: TeamBattleState): readonly {
   readonly side: BattleSide; readonly slot: number; readonly battler: BattlerState;
 }[] {
@@ -464,8 +469,8 @@ export class SourceBattleVisuals {
         sprite?.classList.remove("hit");
       } else if (step.kind === "health") {
         this.message(step.message);
-        this.updateHud(step.state);
-        await Promise.all([delay(420), readableMessageDelay(700)]);
+        await Promise.all([this.animateHealth(step.side, step.from, step.to, step.state),
+          readableMessageDelay(700)]);
       } else if (step.kind === "message" || step.kind === "status") {
         this.message(step.message);
         await readableMessageDelay(step.kind === "status" ? 850 : 750);
@@ -806,6 +811,37 @@ export class SourceBattleVisuals {
         if (secondHud !== null) secondHud.hidden = true;
       }
     }
+  }
+
+  private async animateHealth(side: BattleSide, from: number, to: number, state: TeamBattleState): Promise<void> {
+    const team = state.teams[side];
+    const active = team.activeIndices ?? [team.activeIndex];
+    const slot = Math.max(0, active.indexOf(team.activeIndex));
+    const battler = team.members[team.activeIndex];
+    const suffix = slot === 0 ? "" : `-${slot + 1}`;
+    const bar = document.getElementById(`source-${side}-hp-bar${suffix}`);
+    if (bar === null || battler === undefined) {
+      this.updateHud(state);
+      await delay(420);
+      return;
+    }
+    const maximum = Math.max(1, battler.stats.maxHp);
+    const start = Math.max(0, Math.min(1, from / maximum));
+    const end = Math.max(0, Math.min(1, to / maximum));
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const previousTransition = bar.style.transition;
+    bar.style.transition = "none";
+    bar.style.width = `${start * 100}%`;
+    const animation = bar.animate([
+      { width: `${start * 100}%` },
+      { width: `${end * 100}%` },
+    ], { duration: reduced ? 20 : sourceHealthAnimationDuration(from, to, maximum),
+      fill: "forwards", easing: "linear" });
+    await animation.finished.catch(() => undefined);
+    animation.cancel();
+    bar.style.width = `${end * 100}%`;
+    this.updateHud(state);
+    bar.style.transition = previousTransition;
   }
 
   private synchronizeFaintedSprites(state: TeamBattleState): void {
