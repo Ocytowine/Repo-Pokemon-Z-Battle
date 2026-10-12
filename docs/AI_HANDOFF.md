@@ -2346,12 +2346,21 @@ Coop ne changent pas ; aucun abandon n'est propose contre un PNJ.
 
 Lot global de presentation des combats du 2026-10-12 : les variantes CSS d'abord
 ajoutees pour evoquer les familles de `transiciones.rb` ont ete retirees apres
-recette, car elles ne reproduisaient ni leurs assets ni leur mise en scene et
-donnaient un resultat trompeur. L'ouverture utilise temporairement un fondu noir
-generique et stable. Le futur port fidele doit interpreter ou reproduire les
-sequences source avec leurs sprites, bandes, masques, durees, sons et conditions,
-puis choisir la variante depuis un contexte deterministe commun au solo et a la
-Coop. Ne pas recreer ces transitions par de simples approximations CSS.
+recette, car elles ne reproduisaient ni leurs assets ni leur mise en scene. Deux
+references seulement sont maintenant portees depuis les boucles Ruby :
+`ebWildAnimationOutdoor`, qui ferme l'image par blocs noirs symetriques en 32
+frames, et `ebTrainerAnimation3`, qui fait entrer six bandes noires alternees
+derriere des `vsBall` tournantes en 28 frames. Les trois pulsations grises communes
+et le devoilement final en 18 frames suivent egalement les temporisations source a
+40 FPS. La capture du canvas overworld reste sous les effets jusqu'au noir, puis le
+combat deja prepare est revele. Le choix sauvage/Dresseur ne porte aucun etat et
+est donc identique en solo, hote et invite.
+
+Toutes les autres transitions (interieur, grotte, eau, sur-niveau, legendaires,
+VS et Dresseurs speciaux) sont volontairement reportees apres la consolidation de
+l'ensemble des fonctionnalites. Leur futur port doit etendre le meme moteur de
+frames et employer les assets et conditions source ; ne pas les recreer par des
+approximations CSS.
 
 La file de presentation commune porte maintenant l'efficacite des impacts et la
 capture structuree. Elle joue les sons source au moment visible correspondant :
@@ -2371,8 +2380,8 @@ visuel : aucune musique n'est persistee ni repliquee, chaque client lit les meme
 metadonnees de carte et le meme contexte de combat. `prepare:local` doit avoir ete
 relance pour enrichir les JSON de cartes existants ; le parseur garde un repli
 silencieux pour les anciennes extractions. Validation manuelle encore requise sur
-le mixage, la capture et la reprise audio en solo et Coop ; le port fidele des
-transitions reste un lot distinct.
+le mixage, la capture, les deux transitions standard et la reprise audio en solo
+et Coop ; l'extension aux autres transitions reste un lot de finition distinct.
 
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements

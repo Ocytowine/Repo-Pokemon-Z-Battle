@@ -1693,8 +1693,9 @@ Ordre convenu :
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
   placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
   implementes ;
-  les transitions source de `transiciones.rb` restent a porter fidelement ; les
-  variantes CSS approximatives ont ete retirees et un fondu stable sert de repli ;
+  `ebWildAnimationOutdoor` et `ebTrainerAnimation3` sont portees avec leurs frames
+  et `vsBall`; toutes les autres transitions source sont reportees apres la
+  consolidation globale des fonctionnalites ;
   le changement et le remplacement croises observes pendant la recette sont
   maintenant refuses par la room en simple et en double ; le partage tactique
   precombat reste une extension distincte, uniquement sur consentement des deux

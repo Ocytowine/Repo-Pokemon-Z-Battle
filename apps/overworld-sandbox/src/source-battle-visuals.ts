@@ -8,6 +8,8 @@ import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSprit
 import { experienceAtLevel } from "@pokemon-z-battle/player-state";
 import type { SourceBattleExperiencePresentation, SourceBattleOutcome } from "./source-battle-controller.js";
 import { buildSourceBattlePresentationSequence } from "./source-battle-presentation-sequence.js";
+import { selectSourceBattleTransition, SOURCE_TRANSITION_FRAME_MS, sourceTrainerBandFrames,
+  sourceWildOutdoorFrames } from "./source-battle-transition.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -287,7 +289,7 @@ export class SourceBattleVisuals {
       this.#victoryMusicPath = selectedAudio.victoryMusic;
       await this.render(state, this.#battleback);
       if (session !== this.#audioSession) return;
-      await this.playOpeningTransition(session);
+      await this.playOpeningTransition(session, audio.opponentTrainer !== undefined);
       if (session !== this.#audioSession) return;
       if (audio.opponentTrainer !== undefined && audio.waitBeforeSendOut !== undefined) {
         await this.playTrainerFaceOff(audio.opponentTrainer, session);
@@ -576,24 +578,113 @@ export class SourceBattleVisuals {
     return this.#manifests;
   }
 
-  private async playOpeningTransition(session: number): Promise<void> {
+  private async playOpeningTransition(session: number, trainerBattle: boolean): Promise<void> {
     const curtain = document.getElementById("source-battle-curtain");
     const stage = document.getElementById("source-battle-stage");
     if (curtain === null || stage === null) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const width = 512;
+    const height = 384;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    canvas.style.position = "absolute";
+    canvas.style.inset = "0";
+    canvas.style.width = "100%";
+    canvas.style.height = "100%";
+    const context = canvas.getContext("2d");
+    if (context === null) return;
+    const world = document.getElementById("world") as HTMLCanvasElement | null;
+    let snapshot: string | null = null;
+    try { snapshot = world?.toDataURL("image/png") ?? null; } catch { /* Le canvas peut être protégé par le navigateur. */ }
+    curtain.replaceChildren(canvas);
+    curtain.style.opacity = "1";
+    curtain.style.background = snapshot === null ? "#050706" : `center / cover no-repeat url("${snapshot}")`;
     curtain.classList.add("active");
-    const flashes = curtain.animate([
-      { opacity: 0, background: "#050706" }, { opacity: 1, background: "#050706" },
-    ], { duration: reduced ? 20 : 420, fill: "forwards", easing: "ease-in" });
-    await flashes.finished.catch(() => undefined);
-    if (session !== this.#audioSession) return;
-    const reveal = stage.animate([
-      { opacity: 0 }, { opacity: 1 },
-    ], { duration: reduced ? 20 : 380, fill: "forwards", easing: "ease-out" });
-    const uncover = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
-      { duration: reduced ? 20 : 380, fill: "forwards", easing: "ease-out" });
-    await Promise.all([reveal.finished.catch(() => undefined), uncover.finished.catch(() => undefined)]);
-    reveal.cancel(); uncover.cancel(); flashes.cancel(); curtain.classList.remove("active");
+    try {
+      if (!reduced) {
+        for (let pulse = 0; pulse < 3; pulse += 1) {
+          for (let frame = 1; frame <= 6; frame += 1) {
+            context.clearRect(0, 0, width, height);
+            context.fillStyle = `rgba(136,136,136,${frame * 30 / 255})`;
+            context.fillRect(0, 0, width, height);
+            await delay(SOURCE_TRANSITION_FRAME_MS);
+          }
+          for (let frame = 5; frame >= 0; frame -= 1) {
+            context.clearRect(0, 0, width, height);
+            if (frame > 0) {
+              context.fillStyle = `rgba(136,136,136,${frame * 30 / 255})`;
+              context.fillRect(0, 0, width, height);
+            }
+            await delay(SOURCE_TRANSITION_FRAME_MS);
+          }
+        }
+      }
+      if (session !== this.#audioSession) return;
+      const kind = selectSourceBattleTransition(trainerBattle);
+      if (kind === "trainer-standard") await this.playTrainerStandardTransition(context, width, height, reduced);
+      else await this.playWildStandardTransition(context, width, height, reduced);
+      if (session !== this.#audioSession) return;
+      curtain.style.background = "#050706";
+      context.clearRect(0, 0, width, height);
+      context.fillStyle = "#050706";
+      context.fillRect(0, 0, width, height);
+      const reveal = canvas.animate([{ opacity: 1 }, { opacity: 0 }],
+        { duration: reduced ? 20 : 18 * SOURCE_TRANSITION_FRAME_MS, fill: "forwards", easing: "linear" });
+      await reveal.finished.catch(() => undefined);
+      reveal.cancel();
+    } finally {
+      curtain.replaceChildren();
+      curtain.removeAttribute("style");
+      curtain.classList.remove("active");
+    }
+  }
+
+  private async playWildStandardTransition(context: CanvasRenderingContext2D, width: number, height: number,
+    reduced: boolean): Promise<void> {
+    const frames = sourceWildOutdoorFrames(width, height);
+    if (reduced) {
+      context.fillStyle = "#050706";
+      context.fillRect(0, 0, width, height);
+      await delay(20);
+      return;
+    }
+    context.fillStyle = "#050706";
+    for (const rectangles of frames) {
+      for (const rectangle of rectangles) context.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+      await delay(SOURCE_TRANSITION_FRAME_MS);
+    }
+  }
+
+  private async playTrainerStandardTransition(context: CanvasRenderingContext2D, width: number, height: number,
+    reduced: boolean): Promise<void> {
+    const image = new Image();
+    image.src = sourceUrl("Graphics/Transitions/vsBall.png");
+    try { await image.decode(); } catch { /* La bande noire reste une transition utilisable sans l'asset. */ }
+    const frames = sourceTrainerBandFrames(width, height);
+    const draw = (bands: typeof frames[number]): void => {
+      context.clearRect(0, 0, width, height);
+      for (const band of bands) {
+        context.fillStyle = "#050706";
+        context.fillRect(band.x, band.y, band.width, band.height);
+        if (image.complete && image.naturalWidth > 0) {
+          context.save();
+          context.translate(band.ballX, band.ballY);
+          context.rotate(band.ballAngle * Math.PI / 180);
+          context.drawImage(image, -band.height / 2, -band.height / 2, band.height, band.height);
+          context.restore();
+        }
+      }
+    };
+    if (reduced) {
+      draw(frames.at(-1)!);
+      await delay(20);
+      return;
+    }
+    for (const bands of frames) {
+      draw(bands);
+      await delay(SOURCE_TRANSITION_FRAME_MS);
+    }
   }
 
   private async playWildOpponentEntrance(pokemonName: string, session: number, cry: string | null): Promise<void> {
