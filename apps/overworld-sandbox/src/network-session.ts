@@ -73,6 +73,8 @@ export interface NetworkSessionCallbacks {
   readonly onSourceActorsState: (mapId: number, actorRevision: number,
     actors: readonly SourceWorldActorSnapshot[]) => void;
   readonly onSourceSceneState: (state: SourceSceneSnapshot) => void;
+  readonly onSourceSound: (side: "player" | "opponent", mapId: number, name: string,
+    volume: number, pitch: number) => void;
   readonly onBattleStarted: (battleId: string, state: TeamBattleState) => void;
   readonly onBattleExpanded: (battleId: string, before: TeamBattleState, state: TeamBattleState) => void;
   readonly onBattleTurnResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
@@ -239,6 +241,18 @@ export class OverworldNetworkSession {
       || socket === null || socket === undefined || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify({ type: "setSourceScene", version: PROTOCOL_VERSION,
       requestId: crypto.randomUUID(), scene }));
+    return true;
+  }
+
+  public publishSourceSound(mapId: number, name: string, volume: number, pitch: number): boolean {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    const shared = session?.snapshot?.sourceWorld?.mapId === mapId
+      && session.snapshot.sourceWorld.presence[session.ticket.side] === "shared";
+    if (session === null || !shared || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify({ type: "emitSourceSound", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), mapId, name, volume, pitch }));
     return true;
   }
 
@@ -616,6 +630,8 @@ export class OverworldNetworkSession {
           if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceScene: message.state,
             revision: message.revision };
           this.callbacks.onSourceSceneState(message.state);
+        } else if (message.type === "sourceSoundEmitted") {
+          this.callbacks.onSourceSound(message.side, message.mapId, message.name, message.volume, message.pitch);
         } else if (message.type === "turnResolved") {
           const snapshot = session.snapshot;
           if (snapshot?.battle?.id !== message.battleId) return;

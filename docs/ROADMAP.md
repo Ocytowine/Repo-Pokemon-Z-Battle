@@ -1713,6 +1713,70 @@ au retour de combat. La validation couvre solo, hote, invite et reconnexion.
 
 ## Phases produit planifiees
 
+#### Finition overworld en cinq lots (démarrée le 2026-10-12)
+
+Le port ne doit pas recréer ces détails carte par carte. Le noyau
+`source-field-effects.ts` dérive les effets depuis le terrain, les passages du
+tileset et le contrat de déplacement partagé. Les effets audiovisuels sont locaux
+et non persistés ; le mode et l'action qui les déclenchent sont déjà répliqués par
+`SourceWorldSnapshot`. Les compteurs qui modifient réellement un Pokémon restent
+personnels à son propriétaire et sont sauvegardés sur son client.
+
+- [x] Lot 1, retours immédiats : validation/annulation des dialogues, son de pas
+  dans l'herbe, son du saut de corniche et poussière source à l'atterrissage. Le
+  blocage demande aussi le SE `bump`, limité à un appel toutes les 250 ms ; le
+  lecteur reste silencieux si cet asset RTP absent du dossier de Z n'est pas
+  disponible.
+- [x] Lot 2, intégration au décor : profondeur de buisson de 12 px et bandes
+  translucides conformes au correctif final de Z, ombres masquées dans l'herbe,
+  en Surf/Plongée et pour les événements lumineux, et reflets animés sur les
+  terrains 6, 16 et 17. Le joueur, le suiveur, les PNJ et l'avatar Coop utilisent
+  la même primitive de rendu.
+- [~] Lot 3, eau et transitions de carte : marche/Surf/Plongée/Cascade et leur
+  rendu distant reposent déjà sur le contrat commun. Le résolveur audio accepte
+  maintenant la casse réelle des extensions et replie un nom `.ogg` manquant vers
+  le `.wav`/`.mp3` extrait, notamment pour les portes. Z ne joue ni `jump` ni
+  `Splash` lors du saut de montée/descente de Surf ; ne pas en inventer. Restent
+  la validation des sillages et les variantes de portes sur le parcours complet.
+- [~] Lot 4, ambiance : météo, brouillard, panorama, tons, flashes et animations
+  de carte sont déjà portés. Les lumières et les treize familles de particules de
+  Z restent bloquées par l'absence des commentaires `Particle Engine Type` dans
+  les événements extraits ; étendre l'extracteur avant leur rendu.
+- [~] Lot 5, systèmes de pas : le bonheur de marche est maintenant persistant et
+  conforme à Z tous les 128 pas (tirage individuel, lieu d'obtention, Luxe Ball,
+  Grelot Zen). Les dégâts de poison hors combat restent désactivés comme dans
+  `settings.rb` de Z. Poké Radar, baies, suie et capacités de terrain nécessitent
+  encore leurs états et métadonnées autoritaires dédiés.
+
+Recette manuelle minimale : comparer herbe normale/herbe haute, corniche dans les
+quatre directions, flaque/lac avec joueur et invité, ombres en Surf, entrée/sortie
+de bâtiment et reprise après reconnexion au voisinage du seuil de 128 pas.
+
+Correctif Coop et terrain du même jalon : les mouvements autonomes des PNJ ne sont
+plus interrompus lorsque l'état `idle` de l'hôte arrive avant la fin de
+l'interpolation de l'invité. Les positions de routes scénarisées utilisent le
+sprite courant, et l'état canonique des PNJ est réappliqué après chaque chargement
+de carte. Durant un transfert invité, les snapshots sont différés et un
+acquittement tardif de l'ancienne carte ne peut plus recharger celle-ci : cela
+supprime le rollback qui obligeait à franchir une porte deux fois.
+
+Les assets source `footset`, `footsetbike` et `waterpondbubble` rendent maintenant
+les empreintes temporaires sur le terrain Sable et le sillage animé après chaque
+pas sur StillWater, Water ou LagoReflejo. Ces marques sont visuelles et volatiles ;
+elles sont dérivées localement du mouvement autoritaire pour le joueur concerné et
+son partenaire, sans nouvelle persistance réseau. Les SE de déplacement distant
+et les commandes `play-sound` des deux joueurs sont entendus par leur partenaire
+sur la même carte avec une atténuation de distance. La room borne le message,
+vérifie la présence partagée et ne le transmet qu'à l'autre participant. Ils ne
+sont ni persistés ni rejoués après reconnexion.
+
+Réglages audio du même lot : le volume général est remplacé par trois canaux
+persistants `Musiques`, `Effets` et `Effets Coop`. Le troisième agit uniquement
+sur les sons du partenaire après leur atténuation spatiale ; il ne modifie donc
+ni les effets locaux ni le mix envoyé sur le réseau. La valeur globale historique
+sert de migration initiale. Ces préférences restent personnelles au navigateur et
+s'appliquent immédiatement aux lecteurs de scène, de combat et d'évolution.
+
 ### Phase 10 - Stabilisation du vertical jouable
 
 La phase 10 formalise la sortie de l'increment 9.8 et peut etre menee en parallele

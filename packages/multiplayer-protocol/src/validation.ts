@@ -342,6 +342,15 @@ export function parseClientMessage(payload: string): ClientMessage {
       } catch {
         return invalid("setSourceScene mal forme");
       }
+    case "emitSourceSound":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "mapId", "name", "volume", "pitch"])
+        || !isIdentifier(value.requestId) || !safeInteger(value.mapId, 1, 999_999)
+        || typeof value.name !== "string" || value.name.length < 1 || value.name.length > 128
+        || /[\\/\u0000-\u001f]/u.test(value.name)
+        || !safeInteger(value.volume, 0, 100) || !safeInteger(value.pitch, 25, 400)) {
+        return invalid("emitSourceSound mal forme");
+      }
+      return value as unknown as ClientMessage;
     case "openSourceBattle":
       if (!hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam", "battleItems"])
         || !isIdentifier(value.requestId) || !isBattleTeam(value.playerTeam) || !isBattleTeam(value.opponentTeam)

@@ -327,8 +327,10 @@ export class SourceNpcMotionController {
       else runtime.opacity = actor.opacity;
       if (actor.pattern === undefined) delete runtime.pattern;
       else runtime.pattern = actor.pattern;
+      const currentMotion = runtime.motion;
       runtime.motion = moved ? createSourceGridMotion(before, actor, actor.direction, now,
-        { duration: sourceNpcStepDuration(3), walkingPattern: runtime.walkingPattern }) : null;
+        { duration: sourceNpcStepDuration(3), walkingPattern: runtime.walkingPattern })
+        : currentMotion !== null && !sampleSourceGridMotion(currentMotion, now).complete ? currentMotion : null;
       if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     }
   }
@@ -342,10 +344,12 @@ export class SourceNpcMotionController {
       runtime.x = actor.x;
       runtime.y = actor.y;
       runtime.direction = actor.direction;
+      const currentMotion = runtime.motion;
       runtime.motion = moved && actor.action === "step"
         ? createSourceGridMotion(before, actor, actor.direction, now,
           { duration: sourceNpcStepDuration(actor.moveSpeed), walkingPattern: runtime.walkingPattern })
-        : null;
+        : !moved && currentMotion !== null && !sampleSourceGridMotion(currentMotion, now).complete
+          ? currentMotion : null;
       if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     }
   }

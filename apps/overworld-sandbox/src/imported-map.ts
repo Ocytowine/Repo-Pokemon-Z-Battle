@@ -6,6 +6,9 @@ import { parseAssetManifest, parsePokemonAssetsManifest, resolvePokemonSummaryAs
 import type { SourceShopItem } from "./source-economy.js";
 import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.js";
 import { clearSourceLocalDataCache, validateSourceLocalData } from "./source-local-data.js";
+import type { SourceMovementAction, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
+import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
+  type SourceFieldMark } from "./source-field-effects.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -104,6 +107,11 @@ export interface ImportedMapAssets {
   readonly characterImages: ReadonlyMap<string, HTMLImageElement>;
   readonly playerImage: HTMLImageElement;
   readonly playerPickupImage: HTMLImageElement;
+  readonly fieldEffectImages: {
+    readonly footprint: HTMLImageElement;
+    readonly mountedFootprint: HTMLImageElement;
+    readonly waterRipple: HTMLImageElement;
+  };
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
@@ -684,6 +692,8 @@ export interface ImportedRemotePlayerRender {
   readonly pose: ImportedAvatar;
   readonly pattern: number;
   readonly renderOffsetY?: number;
+  readonly mode?: SourceMovementMode;
+  readonly action?: SourceMovementAction;
 }
 
 function sourceAssetUrl(path: string): string {
@@ -766,14 +776,20 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     ...events.flatMap((event) => event.pages.map((page) => page.graphic.characterName)).filter((name) => name !== ""),
     ...routeCharacterNames(events),
   ])];
-  const [tilesetImage, playerImage, playerPickupImage, autotileImages, characters] = await Promise.all([
+  const [tilesetImage, playerImage, playerPickupImage, footprintImage, mountedFootprintImage, waterRippleImage,
+    autotileImages, characters] = await Promise.all([
     loadImage(sourceImageUrl("Tilesets", tileset.tilesetName)), loadImage(sourceImageUrl("Characters", "trchar000")),
     loadImage(sourceImageUrl("Characters", "trchar000_2")),
+    loadImage(sourceAssetUrl("Graphics/Pictures/footset.png")),
+    loadImage(sourceAssetUrl("Graphics/Pictures/footsetbike.png")),
+    loadImage(sourceAssetUrl("Graphics/Pictures/waterpondbubble.png")),
     Promise.all(tileset.autotileNames.map((name) => name === "" ? Promise.resolve(null) : loadImage(sourceImageUrl("Autotiles", name)))),
     Promise.all(characterNames.map((name) => loadImage(sourceImageUrl("Characters", name)))),
   ]);
   return { map, tileset, tilesetImage, autotileImages, events,
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
+    fieldEffectImages: { footprint: footprintImage, mountedFootprint: mountedFootprintImage,
+      waterRipple: waterRippleImage },
     mapTranslations, itemNames, items, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
     trainers, trainerTypes,
@@ -859,15 +875,55 @@ export function importedCameraPosition(canvas: Pick<HTMLCanvasElement, "width" |
   };
 }
 
+function drawCharacterFrame(context: CanvasRenderingContext2D, image: HTMLImageElement, sourceX: number,
+  sourceY: number, frameWidth: number, frameHeight: number, destinationX: number, destinationY: number,
+  bushDepth: number): void {
+  if (bushDepth <= 0) {
+    context.drawImage(image, sourceX, sourceY, frameWidth, frameHeight,
+      destinationX, destinationY, frameWidth, frameHeight);
+    return;
+  }
+  const opaqueHeight = Math.max(0, frameHeight - bushDepth - 2);
+  if (opaqueHeight > 0) context.drawImage(image, sourceX, sourceY, frameWidth, opaqueHeight,
+    destinationX, destinationY, frameWidth, opaqueHeight);
+  for (const [offset, alpha] of [[0, 0.67], [2, 0.33]] as const) {
+    const height = Math.min(2, Math.max(0, frameHeight - opaqueHeight - offset));
+    if (height <= 0) continue;
+    context.save();
+    context.globalAlpha *= alpha;
+    context.drawImage(image, sourceX, sourceY + opaqueHeight + offset, frameWidth, height,
+      destinationX, destinationY + opaqueHeight + offset, frameWidth, height);
+    context.restore();
+  }
+}
+
 function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElement, direction: number, pattern: number,
   opacity: number, tileX: number, tileY: number, cameraX: number, cameraY: number, shadow = true,
-  renderOffsetY = 0): void {
+  renderOffsetY = 0, bushDepth = 0, reflection = false, now = 0): void {
   const frameWidth = image.naturalWidth / 4;
   const frameHeight = image.naturalHeight / 4;
   const destinationX = tileX * 32 + 16 - frameWidth / 2 - cameraX;
   const destinationY = tileY * 32 + 32 - frameHeight - cameraY + renderOffsetY;
+  const sourceX = (pattern % 4) * frameWidth;
+  const sourceY = directionRow(direction) * frameHeight;
   context.save();
   context.globalAlpha = Math.max(0, Math.min(1, opacity / 255));
+  if (reflection && opacity > 0) {
+    // Les charsets Surf « offset » descendent visuellement le véhicule, mais le
+    // reflet reste ancré à la surface de la case comme dans ReflectedSprite.
+    const feetY = tileY * 32 + 32 - cameraY + Math.min(0, renderOffsetY);
+    const ripple = Math.sin(now / 240) * 0.02;
+    context.save();
+    context.beginPath();
+    context.rect(tileX * 32 - cameraX, feetY, 32, 32);
+    context.clip();
+    context.globalAlpha *= 0.34;
+    context.translate(destinationX + frameWidth / 2, feetY);
+    context.scale(1 + ripple, -1);
+    context.drawImage(image, sourceX, sourceY, frameWidth, frameHeight,
+      -frameWidth / 2, -frameHeight, frameWidth, frameHeight);
+    context.restore();
+  }
   if (shadow && opacity > 0) {
     context.fillStyle = "rgba(8, 14, 12, 0.32)";
     context.beginPath();
@@ -875,9 +931,38 @@ function drawCharacter(context: CanvasRenderingContext2D, image: HTMLImageElemen
       Math.max(6, Math.min(12, frameWidth * 0.28)), 4, 0, 0, Math.PI * 2);
     context.fill();
   }
-  context.drawImage(image, (pattern % 4) * frameWidth, directionRow(direction) * frameHeight, frameWidth, frameHeight,
-    destinationX, destinationY, frameWidth, frameHeight);
+  drawCharacterFrame(context, image, sourceX, sourceY, frameWidth, frameHeight,
+    destinationX, destinationY, bushDepth);
   context.restore();
+}
+
+function fieldMarkDirectionFrame(direction: Direction): number {
+  if (direction === "up") return 1;
+  if (direction === "right") return 2;
+  if (direction === "left") return 3;
+  return 0;
+}
+
+function drawSourceFieldMark(context: CanvasRenderingContext2D, assets: ImportedMapAssets,
+  mark: SourceFieldMark, now: number, cameraX: number, cameraY: number): void {
+  if (!sourceFieldMarkActive(mark, now)) return;
+  const age = now - mark.startedAt;
+  if (mark.kind === "footprint") {
+    const image = mark.mounted ? assets.fieldEffectImages.mountedFootprint : assets.fieldEffectImages.footprint;
+    const size = image.naturalHeight;
+    context.save();
+    context.globalAlpha = 62 / 255 * Math.max(0, 1 - age / SOURCE_FIELD_MARK_DURATION);
+    context.drawImage(image, fieldMarkDirectionFrame(mark.direction) * size, 0, size, size,
+      mark.x * 32 - cameraX, mark.y * 32 - cameraY, 32, 32);
+    context.restore();
+    return;
+  }
+  const frame = Math.floor((age - 300) / 150);
+  if (frame < 0 || frame >= 8) return;
+  const image = assets.fieldEffectImages.waterRipple;
+  const size = image.naturalHeight;
+  context.drawImage(image, frame * size, 0, size, size,
+    mark.x * 32 - cameraX, mark.y * 32 - cameraY, 32, 32);
 }
 
 export function sourcePriorityTileZ(tileY: number, priority: number): number {
@@ -889,7 +974,11 @@ export function sourceCharacterZ(tileY: number, frameHeight: number): number {
 }
 
 export function sourceEventHasShadow(eventName: string): boolean {
-  return !/\/noShadow\//iu.test(eventName);
+  return !/(?:\/noShadow\/|BerryPlant|OutdoorLight|HeadbuttTree|(?:^|\W)Light(?:\W|$))/iu.test(eventName);
+}
+
+export function sourceEventHasReflection(eventName: string): boolean {
+  return !/noreflect/iu.test(eventName);
 }
 
 export function eventPoseForActivePage(pose: ImportedEventPose | undefined, page: ImportedEventPage,
@@ -903,7 +992,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   eventPoses: ReadonlyMap<number, ImportedEventPose> = new Map(), cameraOffset: ImportedCameraOffset = { x: 0, y: 0 },
   playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0,
   follower: ImportedFollowerRender | null = null,
-  remotePlayers: readonly ImportedRemotePlayerRender[] = []): void {
+  remotePlayers: readonly ImportedRemotePlayerRender[] = [], playerMode: SourceMovementMode = "walk",
+  playerAction: SourceMovementAction = "idle", fieldMarks: readonly SourceFieldMark[] = []): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -958,9 +1048,14 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     if (page.graphic.tileId > 0) drawTile(context, assets, page.graphic.tileId, destinationX, destinationY, frame);
     else {
       const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
-      if (image !== undefined) drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
-        pose?.pattern ?? eventGraphicPattern(page, now), pose?.opacity ?? page.graphic.opacity,
-        eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name));
+      if (image !== undefined) {
+        const field = sourceFieldVisualState(map, assets.tileset, Math.round(eventX), Math.round(eventY), "walk",
+          false, page.settings.alwaysOnTop);
+        drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
+          pose?.pattern ?? eventGraphicPattern(page, now), pose?.opacity ?? page.graphic.opacity,
+          eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name) && field.shadow,
+          0, field.bushDepth, field.reflection && sourceEventHasReflection(event.name), now);
+      }
     }
   };
   type Renderable = { readonly z: number; readonly order: number; readonly draw: () => void };
@@ -980,22 +1075,32 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
     renderables.push({ z, order: order++, draw: () => drawEvent(entry) });
   }
+  for (const mark of fieldMarks) renderables.push({ z: sourceCharacterZ(mark.y, 32) - 2, order: order++,
+    draw: () => drawSourceFieldMark(context, assets, mark, now, cameraX, cameraY) });
   if (follower !== null) {
     const pose = follower.pose;
     renderables.push({ z: sourceCharacterZ(pose.y, follower.image.naturalHeight / 4), order: order++, draw: () => {
+      const field = sourceFieldVisualState(map, assets.tileset, Math.round(pose.x), Math.round(pose.y));
       drawCharacter(context, follower.image, directionNumber(pose.direction), pose.pattern, 255,
-        pose.x, pose.y, cameraX, cameraY, true);
+        pose.x, pose.y, cameraX, cameraY, field.shadow, 0, field.bushDepth, field.reflection, now);
     } });
   }
   for (const remote of remotePlayers) {
     renderables.push({ z: sourceCharacterZ(remote.pose.y, remote.image.naturalHeight / 4), order: order++, draw: () => {
+      const airborne = remote.action === "ledge-jump" || remote.action === "surf-transition";
+      const field = sourceFieldVisualState(map, assets.tileset, Math.round(remote.pose.x), Math.round(remote.pose.y),
+        remote.mode ?? "walk", airborne);
       drawCharacter(context, remote.image, directionNumber(remote.pose.direction), remote.pattern, 255,
-        remote.pose.x, remote.pose.y, cameraX, cameraY, true, remote.renderOffsetY ?? 0);
+        remote.pose.x, remote.pose.y, cameraX, cameraY, field.shadow, remote.renderOffsetY ?? 0,
+        field.bushDepth, field.reflection, now);
     } });
   }
   renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
+    const airborne = playerAction === "ledge-jump" || playerAction === "surf-transition";
+    const field = sourceFieldVisualState(map, assets.tileset, Math.round(avatar.x), Math.round(avatar.y),
+      playerMode, airborne);
     drawCharacter(context, playerImage, directionNumber(avatar.direction), playerPattern, 255,
-      avatar.x, avatar.y, cameraX, cameraY, true, playerOffsetY);
+      avatar.x, avatar.y, cameraX, cameraY, field.shadow, playerOffsetY, field.bushDepth, field.reflection, now);
   } });
   renderables.sort((left, right) => left.z - right.z || left.order - right.order).forEach((renderable) => {
     renderable.draw();

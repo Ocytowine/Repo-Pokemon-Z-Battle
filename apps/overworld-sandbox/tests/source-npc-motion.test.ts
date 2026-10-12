@@ -165,9 +165,12 @@ describe("source NPC motion", () => {
     guest.applyNetworkWorldActors(actors, 1_000);
     const start = guest.poses(1_000).get(event.id)!;
     const middle = guest.poses(1_125).get(event.id)!;
+    guest.applyNetworkWorldActors(actors.map((actor) => ({ ...actor, action: "idle" as const })), 1_150);
+    const afterEarlyIdle = guest.poses(1_175).get(event.id)!;
     const end = guest.poses(1_250).get(event.id)!;
     expect(start).toMatchObject({ x: event.x, y: event.y });
     expect(Math.abs(middle.x - start.x) + Math.abs(middle.y - start.y)).toBeCloseTo(0.5);
+    expect(Math.abs(afterEarlyIdle.x - start.x) + Math.abs(afterEarlyIdle.y - start.y)).toBeCloseTo(0.7);
     expect(end).toMatchObject({ x: actors[0]!.x, y: actors[0]!.y });
   });
 

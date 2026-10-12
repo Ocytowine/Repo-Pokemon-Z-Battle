@@ -20,7 +20,8 @@ export interface SourceProgressionViewModel {
   readonly eventState: SourceEventState;
   readonly catalog: PlayerCreationCatalog;
   readonly assets: PokemonAssetsManifest;
-  readonly volume: number;
+  readonly musicVolume: number;
+  readonly effectsVolume: number;
 }
 
 export interface SourceResolvedEvolution {
@@ -96,6 +97,13 @@ export class SourceProgressionView {
     this.root.id = "source-progression";
     this.root.hidden = true;
     (document.getElementById("world-stage") ?? document.body).append(this.root);
+  }
+
+  public setAudioVolumes(musicVolume: number, effectsVolume: number): void {
+    if (this.model !== null) this.model = { ...this.model,
+      musicVolume: Math.max(0, Math.min(1, musicVolume)),
+      effectsVolume: Math.max(0, Math.min(1, effectsVolume)) };
+    if (this.evolutionMusic !== null) this.evolutionMusic.volume = Math.max(0, Math.min(1, musicVolume));
   }
 
   public get open(): boolean { return this.pokemonId !== null; }
@@ -247,16 +255,16 @@ export class SourceProgressionView {
     if (presentation === null || this.model === null || this.evolutionPhase !== "intro") return;
     this.evolutionPhase = "animating";
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.evolutionMusic = this.playAudio(sourceUrl("Audio/BGM/evolv.ogg"), true);
+    this.evolutionMusic = this.playAudio(sourceUrl("Audio/BGM/evolv.ogg"), true, this.model.musicVolume);
     this.renderEvolution(presentation.pokemonId, presentation.pokemonName, presentation.previousSpecies,
       presentation.nextSpecies, presentation.cancellable);
     this.evolutionTimer = setTimeout(() => {
       this.evolutionTimer = null;
       this.evolutionMusic?.pause();
       this.evolutionMusic = null;
-      const volume = this.model!.volume;
-      this.playAudio(cryUrl(presentation.nextSpecies, this.model!.assets), false, volume);
-      setTimeout(() => { this.playAudio(sourceUrl("Audio/ME/EvolutionSuccess.ogg"), false, volume); }, reduced ? 0 : 450);
+      this.playAudio(cryUrl(presentation.nextSpecies, this.model!.assets), false, this.model!.effectsVolume);
+      setTimeout(() => { this.playAudio(sourceUrl("Audio/ME/EvolutionSuccess.ogg"), false,
+        this.model!.musicVolume); }, reduced ? 0 : 450);
       if (presentation.cancellable) {
         const result = this.callbacks.onResolveEvolution(presentation.pokemonId, true);
         if (!result.ok || this.model === null) {
@@ -278,7 +286,7 @@ export class SourceProgressionView {
     this.render();
   }
 
-  private playAudio(url: string | null, loop = false, volume = this.model?.volume ?? 0): HTMLAudioElement | null {
+  private playAudio(url: string | null, loop = false, volume = 0): HTMLAudioElement | null {
     if (url === null || volume <= 0) return null;
     const audio = new Audio(url);
     audio.volume = Math.max(0, Math.min(1, volume));

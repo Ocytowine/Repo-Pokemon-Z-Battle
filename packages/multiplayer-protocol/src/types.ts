@@ -104,6 +104,8 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;
       readonly appearance?: SourceFollowerSnapshot["appearance"] })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
+  | (RequestedMessage & { readonly type: "emitSourceSound"; readonly mapId: number;
+      readonly name: string; readonly volume: number; readonly pitch: number })
   | (RequestedMessage & { readonly type: "openSourceBattle"; readonly context: SourceBattleContext;
       readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam;
       readonly battleItems?: SourceBattleInventory })
@@ -177,6 +179,8 @@ export type ServerMessage =
       readonly actors: readonly SourceWorldActorSnapshot[] })
   | (VersionedMessage & { readonly type: "sourceSceneUpdated"; readonly revision: number;
       readonly state: SourceSceneSnapshot })
+  | (VersionedMessage & { readonly type: "sourceSoundEmitted"; readonly side: BattleSide;
+      readonly mapId: number; readonly name: string; readonly volume: number; readonly pitch: number })
   | (VersionedMessage & {
       readonly type: "error";
       readonly requestId: string | null;

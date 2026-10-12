@@ -24,6 +24,12 @@ export function shouldRejoinSharedSourceMap(guest: boolean, presence: "shared" |
     && (!roomBattleActive || battleAllowsAttachment);
 }
 
+/** Refuse un acquittement de l'ancienne carte pendant que l'invité a déjà engagé sa sortie locale. */
+export function sourceWorldUpdateIsStaleDuringGuestExcursion(guest: boolean, excursion: boolean,
+  presence: "shared" | "away", localMapId: number | null, hostMapId: number): boolean {
+  return guest && excursion && presence === "shared" && localMapId !== null && localMapId !== hostMapId;
+}
+
 export function sourceBattleAllowsAttachment(battle: {
   readonly state: { readonly status: string };
   readonly sourceContext: { readonly mapId: number } | null;

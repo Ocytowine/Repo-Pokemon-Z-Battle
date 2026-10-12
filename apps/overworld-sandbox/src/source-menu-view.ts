@@ -18,17 +18,12 @@ import { bindSourceHeldItemIconFallback, canManageSourceHeldItem, sourceHeldItem
   from "./source-held-item-view.js";
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
 import { sourceItemActions, sourceItemDisplayName } from "./source-item-actions.js";
-
-const SOURCE_VOLUME_KEY = "pokemon-z-battle.options.volume.v1";
+import { persistSourceAudioChannel, sourceAudioSettings, type SourceAudioChannel,
+  type SourceAudioSettings } from "./source-audio-settings.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;").replaceAll("'", "&#39;");
-}
-
-export function sourceMenuVolume(storage: Pick<Storage, "getItem">): number {
-  const stored = Number(storage.getItem(SOURCE_VOLUME_KEY) ?? 80);
-  return Number.isFinite(stored) ? Math.max(0, Math.min(100, stored)) : 80;
 }
 
 export function sourceQuantitySelectorHtml(label: string, value: number, maximum: number): string {
@@ -83,7 +78,7 @@ export interface SourceMenuCoopModel {
 export interface SourceMenuViewCallbacks {
   readonly onSave: () => void;
   readonly onDeleteSave: () => void;
-  readonly onVolumeChange: (volume: number) => void;
+  readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
   readonly onCreateRoom: (serverUrl: string) => void;
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
   readonly onDisconnectRoom: () => void;
@@ -560,14 +555,22 @@ export class SourceMenuView {
   }
 
   private renderOptions(content: HTMLElement): void {
-    const volume = sourceMenuVolume(this.storage);
-    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list"><label><span><strong>Volume général</strong><small>Contrôle les musiques et effets des cinématiques.</small></span><output id="source-volume-value">${volume}%</output><input id="source-volume" type="range" min="0" max="100" value="${volume}"></label><article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
-    content.querySelector<HTMLInputElement>("#source-volume")?.addEventListener("input", (event) => {
-      const input = event.currentTarget as HTMLInputElement;
-      this.storage.setItem(SOURCE_VOLUME_KEY, input.value);
-      this.callbacks.onVolumeChange(Number(input.value));
-      const output = content.querySelector<HTMLOutputElement>("#source-volume-value");
-      if (output !== null) output.value = `${input.value}%`;
+    const settings = sourceAudioSettings(this.storage);
+    const control = (channel: SourceAudioChannel, title: string, description: string, value: number): string =>
+      `<label><span><strong>${title}</strong><small>${description}</small></span><output data-audio-output="${channel}">${value}%</output><input data-audio-channel="${channel}" type="range" min="0" max="100" value="${value}"></label>`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list">
+      ${control("music", "Musiques", "Musiques de carte, de combat et jingles.", settings.music)}
+      ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
+      ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}
+      <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
+    content.querySelectorAll<HTMLInputElement>("[data-audio-channel]").forEach((input) => {
+      input.addEventListener("input", () => {
+        const channel = input.dataset.audioChannel as SourceAudioChannel;
+        const value = persistSourceAudioChannel(this.storage, channel, Number(input.value));
+        const output = content.querySelector<HTMLOutputElement>(`[data-audio-output="${channel}"]`);
+        if (output !== null) output.value = `${value}%`;
+        this.callbacks.onAudioSettingsChange(sourceAudioSettings(this.storage));
+      });
     });
   }
 

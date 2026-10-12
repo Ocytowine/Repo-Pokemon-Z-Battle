@@ -144,7 +144,8 @@ export interface SourceBattleAudio {
 }
 
 export interface SourceBattleVisualOptions {
-  readonly masterVolume?: number;
+  readonly musicVolume?: number;
+  readonly effectsVolume?: number;
   readonly onBattleAudioStart?: () => void;
   readonly onBattleAudioEnd?: () => void;
 }
@@ -209,18 +210,23 @@ export class SourceBattleVisuals {
   #battleback = "snow";
   #playerTrainerImage: HTMLImageElement | null = null;
   #opponentTrainerImage: HTMLImageElement | null = null;
-  #masterVolume: number;
+  #musicVolume: number;
+  #effectsVolume: number;
   #audioBaseVolumes = new WeakMap<HTMLAudioElement, number>();
+  #audioKinds = new WeakMap<HTMLAudioElement, "music" | "effects">();
   #capturePresented = false;
 
   public constructor(private readonly options: SourceBattleVisualOptions = {}) {
-    this.#masterVolume = Math.min(1, Math.max(0, options.masterVolume ?? 1));
+    this.#musicVolume = Math.min(1, Math.max(0, options.musicVolume ?? 1));
+    this.#effectsVolume = Math.min(1, Math.max(0, options.effectsVolume ?? 1));
   }
 
-  setMasterVolume(volume: number): void {
-    this.#masterVolume = Math.min(1, Math.max(0, volume));
+  setAudioVolumes(musicVolume: number, effectsVolume: number): void {
+    this.#musicVolume = Math.min(1, Math.max(0, musicVolume));
+    this.#effectsVolume = Math.min(1, Math.max(0, effectsVolume));
     for (const audio of [this.#battleMusic, this.#outroMusic, ...this.#oneShots]) {
-      if (audio !== null) audio.volume = (this.#audioBaseVolumes.get(audio) ?? 1) * this.#masterVolume;
+      if (audio !== null) audio.volume = (this.#audioBaseVolumes.get(audio) ?? 1)
+        * (this.#audioKinds.get(audio) === "music" ? this.#musicVolume : this.#effectsVolume);
     }
   }
 
@@ -1319,12 +1325,15 @@ export class SourceBattleVisuals {
   }
 
   private playAudio(path: string, options: { readonly loop?: boolean; readonly volume?: number;
-    readonly oneShot?: boolean; readonly playbackRate?: number }): HTMLAudioElement {
+    readonly oneShot?: boolean; readonly playbackRate?: number;
+    readonly kind?: "music" | "effects" }): HTMLAudioElement {
     const audio = new Audio(sourceUrl(path));
     audio.loop = options.loop ?? false;
     const baseVolume = options.volume ?? 1;
+    const kind = options.kind ?? (/^Audio\/(?:BGM|ME)\//u.test(path) ? "music" : "effects");
     this.#audioBaseVolumes.set(audio, baseVolume);
-    audio.volume = baseVolume * this.#masterVolume;
+    this.#audioKinds.set(audio, kind);
+    audio.volume = baseVolume * (kind === "music" ? this.#musicVolume : this.#effectsVolume);
     audio.playbackRate = options.playbackRate ?? 1;
     if (options.oneShot === true) {
       this.#oneShots.add(audio);

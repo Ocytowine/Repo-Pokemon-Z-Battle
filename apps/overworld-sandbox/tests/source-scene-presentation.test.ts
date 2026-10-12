@@ -26,8 +26,11 @@ describe("source scene presentation parameters", () => {
   });
 
   it("selects only audio extensions present in the extracted manifest", () => {
-    const available = new Set(["Audio/SE/Exit Door.wav", "Audio/SE/Exit Door.mp3", "Audio/SE/GEN8- Exclaim.wav"]);
+    const available = new Set(["Audio/SE/Exit Door.wav", "Audio/SE/Exit Door.mp3", "Audio/SE/GEN8- Exclaim.wav",
+      "Audio/SE/BW2Cancel.WAV"]);
     expect(sourceAudioCandidates("SE", "Exit Door", available)).toEqual(["Exit Door.wav", "Exit Door.mp3"]);
+    expect(sourceAudioCandidates("SE", "Exit Door.ogg", available)).toEqual(["Exit Door.wav", "Exit Door.mp3"]);
+    expect(sourceAudioCandidates("SE", "BW2Cancel", available)).toEqual(["BW2Cancel.WAV"]);
     expect(sourceAudioCandidates("SE", "GEN8- Exclaim", available)).toEqual(["GEN8- Exclaim.wav"]);
     expect(sourceAudioCandidates("SE", "unknown", available)).toEqual([]);
     expect(sourceAudioCandidates("SE", "legacy", null)).toEqual(["legacy.ogg", "legacy.wav", "legacy.mp3"]);

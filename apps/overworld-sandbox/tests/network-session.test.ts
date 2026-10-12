@@ -54,6 +54,7 @@ function callbacks(): NetworkSessionCallbacks {
     onSourceWorldState: vi.fn(),
     onSourceActorsState: vi.fn(),
     onSourceSceneState: vi.fn(),
+    onSourceSound: vi.fn(),
     onBattleStarted: vi.fn(),
     onBattleExpanded: vi.fn(),
     onBattleTurnResolved: vi.fn(),
@@ -138,6 +139,9 @@ describe("overworld network session", () => {
     sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 15, mapId: 3, actorRevision: 1,
       revision: 3, actors });
     expect(handlers.onSourceActorsState).toHaveBeenLastCalledWith(3, 1, actors);
+    sockets[0]?.emitMessage({ type: "sourceSoundEmitted", version: 15, side: "opponent",
+      mapId: 3, name: "Exit Door", volume: 80, pitch: 100 });
+    expect(handlers.onSourceSound).toHaveBeenLastCalledWith("opponent", 3, "Exit Door", 80, 100);
     const followerAppearance = { form: 1, shiny: true, gender: "female" as const };
     session.publishSourceFollower("FENNEKIN", followerAppearance);
     session.publishSourceFollower("FENNEKIN", followerAppearance);

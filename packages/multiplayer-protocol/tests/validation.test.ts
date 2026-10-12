@@ -64,6 +64,18 @@ describe("multiplayer protocol", () => {
       .toThrow("ackBattleSettlement mal forme");
   });
 
+  it("accepts only bounded source field sounds", () => {
+    expect(parseClientMessage(JSON.stringify({ type: "emitSourceSound", version: 15,
+      requestId: "sound-1", mapId: 3, name: "Exit Door", volume: 80, pitch: 120 })))
+      .toMatchObject({ type: "emitSourceSound", name: "Exit Door", volume: 80, pitch: 120 });
+    expect(() => parseClientMessage(JSON.stringify({ type: "emitSourceSound", version: 15,
+      requestId: "sound-2", mapId: 3, name: "../Secret", volume: 80, pitch: 100 })))
+      .toThrow("emitSourceSound mal forme");
+    expect(() => parseClientMessage(JSON.stringify({ type: "emitSourceSound", version: 15,
+      requestId: "sound-3", mapId: 3, name: "Choose", volume: 101, pitch: 100 })))
+      .toThrow("emitSourceSound mal forme");
+  });
+
   it("accepts team switches and forced replacements", () => {
     expect(parseClientMessage('{"type":"submitAction","version":15,"requestId":"d1","battleId":"b1","turn":1,"activeSlot":1,"action":{"kind":"move","moveIndex":0,"target":{"side":"opponent","slot":1}}}'))
       .toMatchObject({ activeSlot: 1, action: { target: { side: "opponent", slot: 1 } } });

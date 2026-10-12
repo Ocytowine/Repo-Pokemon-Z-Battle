@@ -417,6 +417,33 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().sourceScene).toEqual(scene);
   });
 
+  it("relays ephemeral source sounds in both directions only on the shared map", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+
+    const hostSound = room.receive("alice", { type: "emitSourceSound", version: 15,
+      requestId: "host-sound", mapId: 3, name: "Exit Door", volume: 80, pitch: 100 });
+    expect(hostSound).toEqual([
+      expect.objectContaining({ audience: { playerId: "alice" }, message: expect.objectContaining({ type: "ack" }) }),
+      { audience: { playerId: "bob" }, message: { type: "sourceSoundEmitted", version: 15,
+        side: "player", mapId: 3, name: "Exit Door", volume: 80, pitch: 100 } },
+    ]);
+
+    const guestSound = room.receive("bob", { type: "emitSourceSound", version: 15,
+      requestId: "guest-sound", mapId: 3, name: "GEN8- Exclaim", volume: 90, pitch: 110 });
+    expect(guestSound[1]).toEqual({ audience: { playerId: "alice" }, message: {
+      type: "sourceSoundEmitted", version: 15, side: "opponent", mapId: 3,
+      name: "GEN8- Exclaim", volume: 90, pitch: 110,
+    } });
+
+    room.receive("bob", { type: "setSourcePresence", version: 15,
+      requestId: "guest-away-for-sound", attached: false, avatar: null });
+    expect(room.receive("bob", { type: "emitSourceSound", version: 15,
+      requestId: "away-sound", mapId: 3, name: "Choose", volume: 80, pitch: 100 })[0]?.message)
+      .toMatchObject({ type: "error", code: "INVALID_PHASE" });
+  });
+
   it("publishes, updates and persists each player's cosmetic profile", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);
     const base = createDefaultNetworkPlayerProfile().profile;

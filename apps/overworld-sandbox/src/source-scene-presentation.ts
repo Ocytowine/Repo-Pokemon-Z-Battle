@@ -220,13 +220,28 @@ interface PresentationOptions {
   readonly resolveAnimationTarget?: (target: number) => SourceScreenTarget | null;
 }
 
-interface ManagedAudio { readonly audio: HTMLAudioElement; readonly sourceVolume: number }
+type SourceAudioMix = Readonly<{ music: number; effects: number; coopEffects: number }>;
+type SourceAudioKind = keyof SourceAudioMix;
+interface ManagedAudio {
+  readonly audio: HTMLAudioElement;
+  readonly sourceVolume: number;
+  readonly kind: SourceAudioKind;
+}
 
 export function sourceAudioCandidates(folder: "BGM" | "BGS" | "SE" | "ME", name: string,
   available: ReadonlySet<string> | null = null): readonly string[] {
-  const candidates = /\.[a-z0-9]+$/iu.test(name) ? [name] : [name + ".ogg", name + ".wav", name + ".mp3"];
+  const extension = /^(.*)\.[a-z0-9]+$/iu.exec(name);
+  const stem = extension?.[1] ?? name;
+  const candidates = [...new Set(extension === null
+    ? [stem + ".ogg", stem + ".wav", stem + ".mp3"]
+    : [name, stem + ".ogg", stem + ".wav", stem + ".mp3"])];
   if (available === null) return candidates;
-  return candidates.filter((candidate) => available.has(`Audio/${folder}/${candidate}`));
+  const actualPaths = new Map([...available].map((path) => [path.toLocaleLowerCase("en-US"), path]));
+  return candidates.flatMap((candidate) => {
+    const actual = actualPaths.get(`Audio/${folder}/${candidate}`.toLocaleLowerCase("en-US"));
+    if (actual === undefined) return [];
+    return [actual.slice(`Audio/${folder}/`.length)];
+  });
 }
 
 export function selectSourceCryPath(manifest: SourcePokemonAssetsManifest, speciesId: string): string | null {
@@ -235,7 +250,7 @@ export function selectSourceCryPath(manifest: SourcePokemonAssetsManifest, speci
 }
 
 export class SourceScenePresentation {
-  private masterVolume: number;
+  private audioMix: SourceAudioMix;
   private music: ManagedAudio | null = null;
   private backgroundSound: ManagedAudio | null = null;
   private audioSession = 0;
@@ -249,18 +264,19 @@ export class SourceScenePresentation {
   private sourceAudioPaths: Promise<ReadonlySet<string> | null> | null = null;
   private animationSession = 0;
 
-  public constructor(private readonly elements: PresentationElements, masterVolume = 1,
+  public constructor(private readonly elements: PresentationElements,
+    audioMix: SourceAudioMix = { music: 1, effects: 1, coopEffects: 1 },
     private readonly options: PresentationOptions = {}) {
-    this.masterVolume = clamp(masterVolume, 0, 1);
+    this.audioMix = this.normalizedAudioMix(audioMix);
   }
 
-  public setMasterVolume(volume: number): void {
-    this.masterVolume = clamp(volume, 0, 1);
-    if (this.music !== null) this.music.audio.volume = this.music.sourceVolume * this.masterVolume;
+  public setAudioMix(audioMix: SourceAudioMix): void {
+    this.audioMix = this.normalizedAudioMix(audioMix);
+    if (this.music !== null) this.applyManagedVolume(this.music);
     if (this.backgroundSound !== null) {
-      this.backgroundSound.audio.volume = this.backgroundSound.sourceVolume * this.masterVolume;
+      this.applyManagedVolume(this.backgroundSound);
     }
-    for (const entry of this.oneShots) entry.audio.volume = entry.sourceVolume * this.masterVolume;
+    for (const entry of this.oneShots) this.applyManagedVolume(entry);
   }
 
   public async execute(command: SourcePresentationCommand, delay: Delay): Promise<boolean> {
@@ -334,6 +350,35 @@ export class SourceScenePresentation {
     for (const managed of [this.music, this.backgroundSound]) {
       if (managed !== null) void managed.audio.play().catch(() => { /* Le prochain geste utilisateur pourra reprendre l'audio. */ });
     }
+  }
+
+  /** Effet sonore local de proximité. Il ne modifie aucun état partagé et n'est jamais persisté. */
+  public playFieldSound(name: string, volume = 100, pitch = 100): boolean {
+    return this.playSound({ audio: { name, volume, pitch } });
+  }
+
+  public playCoopFieldSound(name: string, volume = 100, pitch = 100): boolean {
+    return this.playSound({ audio: { name, volume, pitch } }, "coopEffects");
+  }
+
+  /** Animation purement visuelle attachée à un acteur déjà répliqué par l'état du monde. */
+  public playFieldAnimation(animationId: number, target = -1): void {
+    void this.playMapAnimation({ animationId, target }, async (duration) => {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, duration));
+    });
+  }
+
+  public playDialogueSound(kind: "decision" | "cursor" | "cancel" | "error"): boolean {
+    return this.playFieldSound(kind === "decision" ? "Choose"
+      : kind === "cursor" ? "Select"
+        : kind === "cancel" ? "BW2Cancel" : "buzzer");
+  }
+
+  public playRemoteFieldSound(data: Readonly<Record<string, unknown>>, attenuation = 0.35): boolean {
+    const state = parseSourceAudio(data);
+    if (state === null) return false;
+    return this.playSound({ audio: { name: state.name,
+      volume: state.volume * 100 * clamp(attenuation, 0, 1), pitch: state.pitch * 100 } }, "coopEffects");
   }
 
   private applyTone(tone: SourceTone): void {
@@ -435,17 +480,17 @@ export class SourceScenePresentation {
     this.music = null;
     const session = ++this.audioSession;
     if (state.name === "") return true;
-    const managed = this.createAudio(state, true);
+    const managed = this.createAudio(state, true, "music");
     this.music = managed;
     void this.playCandidates(managed.audio, "BGM", state.name, session);
     return true;
   }
 
-  private playSound(data: Readonly<Record<string, unknown>>): boolean {
+  private playSound(data: Readonly<Record<string, unknown>>, kind: SourceAudioKind = "effects"): boolean {
     const state = parseSourceAudio(data);
     if (state === null) return false;
     if (state.name === "") return true;
-    const managed = this.createAudio(state, false);
+    const managed = this.createAudio(state, false, kind);
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
     void this.playCandidates(managed.audio, "SE", state.name, this.audioSession)
@@ -460,7 +505,7 @@ export class SourceScenePresentation {
     this.backgroundSound = null;
     const session = ++this.backgroundSoundSession;
     if (state.name === "") return true;
-    const managed = this.createAudio(state, true);
+    const managed = this.createAudio(state, true, "music");
     this.backgroundSound = managed;
     void this.playCandidates(managed.audio, "BGS", state.name, session);
     return true;
@@ -470,7 +515,7 @@ export class SourceScenePresentation {
     const state = parseSourceAudio(data);
     if (state === null) return false;
     if (state.name === "") return true;
-    const managed = this.createAudio(state, false);
+    const managed = this.createAudio(state, false, "music");
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
     void this.playCandidates(managed.audio, "ME", state.name, this.audioSession)
@@ -483,7 +528,7 @@ export class SourceScenePresentation {
     void this.loadPokemonAssets().then(async (manifest) => {
       const path = manifest === null ? null : selectSourceCryPath(manifest, data.speciesId as string);
       if (path === null) return;
-      const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false);
+      const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false, "effects");
       this.oneShots.add(managed);
       managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
       managed.audio.src = sourceUrl(path);
@@ -653,12 +698,22 @@ export class SourceScenePresentation {
     globalThis.setTimeout(() => element.remove(), duration);
   }
 
-  private createAudio(state: SourceAudioState, loop: boolean): ManagedAudio {
+  private normalizedAudioMix(audioMix: SourceAudioMix): SourceAudioMix {
+    return { music: clamp(audioMix.music, 0, 1), effects: clamp(audioMix.effects, 0, 1),
+      coopEffects: clamp(audioMix.coopEffects, 0, 1) };
+  }
+
+  private applyManagedVolume(managed: ManagedAudio): void {
+    managed.audio.volume = managed.sourceVolume * this.audioMix[managed.kind];
+  }
+
+  private createAudio(state: SourceAudioState, loop: boolean, kind: SourceAudioKind): ManagedAudio {
     const audio = new Audio();
     audio.loop = loop;
-    audio.volume = state.volume * this.masterVolume;
     audio.playbackRate = state.pitch;
-    return { audio, sourceVolume: state.volume };
+    const managed = { audio, sourceVolume: state.volume, kind };
+    this.applyManagedVolume(managed);
+    return managed;
   }
 
   private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "BGS" | "SE" | "ME", name: string,

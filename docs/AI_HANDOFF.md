@@ -2424,6 +2424,82 @@ L'ancien `.pokemon-z/data/local-test.json` est encore lu comme format de migrati
 Sans aucune configuration, les routes locales repondent explicitement HTTP 503 et
 l'interface affiche la commande d'initialisation complete au lieu d'une erreur JSON.
 
+## Jalon finition overworld du 2026-10-12
+
+La reprise des cinq lots d'effets overworld a commencé par une capacité générique
+`source-field-effects.ts`, sans exception liée à une carte ou un événement. Elle
+lit les terrains et le bit buisson du tileset, puis produit les règles de rendu et
+les retours de déplacement. `drawImportedMap` applique désormais la profondeur de
+buisson source de 12 px, les deux bandes terminales translucides, les reflets sur
+StillWater/Puddle/LagoReflejo et les exclusions d'ombre (buisson, Surf, Plongée,
+événements lumineux). Ces règles couvrent joueur, PNJ, suiveur et avatar distant.
+
+Les dialogues jouent les sons de décision/annulation, l'herbe joue
+`se_step_run_grass`, la corniche joue `jump` puis l'animation Dust n°2, y compris
+la poussière visible d'un avatar distant. Une collision tente `bump` avec une
+limite de 250 ms ; cet ancien SE RTP n'est pas présent dans le manifeste local de
+Z et doit donc rester silencieux plutôt que d'être remplacé arbitrairement. Le
+résolveur audio est insensible à la casse et essaie les autres extensions du même
+nom lorsqu'une commande cite un `.ogg` absent mais que Z fournit un `.wav` ou un
+`.mp3`. Cela couvre notamment les sons de portes observés en 404.
+
+Le premier système persistant de pas est également porté : `happinessSteps` migre
+les anciennes sauvegardes à zéro et déclenche tous les 128 pas le tirage de bonheur
+individuel de Z, avec lieu d'obtention, Luxe Ball et Grelot Zen. Autorité : joueur
+propriétaire ; domaine : équipe personnelle ; persistance : sauvegarde locale ;
+réplication : aucune mutation narrative, l'équipe mise à jour ne voyage que par
+les contrats de combat existants ; audience : propriétaire uniquement. Cette
+règle s'exécute donc pareil en solo, chez l'hôte et chez l'invité, sans dépendre de
+l'histoire de l'hôte. Le poison de terrain n'est pas porté car Z fixe
+`POISONINFIELD = false`.
+
+Les lots 3 à 5 restent partiels. Surf/Plongée/Cascade, portes, météo, brouillard,
+panoramas, tons, flashes et animations de carte existaient déjà et utilisent le
+même socle. Les sillages doivent être validés visuellement. Les lumières et les
+treize familles du Particle Engine exigent d'abord l'extraction des commentaires
+`Particle Engine Type`, actuellement absents des événements JSON. Poké Radar,
+baies, suie et capacités de terrain attendent encore leurs contrats d'état. Ne pas
+simuler ces métadonnées par numéro d'événement. Le détail et la recette sont dans
+la section 9.7 de `docs/ROADMAP.md`.
+
+Correctif de recette Coop associé : `SourceNpcMotionController` conserve une
+interpolation distante déjà commencée lorsque le paquet `idle` final arrive, et
+les coordonnées de `SourceSceneActorSnapshot` viennent désormais de la pose
+animée, pas de la position initiale de l'événement. À l'entrée d'une carte,
+l'invité réapplique toujours `world.actors` après le reset local. Les snapshots
+reçus pendant son chargement sont différés ; un ancien état `shared` d'une autre
+carte est rejeté pendant l'excursion. Ne pas retirer ce garde-fou : sans lui, une
+réponse réseau peut recharger la carte précédente et obliger à franchir le seuil
+une seconde fois.
+
+Les traces de terrain sont des `SourceFieldMark` de 1,5 seconde, produites depuis
+le mouvement partagé et les tags du tileset. Sable utilise `footset.png` ou
+`footsetbike.png` selon le mode ; StillWater, Water et LagoReflejo utilisent les
+huit frames de `waterpondbubble.png` selon la cadence du script Z. Le joueur local
+et le joueur distant créent les mêmes marques côté affichage. Elles ne font pas
+partie de la sauvegarde ni du snapshot. Les sons distants de saut, collision et
+herbe sont dérivés du mouvement autoritaire avec atténuation selon la distance.
+Les commandes `play-sound` utilisent désormais une intention réseau éphémère
+`emitSourceSound` dans les deux sens. La room vérifie que l'émetteur et le
+destinataire sont présents sur la même carte partagée, puis transmet uniquement
+le nom, le volume et le pitch au partenaire. Le client destinataire applique
+l'atténuation selon la distance. Autorité : room pour l'audience, joueur local
+pour le déclenchement ; domaine : présentation seulement ; persistance et
+restauration : aucune ; audience : autre participant sur la même carte. Le son
+n'est donc ni stocké dans le snapshot, ni rejoué après reconnexion. Les BGM, BGS
+et sons d'interface/dialogue personnels ne passent pas par ce contrat.
+
+Les options audio ne reposent plus sur un volume global. Trois canaux locaux et
+persistants sont exposés dans le menu : `Musiques` pour BGM/BGS/ME, `Effets` pour
+SE, cris, interface et animations locales, et `Effets Coop` pour les SE provenant
+du partenaire (déplacement et `emitSourceSound`). L'atténuation spatiale Coop est
+appliquée avant ce dernier volume. Les anciennes installations migrent les trois
+curseurs depuis `pokemon-z-battle.options.volume.v1`; chaque canal possède ensuite
+sa propre clé `pokemon-z-battle.options.*-volume.v1`. Les changements s'appliquent
+à chaud aux scènes, combats, évolutions et cris de fiche déjà en cours. Autorité
+et persistance : préférences strictement personnelles dans le `localStorage` de
+chaque navigateur ; aucune préférence audio n'est envoyée à la room.
+
 ## Commandes utiles
 
 ```powershell

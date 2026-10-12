@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
   parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
-  selectDefaultEventPage, sourceCharacterZ, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
+  selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
@@ -31,6 +31,10 @@ describe("imported RPG Maker map", () => {
   it("honors the source noShadow event-name convention", () => {
     expect(sourceEventHasShadow("Crisanto")).toBe(true);
     expect(sourceEventHasShadow("carta/noShadow/")).toBe(false);
+    expect(sourceEventHasShadow("BerryPlant")).toBe(false);
+    expect(sourceEventHasShadow("OutdoorLight")).toBe(false);
+    expect(sourceEventHasReflection("Crisanto")).toBe(true);
+    expect(sourceEventHasReflection("miroir/noreflect/")).toBe(false);
   });
 
   it("drops stale graphic overrides when an event changes page", () => {

@@ -49,8 +49,9 @@ import { SourceFollowerMotionController } from "./source-follower-motion.js";
 import { AVATAR_LAB_MAP_ID, AvatarLabView } from "./avatar-lab-view.js";
 import { isSourceStateCommand, sourceCommandCapability } from "./source-command-registry.js";
 import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
-import { SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
-import { SourceMenuView, SourceShopView, sourceMenuVolume } from "./source-menu-view.js";
+import { parseSourceAudio, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
+import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
+import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceDialogueView } from "./source-dialogue-view.js";
@@ -83,7 +84,7 @@ import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceT
 import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory, sourceStateWithLocalStory }
+  sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "./source-coop-policy.js";
 import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
@@ -91,10 +92,20 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
 import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
+import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
+  sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
+  type SourceFieldMark } from "./source-field-effects.js";
 import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
+let sourceAudioPreferences = sourceAudioSettings(localStorage);
+
+function normalizedSourceAudio(settings: SourceAudioSettings): {
+  readonly music: number; readonly effects: number; readonly coopEffects: number } {
+  return { music: settings.music / 100, effects: settings.effects / 100,
+    coopEffects: settings.coopEffects / 100 };
+}
 
 let viewedMapId = SOURCE_MAP_ID;
 let avatarLabReturnMapId = viewedMapId;
@@ -108,6 +119,8 @@ let sourceDevSettings = loadSourceDevSettings(localStorage);
 let pendingTransferMovementMode: SourceMovementMode | null = null;
 let importedPlayerMotion: SourceGridMotion | null = null;
 let importedWalkingPattern: 1 | 3 = 1;
+let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
+let sourceFieldMarks: SourceFieldMark[] = [];
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
@@ -183,6 +196,8 @@ let networkBattleAnimating = false;
 let networkBattleAnimationTicket = 0;
 let networkBattlePresentation = Promise.resolve();
 let networkSourceWorld: SourceWorldSnapshot | null = null;
+let deferredNetworkSourceWorld: { readonly world: SourceWorldSnapshot; readonly animate: boolean;
+  readonly applyOwnAvatar: boolean } | null = null;
 let guestSourceExcursion = false;
 let networkRemoteSourceMotion: SourceGridMotion | null = null;
 let networkRemoteWalkingPattern: 1 | 3 = 1;
@@ -279,7 +294,7 @@ function currentSourceScene(): SourceSceneSnapshot | null {
   const actors: SourceSceneActorSnapshot[] = sourceMapEvents().flatMap((event) => {
     const pose = poses.get(event.id);
     if (pose === undefined) return [];
-    return [{ eventId: event.id, x: event.x, y: event.y, direction: sourceActorDirection(pose.direction),
+    return [{ eventId: event.id, x: pose.x, y: pose.y, direction: sourceActorDirection(pose.direction),
       ...(pose.pattern === undefined ? {} : { pattern: pose.pattern }),
       ...(pose.characterName === undefined ? {} : { characterName: pose.characterName }),
       ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }) }];
@@ -371,6 +386,36 @@ function checkSourceWildEncounter(): boolean {
   importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
   resumePendingWildEncounter();
   return true;
+}
+
+function appendSourceFieldMarks(motion: SourceGridMotion, mode: SourceMovementMode, now: number): void {
+  if (importedAssets === null) return;
+  sourceFieldMarks = [...sourceFieldMarks.filter((mark) => sourceFieldMarkActive(mark, now)),
+    ...sourceFieldMarksForStep(importedAssets.map, importedAssets.tileset,
+      motion.from, motion.to, motion.direction, mode, now)];
+}
+
+function remoteFieldSoundVolume(point: GridPoint): number {
+  const distance = Math.abs(importedAvatar.x - point.x) + Math.abs(importedAvatar.y - point.y);
+  return Math.max(8, 42 - distance * 3);
+}
+
+function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: number): void {
+  if (importedAssets === null) return;
+  appendSourceFieldMarks(completedMotion, sourceMovementMode, now);
+  const feedback = sourceFieldMovementFinishFeedback(
+    sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y),
+    completedMotion.action);
+  if (feedback.sound !== null) sourcePresentation.playFieldSound(feedback.sound);
+  if (feedback.animationId !== null) sourcePresentation.playFieldAnimation(feedback.animationId, -1);
+  const happinessSteps = sourceEventState.happinessSteps + 1;
+  if (happinessSteps >= 128) {
+    const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
+    sourceEventState = { ...sourceEventState, happinessSteps: 0,
+      party: applySourceWalkingHappiness(sourceEventState.party, importedAssets.map.id, () => rng.nextInt(2) === 0),
+      wildEncounterRngState: rng.snapshot() };
+  } else sourceEventState = { ...sourceEventState, happinessSteps };
+  persistSourceEventState();
 }
 
 function finishImportedStep(): void {
@@ -788,8 +833,11 @@ function resolveSourceAnimationTarget(target: number): { x: number; bottom: numb
   if (target === -1) { const image = activeSourcePlayerImage(); return { x: playerPose.x * 32 + 16 - camera.x,
     bottom: playerPose.y * 32 + 32 - camera.y, height: image.naturalHeight / 4 }; }
   if (target === -2) {
-    const remote = networkSourceWorld?.avatars.player;
-    const image = networkAvatarImages.player;
+    const remoteSide: AvatarId | null = multiplayer.current?.ticket.side === "player" ? "opponent"
+      : multiplayer.current?.ticket.side === "opponent" ? "player" : null;
+    if (remoteSide === null) return null;
+    const remote = networkSourceWorld?.avatars[remoteSide];
+    const image = networkAvatarImages[remoteSide];
     if (remote === undefined || image === undefined) return null;
     return { x: remote.x * 32 + 16 - camera.x, bottom: remote.y * 32 + 32 - camera.y,
       height: image.naturalHeight / 4 };
@@ -813,7 +861,7 @@ const sourcePresentation = new SourceScenePresentation({
   pictures: requiredAppElement("source-picture-layer"), tone: requiredAppElement("source-tone-layer"),
   flash: requiredAppElement("source-flash-layer"), animations: requiredAppElement("source-map-animation-layer"),
   dialogue: requiredAppElement("source-dialogue"),
-}, sourceMenuVolume(localStorage) / 100, { resolveAnimationTarget: resolveSourceAnimationTarget });
+}, normalizedSourceAudio(sourceAudioPreferences), { resolveAnimationTarget: resolveSourceAnimationTarget });
 
 async function presentSourceCommand(command: SourcePresentationCommand,
   delay: (milliseconds: number) => Promise<void>): Promise<boolean> {
@@ -830,14 +878,22 @@ async function presentSourceCommand(command: SourcePresentationCommand,
     sourcePresentationCue = { id: sourcePresentationCueId, kind: command.kind, data: networkData };
     publishCurrentSourceScene();
   }
+  if (command.kind === "play-sound" && importedAssets !== null) {
+    const audio = parseSourceAudio(command.data);
+    if (audio !== null) multiplayer.publishSourceSound(importedAssets.map.id, audio.name,
+      Math.round(audio.volume * 100), Math.round(audio.pitch * 100));
+  }
   return sourcePresentation.execute(command, delay);
 }
 const sourceMenuView = new SourceMenuView(localStorage, {
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
-  onVolumeChange: (volume) => {
-    sourcePresentation.setMasterVolume(volume / 100);
-    sourceBattleVisuals.setMasterVolume(volume / 100);
+  onAudioSettingsChange: (settings) => {
+    sourceAudioPreferences = settings;
+    sourcePresentation.setAudioMix(normalizedSourceAudio(settings));
+    sourceBattleVisuals.setAudioVolumes(settings.music / 100, settings.effects / 100);
+    sourceProgressionView.setAudioVolumes(settings.music / 100, settings.effects / 100);
+    if (sourcePokemonSummaryCry !== null) sourcePokemonSummaryCry.volume = settings.effects / 100 * 0.8;
   },
   onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
   onJoinRoom: (serverUrl, roomCode) => { void createOrJoin("join", serverUrl, roomCode); },
@@ -883,7 +939,8 @@ const sourcePokemonSummaryView = new SourcePokemonSummaryView({
 });
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
 const sourceBattleVisuals = new SourceBattleVisuals({
-  masterVolume: sourceMenuVolume(localStorage) / 100,
+  musicVolume: sourceAudioPreferences.music / 100,
+  effectsVolume: sourceAudioPreferences.effects / 100,
   onBattleAudioStart: () => sourcePresentation.pauseForBattle(),
   onBattleAudioEnd: () => sourcePresentation.resumeAfterBattle(),
 });
@@ -1018,7 +1075,17 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     sourceNpcMotions.applyNetworkWorldActors(actors, performance.now());
     if (networkSourceWorld?.mapId === mapId) networkSourceWorld = { ...networkSourceWorld, actors, actorRevision };
   },
-  onSourceSceneState: () => undefined,
+  onSourceSceneState: (scene) => {
+    if (!isNetworkGuest() || guestSourceExcursion || importedAssets?.map.id !== scene.mapId) return;
+    if (scene.sequenceActive) sourceNpcMotions.applyNetworkActors(scene.actors, performance.now());
+  },
+  onSourceSound: (side, mapId, name, volume, pitch) => {
+    if (importedAssets?.map.id !== mapId || networkSourceWorld?.mapId !== mapId
+      || networkSourceWorld.presence[side] !== "shared") return;
+    const point = networkSourceWorld.avatars[side];
+    sourcePresentation.playCoopFieldSound(name,
+      Math.round(volume * remoteFieldSoundVolume(point) / 100), pitch);
+  },
   onBattleStarted: (battleId, state) => {
     sessionStorage.setItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY, battleId);
     beginNetworkBattlePresentation(battleId, state);
@@ -1331,6 +1398,16 @@ function closeNetworkBattlePresentation(battleId: string): void {
 }
 
 async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean): Promise<void> {
+  if (isNetworkGuest() && sourceTransitionInProgress) {
+    deferredNetworkSourceWorld = { world, animate, applyOwnAvatar };
+    return;
+  }
+  if (sourceWorldUpdateIsStaleDuringGuestExcursion(isNetworkGuest(), guestSourceExcursion,
+    world.presence.opponent, importedAssets?.map.id ?? null, world.mapId)) {
+    // Acquittement ancien reçu pendant un transfert personnel : le recharger
+    // ramènerait visuellement l'invité sur la carte qu'il vient de quitter.
+    return;
+  }
   const previousWorld = networkSourceWorld;
   const now = performance.now();
   const session = multiplayer.current;
@@ -1367,6 +1444,12 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   const remoteSide: AvatarId = session.ticket.side === "player" ? "opponent" : "player";
   const previousRemote = previousWorld?.mapId === world.mapId ? previousWorld.avatars[remoteSide] : undefined;
   const remote = world.avatars[remoteSide];
+  if (animate && !applyOwnAvatar && previousRemote !== undefined) {
+    const moved = previousRemote.x !== remote.x || previousRemote.y !== remote.y;
+    const remoteFeedback = sourceFieldMovementStartFeedback(moved, remote.action ?? "idle");
+    if (remoteFeedback.sound !== null) sourcePresentation.playCoopFieldSound(remoteFeedback.sound,
+      remoteFieldSoundVolume(remote));
+  }
   const displayedRemote = networkRemoteSourceMotion === null ? previousRemote
     : sampleSourceGridMotion(networkRemoteSourceMotion, now);
   if (previousRemote !== undefined && (previousRemote.x !== remote.x || previousRemote.y !== remote.y)) {
@@ -1391,6 +1474,9 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
       const loaded = await loadSourceWorldAt(world.mapId, own);
       if (application !== networkSourceWorldApplication || multiplayer.current !== session) return;
       activateSourceWorld(loaded);
+      if (session.ticket.side === "opponent") {
+        sourceNpcMotions.applyNetworkWorldActors(world.actors, performance.now());
+      }
     } catch (error) {
       importedNotice = error instanceof Error ? `Carte de l'hôte inaccessible : ${error.message}` : "Carte de l'hôte inaccessible.";
       render();
@@ -1549,15 +1635,19 @@ function animateImportedMap(now: number): void {
         pattern: sourceMovementVisualPattern(remoteVisualMode,
           "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null),
         renderOffsetY: ("renderOffsetY" in remotePose ? remotePose.renderOffsetY : 0)
-          + sourceMovementVisualOffset(remoteVisualMode, now) }]),
+          + sourceMovementVisualOffset(remoteVisualMode, now),
+        mode: remoteMode, action: remoteMotion?.action ?? "idle" }]),
   ];
+  sourceFieldMarks = sourceFieldMarks.filter((mark) => sourceFieldMarkActive(mark, now));
   drawImportedMap(context, canvas, importedAssets, pose, playerPattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
       + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
-    remoteCharacters);
+    remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks);
   if (importedPlayerMotion !== null && pose.complete) {
+    const completedMotion = importedPlayerMotion;
+    completeLocalSourceFieldStep(completedMotion, now);
     importedPlayerMotion = null;
     const pendingContact = pendingSourceNpcContact;
     pendingSourceNpcContact = null;
@@ -1567,6 +1657,14 @@ function animateImportedMap(now: number): void {
     if (!trainerStarted && sourceSequences.current === null) finishImportedStep();
   }
   if (networkRemoteSourceMotion !== null && sampleSourceGridMotion(networkRemoteSourceMotion, now).complete) {
+    const completedRemoteMotion = networkRemoteSourceMotion;
+    const destinationTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset,
+      completedRemoteMotion.to.x, completedRemoteMotion.to.y);
+    const remoteFeedback = sourceFieldMovementFinishFeedback(destinationTerrain, completedRemoteMotion.action);
+    if (remoteFeedback.sound !== null) sourcePresentation.playCoopFieldSound(remoteFeedback.sound,
+      remoteFieldSoundVolume(completedRemoteMotion.to));
+    if (remoteFeedback.animationId !== null) sourcePresentation.playFieldAnimation(remoteFeedback.animationId, -2);
+    appendSourceFieldMarks(completedRemoteMotion, remoteMode, now);
     networkRemoteSourceMotion = null;
   }
   if (networkRemoteFollowerMotion !== null && sampleSourceGridMotion(networkRemoteFollowerMotion, now).complete) {
@@ -1762,7 +1860,7 @@ function playSourcePokemonSummaryCry(path: string | null): void {
   sourcePokemonSummaryCry = null;
   if (path === null) return;
   const audio = new Audio(`/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`);
-  audio.volume = sourceMenuVolume(localStorage) / 100 * 0.8;
+  audio.volume = sourceAudioPreferences.effects / 100 * 0.8;
   sourcePokemonSummaryCry = audio;
   void audio.play().catch(() => undefined);
 }
@@ -1988,7 +2086,8 @@ function useSourcePokemonEvolutionItem(itemId: string, pokemonId: string): {
   sourceProgressionView.showResolvedEvolution({ pokemonId, previousSpecies: result.previousSpecies,
     nextSpecies: result.pokemon.species, pokemonName: result.pokemon.nickname ?? previousName }, {
     eventState: sourceEventState, catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
-    volume: sourceMenuVolume(localStorage) / 100,
+    musicVolume: sourceAudioPreferences.music / 100,
+    effectsVolume: sourceAudioPreferences.effects / 100,
   });
   return { ok: true, message, eventState: sourceEventState };
 }
@@ -2122,7 +2221,8 @@ function maybeStartSourceProgression(): void {
     activeSourceProgressionPokemonId = pokemonId;
     sourceProgressionView.show(pokemonId, { eventState: sourceEventState,
       catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
-      volume: sourceMenuVolume(localStorage) / 100 });
+      musicVolume: sourceAudioPreferences.music / 100,
+      effectsVolume: sourceAudioPreferences.effects / 100 });
     return;
   }
 }
@@ -2379,14 +2479,19 @@ function chooseSourceOption(index: number): void {
   const update = sourceDialogues.choose(index, sourceInteractionState(), sourceDirectionNumber(importedAvatar.direction),
     sourceMovementTestOverride);
   applySourceDialogueUpdate(update);
-  if (update.changed) renderImportedView();
+  if (update.changed) {
+    sourcePresentation.playDialogueSound("decision");
+    renderImportedView();
+  }
 }
 
 function beginSourceEvent(page: ImportedEventPage, mapId: number, eventId: number, label: string,
   translations: ReadonlyMap<string, string>): void {
-  applySourceDialogueUpdate(sourceDialogues.begin(page, mapId, eventId, label, translations, sourceInteractionState(),
+  const update = sourceDialogues.begin(page, mapId, eventId, label, translations, sourceInteractionState(),
     sourceDirectionNumber(importedAvatar.direction), { playerName: activePlayerSelection.profile.displayName },
-    sourceMovementTestOverride));
+    sourceMovementTestOverride);
+  applySourceDialogueUpdate(update);
+  if (update.changed && sourceDialogues.current !== null) sourcePresentation.playDialogueSound("decision");
 }
 
 function sourceDirectionNumber(direction: Direction): number {
@@ -2458,6 +2563,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   multiplayer.retryBattleSettlement();
   importedAvatar = world.avatar;
   importedPlayerMotion = null;
+  sourceFieldMarks = [];
   pendingSourceNpcContact = null;
   heldMovementKeys.clear();
   sourcePresentation.resetMapPresentation();
@@ -2569,6 +2675,11 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     sourceTransitionInProgress = false;
     renderImportedView();
   }
+  const deferredWorld = deferredNetworkSourceWorld;
+  deferredNetworkSourceWorld = null;
+  if (deferredWorld !== null) queueMicrotask(() => {
+    void applyNetworkSourceWorld(deferredWorld.world, deferredWorld.animate, deferredWorld.applyOwnAvatar);
+  });
   if (sourceSequences.current === null) queueMicrotask(beginPendingSourceMapEntryAutorun);
 }
 
@@ -2845,7 +2956,14 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     importedAvatar = next;
     sourceMovementMode = next.mode ?? sourceMovementMode;
     sourceMovementAction = next.action ?? "idle";
-    if (before.x !== next.x || before.y !== next.y) {
+    const moved = before.x !== next.x || before.y !== next.y;
+    const feedback = sourceFieldMovementStartFeedback(moved, sourceMovementAction);
+    const now = performance.now();
+    if (feedback.sound !== null && (moved || now - lastSourceBumpSoundAt >= 250)) {
+      sourcePresentation.playFieldSound(feedback.sound);
+      if (!moved) lastSourceBumpSoundAt = now;
+    }
+    if (moved) {
       const startedAt = performance.now();
       importedPlayerMotion = createSourceGridMotion(before, next, direction, startedAt,
         { duration: sourceMovementDuration(sourceMovementMode, sourceMovementAction),
@@ -2869,7 +2987,10 @@ function interact(playerId: AvatarId): void {
     if (sourceScenes.allows("dialogue-input", activity)) {
       const update = sourceDialogues.advance();
       applySourceDialogueUpdate(update);
-      if (update.changed) renderImportedView();
+      if (update.changed) {
+        sourcePresentation.playDialogueSound("decision");
+        renderImportedView();
+      }
       return;
     }
     if (!sourceScenes.allows("world-input", activity)) return;
@@ -2977,6 +3098,7 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
 }
 
 async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
+  deferredNetworkSourceWorld = null;
   if (sourceBattles.active) return;
   lastPublishedSourceScene = "";
   networkServerUrl = serverUrl;
@@ -3022,6 +3144,7 @@ function disconnectMultiplayer(): void {
   networkProfileSignatures = {};
   networkProfileApplications = {};
   networkSourceWorld = null;
+  deferredNetworkSourceWorld = null;
   guestSourceExcursion = false;
   networkRemoteSourceMotion = null;
   networkRemoteFollowerMotion = null;
@@ -3052,7 +3175,9 @@ window.addEventListener("keydown", (event) => {
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
     if (sourceSequences.current !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
-    if (sourceDialogues.cancel()) { event.preventDefault(); renderImportedView(); return; }
+    if (sourceDialogues.cancel()) {
+      event.preventDefault(); sourcePresentation.playDialogueSound("cancel"); renderImportedView(); return;
+    }
     if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) { event.preventDefault(); toggleSourceMenu(); return; }
   }
   const target = event.target;

@@ -439,6 +439,7 @@ export class AuthoritativeBattleRoom {
         "Ce joueur doit être reconnecté avant d'envoyer une intention.")];
     }
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
+    if (message.type === "emitSourceSound") return this.emitSourceSound(player, message);
     if (message.type === "openSourceBattle") return this.openSourceBattle(player, message);
     if (message.type === "ackBattleSettlement") {
       return this.ackBattleSettlement(player, message.requestId, message.settlementId);
@@ -583,6 +584,29 @@ export class AuthoritativeBattleRoom {
       { audience: "all", message: { type: "sourceSceneUpdated", version: PROTOCOL_VERSION,
         revision: this.#revision, state: scene } },
     ];
+  }
+
+  /** Relays a bounded, non-persistent field sound only to the other player on the shared map. */
+  private emitSourceSound(player: RoomPlayer,
+    message: Extract<ClientMessage, { readonly type: "emitSourceSound" }>): readonly RoomDispatch[] {
+    const world = this.#sourceWorldState;
+    if (world === null || message.mapId !== world.mapId || world.presence[player.side] !== "shared") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
+        "Le son ne correspond pas a la carte partagee du joueur.")];
+    }
+    const remoteSide: BattleSide = player.side === "player" ? "opponent" : "player";
+    const remote = [...this.#players.values()].find((candidate) => candidate.side === remoteSide
+      && candidate.connected && !candidate.departed);
+    const output: RoomDispatch[] = [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+    ];
+    if (remote !== undefined && world.presence[remoteSide] === "shared") {
+      output.push({ audience: { playerId: remote.playerId }, message: {
+        type: "sourceSoundEmitted", version: PROTOCOL_VERSION, side: player.side,
+        mapId: message.mapId, name: message.name, volume: message.volume, pitch: message.pitch,
+      } });
+    }
+    return output;
   }
 
   private setReady(player: RoomPlayer, requestId: string, ready: boolean): readonly RoomDispatch[] {

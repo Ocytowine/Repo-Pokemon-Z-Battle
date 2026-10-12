@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory, sourceStateWithLocalStory }
+  sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -68,6 +68,12 @@ describe("guest source event policy", () => {
     expect(shouldRejoinSharedSourceMap(true, "away", 7, 7, true, true)).toBe(true);
     expect(shouldRejoinSharedSourceMap(true, "away", 6, 7)).toBe(false);
     expect(shouldRejoinSharedSourceMap(true, "shared", 7, 7)).toBe(false);
+  });
+
+  it("ignores a late shared snapshot from the map the guest has just left", () => {
+    expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "shared", 7, 3)).toBe(true);
+    expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "away", 7, 3)).toBe(false);
+    expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "shared", 7, 7)).toBe(false);
   });
 
   it("allows an away guest to attach on the map of an active source battle", () => {
