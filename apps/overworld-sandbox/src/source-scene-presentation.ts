@@ -211,12 +211,23 @@ interface SourcePokemonAssetsManifest {
     readonly assets: Readonly<Record<string, readonly { readonly path: string; readonly form: number | null }[]>> }[];
 }
 
+interface SourceAssetManifest {
+  readonly records: readonly { readonly path: string; readonly mediaType: string }[];
+}
+
 interface PresentationOptions {
   readonly onCameraOffset?: (offset: Readonly<{ x: number; y: number }>) => void;
   readonly resolveAnimationTarget?: (target: number) => SourceScreenTarget | null;
 }
 
 interface ManagedAudio { readonly audio: HTMLAudioElement; readonly sourceVolume: number }
+
+export function sourceAudioCandidates(folder: "BGM" | "BGS" | "SE" | "ME", name: string,
+  available: ReadonlySet<string> | null = null): readonly string[] {
+  const candidates = /\.[a-z0-9]+$/iu.test(name) ? [name] : [name + ".ogg", name + ".wav", name + ".mp3"];
+  if (available === null) return candidates;
+  return candidates.filter((candidate) => available.has(`Audio/${folder}/${candidate}`));
+}
 
 export function selectSourceCryPath(manifest: SourcePokemonAssetsManifest, speciesId: string): string | null {
   const cries = manifest.records.find((record) => record.internalName === speciesId)?.assets.cry ?? [];
@@ -235,6 +246,7 @@ export class SourceScenePresentation {
   private scrollSession = 0;
   private animationManifest: Promise<MapAnimationManifest | null> | null = null;
   private pokemonAssetsManifest: Promise<SourcePokemonAssetsManifest | null> | null = null;
+  private sourceAudioPaths: Promise<ReadonlySet<string> | null> | null = null;
   private animationSession = 0;
 
   public constructor(private readonly elements: PresentationElements, masterVolume = 1,
@@ -535,6 +547,20 @@ export class SourceScenePresentation {
     return this.pokemonAssetsManifest;
   }
 
+  private loadSourceAudioPaths(): Promise<ReadonlySet<string> | null> {
+    this.sourceAudioPaths ??= fetch("/__pokemon-z/data/asset-manifest.json")
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const manifest = await response.json() as SourceAssetManifest;
+        if (!Array.isArray(manifest.records)) return null;
+        return new Set(manifest.records
+          .filter((entry) => entry.mediaType === "audio" && typeof entry.path === "string")
+          .map((entry) => entry.path.replaceAll("\\", "/")));
+      })
+      .catch(() => null);
+    return this.sourceAudioPaths;
+  }
+
   private async playMapAnimation(request: SourceAnimationRequest, delay: Delay): Promise<void> {
     const session = this.animationSession;
     const manifest = await this.loadMapAnimations();
@@ -618,7 +644,8 @@ export class SourceScenePresentation {
 
   private async playCandidates(audio: HTMLAudioElement, folder: "BGM" | "BGS" | "SE" | "ME", name: string,
     session: number): Promise<boolean> {
-    const names = /\.[a-z0-9]+$/iu.test(name) ? [name] : [name + ".ogg", name + ".wav", name + ".mp3"];
+    const available = await this.loadSourceAudioPaths();
+    const names = sourceAudioCandidates(folder, name, available);
     for (const candidate of names) {
       if (folder === "BGM" && session !== this.audioSession) return false;
       if (folder === "BGS" && session !== this.backgroundSoundSession) return false;

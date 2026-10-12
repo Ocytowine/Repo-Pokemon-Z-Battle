@@ -310,6 +310,18 @@ desormais la regle d'adjacence ; la visee stricte reste propre aux duels PvP. Le
 serveur continue de verifier carte partagee, presence, proprietaire du combat et
 fenetre de ralliement avant d'accepter la composition.
 
+Correctif de preparation d'equipe Coop du 2026-10-09 : `currentPlayerDuelTeam`
+masquait toute erreur de projection (notamment une capacite pas encore portee)
+derriere le meme `null` qu'une equipe entierement K.O. L'ecran de ralliement
+affichait alors a tort `Soignez d'abord votre equipe` a un invite ayant tous ses
+PV. Le ralliement utilise maintenant `prepareSourceBattleJoinTeam` : les vrais KO
+restent distingues, une incompatibilite explique sa cause et un Pokemon conscient
+qui possede au moins une capacite supportee peut participer avec ce sous-ensemble.
+Les capacites non portees et les Pokemon totalement incompatibles sont exclus de
+ce combat seulement ; leur etat personnel et leurs PP restent inchanges lors du
+reglement. La room continue de valider la composition finale et de calculer le
+combat de facon autoritaire.
+
 Revision du flux Dresseur du 2026-10-09 : la presence d'un second joueur ne force
 jamais un combat Coop. Un combat de Dresseur partage entre d'abord dans l'etat
 `invite-choice` : la transition et la musique normales se jouent, les deux
@@ -1418,6 +1430,28 @@ mecanismes. Le test double d'Agilite a aussi revele puis corrige un ecrasement
 generique des effets ciblant l'utilisateur : l'etat du defenseur factice ne
 remplace plus l'acteur lorsqu'acteur et cible designent le meme slot. Tests
 complets, build et typecheck overworld passent.
+
+Correctif de projection Coop du 2026-10-09 : le validateur strict du protocole
+n'avait pas repris `030` apres son ajout au type et au resolveur du moteur. Une
+equipe contenant Agilite etait donc valide localement, puis rejetee avant la room
+avec `openSourceBattle mal forme`. Le registre reseau accepte maintenant cette
+fonction et un test ouvre explicitement un combat de Dresseur avec Agilite. La
+presentation audio consulte aussi `asset-manifest.json` avant de choisir une
+extension : `Exit Door` et `GEN8- Exclaim`, disponibles en WAV/MP3 mais pas en OGG,
+ne produisent plus de 404 preliminaire dans la console.
+
+Diagnostic d'etat personnel Coop du 2026-10-09 : l'hypothese d'une copie de
+sauvegarde `sessionStorage` par onglet n'a pas corrige le refus de ralliement et
+a ete retiree afin de ne pas introduire une seconde autorite personnelle. Equipe,
+sac, soins et preparation de combat relisent donc tous le meme `sourceEventState`
+persistant. Le panneau de refus affiche maintenant l'index actif et les PV exacts
+lus par le moteur au moment de l'interaction ; cette information distingue un
+etat en memoire divergent d'une erreur de projection sans demander d'inspecter
+les stockages du navigateur. La room ne recoit toujours que la projection
+tactique bornee au moment de la participation. La preparation reserve en outre
+« Soignez d'abord votre equipe » au seul cas ou tous les PV lus valent zero ; une
+espece ou une capacite non encore projetable produit un diagnostic distinct et
+les membres conscients compatibles restent utilisables.
 
 Correctif de presentation du 2026-10-09 : pendant un combat de Dresseur, la fin
 de l'envoi adverse retirait trop tot la classe `revealing-opponent`. Comme la scene

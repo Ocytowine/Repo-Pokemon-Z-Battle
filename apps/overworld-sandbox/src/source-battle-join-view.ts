@@ -10,6 +10,10 @@ export interface SourceBattleJoinModel {
   readonly ownerName: string;
   readonly guestName: string;
   readonly opponentName: string;
+  readonly teamUnavailableReason?: string | null;
+  readonly teamRequiresHealing?: boolean;
+  readonly teamNotice?: string | null;
+  readonly teamDiagnostic?: string | null;
 }
 
 export class SourceBattleJoinView {
@@ -126,9 +130,15 @@ export class SourceBattleJoinView {
       return;
     }
     if (model.team === null) {
+      const reason = model.teamUnavailableReason
+        ?? "Aucun Pokémon conscient n'est disponible pour rejoindre ce combat.";
+      const fainted = model.teamRequiresHealing
+        ?? (model.teamUnavailableReason === undefined || model.teamUnavailableReason === null);
       panel.hidden = false;
-      panel.innerHTML = `<strong>Participation impossible</strong><p>Aucun Pokémon conscient n'est disponible pour rejoindre ce combat.</p>
-        <footer><span>Soignez d'abord votre équipe.</span><button id="dismiss-battle-join">Fermer</button></footer>`;
+      panel.innerHTML = `<strong>Participation impossible</strong><p>${escapeSourceHtml(reason)}</p>
+        ${model.teamDiagnostic === undefined || model.teamDiagnostic === null ? ""
+          : `<p class="battle-join-diagnostic">État lu par le combat : ${escapeSourceHtml(model.teamDiagnostic)}</p>`}
+        <footer><span>${fainted ? "Soignez d'abord votre équipe." : "Vérifiez la composition indiquée."}</span><button id="dismiss-battle-join">Fermer</button></footer>`;
       panel.querySelector<HTMLButtonElement>("#dismiss-battle-join")
         ?.addEventListener("click", () => { this.dismiss(); this.render(model); });
       return;
@@ -152,6 +162,8 @@ export class SourceBattleJoinView {
     panel.hidden = false;
     const refusal = battle.joinRefusal?.playerId === model.playerId
       ? `<p class="battle-join-refusal">${escapeSourceHtml(battle.joinRefusal.reason)}</p>` : "";
+    const teamNotice = model.teamNotice === undefined || model.teamNotice === null ? ""
+      : `<p class="battle-join-refusal">${escapeSourceHtml(model.teamNotice)}</p>`;
     const title = sourceWild ? `Aider ${escapeSourceHtml(model.ownerName)}` : "Rejoindre ce combat";
     const description = sourceWild ? `Choisis les Pokémon qui aideront ${escapeSourceHtml(model.ownerName)}.`
       : "Choisis d'abord ton camp, puis uniquement les Pokémon de ton équipe que tu veux engager.";
@@ -159,7 +171,7 @@ export class SourceBattleJoinView {
       <nav class="battle-join-side-choices"><button data-join-side="player" class="${this.#side === "player" ? "active" : ""}><small>COOPÉRER</small>Aider ${escapeSourceHtml(model.ownerName)}</button>
       <button data-join-side="opponent" class="${this.#side === "opponent" ? "active" : ""}><small>S'OPPOSER</small>Aider ${escapeSourceHtml(model.opponentName)}</button></nav></section>`;
     const fixedNames = camp.members.map((member) => escapeSourceHtml(member.battler.name)).join(", ");
-    panel.innerHTML = `<strong>${title}</strong><p>${description}</p>${refusal}${campChoices}
+    panel.innerHTML = `<strong>${title}</strong><p>${description}</p>${refusal}${teamNotice}${campChoices}
       <section class="battle-join-step"><h3>${sourceWild ? "1" : "2"}. Choisir tes Pokémon</h3>
         <p class="battle-join-fixed">Déjà dans ce camp, sans modification : <b>${fixedNames}</b></p>
         ${ownLimit === 0 ? `<p class="battle-join-refusal">Ce camp possède déjà six Pokémon et ne peut pas recevoir de participant supplémentaire.</p>` : ""}

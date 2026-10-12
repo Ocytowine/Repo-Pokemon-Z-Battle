@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseSourceAnimation, parseSourceAudio, parseSourceMapVisual, parseSourcePicture, parseSourceScroll,
-  parseSourceTextOptions, parseSourceTone, parseSourceWeather, selectSourceCryPath } from "../src/source-scene-presentation.js";
+  parseSourceTextOptions, parseSourceTone, parseSourceWeather, selectSourceCryPath,
+  sourceAudioCandidates } from "../src/source-scene-presentation.js";
 
 describe("source scene presentation parameters", () => {
   it("normalizes RPG Maker tones and frame durations", () => {
@@ -22,6 +23,14 @@ describe("source scene presentation parameters", () => {
   it("normalizes source audio volume and pitch", () => {
     expect(parseSourceAudio({ audio: { name: "Crisanto", volume: 80, pitch: 120 } }))
       .toEqual({ name: "Crisanto", volume: 0.8, pitch: 1.2 });
+  });
+
+  it("selects only audio extensions present in the extracted manifest", () => {
+    const available = new Set(["Audio/SE/Exit Door.wav", "Audio/SE/Exit Door.mp3", "Audio/SE/GEN8- Exclaim.wav"]);
+    expect(sourceAudioCandidates("SE", "Exit Door", available)).toEqual(["Exit Door.wav", "Exit Door.mp3"]);
+    expect(sourceAudioCandidates("SE", "GEN8- Exclaim", available)).toEqual(["GEN8- Exclaim.wav"]);
+    expect(sourceAudioCandidates("SE", "unknown", available)).toEqual([]);
+    expect(sourceAudioCandidates("SE", "legacy", null)).toEqual(["legacy.ogg", "legacy.wav", "legacy.mp3"]);
   });
 
   it("selects the default extracted cry for a species", () => {

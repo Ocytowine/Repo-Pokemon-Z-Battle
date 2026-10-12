@@ -57,6 +57,7 @@ import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceBattleJoinView } from "./source-battle-join-view.js";
+import { prepareSourceBattleJoinTeam } from "./source-battle-team-preparation.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
@@ -982,7 +983,7 @@ const sourcePlayerDuelView = new SourcePlayerDuelView({
 });
 const sourceBattleJoinView = new SourceBattleJoinView({
   onPropose: (side, finalMemberIds) => {
-    const team = currentPlayerDuelTeam();
+    const team = currentPlayerBattleJoinPreparation().team;
     if (team !== null) multiplayer.proposeBattleJoin(side, team, finalMemberIds, battleItemInventory());
   },
   onRespond: (accept) => { multiplayer.respondBattleJoin(accept); },
@@ -2720,8 +2721,12 @@ function renderEncounter(): void {
   sourcePlayerDuelView.render({ challenge: duel, battleActive: network?.roomBattleActive === true, side,
     players: network?.snapshot?.players ?? [],
     canAccept: currentPlayerDuelTeam() !== null });
+  const joinPreparation = currentPlayerBattleJoinPreparation();
   sourceBattleJoinView.render({ battle: joinableBattle, playerId: network?.ticket.playerId ?? null,
-    team: currentPlayerDuelTeam(), available: joinableBattle?.sourceContext === null || side === null
+    team: joinPreparation.team, teamUnavailableReason: joinPreparation.unavailableReason,
+    teamRequiresHealing: joinPreparation.requiresHealing,
+    teamNotice: joinPreparation.notice, teamDiagnostic: sourceBattleJoinTeamDiagnostic(),
+    available: joinableBattle?.sourceContext === null || side === null
       ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared",
     ownerName: battleOwnerName, guestName,
     opponentName: joinableBattle?.sourceContext?.presentation.opponentTrainer?.name ?? "le Dresseur adverse" });
@@ -2744,6 +2749,20 @@ function currentPlayerDuelTeam(): BattleTeam | null {
   } catch {
     return null;
   }
+}
+
+function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourceBattleJoinTeam> {
+  if (importedAssets === null) return { team: null,
+    unavailableReason: "Les données de combat ne sont pas encore chargées.",
+    requiresHealing: false, notice: null };
+  return prepareSourceBattleJoinTeam(sourceEventState.party, importedAssets.battleCatalog);
+}
+
+function sourceBattleJoinTeamDiagnostic(): string {
+  const party = sourceEventState.party;
+  if (party.members.length === 0) return "équipe vide";
+  return `actif ${party.activeIndex === null ? "aucun" : party.activeIndex + 1} · ${party.members.map((member) =>
+    `${member.nickname ?? member.species} ${member.hp}/${member.stats.maxHp} PV`).join(" · ")}`;
 }
 
 function remotePlayerAhead(): boolean {
@@ -2855,6 +2874,10 @@ function interact(playerId: AvatarId): void {
     if (interactionTarget === "player") {
       if (joinableBattle !== null && joinableBattle !== undefined) {
         sourceBattleJoinView.open(joinableBattle.id);
+        const preparation = currentPlayerBattleJoinPreparation();
+        console.info("[coop-battle-join]", { battleId: joinableBattle.id,
+          teamReady: preparation.team !== null, reason: preparation.unavailableReason,
+          requiresHealing: preparation.requiresHealing, party: sourceBattleJoinTeamDiagnostic() });
         importedNotice = joinableBattle.sourceContext?.origin === "source-wild"
           ? "Choisissez les Pokémon qui viendront aider l'autre Dresseur."
           : "Choisissez le camp que vous souhaitez rejoindre.";

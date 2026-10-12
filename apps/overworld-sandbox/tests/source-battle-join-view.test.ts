@@ -52,4 +52,22 @@ describe("source battle join view", () => {
     expect(panel.innerHTML).toContain("Marisson");
     expect(panel.innerHTML).not.toContain("Continuer sans lui");
   });
+
+  it("does not advise healing when a healthy team is incompatible", () => {
+    const panel = new FakePanel();
+    vi.stubGlobal("document", { querySelector: () => panel });
+    const view = new SourceBattleJoinView({ onPropose: vi.fn(), onRespond: vi.fn(),
+      onInvite: vi.fn(), onContinue: vi.fn() });
+    const battle = { ...trainerBattleWithProposal(), joinProposal: null };
+    view.open(battle.id);
+
+    view.render({ battle, playerId: "guest", team: null, available: true,
+      ownerName: "Alice", guestName: "Bob", opponentName: "Jean",
+      teamUnavailableReason: "L'équipe est en forme, mais une capacité n'est pas encore prise en charge.",
+      teamRequiresHealing: false, teamDiagnostic: "Feunnec 24/24 PV" });
+
+    expect(panel.innerHTML).toContain("L&#39;équipe est en forme");
+    expect(panel.innerHTML).toContain("Feunnec 24/24 PV");
+    expect(panel.innerHTML).not.toContain("Soignez");
+  });
 });

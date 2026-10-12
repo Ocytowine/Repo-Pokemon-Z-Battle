@@ -160,6 +160,24 @@ describe("multiplayer protocol", () => {
       .toThrow("respondPlayerChallenge mal forme");
   });
 
+  it("accepts Agility in shared battle openings", () => {
+    const agility = { ...MINIMAL_MOVE_CATALOG.TACKLE, id: 1, internalName: "AGILITY", name: "Hâte",
+      functionCode: "030" as const, power: 0, category: "Status" as const, accuracy: 0, pp: 30 };
+    const agilityTeam = { ...duelTeam, members: [{ ...duelTeam.members[0],
+      moves: [{ move: agility, pp: agility.pp }] }] };
+    const context = { origin: "source-trainer", mapId: 14, format: "single", escapable: false,
+      healingItemsAllowed: true, narrativeOwnerId: "host-1", presentation: { battlebackId: "forest",
+        battleMusicId: "Battle trainer", victoryMusicId: "Victory", opponentTrainer: { id: 4, name: "Mélia" },
+        defeatText: "Je dois encore m'entraîner !" }, rewards: { opponents: [{ memberId: "p1", species: "EEVEE",
+          level: 10, baseExperience: 65 }], trainerBaseMoney: 30, experience: { levelCap: 17,
+          experienceDisabled: false, boostTenPercent: false, boostTwentyPercent: false } },
+      continuation: "trainer-sequence" } as const;
+
+    expect(parseClientMessage(JSON.stringify({ type: "openSourceBattle", version: 15,
+      requestId: "source-agility", context, playerTeam: duelTeam, opponentTeam: agilityTeam,
+      battleItems: {} }))).toMatchObject({ opponentTeam: { members: [{ moves: [{ move: { functionCode: "030" } }] }] } });
+  });
+
   it("validates battle join proposals and responses", () => {
     expect(parseClientMessage(JSON.stringify({ type: "proposeBattleJoin", version: 15, requestId: "join-1",
       battleId: "battle-1", side: "opponent", team: duelTeam, finalMemberIds: ["p1"], battleItems: { POTION: 2 } })))

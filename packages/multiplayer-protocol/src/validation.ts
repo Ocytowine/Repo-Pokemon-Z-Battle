@@ -86,7 +86,7 @@ function isSourceBattleInventory(value: unknown): boolean {
 const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
 const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
 const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "00A", "00C", "01C", "01D", "01F", "020",
-  "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
+  "030", "042", "043", "044", "045", "046", "047", "06F", "0A5", "0D8", "0DD", "159", "906"]);
 const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
 function boundedString(value: unknown, max = 64): value is string {

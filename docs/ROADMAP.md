@@ -771,6 +771,15 @@ bloque sur `Continuer sans lui`. La saisie invite distingue visuellement le camp
 les Pokemon personnels selectionnables et les membres deja presents en lecture
 seule, avec limites, PV et etat K.O. explicites.
 
+Correctif de composition du 2026-10-09 : une erreur de projection d'equipe ne se
+transforme plus en faux message demandant de soigner des Pokemon ayant tous leurs
+PV. Le preparateur du ralliement distingue equipe vide, equipe K.O. et mecanique
+non encore portee. Un Pokemon conscient reste admissible s'il possede au moins une
+capacite supportee ; seules ses capacites non portees sont omises de ce combat et
+leurs PP personnels restent intacts au reglement. Les Pokemon totalement
+incompatibles sont ecartes avec un avertissement explicite. L'intention reduite
+reste validee par la room comme toute autre composition Coop.
+
 Stabilisation double du 2026-10-09 : le lecteur visuel conserve les degats entre
 actions positionnees, le vrai slot lors des K.O. et remplacements, et l'etat
 autoritaire pendant les animations reseau. Les cibles d'un invite rallie au camp
