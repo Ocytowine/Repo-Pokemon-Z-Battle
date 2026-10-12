@@ -2325,6 +2325,15 @@ ouverture partagee sur une requete que le protocole refuserait ; le chemin local
 reste alors disponible avec un diagnostic explicite au lieu de suspendre la
 sequence. Autorite narrative et recompenses restent celles de l'hote.
 
+Correctif visuel PvP du 2026-10-12 : un duel classique ne possede pas de
+`SharedBattleParticipation`, contrairement aux combats source rejoignables. La
+presentation ne resolvait donc que l'identifiant local et laissait le Dresseur
+adverse absent, ce qui activait `trainer000` par defaut. Chaque client projette
+desormais son propre profil public au dos et le profil de l'autre joueur de face,
+independamment de sa place hote/invite. Le modele `visualPreset` et les couleurs
+publiques deja synchronises sont charges par le pipeline de personnalisation
+commun ; aucune image, couleur ni identite privee supplementaire n'est repliquee.
+
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements
 et remplacements multiples dependent d'une acquisition naturelle de plusieurs

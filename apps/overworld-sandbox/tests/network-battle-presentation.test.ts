@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { networkBattleActionForServer, networkBattleEventsForViewer, networkBattleForViewer,
-  networkBattleTrainerIds } from "../src/network-battle-presentation.js";
+  networkBattleTrainerIds, networkDuelTrainerIds } from "../src/network-battle-presentation.js";
 import { MINIMAL_MOVE_CATALOG, createTeamBattleState, type BattlerState,
   type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
@@ -59,5 +59,15 @@ describe("network battle presentation", () => {
       .toEqual({ player: "guest-id", opponent: null });
     expect(networkBattleTrainerIds(participation, "opponent"))
       .toEqual({ player: null, opponent: "guest-id" });
+  });
+
+  it("uses both synchronized player profiles for a classic PvP duel", () => {
+    const players = [{ playerId: "host-id" }, { playerId: "guest-id" }];
+    expect(networkDuelTrainerIds(players, "host-id"))
+      .toEqual({ player: "host-id", opponent: "guest-id" });
+    expect(networkDuelTrainerIds(players, "guest-id"))
+      .toEqual({ player: "guest-id", opponent: "host-id" });
+    expect(networkDuelTrainerIds(players, "missing-id"))
+      .toEqual({ player: null, opponent: null });
   });
 });

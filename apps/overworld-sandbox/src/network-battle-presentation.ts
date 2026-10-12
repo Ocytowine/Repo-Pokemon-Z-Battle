@@ -24,6 +24,17 @@ export function networkBattleTrainerIds(participation: SharedBattleParticipation
     opponent: activeTrainerId(participation, oppositeBattleSide(viewer)) };
 }
 
+/** A mirrored PvP view always renders the current client at the back and the other player at the front. */
+export function networkDuelTrainerIds(players: readonly { readonly playerId: string }[], localPlayerId: string | null): {
+  readonly player: string | null; readonly opponent: string | null;
+} {
+  if (localPlayerId === null || !players.some((player) => player.playerId === localPlayerId)) {
+    return { player: null, opponent: null };
+  }
+  return { player: localPlayerId,
+    opponent: players.find((player) => player.playerId !== localPlayerId)?.playerId ?? null };
+}
+
 export function networkBattleForViewer(state: TeamBattleState, viewer: BattleSide): TeamBattleState {
   if (viewer === "player") return state;
   return {

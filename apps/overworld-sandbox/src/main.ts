@@ -62,7 +62,7 @@ import { SourceRanchView } from "./source-ranch-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
 import { SourceProgressionView } from "./source-progression-view.js";
-import { networkBattleEventsForViewer, networkBattleForViewer, networkBattleTrainerIds }
+import { networkBattleEventsForViewer, networkBattleForViewer, networkBattleTrainerIds, networkDuelTrainerIds }
   from "./network-battle-presentation.js";
 import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
   sourceDirection, type LoadedSourceWorld } from "./source-world-navigation.js";
@@ -1154,7 +1154,10 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
   networkBattlePresentation = networkBattlePresentation.then(async () => {
     if (networkPresentedBattle?.id !== battleId) return;
     const trainerIds = visibleBattle?.participation === null || visibleBattle?.participation === undefined
-      ? { player: multiplayer.current?.ticket.playerId ?? null, opponent: null }
+      ? visibleBattle?.duel === true
+        ? networkDuelTrainerIds(multiplayer.current?.snapshot?.players ?? [],
+          multiplayer.current?.ticket.playerId ?? null)
+        : { player: multiplayer.current?.ticket.playerId ?? null, opponent: null }
       : networkBattleTrainerIds(visibleBattle.participation, side);
     const [ownVisuals, opponentVisuals] = await Promise.all([
       networkTrainerVisuals(trainerIds.player), networkTrainerVisuals(trainerIds.opponent),
