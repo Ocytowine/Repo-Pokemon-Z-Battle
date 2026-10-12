@@ -1569,8 +1569,29 @@ export class AuthoritativeBattleRoom {
   }
 
   private leaveBattle(player: RoomPlayer, requestId: string, battleId: string): readonly RoomDispatch[] {
-    if (this.#battleId !== battleId || this.#battleState?.status !== "finished" || !this.#activeDuel) {
+    if (this.#battleId !== battleId || this.#battleState === null || !this.#activeDuel) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Ce combat ne peut pas être quitté.")];
+    }
+    if (this.#battleState.status === "active") {
+      const winner = player.side === "player" ? "opponent" as const : "player" as const;
+      const resolvedTurn = this.#battleState.turn;
+      this.#battleState = { ...this.#battleState, status: "finished", winner,
+        replacementRequired: [], ...(this.#battleState.slotReplacements === undefined
+          ? {} : { slotReplacements: [] }) };
+      this.#pendingActions.clear();
+      this.#pendingDoubleActions.clear();
+      this.#pendingReplacements.clear();
+      if (this.#battleSession !== null) {
+        this.#battleSession = settleSharedBattleSession(this.#battleSession, this.#battleState);
+      }
+      this.#revision += 1;
+      return [
+        { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
+        { audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
+          battleId, turn: resolvedTurn, state: this.#battleState,
+          events: [{ type: "battleEnded", winner }] } },
+        { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
+      ];
     }
     if (this.#battleSession !== null) this.#battleSession = closeSharedBattleSession(this.#battleSession);
     this.#battleState = null;

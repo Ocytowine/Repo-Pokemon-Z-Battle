@@ -120,6 +120,29 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().duelChallenge).toBeNull();
   });
 
+  it("awards an active PvP duel to the opponent when a player concedes", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    room.receive("alice", { type: "challengePlayer", version: 15,
+      requestId: "forfeit-challenge", team: initial.teams.player });
+    room.receive("bob", { type: "respondPlayerChallenge", version: 15,
+      requestId: "forfeit-accept", accept: true, team: initial.teams.opponent });
+    const battle = room.snapshot().battle!;
+
+    const forfeited = room.receive("alice", { type: "leaveBattle", version: 15,
+      requestId: "forfeit-active", battleId: battle.id });
+
+    expect(forfeited.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
+    expect(room.snapshot().battle).toMatchObject({ state: { status: "finished", winner: "opponent" },
+      session: { lifecycle: "settling" } });
+    const closed = room.receive("bob", { type: "leaveBattle", version: 15,
+      requestId: "forfeit-close", battleId: battle.id });
+    expect(closed.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toBeNull();
+  });
+
   it("clears a player challenge after refusal, cancellation or either participant disconnecting", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");

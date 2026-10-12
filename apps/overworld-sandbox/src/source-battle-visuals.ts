@@ -141,12 +141,28 @@ export interface SourceBattleAudio {
   readonly sendOut: string | null;
 }
 
+export interface SourceBattleVisualOptions {
+  readonly masterVolume?: number;
+  readonly onBattleAudioStart?: () => void;
+  readonly onBattleAudioEnd?: () => void;
+}
+
 const BATTLE_STATUS_ROWS: Readonly<Record<string, { readonly row: number; readonly label: string }>> = {
   sleep: { row: 0, label: "Sommeil" }, poison: { row: 1, label: "Poison" },
   burn: { row: 2, label: "Brûlure" }, paralysis: { row: 3, label: "Paralysie" },
   frozen: { row: 4, label: "Gel" }, caduco: { row: 5, label: "Caduco" },
   hemorrhage: { row: 6, label: "Hémorragie" },
 };
+
+const SOURCE_BALL_TYPES = ["POKEBALL", "GREATBALL", "SAFARIBALL", "ULTRABALL", "MASTERBALL", "NETBALL",
+  "DIVEBALL", "NESTBALL", "REPEATBALL", "TIMERBALL", "LUXURYBALL", "PREMIERBALL", "DUSKBALL", "HEALBALL",
+  "QUICKBALL", "CHERISHBALL", "FASTBALL", "LEVELBALL", "LUREBALL", "HEAVYBALL", "LOVEBALL", "FRIENDBALL",
+  "MOONBALL", "SPORTBALL", "ESPIRIBALL", "POKEBALLCASERA", "SUPERBALLCASERA", "ULTRABALLCASERA"] as const;
+
+export function sourceCaptureBallIndex(ballId: string): number {
+  const index = SOURCE_BALL_TYPES.indexOf(ballId.toLocaleUpperCase("en") as typeof SOURCE_BALL_TYPES[number]);
+  return index < 0 ? 0 : index;
+}
 
 function availableAudio(manifest: AssetManifest, path: string): string | null {
   const normalized = path.toLocaleLowerCase("en");
@@ -191,6 +207,30 @@ export class SourceBattleVisuals {
   #battleback = "snow";
   #playerTrainerImage: HTMLImageElement | null = null;
   #opponentTrainerImage: HTMLImageElement | null = null;
+  #masterVolume: number;
+  #audioBaseVolumes = new WeakMap<HTMLAudioElement, number>();
+  #capturePresented = false;
+
+  public constructor(private readonly options: SourceBattleVisualOptions = {}) {
+    this.#masterVolume = Math.min(1, Math.max(0, options.masterVolume ?? 1));
+  }
+
+  setMasterVolume(volume: number): void {
+    this.#masterVolume = Math.min(1, Math.max(0, volume));
+    for (const audio of [this.#battleMusic, this.#outroMusic, ...this.#oneShots]) {
+      if (audio !== null) audio.volume = (this.#audioBaseVolumes.get(audio) ?? 1) * this.#masterVolume;
+    }
+  }
+
+  async playInterfaceSound(kind: "decision" | "cancel" | "error"): Promise<void> {
+    const manifests = await this.manifests().catch(() => null);
+    if (manifests === null) return;
+    const candidates = kind === "error" ? ["buzzer", "Buzzer"] : kind === "cancel"
+      ? ["Choose", "Cancel", "cancel"] : ["Choose", "Decision", "decision"];
+    const path = candidates.map((name) => availableAudioStem(manifests.assets, `Audio/SE/${name}`))
+      .find((candidate) => candidate !== null) ?? null;
+    if (path !== null) this.playAudio(path, { volume: 0.7, oneShot: true });
+  }
 
   setPlayerTrainerImage(image: HTMLImageElement | null): void {
     this.#playerTrainerImage = image;
@@ -208,6 +248,8 @@ export class SourceBattleVisuals {
     readonly joiningTrainer?: () => Promise<{ readonly side: BattleSide; readonly image: HTMLImageElement | null;
       readonly message: string } | null> } = {}): Promise<void> {
     this.stopAudio();
+    this.options.onBattleAudioStart?.();
+    this.#capturePresented = false;
     this.#battleback = audio.battleback ?? "snow";
     this.#renderedSpecies = "";
     this.resetBattlerTransforms();
@@ -233,7 +275,7 @@ export class SourceBattleVisuals {
     const battleMusic = audio.battleMusic ?? "Salvaje.ogg";
     const victoryMusic = audio.victoryMusic ?? "VictoriaSalvaje.ogg";
     this.#victoryMusicPath = `Audio/ME/${victoryMusic}`;
-    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0 });
+    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0.8 });
     try {
       const manifests = await this.manifests();
       if (session !== this.#audioSession) return;
@@ -247,7 +289,6 @@ export class SourceBattleVisuals {
       if (session !== this.#audioSession) return;
       await this.playOpeningTransition(session);
       if (session !== this.#audioSession) return;
-      if (this.#battleMusic !== null) this.#battleMusic.volume = 0.55;
       if (audio.opponentTrainer !== undefined && audio.waitBeforeSendOut !== undefined) {
         await this.playTrainerFaceOff(audio.opponentTrainer, session);
         if (session !== this.#audioSession) return;
@@ -272,9 +313,11 @@ export class SourceBattleVisuals {
       const joiningTrainer = await audio.joiningTrainer?.() ?? null;
       if (joiningTrainer !== null) await this.playJoiningTrainerArrival(joiningTrainer, session);
       if (audio.opponentTrainer !== undefined) {
+        if (sendOutOpponent.appearance?.shiny === true) await this.playCue("shiny", 0.85);
         await this.playOpponentEntrance(audio.opponentTrainer, sendOutOpponent.name, session, selectedAudio.sendOut,
           selectedAudio.opponentCry);
       } else {
+        if (sendOutOpponent.appearance?.shiny === true) await this.playCue("shiny", 0.85);
         await this.playWildOpponentEntrance(sendOutOpponent.name, session, selectedAudio.opponentCry);
       }
       for (const arrival of additional.filter((candidate) => candidate.side === "opponent")) {
@@ -287,6 +330,7 @@ export class SourceBattleVisuals {
         await this.playJoinedBattlerSendOut("opponent", sprite, arrival.battler, manifests, selectedAudio.sendOut);
         document.getElementById(`source-opponent-hud${suffix}`)?.classList.remove("joining");
       }
+      if (sendOutPlayer.appearance?.shiny === true) await this.playCue("shiny", 0.85);
       await this.playPlayerEntrance(sendOutPlayer.name, session, selectedAudio.sendOut, selectedAudio.playerCry);
       for (const arrival of additional.filter((candidate) => candidate.side === "player")) {
         const suffix = `-${arrival.slot + 1}`;
@@ -316,14 +360,17 @@ export class SourceBattleVisuals {
     await this.fadeAudio(this.#battleMusic, winner === "player" ? 350 : 1_000);
     this.#battleMusic = null;
     if (outcome.captured !== undefined) {
-      this.message(`${outcome.captured.name} a été capturé !`);
-      await readableMessageDelay(850);
+      if (!this.#capturePresented) {
+        this.message(`${outcome.captured.name} a été capturé !`);
+        await readableMessageDelay(850);
+      }
       if (outcome.captured.destination !== undefined) {
         this.message(outcome.captured.destination === "team"
           ? `${outcome.captured.name} rejoint votre équipe.` : `${outcome.captured.name} est envoyé au Ranch.`);
         await readableMessageDelay(850);
       }
     } else if (winner === "player") {
+      if (victoryPath !== null) this.#outroMusic = this.playAudio(victoryPath, { volume: 0.8 });
       if (outcome.trainerDefeatText !== undefined && outcome.trainerDefeatText !== "") {
         this.message(outcome.trainerDefeatText);
         await readableMessageDelay(1_100);
@@ -335,10 +382,6 @@ export class SourceBattleVisuals {
       if (outcome.money !== undefined && outcome.money > 0) {
         this.message(`Vous remportez ${outcome.money.toLocaleString("fr-FR")} ₽ !`);
         await readableMessageDelay(850);
-      }
-      if (victoryPath !== null) {
-        this.#outroMusic = this.playAudio(victoryPath, { volume: 0.65 });
-        await readableMessageDelay(650);
       }
     } else if (winner === "opponent") {
       this.message("Vous n'avez plus de Pokémon en état de combattre…");
@@ -359,6 +402,7 @@ export class SourceBattleVisuals {
     panel?.classList.remove("outro-playing");
     this.stopAudio();
     this.#victoryMusicPath = null;
+    this.options.onBattleAudioEnd?.();
   }
 
   async render(state: TeamBattleState, battleback = "snow"): Promise<void> {
@@ -444,6 +488,7 @@ export class SourceBattleVisuals {
   }
 
   async playTurn(before: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): Promise<void> {
+    const session = this.#audioSession;
     for (const step of buildSourceBattlePresentationSequence(before, events)) {
       const stepSide = "side" in step ? step.side : null;
       const active = stepSide === null ? null : step.state.teams[stepSide];
@@ -463,6 +508,8 @@ export class SourceBattleVisuals {
           sprite?.classList.remove("attacking");
         }
       } else if (step.kind === "impact") {
+        await this.playCue(step.effectiveness > 1 ? "superdamage" : step.effectiveness > 0 && step.effectiveness < 1
+          ? "notverydamage" : "normaldamage", 0.8);
         const sprite = spriteId === null ? null : document.getElementById(spriteId);
         sprite?.classList.add("hit");
         await delay(260);
@@ -477,23 +524,39 @@ export class SourceBattleVisuals {
       } else if (step.kind === "faint") {
         this.updateHud(step.state);
         this.message(step.message);
-        await readableMessageDelay(650);
-        if (spriteId !== null) document.getElementById(spriteId)?.classList.add("fainted");
-        await delay(520);
+        const battler = step.state.teams[step.side].members[step.state.teams[step.side].activeIndex];
+        await this.playBattlerCry(battler);
+        await readableMessageDelay(400);
+        await this.playCue("faint", 0.85);
+        const fainted = spriteId === null ? null : document.getElementById(spriteId);
+        const fall = fainted?.animate([{ transform: "translateY(0)", opacity: 1 },
+          { transform: "translateY(42px)", opacity: 0 }],
+        { duration: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 20 : 520,
+          fill: "forwards", easing: "ease-in" });
+        await fall?.finished.catch(() => undefined);
+        fainted?.classList.add("fainted");
+        fall?.cancel();
       } else if (step.kind === "replacement") {
         this.message(step.message);
         const sprite = spriteId === null ? null : document.getElementById(spriteId);
         const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const fade = sprite?.animate([{ opacity: 1 }, { opacity: 0 }],
+        await this.playCue("recall", 0.8);
+        const fade = sprite?.animate([{ opacity: 1 }, { opacity: 0, transform: "scale(.125)", filter: "brightness(3)" }],
           { duration: reduced ? 20 : 260, fill: "forwards" });
         await fade?.finished.catch(() => undefined);
         await this.render(step.state, this.#battleback);
         fade?.cancel();
         const nextSprite = spriteId === null ? null : document.getElementById(spriteId);
-        const reveal = nextSprite?.animate([{ opacity: 0 }, { opacity: 1 }],
+        await this.playCue("recall", 0.8);
+        const replacement = step.state.teams[step.side].members[step.state.teams[step.side].activeIndex];
+        void this.playBattlerCry(replacement);
+        const reveal = nextSprite?.animate([{ opacity: 0, transform: "scale(.125)", filter: "brightness(3)" },
+          { opacity: 1, transform: "scale(1)", filter: "brightness(1)" }],
           { duration: reduced ? 20 : 360, fill: "forwards" });
         await Promise.all([reveal?.finished.catch(() => undefined), readableMessageDelay(800)]);
         reveal?.cancel();
+      } else if (step.kind === "capture") {
+        await this.playCapture(step, session);
       }
     }
   }
@@ -521,14 +584,14 @@ export class SourceBattleVisuals {
     curtain.classList.add("active");
     const flashes = curtain.animate([
       { opacity: 0, background: "#050706" }, { opacity: 1, background: "#050706" },
-    ], { duration: reduced ? 20 : 520, fill: "forwards", easing: "ease-in" });
+    ], { duration: reduced ? 20 : 420, fill: "forwards", easing: "ease-in" });
     await flashes.finished.catch(() => undefined);
     if (session !== this.#audioSession) return;
     const reveal = stage.animate([
-      { clipPath: "inset(50% 0 50% 0)" }, { clipPath: "inset(0 0 0 0)" },
-    ], { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+      { opacity: 0 }, { opacity: 1 },
+    ], { duration: reduced ? 20 : 380, fill: "forwards", easing: "ease-out" });
     const uncover = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
-      { duration: reduced ? 20 : 620, fill: "forwards", easing: "ease-out" });
+      { duration: reduced ? 20 : 380, fill: "forwards", easing: "ease-out" });
     await Promise.all([reveal.finished.catch(() => undefined), uncover.finished.catch(() => undefined)]);
     reveal.cancel(); uncover.cancel(); flashes.cancel(); curtain.classList.remove("active");
   }
@@ -729,6 +792,7 @@ export class SourceBattleVisuals {
       animation.cancel(); bar.style.width = `${endRatio * 100}%`;
       cursor = target;
       if (cursor >= ceiling && currentLevel < experience.afterLevel) {
+        await this.playCue("expfull", 0.8);
         level.textContent = `N. ${currentLevel + 1}`;
         this.message(`${experience.pokemonName} monte au niveau ${currentLevel + 1} !`);
         await readableMessageDelay(850);
@@ -916,6 +980,7 @@ export class SourceBattleVisuals {
       ball.hidden = true;
     }
     if (sendOut !== null) this.playAudio(sendOut, { volume: 0.8, oneShot: true });
+    if (battler.appearance?.shiny === true) await this.playCue("shiny", 0.85);
     const record = manifests.pokemon.records.find((candidate) => candidate.internalName === battler.species);
     const cry = record === undefined ? null : resolvePokemonAsset(record, { kind: "cry",
       form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
@@ -1051,20 +1116,125 @@ export class SourceBattleVisuals {
     }
   }
 
+  private async playBattlerCry(battler: BattlerState | undefined): Promise<void> {
+    if (battler === undefined) return;
+    const manifests = await this.manifests().catch(() => null);
+    const record = manifests?.pokemon.records.find((candidate) => candidate.internalName === battler.species);
+    const cry = record === undefined ? null : resolvePokemonAsset(record, { kind: "cry",
+      form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
+      female: battler.appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
+    if (cry !== null) this.playAudio(cry, { volume: 0.8, oneShot: true });
+  }
+
+  private async playCue(name: string, volume = 1): Promise<void> {
+    const manifests = await this.manifests().catch(() => null);
+    if (manifests === null) return;
+    const path = availableAudioStem(manifests.assets, `Audio/SE/${name}`);
+    if (path !== null) this.playAudio(path, { volume, oneShot: true });
+  }
+
+  private async playCapture(step: Extract<ReturnType<typeof buildSourceBattlePresentationSequence>[number],
+    { readonly kind: "capture" }>, session: number): Promise<void> {
+    const ball = document.getElementById("source-player-ball");
+    const targetTeam = (["player", "opponent"] as const).find((side) =>
+      step.state.teams[side].members.some((member) => member.id === step.targetId)) ?? "opponent";
+    const team = step.state.teams[targetTeam];
+    const targetIndex = team.members.findIndex((member) => member.id === step.targetId);
+    const active = team.activeIndices ?? [team.activeIndex];
+    const slot = Math.max(0, active.indexOf(targetIndex));
+    const target = document.getElementById(`source-${targetTeam}-sprite${slot === 0 ? "" : `-${slot + 1}`}`);
+    const stage = document.getElementById("source-battle-stage");
+    this.message(`${step.ballId} lancée sur ${step.targetName}…`);
+    await this.playCue("throw", 0.85);
+    if (ball !== null && target !== null && stage !== null) {
+      const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const targetRect = target.getBoundingClientRect();
+      const stageRect = stage.getBoundingClientRect();
+      const targetX = targetRect.left - stageRect.left + targetRect.width / 2;
+      const targetY = targetRect.top - stageRect.top + targetRect.height / 2;
+      const ballIndex = String(sourceCaptureBallIndex(step.ballId)).padStart(2, "0");
+      const previousBallBackground = ball.style.backgroundImage;
+      ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}.png`)}")`;
+      ball.hidden = false;
+      const flight = ball.animate([
+        { left: "8%", top: "82%", transform: "translate(-50%,-50%) rotate(0deg)" },
+        { left: "42%", top: "20%", transform: "translate(-50%,-50%) rotate(420deg)" },
+        { left: `${targetX}px`, top: `${targetY}px`, transform: "translate(-50%,-50%) rotate(760deg)" },
+      ], { duration: reduced ? 20 : 680, fill: "forwards", easing: "ease-in" });
+      await flight.finished.catch(() => undefined);
+      if (session !== this.#audioSession) {
+        ball.hidden = true;
+        ball.style.backgroundImage = previousBallBackground;
+        return;
+      }
+      ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}_open.png`)}")`;
+      await this.playCue("recall", 0.85);
+      const absorb = target.animate([{ opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
+        { opacity: 0, transform: "scale(.08)", filter: "brightness(4)" }],
+      { duration: reduced ? 20 : 460, fill: "forwards", easing: "ease-in" });
+      await absorb.finished.catch(() => undefined);
+      ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}.png`)}")`;
+      await this.playCue("jumptoball", 0.8);
+      flight.cancel();
+      ball.style.left = `${targetX}px`;
+      ball.style.top = `${Math.min(stage.clientHeight - 42, targetY + 70)}px`;
+      ball.style.transform = "translate(-50%,-50%)";
+      for (let shake = 0; shake < step.shakes; shake += 1) {
+        await this.playCue("ballshake", 0.8);
+        const wobble = ball.animate([
+          { transform: "translate(-50%,-50%) rotate(0deg)" },
+          { transform: "translate(-62%,-50%) rotate(-18deg)" },
+          { transform: "translate(-38%,-50%) rotate(18deg)" },
+          { transform: "translate(-50%,-50%) rotate(0deg)" },
+        ], { duration: reduced ? 20 : step.critical ? 240 : 430, easing: "ease-in-out" });
+        await wobble.finished.catch(() => undefined);
+        await delay(reduced ? 20 : 260);
+      }
+      if (step.success) {
+        await this.playCue("balldrop", 0.85);
+        const manifests = await this.manifests().catch(() => null);
+        const jingle = manifests === null ? null : availableAudioStem(manifests.assets, "Audio/ME/Jingle - HMTM");
+        if (jingle !== null) this.playAudio(jingle, { volume: 0.7, oneShot: true });
+        this.message(`${step.targetName} est capturé !`);
+        this.#capturePresented = true;
+        await readableMessageDelay(950);
+      } else {
+        ball.hidden = true;
+        absorb.cancel();
+        target.style.opacity = "1";
+        target.style.transform = "";
+        target.style.filter = "";
+        this.message(step.shakes === 0 ? "Oh non ! Le Pokémon s'est libéré immédiatement !"
+          : step.shakes === 1 ? "Presque ! Il semblait pris !"
+            : step.shakes === 2 ? "Aïe ! C'était tout près !" : "Mince ! Il manquait si peu !");
+        await readableMessageDelay(850);
+      }
+      ball.hidden = true;
+      ball.style.backgroundImage = previousBallBackground;
+      return;
+    }
+    this.message(step.success ? `${step.targetName} est capturé !` : "Le Pokémon s'est libéré !");
+    if (step.success) this.#capturePresented = true;
+    await readableMessageDelay(850);
+  }
+
   private playSourceTimings(animation: BattleAnimationRecord, frame: number): void {
     for (const timing of animation.timings) {
       if (timing.frame !== frame || timing.type !== 0 || timing.name.length === 0) continue;
-      const audio = new Audio(sourceUrl(`Audio/SE/${timing.name}`));
-      audio.volume = Math.min(1, Math.max(0, timing.volume / 100));
-      audio.playbackRate = Math.min(4, Math.max(0.25, timing.pitch / 100));
-      void audio.play().catch(() => { /* Un son absent ou bloqué ne doit jamais interrompre le combat. */ });
+      this.playAudio(`Audio/SE/${timing.name}`, { oneShot: true,
+        volume: Math.min(1, Math.max(0, timing.volume / 100)),
+        playbackRate: Math.min(4, Math.max(0.25, timing.pitch / 100)) });
     }
   }
 
-  private playAudio(path: string, options: { readonly loop?: boolean; readonly volume?: number; readonly oneShot?: boolean }): HTMLAudioElement {
+  private playAudio(path: string, options: { readonly loop?: boolean; readonly volume?: number;
+    readonly oneShot?: boolean; readonly playbackRate?: number }): HTMLAudioElement {
     const audio = new Audio(sourceUrl(path));
     audio.loop = options.loop ?? false;
-    audio.volume = options.volume ?? 1;
+    const baseVolume = options.volume ?? 1;
+    this.#audioBaseVolumes.set(audio, baseVolume);
+    audio.volume = baseVolume * this.#masterVolume;
+    audio.playbackRate = options.playbackRate ?? 1;
     if (options.oneShot === true) {
       this.#oneShots.add(audio);
       audio.addEventListener("ended", () => this.#oneShots.delete(audio), { once: true });

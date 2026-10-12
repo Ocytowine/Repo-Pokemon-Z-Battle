@@ -317,6 +317,25 @@ export class SourceScenePresentation {
     this.elements.dialogue.classList.remove("transparent");
   }
 
+  public applyMapAudio(audio: { readonly autoplayBgm: boolean;
+    readonly bgm: { readonly name: string; readonly volume: number; readonly pitch: number };
+    readonly autoplayBgs: boolean;
+    readonly bgs: { readonly name: string; readonly volume: number; readonly pitch: number } }): void {
+    if (audio.autoplayBgm) this.playMusic({ audio: audio.bgm });
+    if (audio.autoplayBgs) this.playBackgroundSound({ audio: audio.bgs });
+  }
+
+  public pauseForBattle(): void {
+    this.music?.audio.pause();
+    this.backgroundSound?.audio.pause();
+  }
+
+  public resumeAfterBattle(): void {
+    for (const managed of [this.music, this.backgroundSound]) {
+      if (managed !== null) void managed.audio.play().catch(() => { /* Le prochain geste utilisateur pourra reprendre l'audio. */ });
+    }
+  }
+
   private applyTone(tone: SourceTone): void {
     const negative = Math.max(0, -(tone.red + tone.green + tone.blue) / (3 * 255));
     const positive = Math.max(0, tone.red, tone.green, tone.blue) / 255;

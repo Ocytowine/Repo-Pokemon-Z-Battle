@@ -49,6 +49,12 @@ export interface NormalizedWorldMap {
     readonly fullyBlockedCells: number;
   };
   readonly transfers: readonly SimpleMapTransfer[];
+  readonly audio: {
+    readonly autoplayBgm: boolean;
+    readonly bgm: { readonly name: string; readonly volume: number; readonly pitch: number };
+    readonly autoplayBgs: boolean;
+    readonly bgs: { readonly name: string; readonly volume: number; readonly pitch: number };
+  };
   readonly source: { readonly file: string; readonly sha256: string };
 }
 
@@ -77,6 +83,17 @@ function tableIvar(value: RubyObject, name: string, context: string): RpgTable {
     throw new TypeError(`${context}.${name} doit etre une Table.`);
   }
   return decodeRpgTable(table as RubyUserDefined);
+}
+
+function audioIvar(value: RubyObject, name: string): { readonly name: string; readonly volume: number; readonly pitch: number } {
+  const candidate = value.ivars[name];
+  if (typeof candidate !== "object" || candidate === null || Array.isArray(candidate)
+    || candidate.kind !== "object" || candidate.className !== "RPG::AudioFile") {
+    return { name: "", volume: 100, pitch: 100 };
+  }
+  return { name: textIvar(candidate, "@name"),
+    volume: typeof candidate.ivars["@volume"] === "number" ? candidate.ivars["@volume"] : 100,
+    pitch: typeof candidate.ivars["@pitch"] === "number" ? candidate.ivars["@pitch"] : 100 };
 }
 
 export function normalizeTilesets(value: RubyMarshalValue): readonly NormalizedTileset[] {
@@ -208,6 +225,12 @@ export function normalizeWorldMap(
       fullyBlockedCells: masks.filter((mask) => mask === 0).length,
     },
     transfers: extractSimpleTransfers(map.ivars["@events"] ?? null),
+    audio: {
+      autoplayBgm: map.ivars["@autoplay_bgm"] === true,
+      bgm: audioIvar(map, "@bgm"),
+      autoplayBgs: map.ivars["@autoplay_bgs"] === true,
+      bgs: audioIvar(map, "@bgs"),
+    },
     source,
   };
 }

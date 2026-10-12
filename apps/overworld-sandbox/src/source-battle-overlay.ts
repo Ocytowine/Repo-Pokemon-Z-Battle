@@ -15,6 +15,7 @@ export interface SourceBattleBagEntry extends SourceShopItem {
 export interface SourceBattleOverlayModel {
   readonly state: TeamBattleState | null;
   readonly local: boolean;
+  readonly duel: boolean;
   readonly animating: boolean;
   readonly joinPause: "choice" | "waiting" | null;
   readonly networkSide: BattleSide | null;
@@ -42,12 +43,14 @@ export interface SourceBattleOverlayCallbacks {
     targetMoveIndex?: number) => void;
   readonly onCapture: (ballId: string, local: boolean, activeSlot: number, target?: BattlePosition) => void;
   readonly onReplacement: (teamIndex: number, activeSlot: number) => void;
+  readonly onForfeit: () => void;
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
   readonly onDetails: (pokemonId: string) => void;
+  readonly onUiSound: (kind: "decision" | "cancel" | "error") => void;
 }
 
-type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items"
+type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items" | "forfeit"
   | "item-targets" | "item-moves";
 
 export function sourceBattleSummary(state: TeamBattleState, observing: boolean): string {
@@ -83,7 +86,13 @@ export class SourceBattleOverlay {
   private bagPage = 0;
   private pendingReplacement: { readonly turn: number; readonly activeSlot: number } | null = null;
 
-  public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {}
+  public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {
+    document.querySelector<HTMLElement>("#encounter-actions")?.addEventListener("click", (event) => {
+      const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button") : null;
+      if (button === null) return;
+      this.callbacks.onUiSound(button.disabled ? "error" : button.hasAttribute("data-battle-back") ? "cancel" : "decision");
+    });
+  }
 
   public render(model: SourceBattleOverlayModel): void {
     const panel = document.querySelector<HTMLElement>("#encounter-panel");
@@ -172,6 +181,7 @@ export class SourceBattleOverlay {
     if (this.menu === "moves") this.renderMoves(actions, active, model, blocked);
     else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
+    else if (this.menu === "forfeit") this.renderForfeit(actions, model);
     else if (this.menu === "bag") this.renderBagCategories(actions, model, blocked);
     else if (this.menu === "item-targets") this.renderItemTargets(actions, team, model, blocked);
     else if (this.menu === "item-moves") this.renderItemMoves(actions, team, model, blocked);
@@ -185,17 +195,20 @@ export class SourceBattleOverlay {
     const reserves = team.members.filter((member, index) => !activeIndices.includes(index) && member.hp > 0).length;
     const bagCount = [...model.bag.balls, ...model.bag.medicine, ...model.bag.battleItems]
       .filter((entry) => entry.usable !== false).length;
+    const exitBlocked = model.animating || !model.duel && (model.escapeConfirmedByMe
+      || !model.local && model.networkSubmittedTurn === model.state?.turn || !model.escapable);
     const activePicker = activeIndices.length < 2 ? "" : `<div class="source-battle-active-picker">${activeIndices.map((index, slot) => `<button data-active-slot="${slot}"${disabled(model.submittedActiveSlots.includes(slot))}>${escapeSourceHtml(team.members[index]!.name)}${slot === this.activeSlot ? " ✓" : ""}</button>`).join("")}</div>`;
     actions.innerHTML = `${activePicker}<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
       <button data-battle-menu="pokemon" class="pokemon"${disabled(blocked)}><b>●</b><span>Pokémon</span><small>${reserves} remplaçant${reserves > 1 ? "s" : ""}</small></button>
       <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
-      <button id="escape-source-encounter" class="escape"${disabled(model.animating || model.escapeConfirmedByMe
-        || !model.local && model.networkSubmittedTurn === model.state?.turn || !model.escapable)}><b>↗</b><span>Fuite</span><small>${model.escapeConfirmedByMe
-          ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
-          : model.escapable && model.escapeConfirmationRequired > 1
-            ? `Accord requis · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
-            : model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Indisponible en duel"}</small></button>
+      <button id="escape-source-encounter" class="escape"${disabled(exitBlocked)}><b>↗</b><span>${model.duel ? "Abandon" : "Fuite"}</span><small>${model.duel
+          ? "Concéder la victoire"
+          : model.escapeConfirmedByMe
+            ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+            : model.escapable && model.escapeConfirmationRequired > 1
+              ? `Accord requis · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+              : model.escapable ? "Quitter le combat" : model.local ? "Combat de Dresseur" : "Fuite indisponible"}</small></button>
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
@@ -208,8 +221,22 @@ export class SourceBattleOverlay {
       this.render(model);
     }));
     actions.querySelector<HTMLButtonElement>("#escape-source-encounter")?.addEventListener("click", () => {
+      if (model.duel) {
+        this.menu = "forfeit";
+        this.render(model);
+      } else {
+        this.menu = "root";
+        this.callbacks.onEscape(model.local);
+      }
+    });
+  }
+
+  private renderForfeit(actions: HTMLElement, model: SourceBattleOverlayModel): void {
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ABANDON</small><strong>Abandonner ce combat ?</strong></div></header><div class="source-battle-move-grid"><button data-battle-back><span>Continuer</span><small>Retourner au combat</small></button><button id="forfeit-player-duel" class="escape"${disabled(model.animating)}><span>Abandonner</span><small>L'adversaire remportera le combat</small></button></div></div>`;
+    this.bindBack(actions, model);
+    actions.querySelector<HTMLButtonElement>("#forfeit-player-duel")?.addEventListener("click", () => {
       this.menu = "root";
-      this.callbacks.onEscape(model.local);
+      this.callbacks.onForfeit();
     });
   }
 
@@ -417,9 +444,9 @@ export class SourceBattleOverlay {
   }
 
   private bindBack(actions: HTMLElement, model: SourceBattleOverlayModel, destination: BattleMenu = "root"): void {
-    actions.querySelector<HTMLButtonElement>("[data-battle-back]")?.addEventListener("click", () => {
+    actions.querySelectorAll<HTMLButtonElement>("[data-battle-back]").forEach((button) => button.addEventListener("click", () => {
       this.menu = destination;
       this.render(model);
-    });
+    }));
   }
 }

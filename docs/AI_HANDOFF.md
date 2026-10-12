@@ -55,7 +55,7 @@ deja en place. La suite est organisee en cinq portes :
 1. fidelite de combat par lot vertical sur les prochains Dresseurs atteignables ;
 2. registre Pokedex personnel persistant ;
 3. fermeture evolution/capture, dont Munja, surnom et animation ;
-4. musique des cartes et restauration apres combat ;
+4. validation manuelle des musiques de cartes et de leur restauration apres combat ;
 5. matrice manuelle solo, hote, invite, doubles et reconnexion avant cloture.
 
 Le premier lot ne doit pas viser les 353 fonctions de capacite en bloc. Il audite
@@ -266,7 +266,7 @@ Etat : perimetre minimal termine ; validation manuelle a effectuer.
   direction, equipe, Sac et etat narratif. Un lancement solo a froid revient a cet
   instantane ; une donnee invalide revient proprement a Bourg Canvas.
 - Options memorise le volume choisi et le raccorde aux musiques et effets des
-  cinematiques. Le lecteur audio du combat conserve encore son reglage propre.
+  cinematiques et du combat par un volume maitre commun.
 - Le visuel reutilise les assets locaux `partybg.png`, `partyBall.PNG`,
   `bagPocket*.png` et `pause.png`, avec un repli CSS structurel.
 
@@ -2333,6 +2333,46 @@ desormais son propre profil public au dos et le profil de l'autre joueur de face
 independamment de sa place hote/invite. Le modele `visualPreset` et les couleurs
 publiques deja synchronises sont charges par le pipeline de personnalisation
 commun ; aucune image, couleur ni identite privee supplementaire n'est repliquee.
+
+Abandon PvP du 2026-10-12 : dans un duel joueur contre joueur, l'action `Fuite`
+est remplacee par `Abandon`, avec un ecran de confirmation tactile. Elle reste
+disponible tant que le combat est actif, y compris lorsqu'une action du tour a
+deja ete soumise. L'intention reseau existante `leaveBattle` prend le sens de
+concession sur un duel actif : la room annule les intentions en attente, attribue
+autoritairement la victoire au camp adverse, publie un `battleEnded` dans la file
+visuelle commune puis place la session en reglement. Une seconde utilisation
+apres le resultat ferme le duel comme auparavant. La fuite sauvage et son vote
+Coop ne changent pas ; aucun abandon n'est propose contre un PNJ.
+
+Lot global de presentation des combats du 2026-10-12 : les variantes CSS d'abord
+ajoutees pour evoquer les familles de `transiciones.rb` ont ete retirees apres
+recette, car elles ne reproduisaient ni leurs assets ni leur mise en scene et
+donnaient un resultat trompeur. L'ouverture utilise temporairement un fondu noir
+generique et stable. Le futur port fidele doit interpreter ou reproduire les
+sequences source avec leurs sprites, bandes, masques, durees, sons et conditions,
+puis choisir la variante depuis un contexte deterministe commun au solo et a la
+Coop. Ne pas recreer ces transitions par de simples approximations CSS.
+
+La file de presentation commune porte maintenant l'efficacite des impacts et la
+capture structuree. Elle joue les sons source au moment visible correspondant :
+impact normal/resiste/super efficace, cri puis chute K.O., rappel et nouvel envoi,
+signal chromatique, seuil d'EXP, lancer/absorption/secousses/chute de Ball et
+jingle de capture. Le succes de capture n'est plus annonce deux fois. La musique
+de victoire commence avant les textes de defaite, l'EXP et l'argent, puis se fond
+a la sortie. Les commandes tactiles jouent aussi decision, retour ou erreur. Le
+duel PvP emploie les themes Dresseur au lieu des themes sauvages par defaut.
+
+`NormalizedWorldMap.audio` extrait desormais `@autoplay_bgm`, `@bgm`,
+`@autoplay_bgs` et `@bgs`. Le lecteur de scene conserve l'instant de lecture de la
+BGM/BGS de carte, les met en pause au debut du combat et les reprend a la fin. Le
+volume maitre s'applique au lecteur de carte, aux musiques de combat, aux jingles,
+aux sons fixes et aux timings des animations d'attaque. Ce raccord est local et
+visuel : aucune musique n'est persistee ni repliquee, chaque client lit les memes
+metadonnees de carte et le meme contexte de combat. `prepare:local` doit avoir ete
+relance pour enrichir les JSON de cartes existants ; le parseur garde un repli
+silencieux pour les anciennes extractions. Validation manuelle encore requise sur
+le mixage, la capture et la reprise audio en solo et Coop ; le port fidele des
+transitions reste un lot distinct.
 
 Decision de validation `STAB-BATTLE-1` du 2026-10-07 : le socle est implemente,
 mais le lot ne peut pas etre clos avec le parcours jouable actuel. Les changements

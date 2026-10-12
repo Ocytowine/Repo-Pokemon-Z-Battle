@@ -835,7 +835,10 @@ async function presentSourceCommand(command: SourcePresentationCommand,
 const sourceMenuView = new SourceMenuView(localStorage, {
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
-  onVolumeChange: (volume) => { sourcePresentation.setMasterVolume(volume / 100); },
+  onVolumeChange: (volume) => {
+    sourcePresentation.setMasterVolume(volume / 100);
+    sourceBattleVisuals.setMasterVolume(volume / 100);
+  },
   onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
   onJoinRoom: (serverUrl, roomCode) => { void createOrJoin("join", serverUrl, roomCode); },
   onDisconnectRoom: disconnectMultiplayer,
@@ -879,7 +882,11 @@ const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   onMoveReorder: reorderSourcePokemonMoves,
 });
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
-const sourceBattleVisuals = new SourceBattleVisuals();
+const sourceBattleVisuals = new SourceBattleVisuals({
+  masterVolume: sourceMenuVolume(localStorage) / 100,
+  onBattleAudioStart: () => sourcePresentation.pauseForBattle(),
+  onBattleAudioEnd: () => sourcePresentation.resumeAfterBattle(),
+});
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
   console.warn(`[player-profile] ${error instanceof Error ? error.message : "profil indisponible"}`);
 });
@@ -967,12 +974,14 @@ const sourceBattleOverlay = new SourceBattleOverlay({
       ...(target === undefined ? {} : { target }) }, activeSlot);
   },
   onReplacement: (teamIndex, activeSlot) => { multiplayer.submitBattleReplacement(teamIndex, activeSlot); },
+  onForfeit: () => { multiplayer.forfeitBattle(); },
   onLeave: () => { multiplayer.leaveBattle(); },
   onEscape: (local) => {
     if (local) void sourceBattles.escape();
     else multiplayer.attemptBattleEscape();
   },
   onDetails: (pokemonId) => openSourcePokemonSummary("battle", pokemonId),
+  onUiSound: (kind) => { void sourceBattleVisuals.playInterfaceSound(kind); },
 });
 const sourcePlayerDuelView = new SourcePlayerDuelView({
   onAccept: () => {
@@ -1172,8 +1181,10 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
       .find((player) => player.playerId === trainerIds.opponent)?.profile.profile.displayName ?? "L'autre Dresseur";
     await sourceBattleVisuals.startBattle(networkBattleForViewer(state, side), {
       battleback: sourceContext?.presentation.battlebackId ?? importedAssets?.battleback ?? "snow",
-      battleMusic: sourceContext?.presentation.battleMusicId ?? importedAssets?.wildBattleBgm ?? null,
-      victoryMusic: sourceContext?.presentation.victoryMusicId ?? importedAssets?.wildVictoryMe ?? null,
+      battleMusic: sourceContext?.presentation.battleMusicId
+        ?? (visibleBattle?.duel === true ? "Entrenador.ogg" : importedAssets?.wildBattleBgm ?? null),
+      victoryMusic: sourceContext?.presentation.victoryMusicId
+        ?? (visibleBattle?.duel === true ? "VictoriaEntrenador.ogg" : importedAssets?.wildVictoryMe ?? null),
       ...(sourceTrainerFacesViewer
         ? { opponentTrainer: sourceContext.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
         : sourceContext?.origin === "source-trainer" || sourceContext === null
@@ -2450,6 +2461,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   pendingSourceNpcContact = null;
   heldMovementKeys.clear();
   sourcePresentation.resetMapPresentation();
+  sourcePresentation.applyMapAudio(world.assets.map.audio);
   sourceNpcMotions.reset(world.assets.map.id, world.assets.events, performance.now());
   sourceFollowerMotion.reset(world.assets.map, world.avatar);
   void refreshSourceParallelPresentation(world.assets);
@@ -2693,7 +2705,7 @@ function renderEncounter(): void {
   const battleBagEntries = (pocket: number) => importedAssets === null ? [] : sourceBagEntries(
     visibleBattleInventory, importedAssets.items, pocket).map(({ item, quantity }) => ({ ...item, quantity,
       usable: isPokemonItemUsableInBattle(item.internalName) || isPokemonBallSupported(item.internalName) }));
-  sourceBattleOverlay.render({ state: battleState, local: localSourceBattle,
+  sourceBattleOverlay.render({ state: battleState, local: localSourceBattle, duel: networkBattle?.duel === true,
     animating: localSourceBattle ? sourceBattles.animating : networkBattleAnimating,
     joinPause: networkBattle?.sourceContext?.origin !== "source-trainer" ? null
       : networkBattle.session.lifecycle === "invite-choice" ? "choice"

@@ -3,13 +3,17 @@ import type { BattleSide, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } 
 export type SourceBattlePresentationStep =
   | { readonly kind: "action"; readonly side: BattleSide; readonly move: string;
       readonly message: string; readonly state: TeamBattleState }
-  | { readonly kind: "impact"; readonly side: BattleSide; readonly state: TeamBattleState }
+  | { readonly kind: "impact"; readonly side: BattleSide; readonly effectiveness: number;
+      readonly state: TeamBattleState }
   | { readonly kind: "health"; readonly side: BattleSide; readonly from: number; readonly to: number;
       readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "message" | "status"; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "faint"; readonly side: BattleSide; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "replacement"; readonly side: BattleSide; readonly message: string;
-      readonly state: TeamBattleState };
+      readonly state: TeamBattleState }
+  | { readonly kind: "capture"; readonly ballId: string; readonly targetId: string;
+      readonly targetName: string; readonly shakes: number; readonly critical: boolean;
+      readonly success: boolean; readonly state: TeamBattleState };
 
 const STATUS_NAMES = {
   burn: "la brûlure",
@@ -116,7 +120,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         message: `${activeName(state, event.side)} utilise ${move?.name ?? event.move} !`, state });
     } else if (event.type === "damageApplied") {
       const targetName = activeName(state, event.target);
-      steps.push({ kind: "impact", side: event.target, state });
+      steps.push({ kind: "impact", side: event.target, effectiveness: event.effectiveness, state });
       health(event.target, event.hp, event.amount === 0
         ? `${targetName} ne perd aucun PV.`
         : `${targetName} perd ${event.amount} PV.`);
@@ -163,11 +167,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "captureAttempted") {
       const target = Object.values(state.teams).flatMap((team) => team.members)
         .find((member) => member.id === event.target);
-      message(`${event.ballId} lancée sur ${target?.name ?? "le Pokémon sauvage"}…`);
-      message(event.success ? `${target?.name ?? "Le Pokémon sauvage"} est capturé !`
-        : event.shakes === 0 ? "Oh non ! Le Pokémon s'est libéré immédiatement !"
-          : event.shakes === 1 ? "Presque ! Il semblait pris !"
-            : event.shakes === 2 ? "Aïe ! C'était tout près !" : "Mince ! Il manquait si peu !");
+      steps.push({ kind: "capture", ballId: event.ballId, targetId: event.target,
+        targetName: target?.name ?? "Le Pokémon sauvage", shakes: event.shakes,
+        critical: event.critical, success: event.success, state });
     } else if (event.type === "abilityActivated") {
       message(`Le talent ${event.ability} de ${activeName(state, event.side)} s'active !`, "status");
     } else if (event.type === "statStageChanged") {

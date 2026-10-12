@@ -1693,12 +1693,18 @@ Ordre convenu :
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
   placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
   implementes ;
+  les transitions source de `transiciones.rb` restent a porter fidelement ; les
+  variantes CSS approximatives ont ete retirees et un fondu stable sert de repli ;
   le changement et le remplacement croises observes pendant la recette sont
   maintenant refuses par la room en simple et en double ; le partage tactique
   precombat reste une extension distincte, uniquement sur consentement des deux
   joueurs ;
   recette solo et deux navigateurs a valider ;
-- [ ] `STAB-AUDIO-1` : lancer et restaurer les musiques de lieux.
+- [ ] `STAB-AUDIO-1` : implementation terminee le 2026-10-12, validation manuelle
+  restante. Les BGM/BGS automatiques sont extraites des cartes, mises en pause
+  pendant le combat et reprises a leur position de lecture au retour. Le volume
+  maitre couvre desormais carte, combat et effets ; la recette doit encore verifier
+  solo, hote, invite, changement de carte et reconnexion.
 
 Condition de sortie : aucun avatar ou defi orphelin, meme geometrie autoritaire
 pour les deux joueurs, presentation de combat lisible et musique coherente du lieu

@@ -41,6 +41,12 @@ export interface ImportedMap {
   readonly layers: { readonly lower: readonly number[]; readonly middle: readonly number[]; readonly upper: readonly number[] };
   readonly collision: { readonly masks: readonly number[] };
   readonly transfers: readonly ImportedTransfer[];
+  readonly audio: {
+    readonly autoplayBgm: boolean;
+    readonly bgm: { readonly name: string; readonly volume: number; readonly pitch: number };
+    readonly autoplayBgs: boolean;
+    readonly bgs: { readonly name: string; readonly volume: number; readonly pitch: number };
+  };
 }
 
 export interface ImportedTransfer {
@@ -199,10 +205,17 @@ export function parseImportedMap(value: unknown): ImportedMap {
       eventX: entry.eventX as number, eventY: entry.eventY as number, targetMapId: entry.targetMapId as number,
       targetX: entry.targetX as number, targetY: entry.targetY as number, direction: entry.direction as number };
   });
+  const parseAudio = (entry: unknown): { readonly name: string; readonly volume: number; readonly pitch: number } =>
+    isRecord(entry) && typeof entry.name === "string" && typeof entry.volume === "number" && typeof entry.pitch === "number"
+      ? { name: entry.name, volume: entry.volume, pitch: entry.pitch }
+      : { name: "", volume: 100, pitch: 100 };
+  const audio = isRecord(value.audio) ? value.audio : {};
   return {
     id: value.id as number, name: value.name, width, height, tilesetId: value.tilesetId as number,
     layers: { lower: value.layers.lower, middle: value.layers.middle, upper: value.layers.upper },
     collision: { masks: value.collision.masks }, transfers,
+    audio: { autoplayBgm: audio.autoplayBgm === true, bgm: parseAudio(audio.bgm),
+      autoplayBgs: audio.autoplayBgs === true, bgs: parseAudio(audio.bgs) },
   };
 }
 

@@ -360,6 +360,13 @@ export class OverworldNetworkSession {
     if (battleId !== undefined) this.sendRequest({ type: "leaveBattle", battleId });
   }
 
+  public forfeitBattle(): void {
+    const battle = this.activeSession?.snapshot?.battle;
+    if (battle?.duel === true && battle.state.status === "active") {
+      this.sendRequest({ type: "leaveBattle", battleId: battle.id });
+    }
+  }
+
   public submitBattleAction(action: TeamBattleAction, activeSlot = 0): void {
     const session = this.activeSession;
     const battle = session?.snapshot?.battle;
