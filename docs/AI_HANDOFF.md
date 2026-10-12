@@ -727,9 +727,10 @@ statistiques exactes apres le premier chargement suivant cette version.
 Catalogues et assets de fiche implementes le 2026-10-03 : le chargeur overworld
 construit maintenant un `PlayerDetailsCatalog` avec les champs d'espece manquants,
 les talents, les cibles et les descriptions. Les libelles disponibles passent par
-les categories francaises extraites. L'entree Pokedex de `pokemon.json` reste en
-anglais et ne doit pas etre presentee dans la future fiche avant raccord d'une
-traduction fiable.
+les categories francaises extraites. Depuis le correctif du 2026-10-12, la
+categorie `pokedexEntries` de `localization.json`, issue en priorite de
+`Data/french.dat`, remplace aussi l'entree anglaise de `pokemon.json` dans le
+`PlayerDetailsCatalog`.
 
 `local-assets` fournit un resolveur generique et teste pour battlers face/dos,
 icones, overworld, empreintes et cris, avec formes, variantes, shiny et genre. La
@@ -2499,6 +2500,65 @@ sa propre clé `pokemon-z-battle.options.*-volume.v1`. Les changements s'appliqu
 à chaud aux scènes, combats, évolutions et cris de fiche déjà en cours. Autorité
 et persistance : préférences strictement personnelles dans le `localStorage` de
 chaque navigateur ; aucune préférence audio n'est envoyée à la room.
+Les interfaces hors combat (menu principal, Sac, équipe, Ranch, résumé, boutique,
+progression, prologue et fenêtres Coop) utilisent une délégation d'événements en
+phase capture pour jouer `Select`, `Choose` ou `BW2Cancel` selon navigation,
+validation ou fermeture. Ne pas ajouter un second son dans chaque vue : cette
+délégation couvre aussi les boutons recréés dynamiquement après un rendu.
+
+Le premier écran Pokédex est raccordé au menu principal. Il réutilise une grille
+paginée de 12 espèces avec recherche nom/numéro, filtres cumulables de deux types,
+statut et tri. La progression compte les espèces obtenues sur le catalogue extrait
+et les cartes indiquent : inconnue, vue, obtenue, présente dans l'équipe, présente
+au Ranch, espèce ayant déjà évolué ou espèce relâchée. Les sprites à deux frames
+restent animés et le bouton `Zones de capture` est un emplacement désactivé pour
+le futur module Carte.
+
+Jalon UI Pokédex/Ranch du 2026-10-12 : tous les filtres sont désormais appliqués
+immédiatement (`input` pour la recherche, `change` pour les listes) et seul le
+bouton `Réinitialiser` demeure. Les deux champs numériques de numéro et les seuils
+de puissance actuels ont été retirés du Ranch. Le potentiel correspond exclusivement
+à la somme des six statistiques de base et emploie un contrat commun de six paliers :
+`0–299`, `300–399`, `400–449`, `450–499`, `500–599`, puis `600+`. Lorsqu'un palier
+est actif, sa valeur exacte et son libellé sont affichés sur les cartes du Ranch et
+du Pokédex. Le Ranch ajoute deux seuils indépendants, calculés sur la moyenne des
+six valeurs : qualité IV et entraînement EV, chacun présenté avec une à quatre
+étoiles. Ne pas fusionner ces deux mesures : leurs échelles et leurs seuils sont
+différents.
+
+Une fiche générale interne s'ouvre depuis toute espèce vue dans le Pokédex. Une
+espèce seulement observée reste en silhouette ; sa capture débloque catégorie,
+taille, poids, types, empreinte, statistiques de base, potentiel, talents et
+évolutions suivantes. La présentation réutilise désormais la structure visuelle
+de la fiche Équipe/Ranch et la même boucle canvas à 120 ms pour les battlers multi-
+frames. Les descriptions françaises proviennent de la catégorie `pokedexEntries`
+de `localization.json`, elle-même extraite de `Data/french.dat`.
+
+Les icônes du menu utilisent les images locales de `Graphics/Pictures/DP Pause
+Menu` par URL servie ; aucun asset source n'est copié ou ajouté à Git. Le contrat
+source est reproduit : variante grise `A` au repos, variante colorée `B` pour la
+rubrique active et oscillation de -12 à +12 degrés. Sac et Sauvegarde choisissent
+`Bf` ou `Bm` selon la morphologie du profil local. Toutes les rubriques actuellement
+affichées possèdent leur variante colorée dans le jeu source.
+
+Correctif UI du 2026-10-12 : le sélecteur de composition racine est limité à
+`body > main`. Ne jamais réélargir ce sélecteur à toutes les balises `main` : la
+première fiche Pokédex utilisait une balise `main` interne et héritait alors de
+`width: fit-content` ainsi que des colonnes de l'application, ce qui contractait
+et superposait toutes ses cartes. La colonne de contenu de la fiche est désormais
+une `section` et occupe toute la seconde colonne de `.source-summary-layout`.
+
+Contrat d'état : `SourceEventState.pokedex` est personnel, persistant dans
+`pokemon-z-battle.source-event-state.v1`, restauré après reconnexion et absent du
+protocole Coop. Les combats solo et autoritaires enregistrent les adversaires vus
+du point de vue local. La sauvegarde réconcilie automatiquement équipe et Ranch
+pour couvrir cadeaux, captures et outils de test. Les évolutions par objet et par
+progression enregistrent l'espèce d'origine dans `evolvedSpecies`. La migration
+des anciennes sauvegardes sait uniquement déduire les espèces encore possédées ;
+elle n'invente ni évolution ni libération passée. `recordSourcePokedexRelease`
+prépare le raccord futur, mais l'action Ranch `Relâcher` reste désactivée tant que
+sa confirmation destructive et la restitution éventuelle de l'objet tenu ne sont
+pas implémentées. Aucun lieu de capture n'est inventé avant le module Carte.
 
 ## Commandes utiles
 

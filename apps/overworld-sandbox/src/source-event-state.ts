@@ -13,6 +13,7 @@ export interface SourceEventState {
   readonly money: number;
   readonly runningShoes: boolean;
   readonly pokedexEnabled: boolean;
+  readonly pokedex: SourcePokedexHistory;
   readonly followerEnabled: boolean;
   readonly checkpoint: SourceCheckpoint | null;
   readonly party: PlayerPartyState;
@@ -24,6 +25,18 @@ export interface SourceEventState {
   readonly wildEncounterRngState: number;
   readonly appliedBattleSettlementIds: readonly string[];
 }
+
+export interface SourcePokedexHistory {
+  readonly seenSpecies: readonly string[];
+  readonly caughtSpecies: readonly string[];
+  readonly evolvedSpecies: readonly string[];
+  readonly releasedSpecies: readonly string[];
+}
+
+export const EMPTY_SOURCE_POKEDEX: SourcePokedexHistory = Object.freeze({
+  seenSpecies: Object.freeze([]), caughtSpecies: Object.freeze([]),
+  evolvedSpecies: Object.freeze([]), releasedSpecies: Object.freeze([]),
+});
 
 export const SOURCE_INITIAL_MONEY = 3_000;
 export const SOURCE_MAX_MONEY = 999_999;
@@ -55,7 +68,7 @@ export interface StateCommandResult {
 }
 
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
-  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null,
+  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
   pendingEncounter: null,
@@ -66,7 +79,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
     happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] };
 }
 
@@ -169,7 +182,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, followerEnabled, checkpoint, party, ranch, pendingEncounter,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
         appliedBattleSettlementIds: state.appliedBattleSettlementIds });
@@ -247,10 +260,12 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     }
     appliedCommands += 1;
   }
-  return { state: { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+  const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
+    pokedexEnabled, pokedex: state.pokedex, followerEnabled, checkpoint, party, ranch, pendingEncounter,
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
-    appliedBattleSettlementIds: state.appliedBattleSettlementIds }, appliedCommands, safe: true, reason: null };
+    appliedBattleSettlementIds: state.appliedBattleSettlementIds };
+  return { state: reconcileSourcePokedex(nextState), appliedCommands, safe: true, reason: null };
 }
 
 export function completePendingEncounter(state: SourceEventState): SourceEventState {
@@ -266,6 +281,47 @@ function booleanDictionary(value: unknown): Record<string, boolean> | null {
 function numberDictionary(value: unknown): Record<string, number> | null {
   if (!isRecord(value) || Object.values(value).some((entry) => !finiteInteger(entry))) return null;
   return { ...value } as Record<string, number>;
+}
+
+function speciesList(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > 10_000
+    || value.some((entry) => typeof entry !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(entry))) return null;
+  return [...new Set(value as string[])];
+}
+
+function addSpecies(entries: readonly string[], species: readonly string[]): readonly string[] {
+  return [...new Set([...entries, ...species])];
+}
+
+export function reconcileSourcePokedex(state: SourceEventState): SourceEventState {
+  const current = [...state.party.members, ...state.ranch.members].map((pokemon) => pokemon.species);
+  const caughtSpecies = addSpecies(state.pokedex.caughtSpecies, current);
+  const seenSpecies = addSpecies(state.pokedex.seenSpecies,
+    [...caughtSpecies, ...(state.pendingEncounter === null ? [] : [state.pendingEncounter.species])]);
+  if (caughtSpecies.length === state.pokedex.caughtSpecies.length
+    && seenSpecies.length === state.pokedex.seenSpecies.length) return state;
+  return { ...state, pokedex: { ...state.pokedex, caughtSpecies, seenSpecies } };
+}
+
+export function recordSourcePokedexSeen(state: SourceEventState, species: readonly string[]): SourceEventState {
+  return reconcileSourcePokedex({ ...state, pokedex: { ...state.pokedex,
+    seenSpecies: addSpecies(state.pokedex.seenSpecies, species) } });
+}
+
+export function recordSourcePokedexEvolution(state: SourceEventState,
+  previousSpecies: string, nextSpecies: string): SourceEventState {
+  return reconcileSourcePokedex({ ...state, pokedex: { ...state.pokedex,
+    seenSpecies: addSpecies(state.pokedex.seenSpecies, [previousSpecies, nextSpecies]),
+    caughtSpecies: addSpecies(state.pokedex.caughtSpecies, [previousSpecies, nextSpecies]),
+    evolvedSpecies: addSpecies(state.pokedex.evolvedSpecies, [previousSpecies]) } });
+}
+
+/** Prepared for the Ranch release action; it records history without owning the removal transaction. */
+export function recordSourcePokedexRelease(state: SourceEventState, species: string): SourceEventState {
+  return { ...state, pokedex: { ...state.pokedex,
+    seenSpecies: addSpecies(state.pokedex.seenSpecies, [species]),
+    caughtSpecies: addSpecies(state.pokedex.caughtSpecies, [species]),
+    releasedSpecies: addSpecies(state.pokedex.releasedSpecies, [species]) } };
 }
 
 export function parseSourceEventState(value: unknown): SourceEventState {
@@ -313,6 +369,19 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && value.appliedBattleSettlementIds.every((id) => typeof id === "string" && id.length > 0 && id.length <= 128)
       && new Set(value.appliedBattleSettlementIds).size === value.appliedBattleSettlementIds.length
       ? [...value.appliedBattleSettlementIds] as string[] : null;
+  const pokedexValue = value.pokedex;
+  const currentSpecies = [...party.members, ...ranch.members].map((pokemon) => pokemon.species);
+  const parsedSeen = pokedexValue === undefined ? [] : isRecord(pokedexValue)
+    ? speciesList(pokedexValue.seenSpecies) : null;
+  const parsedCaught = pokedexValue === undefined ? [] : isRecord(pokedexValue)
+    ? speciesList(pokedexValue.caughtSpecies) : null;
+  const evolvedSpecies = pokedexValue === undefined ? [] : isRecord(pokedexValue)
+    ? speciesList(pokedexValue.evolvedSpecies) : null;
+  const releasedSpecies = pokedexValue === undefined ? [] : isRecord(pokedexValue)
+    ? speciesList(pokedexValue.releasedSpecies) : null;
+  const caughtSpecies = parsedCaught === null ? null : addSpecies(parsedCaught, currentSpecies);
+  const seenSpecies = parsedSeen === null || caughtSpecies === null ? null : addSpecies(parsedSeen,
+    [...caughtSpecies, ...(pendingEncounter === null || pendingEncounter === undefined ? [] : [pendingEncounter.species])]);
   if (switches === null || variables === null || selfSwitches === null || inventory === null || typeof runningShoes !== "boolean" || typeof pokedexEnabled !== "boolean"
     || typeof followerEnabled !== "boolean"
     || !finiteInteger(money) || money < 0 || money > SOURCE_MAX_MONEY
@@ -320,7 +389,9 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || !finiteInteger(happinessSteps) || happinessSteps < 0 || happinessSteps >= 128
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
-    || appliedBattleSettlementIds === null) throw new Error("État source invalide.");
-  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+    || appliedBattleSettlementIds === null || seenSpecies === null || caughtSpecies === null
+    || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
+  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
+    pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, followerEnabled, checkpoint, party, ranch, pendingEncounter,
     happinessSteps, wildEncounterSteps, wildEncounterRngState, appliedBattleSettlementIds };
 }

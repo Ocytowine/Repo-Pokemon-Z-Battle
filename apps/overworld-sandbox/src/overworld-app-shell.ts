@@ -21,12 +21,13 @@ export function mountOverworldApp(): HTMLCanvasElement {
           <section id="source-menu" class="source-menu" hidden aria-label="Menu du jeu">
             <header class="source-menu-header"><div><small id="source-menu-context">MENU PRINCIPAL</small><strong id="source-menu-location">Pokémon Z</strong></div><span id="source-menu-meta" class="source-menu-header-meta"></span><button id="close-source-menu" aria-label="Fermer le menu">×</button></header>
             <div class="source-menu-layout"><nav class="source-menu-nav" aria-label="Rubriques">
-              <button data-source-menu-tab="team"><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><span>Équipe</span></button>
-              <button data-source-menu-tab="bag"><img src="/__pokemon-z/source/Graphics/Icons/bagPocket1.png" alt=""><span>Sac</span></button>
-              <button data-source-menu-tab="movement"><span class="source-menu-symbol">DEV</span><span>Test dev</span></button>
-              <button data-source-menu-tab="save"><span class="source-menu-symbol">S</span><span>Sauvegarde</span></button>
-              <button data-source-menu-tab="coop"><span class="source-menu-symbol">2</span><span>Coop</span></button>
-              <button data-source-menu-tab="options"><span class="source-menu-symbol">⚙</span><span>Options</span></button>
+              <button data-source-menu-tab="team"><img data-source-menu-icon data-icon-inactive="pokemonA" data-icon-active="pokemonB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/pokemonA.png" alt=""><span>Équipe</span></button>
+              <button data-source-menu-tab="pokedex"><img data-source-menu-icon data-icon-inactive="pokedexA" data-icon-active="pokedexB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/pokedexA.png" alt=""><span>Pokédex</span></button>
+              <button data-source-menu-tab="bag"><img data-source-menu-icon data-icon-inactive="bagA" data-icon-active-masculine="bagBm" data-icon-active-feminine="bagBf" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/bagA.png" alt=""><span>Sac</span></button>
+              <button data-source-menu-tab="movement"><img data-source-menu-icon data-icon-inactive="controlesA" data-icon-active="controlesB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/controlesA.png" alt=""><span>Test dev</span></button>
+              <button data-source-menu-tab="save"><img data-source-menu-icon data-icon-inactive="saveA" data-icon-active-masculine="saveBm" data-icon-active-feminine="saveBf" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/saveA.png" alt=""><span>Sauvegarde</span></button>
+              <button data-source-menu-tab="coop"><img data-source-menu-icon data-icon-inactive="trainercardA" data-icon-active="trainercardB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/trainercardA.png" alt=""><span>Coop</span></button>
+              <button data-source-menu-tab="options"><img data-source-menu-icon data-icon-inactive="optionsA" data-icon-active="optionsB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/optionsA.png" alt=""><span>Options</span></button>
             </nav><div id="source-menu-content" class="source-menu-content"></div></div>
           </section>
           <section id="encounter-panel" class="encounter-panel source-battle-overlay" hidden aria-label="Combat en cours">

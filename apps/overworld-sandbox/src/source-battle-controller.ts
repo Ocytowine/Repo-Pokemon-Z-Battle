@@ -110,6 +110,8 @@ export interface SourceBattleCallbacks {
   readonly getPokemonCreationContext: (mapId: number, ballId: string) => PokemonCreationContext;
   readonly getExperienceLevelCap?: () => number;
   readonly setNotice: (notice: string) => void;
+  /** Historique personnel uniquement : aucune donnée de Pokédex n'est répliquée par la room. */
+  readonly recordPokedexSeen?: (species: readonly string[]) => void;
   readonly render: () => void;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
     readonly playerTeam: TeamBattleState["teams"]["player"];
@@ -182,6 +184,7 @@ export class SourceBattleController {
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
+      this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent }) === true) {
         this.sharedOpening = true;
@@ -233,6 +236,7 @@ export class SourceBattleController {
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
         battleMusic: audio.battleMusic, victoryMusic: audio.victoryMusic, defeatText: audio.defeatText });
+      this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent }) === true) {
         this.sharedOpening = true;

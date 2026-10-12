@@ -1,5 +1,5 @@
 export type SourceSceneMode = "overworld" | "dialogue" | "battle" | "menu" | "transition";
-export type SourceMenuTab = "team" | "bag" | "movement" | "save" | "coop" | "options";
+export type SourceMenuTab = "team" | "pokedex" | "bag" | "movement" | "save" | "coop" | "options";
 export type SourceSceneAction = "ambient-motion" | "world-input" | "dialogue-input" | "scene-change"
   | "start-sequence" | "source-transfer";
 

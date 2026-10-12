@@ -15,7 +15,7 @@
 | 8 - Prototype coop | Terminee | Interactions et evenements classes |
 | 9 - Import progressif du monde | En cours | Cartes compatibles importees par lots |
 | 10 - Stabilisation du vertical jouable | En cours, quatre lots clos | `STAB-BATTLE-1` valide apres ses dependances et musique des lieux restauree |
-| 11 - Mecanismes solo structurants | En cours, noyaux objets/capture/evolution fonctionnels | Fidelite de combat verticale, Pokedex puis finitions capture/evolution |
+| 11 - Mecanismes solo structurants | En cours, noyaux objets/capture/evolution et registre Pokedex fonctionnels | Fidelite de combat verticale puis finitions capture/evolution |
 | 12 - Extensions Coop | Planifiee | Capture, loot, Ranch et chat selon contrats autoritaires |
 | 13 - Plateforme et ergonomie | A qualifier | Cloud, import de sauvegarde, responsive et Android cadres |
 
@@ -29,7 +29,8 @@ Audit d'alignement du 2026-10-09 : `STAB-NET-1`, `STAB-NET-2`,
 `STAB-WORLD-1` et `STAB-WORLD-2` sont clos. Les objets personnels, la boucle de
 capture, le classement principal du Sac et 17 des 18 methodes d'evolution sont
 fonctionnels ; la phase 11 n'est donc plus seulement planifiee. Le goulet P0 est
-la fidelite des combats du prochain parcours, puis le registre Pokedex personnel.
+la fidelite des combats du prochain parcours ; le premier registre Pokedex
+personnel est maintenant raccorde.
 Les rapports de support doivent etre regeneres apres toute evolution de ces
 registres afin que les anciens constats historiques ne soient pas pris pour l'etat
 courant.
@@ -1297,8 +1298,9 @@ et le rendu distant reutilisent les statistiques persistantes deja existantes.
 
 Etape 4 de la fiche detaillee implementee le 2026-10-03 : le catalogue runtime
 expose les talents, descriptions, cibles et champs d'espece verifies dans Z. Les
-traductions francaises extraites ont priorite ; l'entree Pokedex anglaise reste
-explicitement non affichable. Un resolveur commun couvre formes, variantes, genre,
+traductions francaises extraites ont priorite. Le correctif du 2026-10-12 raccorde
+également `pokedexEntries` depuis `french.dat`, qui remplace désormais l'entrée PBS
+anglaise. Un resolveur commun couvre formes, variantes, genre,
 shiny, face/dos, icones, overworld, empreintes et cris avec replis deterministes.
 Les feuilles de categorie, rubans, shiny, statuts, Pokerus et les 24 Balls sont
 indexees pour la future fiche sans copier les sources dans Git.
@@ -1316,8 +1318,9 @@ changement de Pokemon et cri de forme. La fiche lit les donnees persistantes,
 catalogues francais et assets locaux reels ; sa sous-page avancee expose IV/EV,
 bonheur et Puissance Cachee selon les regles controlees dans Z.
 
-Les donnees non disponibles ne sont pas inventees : Pokedex francais, nom du lieu
-historique, etat obscur et cycle complet des oeufs/rubans restent explicites. La
+Les donnees non disponibles ne sont pas inventees : nom du lieu historique, etat
+obscur et cycle complet des oeufs/rubans restent explicites. Les descriptions
+Pokédex françaises sont raccordées depuis `french.dat` depuis le 2026-10-12. La
 page Capacites affiche seulement les quatre attaques typees et leurs PP avant le
 lot 6. La consultation reste personnelle en solo comme pour chaque participant
 Coop ; une projection publique minimale testee exclut toutes les metadonnees
@@ -1776,6 +1779,9 @@ sur les sons du partenaire après leur atténuation spatiale ; il ne modifie don
 ni les effets locaux ni le mix envoyé sur le réseau. La valeur globale historique
 sert de migration initiale. Ces préférences restent personnelles au navigateur et
 s'appliquent immédiatement aux lecteurs de scène, de combat et d'évolution.
+Les boutons et sélecteurs des menus hors combat jouent également un SE court de
+navigation, validation ou annulation via le canal `Effets`, avec un branchement
+générique qui couvre les contrôles recréés dynamiquement.
 
 ### Phase 10 - Stabilisation du vertical jouable
 
@@ -1797,6 +1803,43 @@ Carte/Boussole, Alchimie et Succes. DexNav, Nuzlocke/Monotype, Échange Miracle 
 Tour de Combat sont inventories dans `docs/PRODUCT_BACKLOG.md` sans devancer les
 P0. Chaque mecanique est concue une fois pour l'adaptateur local et la room
 autoritaire.
+
+Premier increment Pokedex du 2026-10-12 : l'onglet du menu est débloqué par le
+switch narratif source déjà porté et affiche le catalogue extrait dans une grille
+paginée. Recherche par nom/numéro, deux types cumulables, tri et filtres de statut
+couvrent non vu, vu seulement, obtenu, possédé actuellement, équipe, Ranch,
+espèce ayant évolué et espèce relâchée. Une barre mesure les espèces obtenues sur
+l'ensemble du catalogue ; les cartes distinguent silhouettes inconnues, espèces
+observées et espèces obtenues, avec badges Équipe/Ranch et historique.
+
+Deuxième increment UI Pokédex/Ranch du 2026-10-12 : les filtres se mettent à jour
+automatiquement et conservent uniquement une action de réinitialisation. Le filtre
+de potentiel partagé remplace les anciens seuils numériques et classe la somme des
+six statistiques de base en six degrés (`0–299`, `300–399`, `400–449`, `450–499`,
+`500–599`, `600+`) ; la valeur exacte apparaît sur les cartes tant que ce filtre
+est actif. Le Ranch supprime les bornes de numéro et la puissance actuelle, puis
+ajoute deux filtres en étoiles distincts fondés sur les moyennes des six IV et des
+six EV. La fiche Pokédex fournit les données générales fiables du catalogue source
+avec sprite animé, types, catégorie, taille, poids, empreinte, statistiques de base,
+talents et évolutions. La fiche reprend la structure visuelle Équipe/Ranch et la
+même animation canvas de battler ; les descriptions françaises sont lues depuis
+`french.dat`. Seules les zones de capture restent différées jusqu'au module Carte.
+Les icônes locales `DP Pause Menu` décorent les sept rubriques avec l'état gris
+`A`, l'état actif coloré `B` et l'oscillation du script source ; Sac et Sauvegarde
+emploient leurs variantes `Bf/Bm`. Aucun asset n'est versionné. Ce lot demeure une
+présentation et un état personnel : aucune donnée
+de filtre, de Ranch ou de Pokédex n'est répliquée à la room Coop.
+
+L'historique `pokedex` appartient au joueur, persiste dans sa sauvegarde locale et
+n'est jamais répliqué à la room. Les combats locaux et partagés enregistrent les
+espèces adverses du point de vue de chaque participant ; cadeaux, captures et
+créations de test sont réconciliés depuis la collection personnelle ; les deux
+chemins d'évolution enregistrent l'espèce quittée. Les anciennes sauvegardes
+reconstituent seulement les espèces encore présentes dans l'équipe ou au Ranch :
+une évolution ou une libération antérieure ne peut pas être inventée. Le contrat
+de libération est prêt, mais son action destructive dans le Ranch reste à porter
+avec confirmation. Le bouton des zones de capture reste volontairement inactif
+jusqu'au module Carte, sans table de localisation factice.
 
 Premier lot vertical de combat du 2026-10-09 : Jean puis les trois variantes de
 Melia sur le parcours suivant ont ete pris comme frontiere, sans logique liee a

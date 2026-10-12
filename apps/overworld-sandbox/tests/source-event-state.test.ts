@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createPersistentPokemonMetadata } from "@pokemon-z-battle/player-state";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
-import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState, selectActiveEventPage } from "../src/source-event-state.js";
+import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState,
+  recordSourcePokedexEvolution, recordSourcePokedexRelease, selectActiveEventPage } from "../src/source-event-state.js";
 
 function page(condition: ImportedEventPage["condition"], commands: ImportedEventPage["commands"] = []): ImportedEventPage {
   return { condition, graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
@@ -61,9 +62,9 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 7 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
       happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
       happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
   });
 
@@ -78,7 +79,7 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, pendingEncounter: null,
         happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, followerEnabled: true }).followerEnabled).toBe(true);
@@ -88,7 +89,19 @@ describe("persistent source event state", () => {
         majorStatus: null, ability: null, heldItem: null,
         moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] }] } };
     expect(parseSourceEventState(legacyWithParty).followerEnabled).toBe(true);
+    expect(parseSourceEventState(legacyWithParty).pokedex).toMatchObject({
+      seenSpecies: ["CHESPIN"], caughtSpecies: ["CHESPIN"], evolvedSpecies: [], releasedSpecies: [],
+    });
     expect(() => parseSourceEventState({ switches: { 2: "yes" }, variables: {}, selfSwitches: {} })).toThrow("invalide");
+  });
+
+  it("keeps personal capture, evolution and release history after the Pokemon leaves the collection", () => {
+    const evolved = recordSourcePokedexEvolution(createSourceEventState(), "FENNEKIN", "BRAIXEN");
+    expect(evolved.pokedex).toEqual({ seenSpecies: ["FENNEKIN", "BRAIXEN"],
+      caughtSpecies: ["FENNEKIN", "BRAIXEN"], evolvedSpecies: ["FENNEKIN"], releasedSpecies: [] });
+    const released = recordSourcePokedexRelease(evolved, "BRAIXEN");
+    expect(parseSourceEventState(released).pokedex).toEqual({ seenSpecies: ["FENNEKIN", "BRAIXEN"],
+      caughtSpecies: ["FENNEKIN", "BRAIXEN"], evolvedSpecies: ["FENNEKIN"], releasedSpecies: ["BRAIXEN"] });
   });
 
   it("grants and removes personal inventory items atomically", () => {

@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
 import type { PersistentPokemon, PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import { createEmptyPlayerParty, createEmptyPlayerPokemonStorage, createPersistentPokemonMetadata } from "@pokemon-z-battle/player-state";
-import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePokemonIconUrl }
+import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePokemonIconUrl,
+  sourcePokemonPowerTier }
   from "../src/source-pokemon-collection.js";
 
-const pokemon = (id: string, species: string, level: number, stat: number): PersistentPokemon => ({
+const pokemon = (id: string, species: string, level: number, stat: number,
+  training?: { readonly iv: number; readonly ev: number }): PersistentPokemon => ({
   id, species, nickname: null, level, experience: 0,
   stats: { maxHp: stat, attack: stat, defense: stat, specialAttack: stat, specialDefense: stat, speed: stat },
   hp: stat, majorStatus: null, ability: null, heldItem: null,
   moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }],
-  metadata: createPersistentPokemonMetadata(id, species, level),
+  metadata: training === undefined ? createPersistentPokemonMetadata(id, species, level) : {
+    ...createPersistentPokemonMetadata(id, species, level),
+    ivs: { hp: training.iv, attack: training.iv, defense: training.iv, specialAttack: training.iv,
+      specialDefense: training.iv, speed: training.iv },
+    evs: { hp: training.ev, attack: training.ev, defense: training.ev, specialAttack: training.ev,
+      specialDefense: training.ev, speed: training.ev },
+  },
 });
 const catalog = { pokemon: [
   { id: 1, internalName: "BULBASAUR", name: "Bulbizarre", types: ["GRASS", "POISON"],
@@ -34,24 +42,43 @@ describe("shared Pokemon collection presentation", () => {
     expect(sourcePokemonIconUrl(6)).toBe("/__pokemon-z/source/Graphics/Icons/icon006.png");
   });
 
-  it("combines name, dual-type, number and power filters before sorting", () => {
+  it("combines name, dual-type and six-tier potential filters before sorting", () => {
     const ranch = { ...createEmptyPlayerPokemonStorage(), members: [
       pokemon("a", "BULBASAUR", 5, 10), pokemon("b", "CHARMANDER", 12, 30), pokemon("c", "CHARIZARD", 36, 80),
     ] };
     const collection = createSourcePokemonCollection(createEmptyPlayerParty(), ranch, catalog);
-    const filters = { query: "drac", firstType: "FIRE", secondType: "FLYING", minimumNumber: 4,
-      maximumNumber: 10, minimumCurrentPower: 400, minimumPotentialPower: 500, sort: "potential-power" as const };
+    const filters = { query: "drac", firstType: "FIRE", secondType: "FLYING", potentialTier: "very-powerful" as const,
+      minimumIvStars: "all" as const, minimumEvStars: "all" as const, sort: "potential-power" as const };
     expect(filterSourcePokemonCollection(collection, filters).map((entry) => entry.pokemon.species)).toEqual(["CHARIZARD"]);
   });
 
-  it("sorts current and potential strength independently", () => {
+  it("sorts potential strength and level independently", () => {
     const ranch = { ...createEmptyPlayerPokemonStorage(), members: [
       pokemon("a", "BULBASAUR", 50, 100), pokemon("b", "CHARIZARD", 5, 20),
     ] };
     const collection = createSourcePokemonCollection(createEmptyPlayerParty(), ranch, catalog);
-    const base = { query: "", firstType: null, secondType: null, minimumNumber: null, maximumNumber: null,
-      minimumCurrentPower: null, minimumPotentialPower: null };
-    expect(filterSourcePokemonCollection(collection, { ...base, sort: "current-power" })[0]?.pokemon.species).toBe("BULBASAUR");
+    const base = { query: "", firstType: null, secondType: null, potentialTier: "all" as const,
+      minimumIvStars: "all" as const, minimumEvStars: "all" as const };
+    expect(filterSourcePokemonCollection(collection, { ...base, sort: "level" })[0]?.pokemon.species).toBe("BULBASAUR");
     expect(filterSourcePokemonCollection(collection, { ...base, sort: "potential-power" })[0]?.pokemon.species).toBe("CHARIZARD");
+  });
+
+  it("uses the six potential bands and independent average IV/EV star filters", () => {
+    expect([299, 300, 400, 450, 500, 600].map((score) => sourcePokemonPowerTier(score).id)).toEqual([
+      "very-low", "low", "moderate", "good", "very-powerful", "super-powerful",
+    ]);
+    const ranch = { ...createEmptyPlayerPokemonStorage(), members: [
+      pokemon("a", "BULBASAUR", 5, 10, { iv: 31, ev: 0 }),
+      pokemon("b", "CHARIZARD", 36, 80, { iv: 10, ev: 70 }),
+    ] };
+    const collection = createSourcePokemonCollection(createEmptyPlayerParty(), ranch, catalog);
+    const base = { query: "", firstType: null, secondType: null, potentialTier: "all" as const,
+      sort: "number" as const };
+    expect(filterSourcePokemonCollection(collection,
+      { ...base, minimumIvStars: "four", minimumEvStars: "all" }).map((entry) => entry.pokemon.species))
+      .toEqual(["BULBASAUR"]);
+    expect(filterSourcePokemonCollection(collection,
+      { ...base, minimumIvStars: "all", minimumEvStars: "four" }).map((entry) => entry.pokemon.species))
+      .toEqual(["CHARIZARD"]);
   });
 });

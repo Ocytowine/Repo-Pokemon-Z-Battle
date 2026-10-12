@@ -1,6 +1,6 @@
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import type { SourcePokemonCollectionEntry } from "./source-pokemon-collection.js";
-import { sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
+import { sourcePokemonPowerTier, sourcePokemonStarText, sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 
 function escapeHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -11,6 +11,8 @@ export interface SourcePokemonCardOptions {
   readonly selected?: boolean;
   readonly active?: boolean;
   readonly interactive?: boolean;
+  readonly highlightPotential?: boolean;
+  readonly highlightTraining?: boolean;
 }
 
 function pokemonIconCycleDuration(entry: SourcePokemonCollectionEntry): number | null {
@@ -44,9 +46,13 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
     return `<span class="source-pokemon-move" title="${escapeHtml(`${move.name} · ${move.pp}/${move.maxPp} PP`)}"><img src="${escapeHtml(pokemonTypeIconUrl(move.type))}" alt="${escapeHtml(sourcePokemonTypeLabel(move.type))}"><b>${escapeHtml(move.name)}</b></span>`;
   }).join("");
   const hpPercent = Math.max(0, Math.min(100, Math.round((entry.pokemon.hp / entry.pokemon.stats.maxHp) * 100)));
+  const metrics = options.highlightPotential !== true && options.highlightTraining !== true ? ""
+    : `<span class="source-pokemon-card-metrics">${options.highlightPotential === true
+      ? `<b>Potentiel ${entry.potentialPower} · ${escapeHtml(sourcePokemonPowerTier(entry.potentialPower).label)}</b>` : ""}${options.highlightTraining === true
+      ? `<b>IV ${sourcePokemonStarText(entry.ivStars)} · EV ${sourcePokemonStarText(entry.evStars)}</b>` : ""}</span>`;
   return `<${element}${attributes} class="source-pokemon-card${selected}${active}">
     ${sourcePokemonIconHtml(entry)}
     <span class="source-pokemon-card-copy"><small>#${String(entry.number).padStart(3, "0")} · ${entry.location === "team" ? "ÉQUIPE" : "RANCH"}</small><strong>${escapeHtml(entry.displayName)} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span><span class="source-pokemon-vitals"><i><b style="width:${hpPercent}%"></b></i><em>${entry.pokemon.hp}/${entry.pokemon.stats.maxHp} PV</em></span></span>
-    <span class="source-pokemon-moves" aria-label="Capacités de ${escapeHtml(entry.displayName)}">${moves}</span>
+    <span class="source-pokemon-moves" aria-label="Capacités de ${escapeHtml(entry.displayName)}">${moves}</span>${metrics}
   </${element}>`;
 }

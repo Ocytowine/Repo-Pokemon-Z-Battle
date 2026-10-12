@@ -20,6 +20,7 @@ import { sourceActionWheelHtml } from "./source-action-wheel.js";
 import { sourceItemActions, sourceItemDisplayName } from "./source-item-actions.js";
 import { persistSourceAudioChannel, sourceAudioSettings, type SourceAudioChannel,
   type SourceAudioSettings } from "./source-audio-settings.js";
+import { SourcePokedexView } from "./source-pokedex-view.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -49,6 +50,8 @@ export interface SourceMenuViewModel {
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
   readonly dev: SourceMenuDevModel;
+  /** Morphologie strictement locale, utilisée uniquement pour les variantes visuelles du menu source. */
+  readonly profileBodyModel: string;
 }
 
 export interface SourceMenuDevModel {
@@ -125,6 +128,7 @@ export interface SourceMenuViewCallbacks {
 }
 
 export class SourceMenuView {
+  private readonly pokedexView = new SourcePokedexView();
   private selectedPocket = 1;
   private selectedTeamPokemonId: string | null = null;
   private selectedBagItemId: string | null = null;
@@ -151,8 +155,11 @@ export class SourceMenuView {
     menu.hidden = !model.open;
     if (!model.open) return;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
+    content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     const header = model.tab === "team"
       ? { context: "COMPAGNONS", title: "Équipe Pokémon", meta: `${model.eventState.party.members.length}/6` }
+      : model.tab === "pokedex"
+        ? { context: "ENCYCLOPÉDIE", title: "Pokédex", meta: `${model.eventState.pokedex.caughtSpecies.length} OBTENUS` }
       : model.tab === "movement"
         ? { context: "OUTILS LOCAUX", title: "Test dev", meta: "PERSONNEL" }
         : model.tab === "save"
@@ -164,9 +171,24 @@ export class SourceMenuView {
               : { context: "SAC", title: "Inventaire", meta: `${model.eventState.money.toLocaleString("fr-FR")} ₽` };
     this.setMenuHeader(header.context, header.title, header.meta);
     document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.sourceMenuTab === model.tab);
+      const active = button.dataset.sourceMenuTab === model.tab;
+      button.classList.toggle("active", active);
+      const icon = button.querySelector<HTMLImageElement>("[data-source-menu-icon]");
+      if (icon !== null) {
+        const gendered = model.profileBodyModel.includes("feminine") ? icon.dataset.iconActiveFeminine
+          : icon.dataset.iconActiveMasculine;
+        const name = active ? gendered ?? icon.dataset.iconActive : icon.dataset.iconInactive;
+        if (name !== undefined) icon.src = sourcePauseMenuIconUrl(name);
+      }
+      if (button.dataset.sourceMenuTab === "pokedex") {
+        button.disabled = !model.eventState.pokedexEnabled;
+        button.title = model.eventState.pokedexEnabled ? "" : "Le Pokédex n'est pas encore débloqué dans l'histoire.";
+      }
     });
     if (model.tab === "team") this.renderTeam(content, model);
+    else if (model.tab === "pokedex") this.pokedexView.render(content, { history: model.eventState.pokedex,
+      party: model.eventState.party, ranch: model.eventState.ranch,
+      catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets });
     else if (model.tab === "bag") this.renderBag(content, model);
     else if (model.tab === "movement") this.renderDevTools(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
@@ -660,6 +682,10 @@ export class SourceMenuView {
       if (server !== null && code !== null) this.callbacks.onJoinRoom(server.value, code.value);
     });
   }
+}
+
+function sourcePauseMenuIconUrl(name: string): string {
+  return `/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/${encodeURIComponent(name)}.png`;
 }
 
 export interface SourceShopViewModel {

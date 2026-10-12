@@ -243,7 +243,7 @@ function identityPage(model: SourcePokemonSummaryModel): string {
     <article><small>Prochain niveau</small><strong>${pokemon.level >= 100 ? "Niveau maximal" : `${model.experienceToNextLevel.toLocaleString("fr-FR")} EXP`}</strong></article>
     <article><small>Taille</small><strong>${model.species.height.toLocaleString("fr-FR")} m</strong></article>
     <article><small>Poids</small><strong>${model.species.weight.toLocaleString("fr-FR")} kg</strong></article>
-    <p class="source-summary-note">L'entrée Pokédex française n'est pas disponible dans les données extraites : aucun texte anglais n'est substitué.</p>
+    <p class="source-summary-note">${escapeHtml(model.species.pokedexEntry)}</p>
   </div>`;
 }
 

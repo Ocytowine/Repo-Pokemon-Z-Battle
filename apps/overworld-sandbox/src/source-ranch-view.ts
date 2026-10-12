@@ -2,7 +2,8 @@ import type { PlayerCreationCatalog, PlayerPartyState, PlayerPokemonStorageState
   from "@pokemon-z-battle/player-state";
 import type { PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePokemonTypeLabel,
-  sourcePokemonTypes, type SourcePokemonFilters, type SourcePokemonSort } from "./source-pokemon-collection.js";
+  sourcePokemonTypes, SOURCE_POKEMON_POWER_TIERS, type SourcePokemonFilters, type SourcePokemonPowerTier,
+  type SourcePokemonQualityTier, type SourcePokemonSort } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
 import type { PlayerInventory } from "@pokemon-z-battle/player-state";
@@ -24,7 +25,7 @@ export type SourceRanchTransferDestination = "team" | "ranch";
 
 export class SourceRanchView {
   private filters: SourcePokemonFilters = { query: "", firstType: null, secondType: null,
-    minimumNumber: null, maximumNumber: null, minimumCurrentPower: null, minimumPotentialPower: null,
+    potentialTier: "all", minimumIvStars: "all", minimumEvStars: "all",
     sort: "number" };
   private selectedPokemonId: string | null = null;
   private heldItemPokemonId: string | null = null;
@@ -60,35 +61,49 @@ export class SourceRanchView {
         <label class="source-ranch-search"><span>Nom ou numéro</span><input name="query" type="search" value="${escapeAttribute(this.filters.query)}" placeholder="Ex. Pikachu ou 25"></label>
         <label><span>Type 1</span><select name="firstType">${typeOptions(types, this.filters.firstType, "Tous")}</select></label>
         <label><span>Type 2</span><select name="secondType">${typeOptions(types, this.filters.secondType, "Indifférent")}</select></label>
-        <label><span>N° minimum</span><input name="minimumNumber" type="number" min="1" max="9999" value="${numberValue(this.filters.minimumNumber)}"></label>
-        <label><span>N° maximum</span><input name="maximumNumber" type="number" min="1" max="9999" value="${numberValue(this.filters.maximumNumber)}"></label>
-        <label><span>Puissance actuelle min.</span><input name="minimumCurrentPower" type="number" min="0" value="${numberValue(this.filters.minimumCurrentPower)}"></label>
-        <label><span>Potentiel min.</span><input name="minimumPotentialPower" type="number" min="0" value="${numberValue(this.filters.minimumPotentialPower)}"></label>
+        <label><span>Potentiel de l'espèce</span><select name="potentialTier">${powerOptions(this.filters.potentialTier)}</select></label>
+        <label><span>Qualité IV moyenne</span><select name="minimumIvStars">${qualityOptions(this.filters.minimumIvStars)}</select></label>
+        <label><span>Entraînement EV moyen</span><select name="minimumEvStars">${qualityOptions(this.filters.minimumEvStars)}</select></label>
         <label><span>Trier par</span><select name="sort">${sortOptions(this.filters.sort)}</select></label>
-        <button type="submit" class="source-ranch-apply">Appliquer</button><button type="button" id="reset-source-ranch-filters">Réinitialiser</button>
+        <button type="button" id="reset-source-ranch-filters">Réinitialiser</button>
       </form>
       <div class="source-ranch-result"><strong>${filtered.length}</strong> résultat${filtered.length > 1 ? "s" : ""}<small>Les filtres sont cumulés.</small></div>
       <div class="source-pokemon-grid">${filtered.length === 0
         ? '<div class="source-ranch-empty"><strong>Aucun Pokémon correspondant</strong><small>Élargissez un ou plusieurs filtres.</small></div>'
-        : filtered.map((entry) => sourcePokemonCardHtml(entry, { selected: entry.pokemon.id === this.selectedPokemonId })).join("")}</div>
+        : filtered.map((entry) => sourcePokemonCardHtml(entry, { selected: entry.pokemon.id === this.selectedPokemonId,
+          highlightPotential: this.filters.potentialTier !== "all",
+          highlightTraining: this.filters.minimumIvStars !== "all" || this.filters.minimumEvStars !== "all" })).join("")}</div>
       <footer class="source-ranch-footer">${actionFooter(selected)}</footer>${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(root);
     root.querySelector<HTMLButtonElement>("#close-source-ranch")?.addEventListener("click", this.onClose);
     root.querySelector<HTMLButtonElement>("#reset-source-ranch-filters")?.addEventListener("click", () => {
-      this.filters = { query: "", firstType: null, secondType: null, minimumNumber: null, maximumNumber: null,
-        minimumCurrentPower: null, minimumPotentialPower: null, sort: "number" };
+      this.filters = { query: "", firstType: null, secondType: null, potentialTier: "all",
+        minimumIvStars: "all", minimumEvStars: "all", sort: "number" };
       this.render(model);
     });
-    root.querySelector<HTMLFormElement>("#source-ranch-filters")?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const form = event.currentTarget as HTMLFormElement;
+    const filterForm = root.querySelector<HTMLFormElement>("#source-ranch-filters");
+    const updateFilters = (restoreSearchFocus: boolean): void => {
+      if (filterForm === null) return;
+      const search = filterForm.elements.namedItem("query") as HTMLInputElement | null;
+      const selection = search?.selectionStart ?? null;
+      const form = filterForm;
       const data = new FormData(form);
       this.filters = { query: String(data.get("query") ?? ""), firstType: nullableText(data.get("firstType")),
-        secondType: nullableText(data.get("secondType")), minimumNumber: nullableNumber(data.get("minimumNumber")),
-        maximumNumber: nullableNumber(data.get("maximumNumber")), minimumCurrentPower: nullableNumber(data.get("minimumCurrentPower")),
-        minimumPotentialPower: nullableNumber(data.get("minimumPotentialPower")), sort: sourceSort(data.get("sort")) };
+        secondType: nullableText(data.get("secondType")), potentialTier: sourcePowerTier(data.get("potentialTier")),
+        minimumIvStars: sourceQualityTier(data.get("minimumIvStars")),
+        minimumEvStars: sourceQualityTier(data.get("minimumEvStars")), sort: sourceSort(data.get("sort")) };
       this.render(model);
+      if (restoreSearchFocus) {
+        const nextSearch = root.querySelector<HTMLInputElement>('input[name="query"]');
+        nextSearch?.focus();
+        if (selection !== null) nextSearch?.setSelectionRange(selection, selection);
+      }
+    };
+    filterForm?.addEventListener("submit", (event) => event.preventDefault());
+    filterForm?.addEventListener("input", (event) => {
+      if (event.target instanceof HTMLInputElement && event.target.name === "query") updateFilters(true);
     });
+    filterForm?.addEventListener("change", () => updateFilters(false));
     root.querySelectorAll<HTMLButtonElement>("[data-pokemon-id]").forEach((button) => button.addEventListener("click", () => {
       this.selectedPokemonId = button.dataset.pokemonId ?? null;
       this.render(model);
@@ -149,7 +164,7 @@ function typeOptions(types: readonly string[], selected: string | null, emptyLab
 
 function sortOptions(selected: SourcePokemonSort): string {
   const options: readonly [SourcePokemonSort, string][] = [["number", "Numéro"], ["name", "Nom"],
-    ["current-power", "Puissance actuelle"], ["potential-power", "Potentiel"], ["level", "Niveau"]];
+    ["potential-power", "Potentiel"], ["level", "Niveau"]];
   return options.map(([value, label]) => `<option value="${value}"${value === selected ? " selected" : ""}>${label}</option>`).join("");
 }
 
@@ -157,15 +172,28 @@ function nullableText(value: FormDataEntryValue | null): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-function nullableNumber(value: FormDataEntryValue | null): number | null {
-  if (typeof value !== "string" || value.trim() === "") return null;
-  const number = Number(value);
-  return Number.isFinite(number) && number >= 0 ? number : null;
+function powerOptions(selected: SourcePokemonPowerTier): string {
+  return `<option value="all"${selected === "all" ? " selected" : ""}>Tous les potentiels</option>${SOURCE_POKEMON_POWER_TIERS.map((tier) =>
+    `<option value="${tier.id}"${selected === tier.id ? " selected" : ""}>${tier.label} · ${tier.minimum}${tier.maximum === null ? "+" : `–${tier.maximum}`}</option>`).join("")}`;
 }
 
-function numberValue(value: number | null): string { return value === null ? "" : String(value); }
+function qualityOptions(selected: SourcePokemonQualityTier): string {
+  const options: readonly [SourcePokemonQualityTier, string][] = [["all", "Tous"], ["one", "★ et plus"],
+    ["two", "★★ et plus"], ["three", "★★★ et plus"], ["four", "★★★★ uniquement"]];
+  return options.map(([value, label]) => `<option value="${value}"${selected === value ? " selected" : ""}>${label}</option>`).join("");
+}
+
+function sourcePowerTier(value: FormDataEntryValue | null): SourcePokemonPowerTier {
+  return typeof value === "string" && ["very-low", "low", "moderate", "good", "very-powerful", "super-powerful"].includes(value)
+    ? value as SourcePokemonPowerTier : "all";
+}
+
+function sourceQualityTier(value: FormDataEntryValue | null): SourcePokemonQualityTier {
+  return typeof value === "string" && ["one", "two", "three", "four"].includes(value)
+    ? value as SourcePokemonQualityTier : "all";
+}
 
 function sourceSort(value: FormDataEntryValue | null): SourcePokemonSort {
-  return value === "name" || value === "current-power" || value === "potential-power" || value === "level"
+  return value === "name" || value === "potential-power" || value === "level"
     ? value : "number";
 }

@@ -229,9 +229,10 @@ Etape implementee le 2026-10-03 : `PlayerDetailsCatalog` expose au runtime les
 talents et leurs descriptions, les descriptions et cibles de capacites, ainsi que
 numero, espece, formes, EV donnes, talents caches, pas d'eclosion, taille et poids.
 Noms, especes, formes, capacites et talents utilisent les catalogues francais
-extraits. L'entree Pokedex restant uniquement disponible dans le catalogue source
-anglais, elle est conservee comme donnee de provenance mais ne sera pas affichee
-par la fiche tant qu'une source francaise fiable n'aura pas ete raccordee.
+extraits. Correctif du 2026-10-12 : les entrées Pokédex françaises étaient déjà
+présentes dans la catégorie `pokedexEntries` extraite de `french.dat` ; le chargeur
+runtime les raccorde désormais au `PlayerDetailsCatalog` à la place du texte PBS
+anglais.
 
 Un resolveur unique selectionne desormais battler face/dos, icone, sprite
 overworld, empreinte et cri selon forme, variante, shiny et genre. Son ordre de
@@ -278,8 +279,8 @@ depuis la feuille source ; les identifiants encore symboliques restent affiches
 en texte plutot que d'inventer une correspondance.
 
 Les informations absentes restent explicites : lieu historique sous forme
-`Carte NNN` lorsqu'aucun libelle persistant n'existe, entree Pokedex francaise
-indisponible, etat obscur non represente, et presentation d'oeuf limitee aux pas
+`Carte NNN` lorsqu'aucun libelle persistant n'existe, etat obscur non represente,
+et presentation d'oeuf limitee aux pas
 restants. `createPublicSourcePokemonSummary` produit separement une projection
 publique minimale et marque Historique, Stats, Capacites et Rubans comme prives.
 La fiche utilise uniquement la sauvegarde personnelle en solo, chez l'hote et

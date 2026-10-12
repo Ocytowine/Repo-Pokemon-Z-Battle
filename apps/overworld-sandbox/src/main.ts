@@ -5,7 +5,8 @@ import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarra
   type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
-import { applySafeStateCommands, createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
+import { applySafeStateCommands, createSourceEventState, parseSourceEventState, reconcileSourcePokedex,
+  recordSourcePokedexEvolution, recordSourcePokedexSeen, type SourceEventState } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
@@ -234,6 +235,7 @@ function loadSourceEventState(): SourceEventState {
 }
 
 function persistSourceEventState(): void {
+  sourceEventState = reconcileSourcePokedex(sourceEventState);
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
@@ -966,6 +968,10 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
   getExperienceLevelCap: () => sourceDevLevelCap(pokemonZLevelCap(sourceEventState.switches), sourceDevSettings),
+  recordPokedexSeen: (species) => {
+    sourceEventState = recordSourcePokedexSeen(sourceEventState, species);
+    persistSourceEventState();
+  },
   setNotice: (notice) => { importedNotice = notice; },
   render,
   openSharedBattle: (draft) => multiplayer.openSourceBattle({ ...draft, battleItems: battleItemInventory() }),
@@ -1221,6 +1227,10 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
   }
   sourceBattles.acknowledgeSharedBattleOpened();
   const side = networkBattleViewerSide();
+  const viewerBattle = networkBattleForViewer(state, side);
+  sourceEventState = recordSourcePokedexSeen(sourceEventState,
+    viewerBattle.teams.opponent.members.map((pokemon) => pokemon.species));
+  persistSourceEventState();
   const visibleBattle = multiplayer.current?.snapshot?.battle;
   const sourceContext = visibleBattle?.sourceContext ?? null;
   if (sourceContext !== null) networkBattleContexts.set(battleId, sourceContext);
@@ -1246,7 +1256,7 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
       ? null : opponentVisuals?.battleFront ?? null);
     const opponentName = multiplayer.current?.snapshot?.players
       .find((player) => player.playerId === trainerIds.opponent)?.profile.profile.displayName ?? "L'autre Dresseur";
-    await sourceBattleVisuals.startBattle(networkBattleForViewer(state, side), {
+    await sourceBattleVisuals.startBattle(viewerBattle, {
       battleback: sourceContext?.presentation.battlebackId ?? importedAssets?.battleback ?? "snow",
       battleMusic: sourceContext?.presentation.battleMusicId
         ?? (visibleBattle?.duel === true ? "Entrenador.ogg" : importedAssets?.wildBattleBgm ?? null),
@@ -1778,6 +1788,7 @@ function renderSourceMenu(): void {
   const network = multiplayer.current;
   sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets: importedAssets,
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
+    profileBodyModel: activePlayerSelection.profile.bodyModel,
     movement: sourceMovementMenuModel(),
     dev: { storyLevelCap: pokemonZLevelCap(sourceEventState.switches),
       effectiveLevelCap: sourceDevLevelCap(pokemonZLevelCap(sourceEventState.switches), sourceDevSettings),
@@ -2073,7 +2084,9 @@ function useSourcePokemonEvolutionItem(itemId: string, pokemonId: string): {
     renderImportedView();
     return { ok: false, message, eventState: sourceEventState };
   }
-  sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
+  sourceEventState = recordSourcePokedexEvolution(
+    { ...sourceEventState, inventory: result.inventory, party: result.party },
+    result.previousSpecies, result.pokemon.species);
   persistSourceEventState();
   const previousName = importedAssets.battleCatalog.pokemon
     .find((candidate) => candidate.internalName === result.previousSpecies)?.name ?? result.previousSpecies;
@@ -2244,7 +2257,10 @@ function resolveSourcePokemonEvolution(pokemonId: string, accept: boolean): {
     renderImportedView();
     return { ok: false, message, eventState: sourceEventState };
   }
-  sourceEventState = { ...sourceEventState, party: result.party };
+  sourceEventState = accept
+    ? recordSourcePokedexEvolution({ ...sourceEventState, party: result.party },
+      result.previousSpecies, result.pokemon.species)
+    : { ...sourceEventState, party: result.party };
   persistSourceEventState();
   const oldName = before?.nickname ?? importedAssets.battleCatalog.pokemon
     .find((candidate) => candidate.internalName === result.previousSpecies)?.name ?? result.previousSpecies;
@@ -3227,10 +3243,32 @@ window.addEventListener("beforeunload", () => {
 document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
   const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
-  if (tab === undefined || !["team", "bag", "movement", "save", "coop", "options"].includes(tab)) return;
+  if (tab === undefined || !["team", "pokedex", "bag", "movement", "save", "coop", "options"].includes(tab)) return;
+  if (tab === "pokedex" && !sourceEventState.pokedexEnabled) return;
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();
 }));
+const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-pokemon-summary",
+  "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
+  "#embedded-avatar-lab", "#source-load-error"].join(",");
+document.addEventListener("click", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const button = target?.closest<HTMLButtonElement>("button");
+  if (button === null || button === undefined || button.disabled || button.closest(SOURCE_SOUND_MENU_SELECTOR) === null) return;
+  const cancel = button.matches(".danger, #close-source-menu, #close-source-shop, [data-progression-back],"
+    + " [data-progression-cancel-evolution], [data-summary-close], [data-source-bag-cancel],"
+    + " [data-source-bag-family-back], [data-source-bag-result-close], [data-source-wheel-close],"
+    + " [data-held-item-close]");
+  const navigation = button.matches("[data-source-menu-tab], [data-source-inventory-page], [data-source-pocket],"
+    + " [data-summary-page], [data-pokedex-page]");
+  sourcePresentation.playDialogueSound(cancel ? "cancel" : navigation ? "cursor" : "decision");
+}, { capture: true });
+document.addEventListener("change", (event) => {
+  const target = event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement
+    ? event.target : null;
+  if (target === null || target.disabled || target.closest(SOURCE_SOUND_MENU_SELECTOR) === null) return;
+  sourcePresentation.playDialogueSound("cursor");
+}, { capture: true });
 document.querySelector<HTMLButtonElement>("#toggle-engine-panel")?.addEventListener("click", (event) => {
   const button = event.currentTarget as HTMLButtonElement;
   const panel = requiredAppElement<HTMLElement>("engine-panel");

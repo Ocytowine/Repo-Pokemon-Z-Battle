@@ -580,6 +580,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
   }
   const pokemonNames = localizedNames(localizationValue, "pokemonNames");
   const pokemonKinds = localizedNames(localizationValue, "pokemonKinds");
+  const pokedexEntries = localizedNames(localizationValue, "pokedexEntries");
   const pokemonFormNames = localizedNames(localizationValue, "pokemonFormNames");
   const moveNames = localizedNames(localizationValue, "moveNames");
   const moveDescriptions = localizedNames(localizationValue, "moveDescriptions");
@@ -627,7 +628,8 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
       abilities: entry.abilities as string[], levelUpMoves, evolutions, growthRate: entry.growthRate,
       baseExperience: entry.baseExperience as number, captureRate: entry.captureRate as number,
       genderRate: entry.genderRate, happiness: entry.happiness as number,
-      kind: pokemonKinds.get(entry.id as number) ?? entry.kind, pokedexEntry: entry.pokedexEntry,
+      kind: pokemonKinds.get(entry.id as number) ?? entry.kind,
+      pokedexEntry: pokedexEntries.get(entry.id as number) ?? entry.pokedexEntry,
       effortPoints: { hp: effort("hp"), attack: effort("attack"), defense: effort("defense"), speed: effort("speed"),
         specialAttack: effort("specialAttack"), specialDefense: effort("specialDefense") },
       hiddenAbilities: entry.hiddenAbilities as string[],
