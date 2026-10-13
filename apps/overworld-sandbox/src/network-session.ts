@@ -36,6 +36,8 @@ interface MutableNetworkSession {
   sourceFollowerSignature: string | undefined;
   sourceActorSignature: string | undefined;
   confirmedSourceMapId: number | null;
+  sourceActorMapId: number | null;
+  sourceActorRevision: number;
   pendingSettlement: SourceBattleSettlement | null;
   closingBattleId: string | null;
   roomBattleActive: boolean;
@@ -481,6 +483,8 @@ export class OverworldNetworkSession {
       sourceFollowerSignature: undefined,
       sourceActorSignature: undefined,
       confirmedSourceMapId: null,
+      sourceActorMapId: null,
+      sourceActorRevision: 0,
       pendingSettlement: null,
       closingBattleId: null,
       roomBattleActive: false,
@@ -515,6 +519,12 @@ export class OverworldNetworkSession {
       session.snapshot = snapshot;
       if (snapshot.battle === null) session.battleInventory = null;
       session.confirmedSourceMapId = snapshot.sourceWorld?.mapId ?? null;
+      if (snapshot.sourceWorld !== null) {
+        if (session.sourceActorMapId !== snapshot.sourceWorld.mapId) {
+          session.sourceActorMapId = snapshot.sourceWorld.mapId;
+          session.sourceActorRevision = snapshot.sourceWorld.actorRevision;
+        } else session.sourceActorRevision = Math.max(session.sourceActorRevision, snapshot.sourceWorld.actorRevision);
+      }
       if (previousBattle === null && snapshot.battle !== null) {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
         if (snapshot.battle.state.status === "finished" || snapshot.battle.escaped) {
@@ -613,6 +623,10 @@ export class OverworldNetworkSession {
           if (message.revision < session.revision) return;
           session.revision = message.revision;
           session.confirmedSourceMapId = message.state.mapId;
+          if (session.sourceActorMapId !== message.state.mapId) {
+            session.sourceActorMapId = message.state.mapId;
+            session.sourceActorRevision = message.state.actorRevision;
+          } else session.sourceActorRevision = Math.max(session.sourceActorRevision, message.state.actorRevision);
           if (message.side === session.ticket.side) {
             session.sequence = Math.max(session.sequence, message.sequence);
             if (session.pendingMovementSequence !== null && message.sequence >= session.pendingMovementSequence) {
@@ -623,12 +637,20 @@ export class OverworldNetworkSession {
             revision: message.revision };
           this.callbacks.onSourceWorldState(message.state, true, message.side === session.ticket.side);
         } else if (message.type === "sourceActorsUpdated") {
-          if (message.revision < session.revision) return;
-          session.revision = message.revision;
+          // Actor publications and avatar movements are distinct authoritative
+          // streams. Cloudflare may finish persisting a later avatar mutation
+          // before an earlier actor mutation and therefore deliver the larger
+          // room revision first. Only actorRevision can decide whether an actor
+          // packet is stale; the global room revision must never discard it.
+          session.revision = Math.max(session.revision, message.revision);
           const sourceWorld = session.snapshot?.sourceWorld;
+          if (session.sourceActorMapId === message.mapId
+            && message.actorRevision < session.sourceActorRevision) return;
+          session.sourceActorMapId = message.mapId;
+          session.sourceActorRevision = Math.max(session.sourceActorRevision, message.actorRevision);
           if (session.snapshot !== null && sourceWorld !== null && sourceWorld !== undefined
             && sourceWorld.mapId === message.mapId && message.actorRevision >= sourceWorld.actorRevision) {
-            session.snapshot = { ...session.snapshot, revision: message.revision,
+            session.snapshot = { ...session.snapshot, revision: Math.max(session.snapshot.revision, message.revision),
               sourceWorld: { ...sourceWorld, actors: message.actors, actorRevision: message.actorRevision } };
           }
           this.callbacks.onSourceActorsState(message.mapId, message.actorRevision, message.actors);

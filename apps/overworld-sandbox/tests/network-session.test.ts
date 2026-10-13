@@ -142,6 +142,20 @@ describe("overworld network session", () => {
     sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 15, mapId: 3, actorRevision: 1,
       revision: 3, actors });
     expect(handlers.onSourceActorsState).toHaveBeenLastCalledWith(3, 1, actors);
+    const movedActors = [{ ...actors[0]!, x: 1, action: "step" as const }];
+    const worldAfterGuestMovement = { ...sourceWorld, actorRevision: 1, actors };
+    sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 15, side: "opponent", sequence: 2,
+      revision: 5, state: worldAfterGuestMovement });
+    // Cloudflare can finish the guest movement persistence before the actor
+    // publication that was started first. Its lower room revision is valid as
+    // long as the dedicated actor revision advances.
+    sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 15, mapId: 3, actorRevision: 2,
+      revision: 4, actors: movedActors });
+    expect(handlers.onSourceActorsState).toHaveBeenLastCalledWith(3, 2, movedActors);
+    const actorCalls = vi.mocked(handlers.onSourceActorsState).mock.calls.length;
+    sockets[0]?.emitMessage({ type: "sourceActorsUpdated", version: 15, mapId: 3, actorRevision: 1,
+      revision: 6, actors });
+    expect(vi.mocked(handlers.onSourceActorsState).mock.calls).toHaveLength(actorCalls);
     sockets[0]?.emitMessage({ type: "sourceSoundEmitted", version: 15, side: "opponent",
       mapId: 3, name: "Exit Door", volume: 80, pitch: 100 });
     expect(handlers.onSourceSound).toHaveBeenLastCalledWith("opponent", 3, "Exit Door", 80, 100);

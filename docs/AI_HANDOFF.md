@@ -2946,19 +2946,24 @@ la reprise utilise le point initial Map003 28,15 ; une position ou un checkpoint
 obtenu temporairement dans le monde de l'hôte n'est jamais adopté implicitement.
 Le menu annonce explicitement ce mode `progression personnelle`.
 
-Troisièmement, toutes les mises à jour `sourceActorsUpdated` reçues sur la socket
-active sont appliquées au contrôleur visuel. Ne pas les filtrer à partir de
-`networkSourceWorld.actorRevision` : ce cache peut annoncer une révision avant que
-ses poses aient réellement été installées, et les gardes `<=` puis `<` ont toutes
-deux figé les PNJ chez l'invité pendant les recettes manuelles. L'ordre WebSocket
-de la room Cloudflare constitue ici la garantie d'ordre. Lorsqu'un nouvel instantané arrive pendant
+Troisièmement, les mises à jour `sourceActorsUpdated` utilisent leur
+`actorRevision` dédiée et non la révision globale de room. Les handlers WebSocket
+du Durable Object mutent l'état avant d'attendre la persistance ; une publication
+de déplacement invité plus récente peut donc être diffusée avant une publication
+de PNJ démarrée plus tôt. Le client conserve le maximum de révision globale, mais
+accepte ce paquet PNJ tant que sa révision d'acteurs n'est pas périmée. Une
+révision d'acteurs égale reste applicable, car le snapshot peut avoir actualisé le
+cache avant que les poses aient été installées. Le test réseau reproduit l'ordre
+`PNJ rev4 -> déplacement invité rev5 -> livraison PNJ rev4` et protège ce cas.
+Lorsqu'un nouvel instantané arrive pendant
 une interpolation, le PNJ repart de sa pose réellement affichée et ajuste la durée
 à la distance restante au lieu de sauter depuis son ancienne case logique. Cette
 règle couvre les PNJ et Pokémon de terrain rendus comme acteurs source ; l'hôte et
 la room restent autoritaires, les invités n'exécutent aucune IA locale. Tests
 ajoutés : invité bloquant mais non narratif, sauvegarde personnelle sans déplacement
-du point de reprise, repli sans sauvegarde et correction d'une trajectoire réseau
-en cours. Les trois fiches de `docs/Débug/Bug` portent la recette manuelle restante.
+du point de reprise, repli sans sauvegarde, concurrence déplacement/PNJ et correction
+d'une trajectoire réseau en cours. Les trois fiches de `docs/Débug/Bug` portent la
+recette manuelle restante.
 
 Correctif de présentation de combat Coop du 2026-10-13, issu du rapport
 `ZENSD5-1` : le règlement autoritaire était correct (BUNNELBY à 0 PV au tour 1 et

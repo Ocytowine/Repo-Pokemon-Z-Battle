@@ -1807,8 +1807,10 @@ l'audience des contacts de PNJ est séparée de leur collision. Seul l'hôte peu
 déclencher narration, dialogue et combat de Dresseur, tandis que l'invité continue
 de bloquer les cases et de voir la scène partagée. La sauvegarde manuelle d'un
 invité conserve désormais son ancien point de reprise solo tout en actualisant ses
-données personnelles. Enfin, chaque mise à jour d'acteurs de la socket active est
-appliquée et poursuit une correction depuis la pose affichée afin
+données personnelles. Enfin, les mises à jour d'acteurs sont ordonnées par leur
+révision dédiée, indépendamment de la révision globale que les déplacements des
+joueurs peuvent faire avancer avant leur diffusion. Elles poursuivent une
+correction depuis la pose affichée afin
 d'éviter les sauts des PNJ et Pokémon de grotte. La clôture attend une recette à
 deux navigateurs couvrant déclencheur, sauvegarde/rechargement et mouvements
 autonomes sur une même carte.
