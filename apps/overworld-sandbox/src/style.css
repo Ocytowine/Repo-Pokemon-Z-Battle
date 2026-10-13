@@ -14,6 +14,67 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 @keyframes source-weather-rain { from { background-position: 0 0; } to { background-position: -72px 144px; } } @keyframes source-weather-snow { from { background-position: 0 0, 23px 31px; } to { background-position: 24px 96px, -12px 153px; } }
 .source-choices { display: grid; gap: 7px; margin: 10px 0; }.source-choices[hidden] { display: none; }.source-choices button, .source-readonly-choice { display: flex; gap: 9px; align-items: center; padding: 9px 11px; border: 1px solid #f4df9455; border-radius: 8px; background: #18271f; text-align: left; }.source-choices button { cursor: pointer; }.source-choices button:hover, .source-choices button:focus-visible { border-color: #f4df94; background: #26392e; outline: none; }.source-readonly-choice { opacity: .72; }.source-choices span { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 5px; color: #07110d; background: #f4df94; font-size: 9px; font-weight: 900; }
 .source-hud-notice { position: absolute; z-index: 6; top: 12px; left: 50%; width: min(520px, calc(100% - 24px)); padding: 8px 12px; color: #effff7; border: 1px solid #76e6bb88; border-radius: 9px; background: #07110de8; box-shadow: 0 5px 18px #0008; transform: translateX(-50%); font-size: 10px; font-weight: 750; line-height: 1.4; text-align: center; pointer-events: none; }.source-hud-notice[hidden] { display: none; }.source-hud-notice[data-kind="error"] { color: #ffe8e4; border-color: #ff8976aa; background: #35110fed; }
+.source-compass-toggle {
+  position: absolute;
+  z-index: 7;
+  top: 10px;
+  right: 10px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  padding: 3px;
+  place-items: center;
+  overflow: hidden;
+  color: #eafaff;
+  border: 1px solid #bcecff99;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #edfaffdd, #76cce0cc 48%, #174e68e8 49%);
+  box-shadow: inset 0 0 0 2px #0a314c99, 0 3px 9px #00111f99;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.source-compass-toggle[hidden] { display: none; }
+.source-compass-toggle:hover, .source-compass-toggle:focus-visible, .source-compass-toggle.active {
+  outline: none;
+  filter: brightness(1.12);
+  transform: translateY(-1px) scale(1.04);
+}
+.source-compass-toggle img { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; }
+.source-compass-toggle span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.source-compass {
+  position: absolute;
+  z-index: 7;
+  top: 60px;
+  right: 10px;
+  display: grid;
+  width: min(374px, calc(100% - 20px));
+  max-height: calc(100% - 72px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  color: #edfaff;
+  border: 2px solid #a9e9f1;
+  border-radius: 8px 17px 8px 17px;
+  background: linear-gradient(145deg, #0d4053f5, #092638f7 62%, #071a2bf8);
+  box-shadow: inset 0 0 0 2px #2a718177, 0 10px 28px #00101dcc;
+}
+.source-compass[hidden] { display: none; }
+.source-compass > header { display: grid; grid-template-columns: 42px minmax(0, 1fr) 28px; gap: 8px; padding: 8px 9px; align-items: center; border-bottom: 1px solid #8cdde966; background: linear-gradient(90deg, #1f7187bb, #0a3046cc); }
+.source-compass > header > img { width: 38px; height: 38px; image-rendering: pixelated; }
+.source-compass > header > div { display: grid; min-width: 0; gap: 1px; }
+.source-compass > header small { color: #8ee7ef; font-size: 6px; font-weight: 950; letter-spacing: .16em; }
+.source-compass > header strong { overflow: hidden; color: #fff4bd; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.source-compass > header span { color: #b7dbe5; font-size: 7px; }
+.source-compass > header button { display: grid; width: 27px; height: 27px; padding: 0; place-items: center; color: #eefcff; border: 1px solid #bdebf177; border-radius: 50%; background: #061b2c99; cursor: pointer; font-size: 18px; }
+.source-compass-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(40px, 1fr)); gap: 4px; min-height: 0; padding: 8px; overflow-y: auto; }
+.source-compass-pokemon { display: grid; min-width: 0; min-height: 56px; place-items: center; align-content: center; gap: 1px; border: 1px solid #86ceda44; border-radius: 6px 10px 6px 10px; background: #d7f5f10d; }
+.source-compass-pokemon > span { display: block; width: 42px; height: 42px; background: var(--compass-icon) left center / auto 42px no-repeat; image-rendering: pixelated; }
+.source-compass-pokemon.unknown > span { filter: brightness(0) drop-shadow(0 1px 0 #5d9aa8); opacity: .82; }
+.source-compass-pokemon small { width: 100%; overflow: hidden; color: #dff7f8; font-size: 5px; font-weight: 800; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+.source-compass-pokemon.unknown small { color: #6fa1ac; letter-spacing: .1em; }
+.source-compass-empty { display: grid; min-height: 150px; place-content: center; gap: 5px; padding: 12px; color: #9cc3cd; text-align: center; }
+.source-compass-empty strong { color: #eaf9fc; font-size: 11px; }
+.source-compass-empty small { font-size: 7px; }
+.source-compass > footer { padding: 6px 9px; color: #87b8c3; border-top: 1px solid #8cdde933; background: #041725aa; font-size: 6px; text-align: center; }
 .source-load-error { position: absolute; z-index: 30; inset: 0; display: grid; padding: 24px; place-items: center; color: #f8fffb; background: radial-gradient(circle at 50% 20%, #7a292040, transparent 45%), #07110df5; }
 .source-load-error[hidden] { display: none; }.source-load-error > div { display: grid; width: min(460px, 100%); gap: 13px; padding: 26px; border: 2px solid #ff897688; border-radius: 18px 7px 18px 7px; background: #18120ff5; box-shadow: 0 22px 60px #000b; }.source-load-error h1 { margin: 0; font-size: 25px; }.source-load-error p { margin: 0; color: #d8c5bf; font-size: 12px; line-height: 1.55; }.source-load-error code { overflow-wrap: anywhere; padding: 11px; color: #ffe7a8; border: 1px solid #f4df9444; border-radius: 8px; background: #090806; font-size: 11px; }.source-load-error button { min-height: 44px; padding: 10px 14px; color: #1b0e0b; border: 1px solid #ffd0c8; border-radius: 9px; background: #ff8976; cursor: pointer; font-weight: 900; }.source-load-error button:hover, .source-load-error button:focus-visible { background: #ffad9f; outline: none; }
 .embedded-avatar-lab[hidden], #world-stage[hidden], #engine-panel[hidden] { display: none; }

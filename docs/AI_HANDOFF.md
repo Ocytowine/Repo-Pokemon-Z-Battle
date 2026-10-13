@@ -2858,6 +2858,24 @@ uniques) et les 23 descriptions renseignées (21 uniques). En cas de traduction
 absente, le texte source reste le repli générique. Cette composition unique est
 partagée par la Carte, le mode Vol et les habitats du Pokédex.
 
+Raccord Boussole du 2026-10-13 : l'analyse de
+`204-87933021-cartelespokemon.rb` confirme que l'objet source `DEXNAV` ouvre
+`EncounterListUI`. Cette vue fusionne toutes les méthodes de rencontre de la
+carte, déduplique les espèces, les trie par numéro et masque en silhouette celles
+que le joueur n'a jamais possédées. Le port reproduit ce contrat dans
+`source-compass.ts` et conserve désormais toutes les méthodes dans
+`ImportedEncounterTable` au lieu de la seule table `Land` utilisée par les pas.
+Le bouton emploie l'asset source `DP Pause Menu/radar.png`, reste discret en haut
+à droite de l'overworld et n'apparaît que si l'inventaire contient `DEXNAV`.
+
+Autorité et Coop de la Boussole : consultation strictement personnelle, fondée
+sur le catalogue statique de la carte et `SourceEventState.pokedex` local. Elle ne
+change ni le tirage de rencontre ni le monde, n'envoie aucune intention réseau et
+n'ajoute aucune persistance : l'objet et l'historique Pokédex sont déjà restaurés
+par la sauvegarde personnelle. Son audience est uniquement le joueur concerné ;
+l'ouverture bloque ses entrées d'overworld via `SourceSceneCoordinator`, sans
+interrompre ni répliquer l'activité de l'autre participant.
+
 Raccord Vol de test du 2026-10-13 : le bypass `Tous les déplacements` expose
 désormais une capacité `fly`, distincte des `SourceMovementMode`. Depuis une carte
 extérieure, l'onglet Carte bascule explicitement entre `Consultation` et `Vol` ;

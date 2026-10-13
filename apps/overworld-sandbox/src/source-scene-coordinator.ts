@@ -18,16 +18,18 @@ export interface SourceSceneActivity {
 
 export class SourceSceneCoordinator {
   private openedMenu = false;
+  private openedCompass = false;
   private selectedTab: SourceMenuTab = "team";
 
   public get menuOpen(): boolean { return this.openedMenu; }
+  public get compassOpen(): boolean { return this.openedCompass; }
   public get menuTab(): SourceMenuTab { return this.selectedTab; }
 
   public mode(activity: SourceSceneActivity): SourceSceneMode {
     if (activity.battle) return "battle";
     if (activity.transition) return "transition";
     if (activity.dialogue || activity.sequence) return "dialogue";
-    if (this.openedMenu) return "menu";
+    if (this.openedMenu || this.openedCompass) return "menu";
     return "overworld";
   }
 
@@ -52,6 +54,18 @@ export class SourceSceneCoordinator {
   public openMenu(activity: SourceSceneActivity): boolean {
     if (!this.allows("scene-change", activity)) return false;
     this.openedMenu = true;
+    return true;
+  }
+
+  public openCompass(activity: SourceSceneActivity): boolean {
+    if (!this.allows("scene-change", activity)) return false;
+    this.openedCompass = true;
+    return true;
+  }
+
+  public closeCompass(): boolean {
+    if (!this.openedCompass) return false;
+    this.openedCompass = false;
     return true;
   }
 

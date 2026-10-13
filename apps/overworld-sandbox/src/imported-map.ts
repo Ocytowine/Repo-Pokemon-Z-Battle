@@ -145,8 +145,13 @@ export interface ImportedMapMetadata {
 export interface ImportedEncounterSlot {
   readonly species: string; readonly minimumLevel: number; readonly maximumLevel: number; readonly weight: number;
 }
+export interface ImportedEncounterMethod {
+  readonly method: string;
+  readonly slots: readonly ImportedEncounterSlot[];
+}
 export interface ImportedEncounterTable {
   readonly mapId: number; readonly landRate: number; readonly land: readonly ImportedEncounterSlot[];
+  readonly methods: readonly ImportedEncounterMethod[];
 }
 
 export interface ImportedTrainerPokemon {
@@ -250,22 +255,27 @@ function parseTilesets(value: unknown): TilesetFile {
   return { records };
 }
 
-function parseEncounter(value: unknown, mapId: number): ImportedEncounterTable | null {
+export function parseImportedEncounter(value: unknown, mapId: number): ImportedEncounterTable | null {
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de rencontres est invalide.");
   const entry = value.records.find((candidate) => isRecord(candidate) && candidate.mapId === mapId);
   if (!isRecord(entry) || !isRecord(entry.encounterRates) || !Number.isInteger(entry.encounterRates.land)
     || !Array.isArray(entry.methods)) return null;
-  const method = entry.methods.find((candidate) => isRecord(candidate) && candidate.method === "Land");
-  if (!isRecord(method) || !Array.isArray(method.slots)) return null;
-  const land = method.slots.map((slot) => {
-    if (!isRecord(slot) || typeof slot.species !== "string" || !Number.isInteger(slot.minimumLevel)
-      || !Number.isInteger(slot.maximumLevel) || !Number.isInteger(slot.weight)
-      || (slot.minimumLevel as number) < 1 || (slot.maximumLevel as number) < (slot.minimumLevel as number)
-      || (slot.weight as number) < 1) throw new Error("Une rencontre terrestre est invalide.");
-    return { species: slot.species, minimumLevel: slot.minimumLevel as number,
-      maximumLevel: slot.maximumLevel as number, weight: slot.weight as number };
+  const methods = entry.methods.map((candidate) => {
+    if (!isRecord(candidate) || typeof candidate.method !== "string" || !Array.isArray(candidate.slots)) {
+      throw new Error("Une méthode de rencontre est invalide.");
+    }
+    const slots = candidate.slots.map((slot) => {
+      if (!isRecord(slot) || typeof slot.species !== "string" || !Number.isInteger(slot.minimumLevel)
+        || !Number.isInteger(slot.maximumLevel) || !Number.isInteger(slot.weight)
+        || (slot.minimumLevel as number) < 1 || (slot.maximumLevel as number) < (slot.minimumLevel as number)
+        || (slot.weight as number) < 1) throw new Error("Une rencontre sauvage est invalide.");
+      return { species: slot.species, minimumLevel: slot.minimumLevel as number,
+        maximumLevel: slot.maximumLevel as number, weight: slot.weight as number };
+    });
+    return { method: candidate.method, slots };
   });
-  return { mapId, landRate: entry.encounterRates.land as number, land };
+  const land = methods.find((method) => method.method === "Land")?.slots ?? [];
+  return { mapId, landRate: entry.encounterRates.land as number, land, methods };
 }
 
 export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[] {
@@ -816,7 +826,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     mapTranslations, itemNames, items, alchemy, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
     trainers, trainerTypes, regionMap,
-    encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
+    encounter: parseImportedEncounter(encountersValue, mapId), ...battlePresentation };
 }
 
 export function loadImportedMap003(): Promise<ImportedMapAssets> {

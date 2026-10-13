@@ -558,10 +558,11 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-MAP-1 — Carte et boussole
 
-- Priorite/statut : `P2` / `A qualifier`.
+- Priorite/statut : `P2` / `fonctionnel, déblocage narratif normal à valider`.
 - Carte : lieux connus, position, destinations et navigation.
-- Boussole : analyser d'abord la mecanique exacte de Z ; ne pas l'assimiler a une
-  simple mini-carte sans preuve source.
+- Boussole : l'analyse de `EncounterListUI` est raccordée ; l'objet `DEXNAV`
+  affiche toutes les espèces des tables de la zone, dédupliquées et triées, avec
+  silhouettes tant qu'elles ne sont pas capturées.
 
 ### SOLO-ALCHEMY-1 — Alchimie
 

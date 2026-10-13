@@ -26,6 +26,16 @@ describe("source scene coordinator", () => {
     expect(scenes.menuTab).toBe("coop");
   });
 
+  it("treats the personal compass as a mutually exclusive scene overlay", () => {
+    const scenes = new SourceSceneCoordinator();
+    expect(scenes.openCompass(idle)).toBe(true);
+    expect(scenes.compassOpen).toBe(true);
+    expect(scenes.mode(idle)).toBe("menu");
+    expect(scenes.openMenu(idle)).toBe(false);
+    expect(scenes.closeCompass()).toBe(true);
+    expect(scenes.mode(idle)).toBe("overworld");
+  });
+
   it("keeps every rendered menu section in the shared navigation registry", () => {
     expect(SOURCE_MENU_TABS).toContain("alchemy");
     for (const tab of SOURCE_MENU_TABS) expect(isSourceMenuTab(tab)).toBe(true);

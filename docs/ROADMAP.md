@@ -1865,6 +1865,15 @@ descriptions uniques actuellement utilisés par la carte possèdent tous une val
 française issue de `french.dat`, avec repli source si un futur point n'en possède
 pas.
 
+Premier lot Boussole implémenté le 2026-10-13 : l'objet `DEXNAV` révèle dans
+l'overworld un raccourci utilisant `DP Pause Menu/radar.png`. La fenêtre reproduit
+`EncounterListUI` du jeu source : union de toutes les méthodes de rencontre de la
+carte, déduplication, tri par numéro du Pokédex, icônes normales pour les espèces
+capturées et silhouettes pour les autres. La consultation est personnelle et
+locale en solo comme en Coop ; elle réutilise l'inventaire et l'historique Pokédex
+persistants, sans état ou message réseau supplémentaire et sans influencer le
+tirage des rencontres.
+
 Le même noyau projette toutes les méthodes de `encounters.json` sur la carte. La
 page `Zones de capture` des fiches Pokédex affiche les cellules d'habitat réelles,
 dédupliquées par région et coordonnées, sans table propre à une espèce. Autorité :

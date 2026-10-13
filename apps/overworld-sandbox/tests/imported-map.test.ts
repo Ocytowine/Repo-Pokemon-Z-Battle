@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
-  parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
+  parseImportedEncounter, parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
   selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -13,6 +13,17 @@ function map(masks: readonly number[]): ImportedMap {
 }
 
 describe("imported RPG Maker map", () => {
+  it("keeps every encounter method for the source Compass while exposing Land separately", () => {
+    const encounter = parseImportedEncounter({ records: [{ mapId: 7, encounterRates: { land: 12 }, methods: [
+      { method: "Land", slots: [{ species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 }] },
+      { method: "OldRod", slots: [{ species: "MAGIKARP", minimumLevel: 5, maximumLevel: 5, weight: 70 }] },
+    ] }] }, 7);
+    expect(encounter).toMatchObject({ land: [{ species: "BIDOOF" }], methods: [
+      { method: "Land", slots: [{ species: "BIDOOF" }] },
+      { method: "OldRod", slots: [{ species: "MAGIKARP" }] },
+    ] });
+  });
+
   it("applies scripted camera offsets while respecting map edges", () => {
     const largeMap = { width: 40, height: 30 };
     expect(importedCameraPosition({ width: 576, height: 432 }, largeMap, { x: 20, y: 15 }, { x: 64, y: -32 }))

@@ -19,7 +19,10 @@ const tileset = { id: 1, tilesetName: "Field", autotileNames: [], priorities: []
 const encounters = { mapId: 7, landRate: 12, land: [
   { species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 },
   { species: "FLETCHLING", minimumLevel: 3, maximumLevel: 5, weight: 80 },
-] } as const;
+], methods: [{ method: "Land", slots: [
+  { species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 },
+  { species: "FLETCHLING", minimumLevel: 3, maximumLevel: 5, weight: 80 },
+] }] } as const;
 
 describe("source wild encounters", () => {
   it("resolves the effective terrain from upper to lower layers while ignoring bridges and neutral tags", () => {

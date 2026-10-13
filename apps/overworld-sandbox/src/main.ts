@@ -57,6 +57,7 @@ import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./sourc
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
+import { SourceCompassView } from "./source-compass.js";
 import { SourceBattleReportStore } from "./source-battle-report.js";
 import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
@@ -962,6 +963,8 @@ const sourcePokemonSummaryView = new SourcePokemonSummaryView({
 });
 const sourceBattleReports = new SourceBattleReportStore();
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter, downloadSourceBattleReport);
+const sourceCompassView = new SourceCompassView(toggleSourceCompass, closeSourceCompass);
+sourceCompassView.bind();
 const sourceBattleVisuals = new SourceBattleVisuals({
   musicVolume: sourceAudioPreferences.music / 100,
   effectsVolume: sourceAudioPreferences.effects / 100,
@@ -2429,10 +2432,35 @@ function setSourcePartyLead(pokemonId: string): void {
 }
 
 function toggleSourceMenu(): void {
-  if (sourceScenes.menuOpen) sourceScenes.closeMenu();
+  if (sourceScenes.compassOpen) sourceScenes.closeCompass();
+  else if (sourceScenes.menuOpen) sourceScenes.closeMenu();
   else if (!sourceScenes.openMenu(sourceSceneActivity())) return;
   heldMovementKeys.clear();
   renderImportedView();
+}
+
+function toggleSourceCompass(): void {
+  if ((sourceEventState.inventory.DEXNAV ?? 0) < 1) return;
+  if (sourceScenes.compassOpen) sourceScenes.closeCompass();
+  else if (!sourceScenes.openCompass(sourceSceneActivity())) return;
+  heldMovementKeys.clear();
+  renderImportedView();
+}
+
+function closeSourceCompass(): void {
+  if (!sourceScenes.closeCompass()) return;
+  renderImportedView();
+}
+
+function sourceCompassLocationName(assets: ImportedMapAssets): string {
+  const position = assets.regionMap.mapPositions.get(assets.map.id);
+  const region = position === undefined ? null
+    : assets.regionMap.regions.find((candidate) => candidate.id === position.region) ?? null;
+  if (position === undefined || region === null) return assets.map.name;
+  const names = sourceVisibleRegionPoints(region, sourceEventState.switches)
+    .filter((point) => point.x === position.x && point.y === position.y && point.name !== "")
+    .map((point) => point.name);
+  return [...new Set(names)].join(" · ") || region.name;
 }
 
 function renderImportedView(): void {
@@ -2459,6 +2487,16 @@ function renderImportedView(): void {
     : `${activeSequence.label} · étape ${activeSequence.cursor}/${activeSequence.plan.steps.length}`
       + ` · ${activeSequence.plan.steps[activeSequence.cursor]?.command.kind ?? "finalisation"}`
       + ` · ${activeSequence.runner.pendingRoutes} route(s)`;
+  const activity = sourceSceneActivity();
+  const compassUnlocked = (sourceEventState.inventory.DEXNAV ?? 0) > 0;
+  const compassInterrupted = activity.dialogue || activity.battle || activity.transition || activity.sequence
+    || sourceScenes.menuOpen;
+  if (sourceScenes.compassOpen && (!compassUnlocked || compassInterrupted)) sourceScenes.closeCompass();
+  sourceCompassView.render({ available: compassUnlocked && !compassInterrupted,
+    open: sourceScenes.compassOpen, encounter: importedAssets.encounter,
+    catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
+    caughtSpecies: sourceEventState.pokedex.caughtSpecies,
+    locationName: sourceCompassLocationName(importedAssets) });
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice, hudNotice: coopHudNotice,
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
@@ -3309,6 +3347,7 @@ function continueHeldSourceMovement(): void {
 window.addEventListener("keydown", (event) => {
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = true;
   if (event.code === "Escape") {
+    if (sourceScenes.compassOpen) { event.preventDefault(); closeSourceCompass(); return; }
     if (sourcePokemonSummarySession !== null) { event.preventDefault(); closeSourcePokemonSummary(); return; }
     if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
@@ -3373,7 +3412,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
 }));
 const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-pokemon-summary",
   "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
-  "#embedded-avatar-lab", "#source-load-error"].join(",");
+  "#source-compass", "#source-compass-toggle", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const button = target?.closest<HTMLButtonElement>("button");
