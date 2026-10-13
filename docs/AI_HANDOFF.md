@@ -2850,6 +2850,14 @@ texte de remplacement. Les coordonnées techniques, l'état de destination de Vo
 et la légende ont été retirés de cette vue joueur, mais restent disponibles dans
 le catalogue pour les futurs consommateurs.
 
+Raccord de localisation Carte du 2026-10-13 : `SourceRegionMapCatalog` applique
+désormais `regionNames`, `placeNames` et `placeDescriptions` depuis
+`localization.json`, donc selon la priorité existante `french.dat` puis données
+source. Le catalogue local couvre en français les 172 points nommés (89 noms
+uniques) et les 23 descriptions renseignées (21 uniques). En cas de traduction
+absente, le texte source reste le repli générique. Cette composition unique est
+partagée par la Carte, le mode Vol et les habitats du Pokédex.
+
 Raccord Vol de test du 2026-10-13 : le bypass `Tous les déplacements` expose
 désormais une capacité `fly`, distincte des `SourceMovementMode`. Depuis une carte
 extérieure, l'onglet Carte bascule explicitement entre `Consultation` et `Vol` ;

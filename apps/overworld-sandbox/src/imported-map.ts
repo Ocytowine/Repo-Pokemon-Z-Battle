@@ -791,7 +791,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const trainers = parseImportedTrainers(trainersValue);
   const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
   const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
-  const regionMap = parseSourceRegionMap(regionMapValue, battleMetadataValue, encountersValue, mapInfosValue);
+  const regionMap = parseSourceRegionMap(regionMapValue, battleMetadataValue, encountersValue, mapInfosValue,
+    localizationValue);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
   const characterNames = [...new Set([

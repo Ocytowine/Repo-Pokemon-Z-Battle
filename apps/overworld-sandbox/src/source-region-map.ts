@@ -40,6 +40,17 @@ function nonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0;
 }
 
+function localizedRegionValues(value: unknown, category: string): ReadonlyMap<string, string> {
+  if (!record(value) || !record(value.categories) || !Array.isArray(value.categories[category])) return new Map();
+  const result = new Map<string, string>();
+  for (const entry of value.categories[category]) {
+    if (record(entry) && typeof entry.key === "string" && typeof entry.value === "string") {
+      result.set(entry.key, entry.value);
+    }
+  }
+  return result;
+}
+
 function parseDestination(value: unknown): SourceRegionDestination | null {
   if (value === null) return null;
   if (!record(value) || !Number.isSafeInteger(value.mapId) || (value.mapId as number) < 1
@@ -50,10 +61,13 @@ function parseDestination(value: unknown): SourceRegionDestination | null {
 }
 
 export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknown,
-  encountersValue: unknown, mapInfosValue?: unknown): SourceRegionMapCatalog {
+  encountersValue: unknown, mapInfosValue?: unknown, localizationValue?: unknown): SourceRegionMapCatalog {
   if (!record(regionValue) || !Array.isArray(regionValue.regions)) {
     throw new Error("Le catalogue de carte regionale est invalide.");
   }
+  const regionNames = localizedRegionValues(localizationValue, "regionNames");
+  const placeNames = localizedRegionValues(localizationValue, "placeNames");
+  const placeDescriptions = localizedRegionValues(localizationValue, "placeDescriptions");
   const regions = regionValue.regions.map((candidate) => {
     if (!record(candidate) || !nonNegativeInteger(candidate.id) || typeof candidate.name !== "string"
       || typeof candidate.filename !== "string" || !Array.isArray(candidate.points)) {
@@ -66,11 +80,14 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
           || (point.hiddenSwitchId as number) < 1)) {
         throw new Error("Un point de la carte regionale est invalide.");
       }
-      return { x: point.x as number, y: point.y as number, name: point.name,
-        description: point.description, destination: parseDestination(point.destination),
+      return { x: point.x as number, y: point.y as number,
+        name: placeNames.get(point.name) ?? point.name,
+        description: placeDescriptions.get(point.description) ?? point.description,
+        destination: parseDestination(point.destination),
         hiddenSwitchId: point.hiddenSwitchId as number | null };
     });
-    return { id: candidate.id as number, name: candidate.name, filename: candidate.filename, points };
+    return { id: candidate.id as number, name: regionNames.get(String(candidate.id)) ?? candidate.name,
+      filename: candidate.filename, points };
   });
 
   if (!record(metadataValue) || !Array.isArray(metadataValue.records)) {

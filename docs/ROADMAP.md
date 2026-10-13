@@ -1858,6 +1858,13 @@ clic joue un fondu blanc, ferme le menu et réutilise le transfert d'overworld.
 Aucune destination n'est considérée visitée par défaut ; le déblocage narratif
 normal du Vol reste donc à implémenter.
 
+Les libellés régionaux ne sont plus affichés directement depuis l'espagnol de
+`townmap.txt` : le chargeur compose le catalogue avec `regionNames`, `placeNames`
+et `placeDescriptions` de `localization.json`. Les 89 noms uniques et les 21
+descriptions uniques actuellement utilisés par la carte possèdent tous une valeur
+française issue de `french.dat`, avec repli source si un futur point n'en possède
+pas.
+
 Le même noyau projette toutes les méthodes de `encounters.json` sur la carte. La
 page `Zones de capture` des fiches Pokédex affiche les cellules d'habitat réelles,
 dédupliquées par région et coordonnées, sans table propre à une espèce. Autorité :

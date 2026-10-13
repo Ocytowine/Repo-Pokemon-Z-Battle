@@ -16,6 +16,11 @@ const encounters = { records: [
 const mapInfos = { records: [
   { id: 9, parentId: 0 }, { id: 10, parentId: 9 }, { id: 14, parentId: 0 },
 ] };
+const localization = { categories: {
+  regionNames: [{ key: "0", value: "Kalos" }],
+  placeNames: [{ key: "Pueblo Vinilo", value: "Bordevin" }],
+  placeDescriptions: [{ key: "Chateau Merlot", value: "Manoir Merlot" }],
+} };
 
 describe("source regional map", () => {
   it("inherits a regional position for interiors from the RPG Maker hierarchy", () => {
@@ -30,5 +35,20 @@ describe("source regional map", () => {
       .toEqual([{ region: 0, x: 19, y: 13 }]);
     expect(sourceSpeciesHabitatCoordinates(catalog, "ZUBAT"))
       .toEqual([{ region: 0, x: 18, y: 13 }]);
+  });
+
+  it("uses the French localization catalog for regional names and descriptions", () => {
+    const withDescription = { regions: [{ ...regions.regions[0]!, points: [
+      { ...regions.regions[0]!.points[0]!, description: "Chateau Merlot" },
+    ] }] };
+    const catalog = parseSourceRegionMap(withDescription, metadata, encounters, mapInfos, localization);
+    expect(catalog.regions[0]).toMatchObject({ name: "Kalos", points: [
+      { name: "Bordevin", description: "Manoir Merlot" },
+    ] });
+  });
+
+  it("keeps source text when a French regional translation is absent", () => {
+    const catalog = parseSourceRegionMap(regions, metadata, encounters, mapInfos, { categories: {} });
+    expect(catalog.regions[0]?.points[0]).toMatchObject({ name: "Pueblo Vinilo", description: "" });
   });
 });
