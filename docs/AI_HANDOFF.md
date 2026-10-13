@@ -2556,6 +2556,25 @@ participants via les evenements autoritaires. L'utilisation de Doux Parfum hors
 combat pour provoquer une rencontre reste une mecanique d'overworld distincte et
 n'est pas declaree portee par ce correctif.
 
+Correctif EXP Dresseur solo du 2026-10-13 : le controleur local ne passe plus les
+victoires de Dresseur dans `settleSourceEncounter`, qui appliquait la formule
+historique `legacy-wild` au seul Pokemon actif a la fin. Le solo construit
+desormais une participation personnelle `local` et alimente
+`createSharedBattleLedger` / `recordSharedBattleTurn` a chaque tour, changements
+et remplacements compris. Au reglement, `settleSourceTrainerBattle` reutilise
+`sharedBattleOwnerSettlement` puis `applySharedBattleExperience`, exactement comme
+la room autoritaire. Les participants encore conscients recoivent donc chacun leur
+part, le diviseur couvre tout le camp engage et le bonus Dresseur x1,5 ainsi que
+les interrupteurs de progression sont appliques. Le rapport JSON expose une liste
+`experiences` avec la formule `pokemon-z-participant` et tous ses arrondis ; pour
+le combat Remi/Fluvetin analyse, Feunnec doit recevoir 142 EXP au lieu des 143 de
+la formule sauvage. Autorite : noyau local en solo, room en Coop ; domaine et
+persistance : progression personnelle appliquee a la sauvegarde apres reglement ;
+intentions reseau : aucune nouvelle ; audience : proprietaire pour la progression,
+participants pour la presentation tactique. Les combats sauvages conservent pour
+ce lot leur chemin `legacy-wild` afin de ne pas modifier leur progression sans un
+audit dedie.
+
 ## Garde-fou des donnees locales
 
 Jalon du 2026-10-09 : `prepare:local` ecrit desormais
@@ -2589,6 +2608,24 @@ Sans aucune configuration, les routes locales repondent explicitement HTTP 503 e
 l'interface affiche la commande d'initialisation complete au lieu d'une erreur JSON.
 
 ## Jalon finition overworld du 2026-10-12
+
+Correctif des seuils de grotte du 2026-10-13 : avancer sur une page source de
+contact contenant `pbCaveEntrance` ou `pbCaveExit` ne reste plus bloque avant son
+transfert. Ces deux hooks Ruby standard sont absorbes generiquement comme
+presentation de transition ; les tons, attentes et commandes de transfert qui les
+encadrent dans l'evenement continuent d'etre lus dans l'ordre par le sequenceur.
+Cela couvre les 62 entrees et 48 sorties presentes dans l'extraction, notamment le
+seuil Route 2 vers Grotte Navarre, sans exception de carte, de coordonnee ou
+d'evenement. Le clic d'interaction n'est donc plus necessaire pour contourner le
+lecteur : le contact en avancant suit le chemin normal.
+
+Autorite et Coop : le transfert reste une intention de deplacement du joueur
+concerne ; le solo et l'hote executent la sequence normale, tandis que l'invite
+emploie le contrat de transfert personnel deja existant. Aucun nouvel etat n'est
+persiste ou replique et l'audience reste le joueur qui franchit le seuil. Dette
+explicite : l'animation Ruby en bandes de `pbCaveEntranceEx` et le point de retour
+utilise par une future Corde Sortie ne sont pas portes par ce correctif ; ils ne
+sont pas inventes par le `runtime-noop`.
 
 La reprise des cinq lots d'effets overworld a commencé par une capacité générique
 `source-field-effects.ts`, sans exception liée à une carte ou un événement. Elle

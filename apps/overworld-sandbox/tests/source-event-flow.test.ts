@@ -181,6 +181,32 @@ describe("source event choice and condition flow", () => {
     ]);
   });
 
+  it.each(["pbCaveEntrance", "pbCaveExit", "Kernel.pbCaveEntrance"])(
+    "keeps a cave threshold sequence executable for %s",
+    (hook) => {
+      const result = resolveEventFlow(page([
+        command("screen-tone", 0, { tone: { red: 255, green: 255, blue: 255, gray: 255 }, duration: 6 }),
+        command("wait", 0, { frames: 8 }),
+        command("ruby-script", 0, { source: hook }),
+        command("transfer-player", 0, { addressing: "direct", map: 16, x: 6, y: 45, direction: 0, fade: 1 }),
+        command("screen-tone", 0, { tone: { red: 0, green: 0, blue: 0, gray: 0 }, duration: 6 }),
+        command("end", 0),
+      ]), [], createSourceEventState(), 52, 1);
+
+      expect(result).toMatchObject({ complete: true, blockedReason: null });
+      expect(result.page.commands).toEqual([
+        expect.objectContaining({ kind: "screen-tone" }),
+        expect.objectContaining({ kind: "wait" }),
+        expect.objectContaining({ kind: "runtime-noop",
+          data: expect.objectContaining({ policy: "CAVE_TRANSITION_PRESENTATION" }) }),
+        expect.objectContaining({ kind: "transfer-player",
+          data: expect.objectContaining({ map: 16, x: 6, y: 45 }) }),
+        expect.objectContaining({ kind: "screen-tone" }),
+        expect.objectContaining({ kind: "end" }),
+      ]);
+    },
+  );
+
   it("joins split Ruby calls and absorbs dependent-follower presentation hooks", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "$PokemonTemp.dependentEvents.remove_sprite" }),

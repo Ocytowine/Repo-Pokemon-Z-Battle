@@ -192,7 +192,41 @@ describe("source battle controller", () => {
     expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
     expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120,
-      trainerDefeatText: "J'ai encore beaucoup à apprendre !" }));
+      trainerDefeatText: "J'ai encore beaucoup à apprendre !",
+      experiences: [expect.objectContaining({ pokemonName: "Marisson", amount: 16,
+        calculation: expect.objectContaining({ formula: "pokemon-z-participant", participantCount: 1,
+          afterTrainerBonus: 150, result: 16, policy: expect.objectContaining({ trainerBattle: true }) }) })] }));
+  });
+
+  it("splits local Trainer experience between conscious participants after a switch", async () => {
+    const starter = createPersistentPokemon("starter", "CHESPIN", 5, catalog);
+    const reserve = createPersistentPokemon("reserve", "BIDOOF", 5, catalog);
+    const party = addPokemonToParty(addPokemonToParty(createEmptyPlayerParty(), starter), reserve);
+    let eventState: SourceEventState = { ...createSourceEventState(), party };
+    const visuals = presentation();
+    const controller = new SourceBattleController(visuals, {
+      getEventState: () => eventState, updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, mapId: 3, battleback: "town", battleMusic: null, victoryMusic: null }),
+      setNotice: vi.fn(), render: vi.fn(),
+    });
+
+    expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
+      pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
+    { battleMusic: null, victoryMusic: null, baseMoney: 60, trainerTypeId: 6, defeatText: "Perdu" }, vi.fn())).toBe(true);
+    await controller.switchPokemon(1);
+    for (let turn = 0; turn < 30 && controller.active; turn += 1) await controller.submitAction(0);
+
+    expect(controller.active).toBe(false);
+    const outcome = vi.mocked(visuals.endBattle).mock.calls.at(-1)?.[1];
+    expect(outcome?.experiences).toHaveLength(2);
+    expect(outcome?.experiences).toEqual(expect.arrayContaining([
+      expect.objectContaining({ pokemonName: "Marisson", calculation: expect.objectContaining({
+        participantCount: 2, splitDivisor: 2, policy: expect.objectContaining({ trainerBattle: true }) }) }),
+      expect.objectContaining({ pokemonName: "Keunotor", calculation: expect.objectContaining({
+        participantCount: 2, splitDivisor: 2, policy: expect.objectContaining({ trainerBattle: true }) }) }),
+    ]));
+    expect(eventState.party.members[0]!.experience).toBeGreaterThan(starter.experience);
+    expect(eventState.party.members[1]!.experience).toBeGreaterThan(reserve.experience);
   });
 
   it("hands a source battle draft to the room without starting a second local battle", () => {

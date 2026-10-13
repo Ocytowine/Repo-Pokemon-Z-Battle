@@ -121,3 +121,10 @@ et son ciblage `04` atteint tous les adversaires actifs en double. Projection,
 protocole Coop et rapport moteur acceptent le meme identifiant. L'effet de terrain
 de Doux Parfum, qui tente une rencontre hors combat, reste hors de cet audit de
 combat et devra etre raccorde au module de rencontres.
+
+Correction issue du rapport `local-52-1` : le reglement d'un Dresseur solo ne
+reutilise plus la formule sauvage historique. Le ledger commun suit les Pokemon
+engages, exclut les participants K.O. au moment du credit et transmet les credits
+au calculateur `pokemon-z-participant` deja utilise en Coop. Bonus Dresseur,
+partage, gains multiples et details d'arrondi sont couverts par les tests. Le cas
+Remi/Fluvetin passe ainsi de 143 EXP sauvages a 142 EXP Dresseur pour Feunnec.

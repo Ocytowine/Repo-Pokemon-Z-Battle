@@ -1,10 +1,12 @@
 import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBattleState, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
+  sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
-  type RandomSource, type TeamBattleAction, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
-  type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, grantPokemonExperience, healPlayerParty,
-  playerPartyToBattleTeam, pokemonLevelEvolutionCandidates, storeProjectedBattleTeam,
-  type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
+  type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
+  type TeamBattleState, type TeamReplacementResult, type TeamTurnActions, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
+import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
+  grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
+  storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
+  type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 
 export interface SourceEncounterRequest {
@@ -133,6 +135,28 @@ export interface SourceEncounterSettlement {
   readonly experience: { readonly amount: number; readonly pokemonId: string; readonly levelsGained: number;
     readonly learnedMoves: readonly string[]; readonly skippedMoves: readonly string[];
     readonly calculation: ScaledWildExperienceCalculation } | null;
+}
+
+export interface SourceTrainerBattleSettlement {
+  readonly party: PlayerPartyState;
+  readonly completed: boolean;
+  readonly gains: readonly SharedBattleExperienceGain[];
+}
+
+/** Solo adapter over the same ownership, participation and EXP kernel used by an authoritative room. */
+export function settleSourceTrainerBattle(party: PlayerPartyState, state: TeamBattleState,
+  participation: SharedBattleParticipation, ledger: SharedBattleLedger, catalog: PlayerCreationCatalog,
+  policy: Omit<PokemonZExperiencePolicy, "trainerBattle">, evolutionHour?: number,
+): SourceTrainerBattleSettlement {
+  if (state.status !== "finished" || state.winner === null) {
+    throw new Error("Le combat de Dresseur n'est pas termine.");
+  }
+  const stored = storeOwnedBattleResults(party, participation, state, "local");
+  if (state.winner !== "player") return { party: healPlayerParty(stored), completed: false, gains: [] };
+  const tactical = sharedBattleOwnerSettlement(participation, state, ledger, "local");
+  const experience = applySharedBattleExperience(stored, tactical, catalog,
+    { ...policy, trainerBattle: true }, evolutionHour === undefined ? {} : { hour: evolutionHour });
+  return { party: experience.party, completed: true, gains: experience.gains };
 }
 
 export interface ScaledWildExperienceCalculation {

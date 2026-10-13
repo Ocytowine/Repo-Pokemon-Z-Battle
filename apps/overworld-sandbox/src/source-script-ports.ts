@@ -40,6 +40,13 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^pbTrainerIntro\(\s*:[A-Z][A-Z0-9_]*\s*\)$/u.test(ruby) || /^pbTrainerEnd$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "TRAINER_PRESENTATION" });
   }
+  if (/^(?:Kernel\.)?pbCave(?:Entrance|Exit)$/u.test(ruby)) {
+    // The source helper adds a bespoke wipe around the native transfer. The
+    // surrounding event already carries the screen tones, waits and transfer
+    // needed by the web sequence; accepting the helper keeps every cave
+    // threshold on the normal player-touch path without evaluating Ruby.
+    return command(source, "runtime-noop", { policy: "CAVE_TRANSITION_PRESENTATION" });
+  }
   if (/^(?:Kernel\.)?pbNoticePlayer\(\s*get_character\(\s*0\s*\)\s*\)$/u.test(ruby)) {
     return command(source, "trainer-notice", { animationId: 3, policy: "SHARED_PRESENTATION" });
   }

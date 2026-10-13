@@ -1904,6 +1904,14 @@ autoritaire partagent le meme code ; le registre passe a 56 fonctions pleinement
 supportees. Son utilisation hors combat pour declencher une rencontre reste a
 porter avec les mecanismes d'overworld et ne fait pas partie de ce jalon.
 
+Correctif de progression du 2026-10-13 : les combats de Dresseur solo utilisent
+desormais le meme registre de participants et le meme noyau de reglement EXP que
+la Coop. Les Pokemon engages et encore conscients se partagent l'EXP, le bonus
+Dresseur et les interrupteurs de progression de Z sont appliques, et le rapport
+diagnostique expose `pokemon-z-participant` au lieu de `legacy-wild`. Un test
+d'integration couvre aussi deux participants survivants apres un changement. Le
+chemin sauvage historique reste volontairement inchange avant son audit propre.
+
 Outil de diagnostic combat du 2026-10-13 : le panneau `Moteur` produit un rapport
 JSON complet du combat courant ou du dernier combat termine. Le solo conserve la
 trace issue du noyau local; la room joint la meme trace autoritaire aux tours Coop.
