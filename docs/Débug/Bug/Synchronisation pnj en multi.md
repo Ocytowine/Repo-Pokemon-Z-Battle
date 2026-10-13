@@ -7,9 +7,10 @@ Description : Les PNJ et les Pokémon dans les grottes ne se synchronisent pas c
 Résultat attendu : Les PNJ et les Pokémon devraient se synchroniser correctement entre tous les joueurs, assurant une expérience de jeu fluide et cohérente.
 Résultat réel : Les PNJ et les Pokémon ne se synchronisent pas correctement, entraînant des décalages et des incohérences dans le gameplay.
 
-Statut au 2026-10-13 : garde de révision et interpolation continue implémentées,
-avec correctif immédiat de la régression qui figeait les acteurs invités : seule
-une révision strictement antérieure est ignorée, une révision égale est appliquée.
+Statut au 2026-10-13 : interpolation continue implémentée. Les tentatives de garde
+par révision ont été retirées après validation manuelle : le cache du monde pouvait
+être en avance sur les poses réellement appliquées et figeait les acteurs invités.
+Chaque `sourceActorsUpdated` de la socket active est donc transmis au rendu.
 Validation manuelle requise. Tester plusieurs mouvements autonomes consécutifs en
 ville et dans une grotte, puis une sortie/entrée de carte et une reconnexion. Un
 acteur ne doit ni revenir à une ancienne case, ni se téléporter au milieu d'un pas.

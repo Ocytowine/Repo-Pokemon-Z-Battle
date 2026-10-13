@@ -1115,9 +1115,9 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   },
   onSourceActorsState: (mapId, actorRevision, actors) => {
     if (!isNetworkGuest() || guestSourceExcursion || importedAssets?.map.id !== mapId) return;
-    // Une mise à jour de même révision peut accompagner un snapshot du monde
-    // reçu juste avant elle sans que ses poses aient encore été appliquées.
-    if (networkSourceWorld?.mapId === mapId && actorRevision < networkSourceWorld.actorRevision) return;
+    // Les messages d'acteurs d'une même socket sont ordonnés par WebSocket. Ils
+    // doivent tous atteindre le contrôleur visuel : le cache du monde peut déjà
+    // annoncer leur révision avant que leurs poses aient réellement été posées.
     sourceNpcMotions.applyNetworkWorldActors(actors, performance.now());
     if (networkSourceWorld?.mapId === mapId) networkSourceWorld = { ...networkSourceWorld, actors, actorRevision };
   },

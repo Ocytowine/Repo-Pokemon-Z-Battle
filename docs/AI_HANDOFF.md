@@ -2946,11 +2946,12 @@ la reprise utilise le point initial Map003 28,15 ; une position ou un checkpoint
 obtenu temporairement dans le monde de l'hôte n'est jamais adopté implicitement.
 Le menu annonce explicitement ce mode `progression personnelle`.
 
-Troisièmement, les mises à jour séparées de `sourceActorsUpdated` sont ignorées si
-leur `actorRevision` est strictement plus ancienne. Une révision égale doit être
-réappliquée : elle peut accompagner un snapshot reçu juste avant que ses poses
-aient été installées. Cette correction du 2026-10-13 remplace la garde `<=` qui
-figeait tous les PNJ chez l'invité lors de la première recette manuelle. Lorsqu'un nouvel instantané arrive pendant
+Troisièmement, toutes les mises à jour `sourceActorsUpdated` reçues sur la socket
+active sont appliquées au contrôleur visuel. Ne pas les filtrer à partir de
+`networkSourceWorld.actorRevision` : ce cache peut annoncer une révision avant que
+ses poses aient réellement été installées, et les gardes `<=` puis `<` ont toutes
+deux figé les PNJ chez l'invité pendant les recettes manuelles. L'ordre WebSocket
+de la room Cloudflare constitue ici la garantie d'ordre. Lorsqu'un nouvel instantané arrive pendant
 une interpolation, le PNJ repart de sa pose réellement affichée et ajuste la durée
 à la distance restante au lieu de sauter depuis son ancienne case logique. Cette
 règle couvre les PNJ et Pokémon de terrain rendus comme acteurs source ; l'hôte et
