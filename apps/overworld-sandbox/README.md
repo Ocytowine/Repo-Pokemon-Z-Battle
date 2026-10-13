@@ -116,14 +116,17 @@ inventaires et drapeaux apparaissent au-dessus du journal d'événements.
 
 ## Test à deux navigateurs
 
-Lancez d'abord le serveur dans un autre terminal :
+Le champ **Serveur** propose par défaut le Worker public
+`https://pokemon-z-battle.mimidu33-eb.workers.dev`. Pour tester plutôt le Worker
+local, lancez-le dans un autre terminal :
 
 ```powershell
 corepack pnpm multiplayer:dev
 ```
 
 Dans la première page, ouvrez le menu en jeu avec `Échap` ou `M`, choisissez
-**Coop**, gardez `http://127.0.0.1:8787` et cliquez sur **Créer une partie**.
+**Coop**, gardez l'adresse publique proposée (ou saisissez
+`http://127.0.0.1:8787` pour le Worker local) et cliquez sur **Créer une partie**.
 Copiez le code affiché. Dans la seconde page, ouvrez le même menu, saisissez ce
 code puis cliquez sur **Rejoindre**.
 Chaque page ne peut contrôler que l'avatar attribué. Les collisions, occupations

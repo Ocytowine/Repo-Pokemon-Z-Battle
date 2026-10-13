@@ -252,7 +252,7 @@ obligatoire pendant la phase 6.
 - [x] ready, action de combat, reconnexion et snapshot ;
 - [x] serveur autoritaire sur toutes les decisions et la RNG.
 - [x] recette locale HTTP/WebSocket avec deux clients et reconnexion ;
-- [ ] deploiement Cloudflare et smoke test sur l'URL publique.
+- [x] deploiement Cloudflare et smoke test sur l'URL publique.
 
 Le message client exprime une intention. Il ne transmet jamais des degats, un resultat de capture ou une statistique calculee.
 
@@ -282,6 +282,13 @@ deux WebSockets, le passage en ready, la resolution autoritaire d'un tour, l'ega
 des etats recus puis la reconnexion au tour suivant. Les fichiers SQLite temporaires
 de Miniflare sont retires du suivi Git et ignores. Le compte Cloudflare local est
 authentifie ; le deploiement public reste une action explicite a effectuer.
+
+Deploiement valide le 2026-10-13 : le Worker et son Durable Object sont accessibles
+sur `https://pokemon-z-battle.mimidu33-eb.workers.dev`. L'Overworld local propose
+cette adresse par defaut et conserve les assets Pokemon Z sur chaque poste. Un
+correctif de cadence reprend l'appui maintenu lorsque la confirmation autoritaire
+arrive apres la fin de l'interpolation locale, sans autoriser plus d'une intention
+de mouvement simultanee.
 
 ## Phase 6 - Equipes completes
 

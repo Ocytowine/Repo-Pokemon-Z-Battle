@@ -1030,6 +1030,19 @@ La frame de marche distante est transmise au renderer dans son champ `pattern` d
 premier niveau et reste visible pendant toute l'interpolation ; ne pas la ranger
 uniquement dans `pose`, car `ImportedRemotePlayerRender` l'ignorerait.
 
+Correctif de cadence sur Worker public du 2026-10-13 : avec un aller-retour reseau
+superieur a la duree locale d'un pas, l'interpolation pouvait se terminer avant
+l'acquittement autoritaire. La tentative suivante de l'appui maintenu etait alors
+refusee comme encore en attente, sans nouveau signal pour la relancer. Le client
+memorise maintenant cette continuation et la reprend des que la room confirme le
+pas, tout en conservant strictement une seule intention de mouvement en vol. Le
+serveur reste l'autorite des collisions et des coordonnees ; cet etat d'attente est
+local, transitoire, non persiste et sans nouvelle donnee repliquee. Le comportement
+vaut pour l'hote, l'invite et les mouvements automatiques continus deja portes.
+L'adresse proposee par defaut dans l'onglet Coop est le Worker public
+`https://pokemon-z-battle.mimidu33-eb.workers.dev`; une session memorisee continue
+de restaurer explicitement l'adresse avec laquelle elle a ete creee.
+
 Chaque place publie aussi uniquement l'espece de son Pokemon suiveur actif. La room
 choisit sa position initiale, le deplace sur la case liberee apres chaque pas et
 persiste cet etat visuel. L'autre navigateur charge le sprite local correspondant

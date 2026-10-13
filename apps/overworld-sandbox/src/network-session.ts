@@ -122,6 +122,12 @@ export class OverworldNetworkSession {
     return this.activeSession;
   }
 
+  /** True while the room has not acknowledged the last movement intention. */
+  public get movementPending(): boolean {
+    const sequence = this.activeSession?.pendingMovementSequence;
+    return sequence !== null && sequence !== undefined;
+  }
+
   public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string,
     profile: NetworkPlayerProfile, sourceWorld: SourceWorldHostState | null = null): Promise<void> {
     if (this.connectionPending) {

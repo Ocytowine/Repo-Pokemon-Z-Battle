@@ -124,6 +124,7 @@ let sourceMovementTestOverride = loadSourceMovementTestOverride(localStorage);
 let sourceDevSettings = loadSourceDevSettings(localStorage);
 let pendingTransferMovementMode: SourceMovementMode | null = null;
 let importedPlayerMotion: SourceGridMotion | null = null;
+let resumeSourceMovementAfterNetworkAck = false;
 let importedWalkingPattern: 1 | 3 = 1;
 let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
 let sourceFieldMarks: SourceFieldMark[] = [];
@@ -190,7 +191,7 @@ let networkProfileSignatures: Partial<Record<AvatarId, string>> = {};
 let networkProfileApplications: Partial<Record<AvatarId, number>> = {};
 let networkStateText = "Local";
 let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une partie.";
-let networkServerUrl = "http://127.0.0.1:8787";
+let networkServerUrl = "https://pokemon-z-battle.mimidu33-eb.workers.dev";
 let networkRoomCode = "";
 let networkPresentedBattle: { readonly id: string; readonly state: TeamBattleState } | null = null;
 const networkBattleOutcomes = new Map<string, SourceBattleOutcome>();
@@ -474,6 +475,13 @@ function finishImportedStep(): void {
 }
 
 function continueSourceMovement(): void {
+  if (multiplayer.movementPending) {
+    // A real network round trip can outlast the local interpolation. Resume
+    // from the authoritative acknowledgement instead of losing the held key.
+    resumeSourceMovementAfterNetworkAck = true;
+    return;
+  }
+  resumeSourceMovementAfterNetworkAck = false;
   if (sourceMovementAction === "ice-slide" || sourceMovementAction === "waterfall") {
     move("player", importedAvatar.direction);
     return;
@@ -1562,6 +1570,10 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     ? "Session Coop active : votre monde narratif est partagé."
     : `Monde de l'hôte rejoint · Map${String(world.mapId).padStart(3, "0")}.`;
   renderImportedView();
+  if (applyOwnAvatar && resumeSourceMovementAfterNetworkAck && importedPlayerMotion === null) {
+    resumeSourceMovementAfterNetworkAck = false;
+    continueSourceMovement();
+  }
 }
 
 function synchronizeNetworkRemoteFollowerAsset(world: SourceWorldSnapshot, remoteSide: AvatarId): void {
@@ -3327,6 +3339,7 @@ function disconnectMultiplayer(): void {
   networkRemoteFollowerMotion = null;
   networkRemoteFollowerImage = null;
   networkRemoteFollowerAssetPath = null;
+  resumeSourceMovementAfterNetworkAck = false;
   lastPublishedSourceScene = "";
   viewedMapId = SOURCE_MAP_ID;
   sourceScenes.closeMenu();

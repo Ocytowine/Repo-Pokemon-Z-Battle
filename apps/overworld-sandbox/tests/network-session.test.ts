@@ -111,6 +111,7 @@ describe("overworld network session", () => {
     expect(sockets[0]?.url).toContain("ws://127.0.0.1:8787/api/rooms/ABC234/socket");
 
     expect(session.sendMovement("player", "up")).toBe(true);
+    expect(session.movementPending).toBe(true);
     expect(session.sendMovement("player", "right")).toBe(false);
     expect(JSON.parse(sockets[0]?.sent[0] ?? "{}")).toMatchObject({ type: "moveAvatar", direction: "up", sequence: 1 });
     const sourceWorld = { mapId: 3, width: 3, height: 3, passages: "fffffffff", blockedPoints: [],
@@ -120,10 +121,12 @@ describe("overworld network session", () => {
     sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 15, side: "opponent", sequence: 1,
       revision: 1, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, false);
+    expect(session.movementPending).toBe(true);
     expect(session.sendMovement("player", "right")).toBe(false);
     sockets[0]?.emitMessage({ type: "sourceWorldUpdated", version: 15, side: "player", sequence: 1,
       revision: 2, state: sourceWorld });
     expect(handlers.onSourceWorldState).toHaveBeenLastCalledWith(sourceWorld, true, true);
+    expect(session.movementPending).toBe(false);
     expect(session.publishSourceScene({ mapId: 4, sequenceActive: false,
       dialogue: null, actors: [], presentation: null })).toBe(false);
     expect(session.publishSourceScene({ mapId: 3, sequenceActive: true,
