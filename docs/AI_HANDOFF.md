@@ -2773,8 +2773,8 @@ paginée de 12 espèces avec recherche nom/numéro, filtres cumulables de deux t
 statut et tri. La progression compte les espèces obtenues sur le catalogue extrait
 et les cartes indiquent : inconnue, vue, obtenue, présente dans l'équipe, présente
 au Ranch, espèce ayant déjà évolué ou espèce relâchée. Les sprites à deux frames
-restent animés et le bouton `Zones de capture` est un emplacement désactivé pour
-le futur module Carte.
+restent animés. La page `Zones de capture` est désormais active dans chaque fiche
+vue et utilise le catalogue régional partagé décrit ci-dessous.
 
 Jalon UI Pokédex/Ranch du 2026-10-12 : tous les filtres sont désormais appliqués
 immédiatement (`input` pour la recherche, `change` pour les listes) et seul le
@@ -2811,8 +2811,63 @@ et superposait toutes ses cartes. La colonne de contenu de la fiche est désorma
 une `section` et occupe toute la seconde colonne de `.source-summary-layout`.
 
 Validation manuelle du 2026-10-12 : le porteur a controle et valide le Pokedex et
-son interface. Le lot est ferme hors zones de capture, qui restent dependantes du
-futur module Carte.
+son interface. Les zones de capture ont été ajoutées avec le premier lot Carte du
+2026-10-13 et restent à valider visuellement par le porteur.
+
+Premier lot Carte du 2026-10-13 : l'extracteur produit `region-map.json` depuis
+`PBS/townmap.txt` et ajoute `mapPosition` aux entrées de
+`map-battle-metadata.json`. Le chargeur compose ces données avec `map-infos.json`
+et `encounters.json` dans `SourceRegionMapCatalog`. L'héritage par parent RPG Maker
+donne notamment à Map010 la position régionale `{ region: 0, x: 18, y: 13 }` de
+Map009, au lieu d'un faux point 0,0. Le catalogue local contrôlé contient une
+région, 176 points, 33 destinations de Vol et 524 espèces présentes dans au moins
+une table de rencontres.
+
+L'onglet `Carte` du menu emploie l'icône source `DP Pause Menu/rider.png`,
+`mapRegion0.png`, `mapCursor.png` et la variante `mapPlayer000/001.png` adaptée à
+la morphologie directement depuis le jeu local. Les repères sont sélectionnables
+et exposent nom et description lorsqu'elle existe. Ce premier état ne déclenchait
+aucun Vol ; le raccord de test décrit plus bas lui a succédé le même jour. La fiche
+Pokédex propose maintenant `Informations` et `Zones de capture` ;
+la seconde projette toutes les méthodes de rencontre de l'espèce sur le même
+quadrillage 30 x 20, comme `PokemonNestMapScene` dans le Ruby source.
+
+Contrat solo/Coop : le catalogue et les habitats sont statiques. La consultation
+reste personnelle ; seule la carte régionale courante de chaque participant est
+répliquée dans `regionalMapIds`. Le Vol de test appelle le noyau de transfert : en
+solo il reste local, l'hôte publie ensuite le monde partagé autoritaire, et
+l'invité poursuit ou rejoint son excursion selon la politique existante. Les
+destinations visitées du futur déblocage normal seront un état personnel persistant
+et ne devront jamais être déduites des 33 destinations extraites.
+
+Ajustement visuel Carte du 2026-10-13 : la composition suit désormais la maquette
+large validée par le porteur, avec la carte presque pleine largeur, la fiche du
+lieu en bandeau inférieur et un fond aérien clair construit en CSS. Le nom du lieu
+sélectionné est aussi repris dans la pastille d'en-tête. Sur les 172 points nommés
+de `townmap.txt`, seuls 23 possèdent réellement une description ; la fiche omet
+donc entièrement la ligne descriptive pour les 149 autres au lieu d'afficher un
+texte de remplacement. Les coordonnées techniques, l'état de destination de Vol
+et la légende ont été retirés de cette vue joueur, mais restent disponibles dans
+le catalogue pour les futurs consommateurs.
+
+Raccord Vol de test du 2026-10-13 : le bypass `Tous les déplacements` expose
+désormais une capacité `fly`, distincte des `SourceMovementMode`. Depuis une carte
+extérieure, l'onglet Carte bascule explicitement entre `Consultation` et `Vol` ;
+les 33 destinations extraites deviennent alors sélectionnables. Un clic joue un
+fondu blanc local, ferme le menu au blanc plein, puis emprunte
+`followSourceTransfer` avant de révéler l'overworld d'arrivée. Aucune destination
+n'est inscrite comme visitée : le vrai déblocage narratif et sa persistance restent
+à raccorder ultérieurement.
+
+Le même lot rend la présence régionale Coop explicite. `SourceWorldSnapshot`
+porte `regionalMapIds` pour l'hôte et l'invité ; l'hôte met à jour sa carte via la
+publication autoritaire du monde, tandis que l'invité transmet seulement son
+`mapId` avec `setSourcePresence`, y compris pendant une excursion personnelle.
+La room valide la carte de rattachement, persiste ces deux identifiants et les
+restaure avec un fallback compatible pour les anciennes rooms. La Carte affiche
+ainsi deux marqueurs et deux couleurs (cyan hôte, magenta invité), même lorsque
+leurs positions régionales diffèrent. Les coordonnées internes de l'excursion de
+l'invité restent privées et ne sont jamais répliquées.
 
 Contrat d'état : `SourceEventState.pokedex` est personnel, persistant dans
 `pokemon-z-battle.source-event-state.v1`, restauré après reconnexion et absent du

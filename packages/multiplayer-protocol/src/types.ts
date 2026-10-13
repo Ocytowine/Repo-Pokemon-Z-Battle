@@ -100,7 +100,7 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "setSourceActors"; readonly mapId: number;
       readonly actors: readonly SourceWorldActorSnapshot[] })
   | (RequestedMessage & { readonly type: "setSourcePresence"; readonly attached: boolean;
-      readonly avatar: SourceAvatarSnapshot | null })
+      readonly avatar: SourceAvatarSnapshot | null; readonly mapId?: number })
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;
       readonly appearance?: SourceFollowerSnapshot["appearance"] })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })

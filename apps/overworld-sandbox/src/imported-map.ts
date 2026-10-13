@@ -10,6 +10,7 @@ import { parseSourceAlchemyCatalog, type SourceAlchemyCatalog } from "./source-a
 import type { SourceMovementAction, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
   type SourceFieldMark } from "./source-field-effects.js";
+import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-region-map.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -130,6 +131,7 @@ export interface ImportedMapAssets {
   readonly wildBattleBgm: string | null;
   readonly wildVictoryMe: string | null;
   readonly mapMetadata: ImportedMapMetadata;
+  readonly regionMap: SourceRegionMapCatalog;
 }
 
 export interface ImportedMapMetadata {
@@ -755,7 +757,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
   await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`]);
   const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, alchemyValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
-    movesValue, abilitiesValue, encountersValue, battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
+    movesValue, abilitiesValue, encountersValue, battleMetadataValue, regionMapValue, mapInfosValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/alchemy-recipes.json"),
@@ -765,6 +767,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     fetchJson("/__pokemon-z/data/abilities.json"),
     fetchJson("/__pokemon-z/data/encounters.json"),
     fetchJson("/__pokemon-z/data/map-battle-metadata.json"),
+    fetchJson("/__pokemon-z/data/region-map.json"),
+    fetchJson("/__pokemon-z/data/map-infos.json"),
     fetchJson("/__pokemon-z/data/trainers.json"), fetchJson("/__pokemon-z/data/trainer-types.json"),
   ]);
   const map = parseImportedMap(mapValue);
@@ -787,6 +791,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const trainers = parseImportedTrainers(trainersValue);
   const trainerTypes = parseImportedTrainerTypes(trainerTypesValue);
   const battlePresentation = parseBattlePresentation(battleMetadataValue, mapId);
+  const regionMap = parseSourceRegionMap(regionMapValue, battleMetadataValue, encountersValue, mapInfosValue);
   const tileset = tilesets.records.find((entry) => entry.id === map.tilesetId);
   if (tileset === undefined) throw new Error(`Tileset ${map.tilesetId} introuvable.`);
   const characterNames = [...new Set([
@@ -809,7 +814,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
       waterRipple: waterRippleImage },
     mapTranslations, itemNames, items, alchemy, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
-    trainers, trainerTypes,
+    trainers, trainerTypes, regionMap,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };
 }
 

@@ -13,6 +13,7 @@ import { extractBattleAnimations } from "./extract-battle-animations.js";
 import { extractMapBattleMetadata } from "./extract-map-metadata.js";
 import { extractMapAnimations } from "./extract-map-animations.js";
 import { extractAlchemyRecipes } from "./extract-alchemy-recipes.js";
+import { extractRegionMaps } from "./extract-region-map.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -77,7 +78,7 @@ export async function extractRuntimeData(
 ): Promise<RuntimeExtractionResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await validatePokemonZSource(paths.source);
-  const [localization, maps, scripts, encounters, tableProbe, battleAnimations, mapBattleMetadata, mapAnimations] = await Promise.all([
+  const [localization, maps, scripts, encounters, tableProbe, battleAnimations, mapBattleMetadata, mapAnimations, regionMaps] = await Promise.all([
     extractLocalization(paths.source, paths.output),
     extractMapInfos(paths.source),
     extractScripts(paths.source, paths.output),
@@ -86,6 +87,7 @@ export async function extractRuntimeData(
     extractBattleAnimations(paths.source, paths.output),
     extractMapBattleMetadata(paths.source),
     extractMapAnimations(paths.source),
+    extractRegionMaps(paths.source),
   ]);
   const alchemyRecipes = await extractAlchemyRecipes(paths.output, scripts);
   const mapIds = new Set(maps.map((entry) => entry.id));
@@ -144,6 +146,7 @@ export async function extractRuntimeData(
     writeJsonAtomically(paths.output, "scripts-manifest.json", scriptsManifest),
     writeJsonAtomically(paths.output, "runtime-report.json", runtimeReport),
     writeJsonAtomically(paths.output, "map-battle-metadata.json", { schemaVersion: "1.0.0", records: mapBattleMetadata }),
+    writeJsonAtomically(paths.output, "region-map.json", { schemaVersion: "1.0.0", regions: regionMaps }),
     writeJsonAtomically(paths.output, "battle-animations.json", {
       schemaVersion: "1.0.0",
       coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },

@@ -1,5 +1,5 @@
 export type SourceSceneMode = "overworld" | "dialogue" | "battle" | "menu" | "transition";
-export const SOURCE_MENU_TABS = ["team", "pokedex", "bag", "alchemy", "movement", "save", "coop", "options"] as const;
+export const SOURCE_MENU_TABS = ["team", "pokedex", "bag", "map", "alchemy", "movement", "save", "coop", "options"] as const;
 export type SourceMenuTab = typeof SOURCE_MENU_TABS[number];
 export type SourceSceneAction = "ambient-motion" | "world-input" | "dialogue-input" | "scene-change"
   | "start-sequence" | "source-transfer";

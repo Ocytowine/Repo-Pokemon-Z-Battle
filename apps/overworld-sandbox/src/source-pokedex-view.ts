@@ -5,6 +5,8 @@ import type { PlayerDetailsCatalog, PlayerPartyState, PlayerPokemonStorageState 
 import type { SourcePokedexHistory } from "./source-event-state.js";
 import { SOURCE_POKEMON_POWER_TIERS, sourcePokemonIconUrl, sourcePokemonPowerTier,
   sourcePokemonTypeLabel, type SourcePokemonPowerTier } from "./source-pokemon-collection.js";
+import { sourceRegionImageUrl, sourceSpeciesHabitatCoordinates,
+  type SourceRegionMapCatalog } from "./source-region-map.js";
 
 const PAGE_SIZE = 12;
 export type PokedexStatus = "all" | "unseen" | "seen" | "caught" | "current" | "team" | "ranch" | "evolved" | "released";
@@ -25,6 +27,7 @@ export interface SourcePokedexViewModel {
   readonly ranch: PlayerPokemonStorageState;
   readonly catalog: PlayerDetailsCatalog;
   readonly assets: PokemonAssetsManifest;
+  readonly regionMap: SourceRegionMapCatalog;
 }
 
 interface SourcePokedexStatBlock {
@@ -161,27 +164,37 @@ function card(entry: SourcePokedexEntry, highlightPotential: boolean): string {
 const STAT_LABELS: readonly [keyof SourcePokedexStatBlock, string][] = [["hp", "PV"], ["attack", "Attaque"],
   ["defense", "Défense"], ["specialAttack", "Atq. Spé."], ["specialDefense", "Déf. Spé."], ["speed", "Vitesse"]];
 
-function detail(entry: SourcePokedexEntry, position: number, count: number): string {
+function habitatPage(entry: SourcePokedexEntry, catalog: SourceRegionMapCatalog): string {
+  const coordinates = sourceSpeciesHabitatCoordinates(catalog, entry.species);
+  const regionId = coordinates[0]?.region ?? catalog.regions[0]?.id;
+  const region = catalog.regions.find((candidate) => candidate.id === regionId) ?? null;
+  if (region === null) return '<div class="source-pokedex-habitat-empty"><strong>Carte indisponible</strong><span>Aucune région n’est définie.</span></div>';
+  const cells = coordinates.filter((point) => point.region === region.id).map((point) =>
+    `<i style="--map-x:${point.x};--map-y:${point.y}" aria-hidden="true"></i>`).join("");
+  return `<div class="source-pokedex-habitat"><div class="source-pokedex-habitat-map"><img src="${sourceRegionImageUrl(region.filename)}" alt="Carte de ${escapeHtml(region.name)}"><div>${cells}</div></div><aside><small>ZONES DE CAPTURE</small><strong>${escapeHtml(region.name)}</strong><p>${coordinates.length === 0 ? "Habitat inconnu dans les données de rencontres actuelles." : `${coordinates.length} zone${coordinates.length > 1 ? "s" : ""} répertoriée${coordinates.length > 1 ? "s" : ""}. Les carrés rouges reprennent toutes les méthodes de rencontre du jeu source.`}</p></aside></div>`;
+}
+
+function detail(entry: SourcePokedexEntry, position: number, count: number,
+  catalog: SourceRegionMapCatalog, page: "information" | "habitat"): string {
   const types = entry.types.map((type) => `<span><img src="${pokemonTypeIconUrl(type)}" alt="">${escapeHtml(sourcePokemonTypeLabel(type))}</span>`).join("");
   const sprite = entry.battlerUrl === null || entry.battlerFrameWidth === null || entry.battlerFrameHeight === null ? "?"
     : `<canvas data-pokedex-summary-sprite width="${entry.battlerFrameWidth}" height="${entry.battlerFrameHeight}" aria-label="Sprite animé de ${escapeHtml(entry.name)}"></canvas>`;
   const stats = STAT_LABELS.map(([stat, label]) => `<article><small>${label}</small><strong>${entry.baseStats[stat]}</strong><span>BASE</span></article>`).join("");
   return `<section class="source-pokedex-detail" role="dialog" aria-modal="true" aria-label="Données Pokédex de ${escapeHtml(entry.name)}">
     <header><div><small>N°${String(entry.number).padStart(4, "0")} · ${entry.caught ? "OBTENU" : "OBSERVÉ"}</small><strong>${escapeHtml(entry.name)}</strong></div><span>${position + 1}/${count}</span><button type="button" data-pokedex-detail-close aria-label="Fermer">×</button></header>
-    <nav class="source-summary-tabs" aria-label="Pages de la fiche Pokédex"><button type="button" class="active">Informations</button><button type="button" disabled>Zones de capture</button></nav>
+    <nav class="source-summary-tabs" aria-label="Pages de la fiche Pokédex"><button type="button" data-pokedex-detail-page="information"${page === "information" ? ' class="active"' : ""}>Informations</button><button type="button" data-pokedex-detail-page="habitat"${page === "habitat" ? ' class="active"' : ""}>Zones de capture</button></nav>
     <div class="source-summary-layout"><aside><div class="source-summary-name"><strong>${escapeHtml(entry.name)}</strong><span>N° ${String(entry.number).padStart(3, "0")}</span></div>
       <div class="source-summary-sprite${entry.caught ? "" : " silhouette"}">${sprite}</div>
       <div class="source-summary-flags source-pokedex-detail-types">${types}</div>
       ${entry.footprintUrl === null || !entry.caught ? "" : `<div class="source-pokedex-footprint-row"><small>Empreinte</small><img class="source-pokedex-footprint" src="${escapeHtml(entry.footprintUrl)}" alt="Empreinte de ${escapeHtml(entry.name)}"></div>`}
       <span class="source-summary-form">${entry.caught ? "Données complètes" : "Espèce observée"}</span></aside>
-      <section class="source-summary-page"><div class="source-summary-fields"><article><small>Catégorie</small><strong>${entry.caught ? escapeHtml(entry.kind) : "Donnée à obtenir"}</strong></article><article><small>Potentiel</small><strong>${entry.caught ? `${entry.potentialPower} · ${escapeHtml(sourcePokemonPowerTier(entry.potentialPower).label)}` : "—"}</strong></article>
+      <section class="source-summary-page">${page === "habitat" ? habitatPage(entry, catalog) : `<div class="source-summary-fields"><article><small>Catégorie</small><strong>${entry.caught ? escapeHtml(entry.kind) : "Donnée à obtenir"}</strong></article><article><small>Potentiel</small><strong>${entry.caught ? `${entry.potentialPower} · ${escapeHtml(sourcePokemonPowerTier(entry.potentialPower).label)}` : "—"}</strong></article>
         <article><small>Taille</small><strong>${entry.caught ? `${entry.height.toLocaleString("fr-FR")} m` : "—"}</strong></article><article><small>Poids</small><strong>${entry.caught ? `${entry.weight.toLocaleString("fr-FR")} kg` : "—"}</strong></article>
         <article class="wide"><small>Type</small><div class="source-summary-types">${types}</div></article></div>
       ${entry.caught ? `<p class="source-summary-note source-pokedex-description">${escapeHtml(entry.pokedexEntry)}</p>
         <div class="source-summary-stats source-pokedex-general-stats">${stats}</div>
         <div class="source-pokedex-detail-columns"><article><small>Talents connus</small><strong>${escapeHtml(entry.abilities.join(" · ") || "Inconnu")}</strong></article><article><small>Évolution suivante</small><strong>${escapeHtml(entry.evolutions.join(" · ") || "Aucune")}</strong></article></div>`
-        : '<p class="source-summary-note source-pokedex-description locked">Capturez cette espèce pour débloquer sa catégorie, ses mensurations et ses données générales.</p>'}
-      <button type="button" class="source-pokedex-area-placeholder" disabled>Zones de capture · futur module Carte</button></section></div>
+        : '<p class="source-summary-note source-pokedex-description locked">Capturez cette espèce pour débloquer sa catégorie, ses mensurations et ses données générales.</p>'}`}</section></div>
     <footer><button type="button" data-pokedex-detail-nav="previous"${count < 2 ? " disabled" : ""}>‹ Pokémon précédent</button><span>Fiche générale du Pokédex</span><button type="button" data-pokedex-detail-nav="next"${count < 2 ? " disabled" : ""}>Pokémon suivant ›</button></footer></section>`;
 }
 
@@ -200,6 +213,7 @@ export class SourcePokedexView {
   private page = 0; private selectedSpecies: string | null = null;
   private spriteAnimationFrame: number | null = null;
   private spriteAnimationGeneration = 0;
+  private detailPage: "information" | "habitat" = "information";
 
   public render(root: HTMLElement, model: SourcePokedexViewModel): void {
     this.stopSpriteAnimation();
@@ -218,7 +232,7 @@ export class SourcePokedexView {
         <button type="button" data-pokedex-reset>Réinitialiser</button></form>
       <div class="source-pokedex-result"><strong>${filtered.length}</strong> résultat${filtered.length > 1 ? "s" : ""}<span>Filtrage automatique</span></div>
       <div class="source-pokedex-grid">${visible.length === 0 ? '<div class="source-pokedex-empty">Aucune espèce ne correspond à ces filtres.</div>' : visible.map((entry) => card(entry, this.filters.potentialTier !== "all")).join("")}</div>
-      <footer class="source-pokedex-footer"><button type="button" data-pokedex-page="previous"${this.page === 0 ? " disabled" : ""}>‹</button><span>Page ${this.page + 1} / ${pageCount}</span><button type="button" data-pokedex-page="next"${this.page >= pageCount - 1 ? " disabled" : ""}>›</button><button type="button" disabled title="Disponible avec le futur module Carte">Zones de capture · bientôt</button></footer>`;
+      <footer class="source-pokedex-footer"><button type="button" data-pokedex-page="previous"${this.page === 0 ? " disabled" : ""}>‹</button><span>Page ${this.page + 1} / ${pageCount}</span><button type="button" data-pokedex-page="next"${this.page >= pageCount - 1 ? " disabled" : ""}>›</button><em>Zones de capture dans chaque fiche</em></footer>`;
     const filterForm = root.querySelector<HTMLFormElement>(".source-pokedex-filters");
     const updateFilters = (restoreSearchFocus: boolean): void => {
       if (filterForm === null) return;
@@ -238,21 +252,25 @@ export class SourcePokedexView {
       this.page = 0; this.render(root, model);
     });
     root.querySelectorAll<HTMLButtonElement>("[data-pokedex-page]").forEach((button) => button.addEventListener("click", () => { this.page += button.dataset.pokedexPage === "next" ? 1 : -1; this.render(root, model); }));
-    root.querySelectorAll<HTMLButtonElement>("[data-pokedex-species]").forEach((button) => button.addEventListener("click", () => { this.selectedSpecies = button.dataset.pokedexSpecies ?? null; this.renderDetail(root, model, filtered); }));
+    root.querySelectorAll<HTMLButtonElement>("[data-pokedex-species]").forEach((button) => button.addEventListener("click", () => { this.selectedSpecies = button.dataset.pokedexSpecies ?? null; this.detailPage = "information"; this.renderDetail(root, model, filtered); }));
   }
 
   private renderDetail(root: HTMLElement, model: SourcePokedexViewModel, filtered: readonly SourcePokedexEntry[]): void {
     const entries = filtered.filter((entry) => entry.seen || entry.caught);
     const index = Math.max(0, entries.findIndex((entry) => entry.species === this.selectedSpecies)); const entry = entries[index];
     if (entry === undefined) { this.selectedSpecies = null; this.render(root, model); return; }
-    root.insertAdjacentHTML("beforeend", detail(entry, index, entries.length));
-    this.startSpriteAnimation(root, entry);
+    root.insertAdjacentHTML("beforeend", detail(entry, index, entries.length, model.regionMap, this.detailPage));
+    if (this.detailPage === "information") this.startSpriteAnimation(root, entry);
     root.querySelector<HTMLButtonElement>("[data-pokedex-detail-close]")?.addEventListener("click", () => {
       this.stopSpriteAnimation(); this.selectedSpecies = null; root.querySelector(".source-pokedex-detail")?.remove();
     });
     root.querySelectorAll<HTMLButtonElement>("[data-pokedex-detail-nav]").forEach((button) => button.addEventListener("click", () => {
       const offset = button.dataset.pokedexDetailNav === "previous" ? -1 : 1;
       this.selectedSpecies = entries[(index + offset + entries.length) % entries.length]?.species ?? null;
+      this.stopSpriteAnimation(); root.querySelector(".source-pokedex-detail")?.remove(); this.renderDetail(root, model, filtered);
+    }));
+    root.querySelectorAll<HTMLButtonElement>("[data-pokedex-detail-page]").forEach((button) => button.addEventListener("click", () => {
+      this.detailPage = button.dataset.pokedexDetailPage === "habitat" ? "habitat" : "information";
       this.stopSpriteAnimation(); root.querySelector(".source-pokedex-detail")?.remove(); this.renderDetail(root, model, filtered);
     }));
   }

@@ -1829,8 +1829,8 @@ six EV. La fiche Pokédex fournit les données générales fiables du catalogue 
 avec sprite animé, types, catégorie, taille, poids, empreinte, statistiques de base,
 talents et évolutions. La fiche reprend la structure visuelle Équipe/Ranch et la
 même animation canvas de battler ; les descriptions françaises sont lues depuis
-`french.dat`. Seules les zones de capture restent différées jusqu'au module Carte.
-Les icônes locales `DP Pause Menu` décorent les sept rubriques avec l'état gris
+`french.dat`. Les zones de capture ont rejoint le module Carte le 2026-10-13.
+Les icônes locales `DP Pause Menu` décorent les rubriques avec l'état gris
 `A`, l'état actif coloré `B` et l'oscillation du script source ; Sac et Sauvegarde
 emploient leurs variantes `Bf/Bm`. Aucun asset n'est versionné. Ce lot demeure une
 présentation et un état personnel : aucune donnée
@@ -1844,8 +1844,33 @@ chemins d'évolution enregistrent l'espèce quittée. Les anciennes sauvegardes
 reconstituent seulement les espèces encore présentes dans l'équipe ou au Ranch :
 une évolution ou une libération antérieure ne peut pas être inventée. Le contrat
 de libération est prêt, mais son action destructive dans le Ranch reste à porter
-avec confirmation. Le bouton des zones de capture reste volontairement inactif
-jusqu'au module Carte, sans table de localisation factice.
+avec confirmation.
+
+Premier incrément Carte du 2026-10-13 : `PBS/townmap.txt` est extrait dans un
+catalogue régional générique et `MapPosition` rejoint les métadonnées normalisées.
+L'onglet Carte du menu affiche l'image source de Kalos, son quadrillage 30 x 20,
+les 176 points nommés ou structurels, le curseur animé source et la position du
+joueur. Les intérieurs sans `MapPosition`, dont Map010, héritent de la position du
+premier parent RPG Maker qui en possède une. Les 33 destinations définies dans
+`townmap.txt` alimentent depuis le 2026-10-13 le mode Vol de test : le bypass local
+`Tous les déplacements` les rend sélectionnables depuis une carte extérieure, le
+clic joue un fondu blanc, ferme le menu et réutilise le transfert d'overworld.
+Aucune destination n'est considérée visitée par défaut ; le déblocage narratif
+normal du Vol reste donc à implémenter.
+
+Le même noyau projette toutes les méthodes de `encounters.json` sur la carte. La
+page `Zones de capture` des fiches Pokédex affiche les cellules d'habitat réelles,
+dédupliquées par région et coordonnées, sans table propre à une espèce. Autorité :
+catalogue extrait en lecture seule et position du joueur concerné ; domaine :
+présentation personnelle ; persistance : aucune donnée supplémentaire, car carte
+et habitats sont déterministes ; audience : joueur local uniquement. En Coop,
+hôte et invité calculent leurs lieux depuis le même catalogue. Le snapshot de room
+réplique uniquement un `mapId` régional par joueur : l'hôte publie le monde partagé,
+l'invité met à jour sa présence lors de ses excursions, et leurs coordonnées fines
+restent privées hors du monde partagé. Deux curseurs colorés rendent ces positions
+visibles sur la Carte et `regionalMapIds` est persisté/restauré par la room. Le vrai
+déblocage de Vol devra encore ajouter les destinations visitées personnelles ; le
+bypass actuel n'altère ni progression ni sauvegarde narrative.
 
 Premier lot vertical de combat du 2026-10-09 : Jean puis les trois variantes de
 Melia sur le parcours suivant ont ete pris comme frontiere, sans logique liee a

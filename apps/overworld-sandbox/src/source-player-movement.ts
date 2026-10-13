@@ -7,7 +7,7 @@ import { terrainTagAt } from "./source-wild-encounter.js";
 
 export const SOURCE_MOVEMENT_TEST_KEY = "pokemon-z-battle.movement-test-unlocks.v1";
 
-export type SourceMovementCapability = "sprint" | "mount" | "climb" | "surf" | "dive" | "waterfall";
+export type SourceMovementCapability = "sprint" | "mount" | "climb" | "surf" | "dive" | "waterfall" | "fly";
 
 export interface SourceMovementUnlocks {
   readonly sprint: boolean;
@@ -16,6 +16,7 @@ export interface SourceMovementUnlocks {
   readonly surf: boolean;
   readonly dive: boolean;
   readonly waterfall: boolean;
+  readonly fly: boolean;
   readonly testOverride: boolean;
 }
 
@@ -36,6 +37,7 @@ export function sourceMovementUnlocks(state: SourceEventState, testOverride: boo
     surf: unlocked(badges >= 5 && (state.inventory.SURFMONTURA ?? 0) > 0),
     dive: unlocked(badges >= 7 && partyKnows(state, "DIVE")),
     waterfall: unlocked(badges >= 8 && partyKnows(state, "WATERFALL")),
+    fly: testOverride,
     testOverride,
   };
 }
@@ -48,6 +50,7 @@ export function sourceMovementCapabilityLabel(capability: SourceMovementCapabili
     case "surf": return "Monture Surf";
     case "dive": return "Plongée";
     case "waterfall": return "Cascade";
+    case "fly": return "Vol régional";
   }
 }
 

@@ -69,6 +69,8 @@ export interface SourceWorldSnapshot extends Omit<SourceWorldHostState, "host" |
   readonly followers: Readonly<Partial<Record<BattleSide, SourceFollowerSnapshot>>>;
   /** Un joueur `away` poursuit sa partie locale et ne collisionne plus avec la carte partagee. */
   readonly presence: Readonly<Record<BattleSide, SourcePlayerPresence>>;
+  /** Carte regionale courante de chaque joueur, y compris pendant une excursion personnelle. */
+  readonly regionalMapIds: Readonly<Record<BattleSide, number>>;
 }
 
 const DIRECTIONS = new Set<Direction>(["up", "down", "left", "right"]);
@@ -232,7 +234,8 @@ export function sourceWorldSnapshot(hostState: SourceWorldHostState,
     blockedPoints: hostState.blockedPoints, actors: hostState.actors ?? [], actorRevision: 0, story: hostState.story,
     avatars: { player: hostState.host, opponent: opponent ?? hostState.host },
     followers: hostState.follower === null ? {} : { player: hostState.follower },
-    presence: { player: "shared", opponent: "shared" } };
+    presence: { player: "shared", opponent: "shared" },
+    regionalMapIds: { player: hostState.mapId, opponent: hostState.mapId } };
 }
 
 const SOURCE_DIRECTION_BITS: Readonly<Record<Direction, number>> = { down: 1, left: 2, right: 4, up: 8 };

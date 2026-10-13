@@ -225,7 +225,9 @@ export class AuthoritativeBattleRoom {
         : { ...persisted.sourceWorldState, followers: persisted.sourceWorldState.followers ?? {},
           actors: persisted.sourceWorldState.actors ?? [],
           actorRevision: persisted.sourceWorldState.actorRevision ?? 0,
-          presence: persisted.sourceWorldState.presence ?? { player: "shared", opponent: "shared" } };
+          presence: persisted.sourceWorldState.presence ?? { player: "shared", opponent: "shared" },
+          regionalMapIds: persisted.sourceWorldState.regionalMapIds
+            ?? { player: persisted.sourceWorldState.mapId, opponent: persisted.sourceWorldState.mapId } };
       this.#sourceSceneState = persisted.sourceSceneState ?? null;
       for (const entry of persisted.players) {
         this.#players.set(entry.playerId, { ...entry, disconnectedAt: entry.disconnectedAt ?? null,
@@ -430,7 +432,7 @@ export class AuthoritativeBattleRoom {
       return this.setSourceActors(player, message.requestId, message.mapId, message.actors);
     }
     if (message.type === "setSourcePresence") return this.setSourcePresence(player, message.requestId,
-      message.attached, message.avatar);
+      message.attached, message.avatar, message.mapId);
     if (message.type === "setSourceFollower") {
       return this.setSourceFollower(player, message.requestId, message.species, message.appearance);
     }
@@ -504,7 +506,9 @@ export class AuthoritativeBattleRoom {
         actors: this.#sourceWorldState.actors,
         actorRevision: this.#sourceWorldState.actorRevision,
       } : {}),
-      presence: { ...nextWorld.presence, opponent: guestPresence } };
+      presence: { ...nextWorld.presence, opponent: guestPresence },
+      regionalMapIds: { player: world.mapId,
+        opponent: this.#sourceWorldState?.regionalMapIds.opponent ?? world.mapId } };
     this.#sourceWorldState = previousGuestFollower === undefined ? withPresence : { ...withPresence,
       followers: { ...withPresence.followers, opponent: sameMap ? previousGuestFollower
         : { ...this.sourceFollowerSpawn(withPresence, "opponent", previousGuestFollower.species),
@@ -518,13 +522,18 @@ export class AuthoritativeBattleRoom {
   }
 
   private setSourcePresence(player: RoomPlayer, requestId: string, attached: boolean,
-    avatar: SourceAvatarSnapshot | null): readonly RoomDispatch[] {
+    avatar: SourceAvatarSnapshot | null, requestedMapId?: number): readonly RoomDispatch[] {
     const world = this.#sourceWorldState;
     if (player.side !== "opponent") {
       return [this.error(player.playerId, requestId, "HOST_ONLY", "L'hote reste toujours sur sa carte partagee.")];
     }
     if (world === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune carte narrative partagee.")];
+    }
+    const mapId = requestedMapId ?? world.mapId;
+    if (attached && mapId !== world.mapId) {
+      return [this.error(player.playerId, requestId, "INTERACTION_UNAVAILABLE",
+        "La carte regionale de retour ne correspond pas a celle de l'hote.")];
     }
     const attachableSourceBattle = this.#sourceBattleContext !== null
       && this.#sourceBattleContext.mapId === world.mapId && this.#battleState?.status === "active";
@@ -544,7 +553,8 @@ export class AuthoritativeBattleRoom {
         opponent: { ...this.sourceFollowerSpawn({ ...world, avatars: { ...world.avatars, opponent: nextAvatar } },
           "opponent", guestFollower.species),
         ...(guestFollower.appearance === undefined ? {} : { appearance: guestFollower.appearance }) } },
-      presence: { ...world.presence, opponent: attached ? "shared" : "away" } };
+      presence: { ...world.presence, opponent: attached ? "shared" : "away" },
+      regionalMapIds: { ...world.regionalMapIds, opponent: mapId } };
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },

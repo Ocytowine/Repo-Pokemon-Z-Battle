@@ -3,10 +3,10 @@ import { parseMapBattleMetadata } from "../src/runtime/extract-map-metadata.js";
 
 describe("map battle metadata", () => {
   it("extracts battle presentation settings by map without interpreting comments", () => {
-    expect(parseMapBattleMetadata("[002]\n# Snow map\nBattleBack=Snow\nWildBattleBGM=Salvaje.ogg\nWildVictoryME=VictoriaSalvaje.ogg\nDiveMap=12\nBicycle=false\n[003]\nOutdoor=true\nBicycleAlways=true\n"))
+    expect(parseMapBattleMetadata("[002]\n# Snow map\nBattleBack=Snow\nWildBattleBGM=Salvaje.ogg\nWildVictoryME=VictoriaSalvaje.ogg\nDiveMap=12\nBicycle=false\nMapPosition=0,18,13\n[003]\nOutdoor=true\nBicycleAlways=true\n"))
       .toEqual([{ mapId: 2, battleback: "Snow", wildBattleBgm: "Salvaje.ogg", wildVictoryMe: "VictoriaSalvaje.ogg",
-        outdoor: null, bicycle: false, bicycleAlways: false, diveMap: 12 },
+        outdoor: null, bicycle: false, bicycleAlways: false, diveMap: 12, mapPosition: { region: 0, x: 18, y: 13 } },
       { mapId: 3, battleback: null, wildBattleBgm: null, wildVictoryMe: null,
-        outdoor: true, bicycle: null, bicycleAlways: true, diveMap: null }]);
+        outdoor: true, bicycle: null, bicycleAlways: true, diveMap: null, mapPosition: null }]);
   });
 });

@@ -357,9 +357,10 @@ describe("authoritative battle room", () => {
     room.connect("bob");
 
     const away = room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-away", attached: false, avatar: null });
+      requestId: "guest-away", attached: false, avatar: null, mapId: 7 });
     expect(away.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().sourceWorld?.presence.opponent).toBe("away");
+    expect(room.snapshot().sourceWorld?.regionalMapIds).toEqual({ player: 3, opponent: 7 });
     const hostStep = room.receive("alice", { type: "moveAvatar", version: 15,
       requestId: "host-through-guest", direction: "down", sequence: 1 });
     expect(hostStep[1]?.message).toMatchObject({ type: "sourceWorldUpdated",
@@ -368,15 +369,16 @@ describe("authoritative battle room", () => {
       direction: "left", sequence: 1 })[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE" });
 
     const joined = room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-return", attached: true, avatar: { x: 0, y: 2, direction: "right" } });
+      requestId: "guest-return", attached: true, avatar: { x: 0, y: 2, direction: "right" }, mapId: 3 });
     expect(joined.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().sourceWorld).toMatchObject({ presence: { opponent: "shared" },
+      regionalMapIds: { player: 3, opponent: 3 },
       avatars: { opponent: { x: 0, y: 2, direction: "right" } } });
 
     room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-away-again", attached: false, avatar: null });
+      requestId: "guest-away-again", attached: false, avatar: null, mapId: 7 });
     const safeFallback = room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-return-occupied", attached: true, avatar: { x: 1, y: 2, direction: "up" } });
+      requestId: "guest-return-occupied", attached: true, avatar: { x: 1, y: 2, direction: "up" }, mapId: 3 });
     expect(safeFallback.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().sourceWorld?.avatars.opponent).not.toMatchObject({ x: 1, y: 2 });
   });
@@ -386,7 +388,7 @@ describe("authoritative battle room", () => {
     room.connect("alice");
     room.connect("bob");
     room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-away-during-battle", attached: false, avatar: null });
+      requestId: "guest-away-during-battle", attached: false, avatar: null, mapId: 7 });
     const initial = initialBattle();
     room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "host-battle-before-return",
       context: sourceBattleContext("alice"), playerTeam: initial.teams.player,
@@ -394,7 +396,7 @@ describe("authoritative battle room", () => {
 
     expect(room.receive("bob", { type: "setSourcePresence", version: 15,
       requestId: "guest-return-during-battle", attached: true,
-      avatar: { x: 0, y: 2, direction: "right" } })[0]?.message)
+      avatar: { x: 0, y: 2, direction: "right" }, mapId: 3 })[0]?.message)
       .toMatchObject({ type: "ack" });
     expect(room.snapshot().sourceWorld?.presence.opponent).toBe("shared");
   });
@@ -440,7 +442,7 @@ describe("authoritative battle room", () => {
     } });
 
     room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "guest-away-for-sound", attached: false, avatar: null });
+      requestId: "guest-away-for-sound", attached: false, avatar: null, mapId: 7 });
     expect(room.receive("bob", { type: "emitSourceSound", version: 15,
       requestId: "away-sound", mapId: 3, name: "Choose", volume: 80, pitch: 100 })[0]?.message)
       .toMatchObject({ type: "error", code: "INVALID_PHASE" });
@@ -694,7 +696,7 @@ describe("authoritative battle room", () => {
     room.connect("alice");
     room.connect("bob");
     room.receive("bob", { type: "setSourcePresence", version: 15,
-      requestId: "away-wild-presence", attached: false, avatar: null });
+      requestId: "away-wild-presence", attached: false, avatar: null, mapId: 7 });
     const initial = initialBattle();
     const context = { ...sourceBattleContext("bob"), mapId: 7 };
     const opened = room.receive("bob", { type: "openSourceBattle", version: 15,
@@ -709,7 +711,7 @@ describe("authoritative battle room", () => {
       requestId: "host-reaches-away-wild", world: destination });
     room.receive("bob", { type: "setSourcePresence", version: 15,
       requestId: "away-owner-attaches", attached: true,
-      avatar: { x: 1, y: 2, direction: "up" } });
+      avatar: { x: 1, y: 2, direction: "up" }, mapId: 7 });
     expect(room.snapshot().sourceWorld).toMatchObject({ mapId: 7, presence: { opponent: "shared" } });
 
     const battleId = room.snapshot().battle!.id;

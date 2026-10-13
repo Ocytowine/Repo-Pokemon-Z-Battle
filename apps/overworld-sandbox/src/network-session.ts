@@ -223,7 +223,7 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), world, relocateHost }));
   }
 
-  public setSourcePresence(attached: boolean, avatar: SourceAvatarSnapshot | null): void {
+  public setSourcePresence(attached: boolean, avatar: SourceAvatarSnapshot | null, mapId: number): void {
     const session = this.activeSession;
     const socket = session?.socket;
     if (session === null || session.ticket.side !== "opponent" || socket === null || socket === undefined
@@ -232,7 +232,7 @@ export class OverworldNetworkSession {
       ...(avatar.mode === undefined ? {} : { mode: avatar.mode }),
       ...(avatar.action === undefined ? {} : { action: avatar.action }) };
     socket.send(JSON.stringify({ type: "setSourcePresence", version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), attached, avatar: publicAvatar }));
+      requestId: crypto.randomUUID(), attached, avatar: publicAvatar, mapId }));
   }
 
   public publishSourceScene(scene: SourceSceneSnapshot): boolean {

@@ -53,6 +53,7 @@ import { SourceSceneCoordinator, isSourceMenuTab,
   type SourceSceneActivity } from "./source-scene-coordinator.js";
 import { parseSourceAudio, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
+import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./source-region-map.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
@@ -926,6 +927,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
   onDive: requestSourceDive,
+  onFly: (destination) => { void requestSourceFlight(destination); },
   onPokemonLead: setSourcePartyLead,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
   onPokemonHeldItem: changeSourcePokemonHeldItem,
@@ -1476,7 +1478,7 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     const battleAllowsAttachment = currentBattleAllowsSourceAttachment(world.mapId);
     if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId,
       session.roomBattleActive, battleAllowsAttachment)) {
-      multiplayer.setSourcePresence(true, importedAvatar);
+      multiplayer.setSourcePresence(true, importedAvatar, importedAssets.map.id);
       importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
     } else {
       importedNotice = "Carte différente de celle de l'hôte · progression narrative de l'hôte conservée.";
@@ -1768,7 +1770,8 @@ function sourceMovementMenuModel(): import("./source-menu-view.js").SourceMenuMo
     canDiveHere: sourceMovementMode === "surf" && terrain === SOURCE_TERRAIN.deepWater
       && importedAssets?.mapMetadata.diveMap !== null && unlocks.dive,
     canSurfaceHere: sourceMovementMode === "dive"
-      && importedAssets?.mapMetadata.surfaceMap !== null && unlocks.dive };
+      && importedAssets?.mapMetadata.surfaceMap !== null && unlocks.dive,
+    canFlyHere: importedAssets?.mapMetadata.outdoor === true && unlocks.fly };
 }
 
 function selectSourceMovementMode(mode: "walk" | "mount"): void {
@@ -1821,6 +1824,46 @@ function requestSourceDive(): void {
   }
 }
 
+async function requestSourceFlight(destination: SourceRegionDestination): Promise<void> {
+  if (importedAssets === null || sourceTransitionInProgress) return;
+  const unlocks = sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride);
+  if (!unlocks.fly) {
+    importedNotice = "Activez Tous les déplacements dans Test dev pour essayer le Vol.";
+    renderImportedView();
+    return;
+  }
+  if (importedAssets.mapMetadata.outdoor !== true) {
+    importedNotice = "Le Vol doit être lancé depuis une zone extérieure.";
+    renderImportedView();
+    return;
+  }
+  const visibleDestination = importedAssets.regionMap.regions.some((region) =>
+    sourceVisibleRegionPoints(region, sourceEventState.switches).some((point) => point.destination?.mapId === destination.mapId
+      && point.destination.x === destination.x && point.destination.y === destination.y));
+  if (!visibleDestination) {
+    importedNotice = "Cette destination de Vol n'est pas disponible.";
+    renderImportedView();
+    return;
+  }
+  const overlay = requiredAppElement<HTMLElement>("source-fly-transition");
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const duration = reducedMotion ? 1 : 320;
+  overlay.hidden = false;
+  overlay.style.opacity = "0";
+  try {
+    await overlay.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing: "ease-in", fill: "forwards" }).finished;
+    overlay.style.opacity = "1";
+    sourceScenes.closeMenu();
+    await followSourceTransfer({ eventId: 0, pageIndex: 0, eventX: importedAvatar.x, eventY: importedAvatar.y,
+      targetMapId: destination.mapId, targetX: destination.x, targetY: destination.y, direction: 2 });
+    await overlay.animate([{ opacity: 1 }, { opacity: 0 }], { duration: reducedMotion ? 1 : 420,
+      easing: "ease-out", fill: "forwards" }).finished;
+  } finally {
+    overlay.style.opacity = "0";
+    overlay.hidden = true;
+  }
+}
+
 function applySourceSequenceMovementMode(mode: SourceMovementMode): void {
   sourceMovementMode = mode;
   sourceMovementAction = mode === "mount" ? "climb" : "idle";
@@ -1845,7 +1888,10 @@ function renderSourceMenu(): void {
       profileName: activePlayerSelection.profile.displayName,
       players: (network?.snapshot?.players ?? []).map((player) => ({ side: player.side,
         name: player.profile.profile.displayName, connected: player.connected,
-        connectionState: player.connectionState ?? (player.connected ? "connected" : "reconnecting") })) } });
+        connectionState: player.connectionState ?? (player.connected ? "connected" : "reconnecting"),
+        bodyModel: player.profile.profile.bodyModel,
+        mapId: player.side === network?.ticket.side ? importedAssets.map.id
+          : networkSourceWorld?.regionalMapIds?.[player.side] ?? networkSourceWorld?.mapId ?? null })) } });
 }
 
 function craftSourceAlchemy(itemId: string, quantity: number): {
@@ -2715,7 +2761,7 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
       transfer.targetMapId, sharedMapId, multiplayer.current.roomBattleActive,
       currentBattleAllowsSourceAttachment(sharedMapId))) {
     guestSourceExcursion = false;
-    multiplayer.setSourcePresence(true, importedAvatar);
+    multiplayer.setSourcePresence(true, importedAvatar, transfer.targetMapId);
   }
   publishCurrentSourceWorld(true);
 }
@@ -2728,7 +2774,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     && transfer.targetMapId !== hostMapId;
   if (leavingSharedWorld) {
     guestSourceExcursion = true;
-    multiplayer.setSourcePresence(false, null);
+    multiplayer.setSourcePresence(false, null, transfer.targetMapId);
   }
   sourceTransitionInProgress = true;
   sourceDialogues.cancel();
@@ -2751,14 +2797,17 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
         currentBattleAllowsSourceAttachment(hostMapId));
     if (returningToSharedWorld) {
       guestSourceExcursion = false;
-      multiplayer.setSourcePresence(true, importedAvatar);
-    } else if (next.changedMap) pendingSourceMapEntryAutorun = next.assets.map.id;
+      multiplayer.setSourcePresence(true, importedAvatar, next.assets.map.id);
+    } else {
+      if (guestSession && guestSourceExcursion) multiplayer.setSourcePresence(false, null, next.assets.map.id);
+      if (next.changedMap) pendingSourceMapEntryAutorun = next.assets.map.id;
+    }
     importedNotice = `Arrivée dans ${next.assets.map.name}, en ${transfer.targetX},${transfer.targetY}. Graphismes, événements et français chargés à la demande.`;
   } catch (error) {
     pendingTransferMovementMode = null;
     if (leavingSharedWorld) {
       guestSourceExcursion = false;
-      multiplayer.setSourcePresence(true, importedAvatar);
+      multiplayer.setSourcePresence(true, importedAvatar, importedAssets.map.id);
     }
     importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
   } finally {

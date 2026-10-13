@@ -22,6 +22,8 @@ import { persistSourceAudioChannel, sourceAudioSettings, type SourceAudioChannel
   type SourceAudioSettings } from "./source-audio-settings.js";
 import { SourcePokedexView } from "./source-pokedex-view.js";
 import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
+import { sourceRegionForMap, sourceRegionImageUrl, sourceVisibleRegionPoints,
+  type SourceRegionDestination, type SourceRegionPoint } from "./source-region-map.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -76,6 +78,7 @@ export interface SourceMenuMovementModel {
   readonly unlocks: SourceMovementUnlocks;
   readonly canDiveHere: boolean;
   readonly canSurfaceHere: boolean;
+  readonly canFlyHere: boolean;
 }
 
 export interface SourceMenuCoopModel {
@@ -86,7 +89,8 @@ export interface SourceMenuCoopModel {
   readonly roomCode: string;
   readonly profileName: string;
   readonly players: readonly { readonly side: "player" | "opponent"; readonly name: string;
-    readonly connected: boolean; readonly connectionState: PlayerConnectionState }[];
+    readonly connected: boolean; readonly connectionState: PlayerConnectionState;
+    readonly bodyModel: string; readonly mapId: number | null }[];
 }
 
 export interface SourceMenuViewCallbacks {
@@ -104,6 +108,7 @@ export interface SourceMenuViewCallbacks {
   readonly onDevLevelCap: (levelCap: number | null) => void;
   readonly onGrantTestPokemon: (species: string, level: number) => void;
   readonly onDive: () => void;
+  readonly onFly: (destination: SourceRegionDestination) => void;
   readonly onPokemonLead: (pokemonId: string) => void;
   readonly onPokemonDetails: (pokemonId: string) => void;
   readonly onPokemonHeldItem: (pokemonId: string, itemId: string | null) => {
@@ -166,6 +171,8 @@ export class SourceMenuView {
   private alchemyNotice: string | null = null;
   private alchemyPage = 0;
   private alchemyPageTurn: "forward" | "backward" | null = null;
+  private selectedRegionPointKey: string | null = null;
+  private regionMapMode: "consult" | "fly" = "consult";
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -178,6 +185,7 @@ export class SourceMenuView {
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
+    content.classList.toggle("source-menu-content-map", model.tab === "map");
     const header = model.tab === "team"
       ? { context: "COMPAGNONS", title: "Équipe Pokémon", meta: `${model.eventState.party.members.length}/6` }
       : model.tab === "pokedex"
@@ -186,6 +194,8 @@ export class SourceMenuView {
         ? { context: "OUTILS LOCAUX", title: "Test dev", meta: "PERSONNEL" }
         : model.tab === "alchemy"
           ? { context: "ATELIER", title: "Alchimie Pokémon", meta: `RECETTES ${model.alchemyUnlockLevel + 1}` }
+        : model.tab === "map"
+          ? { context: "KALOS", title: "Carte régionale", meta: model.assets.map.name }
         : model.tab === "save"
           ? { context: "PROGRESSION", title: "Sauvegarde", meta: model.worldSave === null ? "VIDE" : "MANUELLE" }
           : model.tab === "coop"
@@ -214,13 +224,82 @@ export class SourceMenuView {
     if (model.tab === "team") this.renderTeam(content, model);
     else if (model.tab === "pokedex") this.pokedexView.render(content, { history: model.eventState.pokedex,
       party: model.eventState.party, ranch: model.eventState.ranch,
-      catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets });
+      catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets, regionMap: model.assets.regionMap });
     else if (model.tab === "bag") this.renderBag(content, model);
+    else if (model.tab === "map") this.renderRegionMap(content, model);
     else if (model.tab === "alchemy") this.renderAlchemy(content, model);
     else if (model.tab === "movement") this.renderDevTools(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
     else if (model.tab === "coop") this.renderCoop(content, model.coop);
     else this.renderOptions(content);
+  }
+
+  private renderRegionMap(content: HTMLElement, model: SourceMenuViewModel): void {
+    const region = sourceRegionForMap(model.assets.regionMap, model.assets.map.id)
+      ?? model.assets.regionMap.regions[0] ?? null;
+    if (region === null) {
+      content.innerHTML = '<div class="source-menu-empty"><strong>Carte indisponible</strong><small>Aucune région ne correspond à cette zone.</small></div>';
+      return;
+    }
+    const points = sourceVisibleRegionPoints(region, model.eventState.switches);
+    if (!model.movement.unlocks.fly || !model.movement.canFlyHere) this.regionMapMode = "consult";
+    const pointGroups = new Map<string, SourceRegionPoint[]>();
+    for (const point of points) {
+      if (point.name === "") continue;
+      const key = `${point.x}:${point.y}`;
+      pointGroups.set(key, [...pointGroups.get(key) ?? [], point]);
+    }
+    const current = model.assets.regionMap.mapPositions.get(model.assets.map.id) ?? null;
+    const fallbackKey = current === null ? pointGroups.keys().next().value as string | undefined
+      : `${current.x}:${current.y}`;
+    if (this.selectedRegionPointKey === null || !pointGroups.has(this.selectedRegionPointKey)) {
+      this.selectedRegionPointKey = fallbackKey !== undefined && pointGroups.has(fallbackKey)
+        ? fallbackKey : pointGroups.keys().next().value as string | null ?? null;
+    }
+    const selected = this.selectedRegionPointKey === null ? [] : pointGroups.get(this.selectedRegionPointKey) ?? [];
+    const markers = [...pointGroups].map(([key, group]) => {
+      const point = group[0]!;
+      const label = [...new Set(group.map((entry) => entry.name))].join(" / ");
+      const flyable = group.some((entry) => entry.destination !== null);
+      return `<button type="button" class="source-region-hit${key === this.selectedRegionPointKey ? " selected" : ""}${flyable ? " flyable" : ""}" data-source-region-point="${key}" style="--map-x:${point.x};--map-y:${point.y}" aria-label="${escapeSourceHtml(label)}"${this.regionMapMode === "fly" && !flyable ? " disabled" : ""}></button>`;
+    }).join("");
+    const selectedNames = [...new Set(selected.map((point) => point.name))].join(" · ");
+    const selectedDescriptions = [...new Set(selected.map((point) => point.description).filter(Boolean))].join(" · ");
+    const regionalPlayers = model.coop.active && model.coop.players.length > 0 ? model.coop.players : [{ side: "player" as const,
+      name: "Vous", connected: true, connectionState: "connected" as const,
+      bodyModel: model.profileBodyModel, mapId: model.assets.map.id }];
+    const playerMarkers = regionalPlayers.filter((player) => player.connected && player.mapId !== null)
+      .map((player) => ({ player, position: model.assets.regionMap.mapPositions.get(player.mapId!) }))
+      .filter((entry) => entry.position?.region === region.id)
+      .map(({ player, position }) => {
+        const playerMarker = player.bodyModel.includes("feminine") ? "mapPlayer001.png" : "mapPlayer000.png";
+        const role = player.side === "player" ? "host" : "guest";
+        return `<span class="source-region-player ${role}" style="--map-x:${position!.x};--map-y:${position!.y};--map-player:url('/__pokemon-z/source/Graphics/Pictures/${playerMarker}')" aria-label="${role === "host" ? "Hôte" : "Invité"} : ${escapeSourceHtml(player.name)}"><i>${role === "host" ? "H" : "I"}</i></span>`;
+      }).join("");
+    const flyEnabled = model.movement.unlocks.fly && model.movement.canFlyHere;
+    const modeControls = `<div class="source-region-modes" role="group" aria-label="Mode de la carte"><button type="button" data-region-mode="consult" class="${this.regionMapMode === "consult" ? "active" : ""}">Consultation</button><button type="button" data-region-mode="fly" class="${this.regionMapMode === "fly" ? "active" : ""}"${flyEnabled ? "" : " disabled"}>Vol</button></div>`;
+    const coopLegend = model.coop.active ? `<div class="source-region-presence">${regionalPlayers.filter((player) => player.connected).map((player) => `<span class="${player.side === "player" ? "host" : "guest"}"><i></i>${player.side === "player" ? "Hôte" : "Invité"} · ${escapeSourceHtml(player.name)}</span>`).join("")}</div>` : "";
+    const modeHint = this.regionMapMode === "fly" ? "Choisissez une destination marquée pour décoller."
+      : !model.movement.unlocks.fly ? "Le Vol peut être activé dans Test dev."
+        : !model.movement.canFlyHere ? "Le Vol doit être lancé depuis une zone extérieure." : "Explorez les lieux et leurs descriptions.";
+    this.setMenuHeader(region.name.toLocaleUpperCase("fr-FR"), "Carte régionale", selectedNames || "Zone inconnue");
+    content.innerHTML = `<div class="source-menu-title source-region-title"><div><small>CARTE DU MONDE</small><h3>${escapeSourceHtml(region.name)}</h3></div><span>${points.length} REPÈRES</span></div>
+      <div class="source-region-layout"><section class="source-region-map ${this.regionMapMode === "fly" ? "fly-mode" : "consult-mode"}" aria-label="Carte de ${escapeSourceHtml(region.name)}"><img src="${sourceRegionImageUrl(region.filename)}" alt="Carte de ${escapeSourceHtml(region.name)}"><div class="source-region-overlay">${markers}${playerMarkers}</div>${coopLegend}</section>
+      <aside class="source-region-details"><div><small>${this.regionMapMode === "fly" ? "DESTINATION" : "LIEU SÉLECTIONNÉ"}</small><h4>${escapeSourceHtml(selectedNames || "Zone inconnue")}</h4>${selectedDescriptions === "" ? "" : `<p>${escapeSourceHtml(selectedDescriptions)}</p>`}<em>${escapeSourceHtml(modeHint)}</em></div>${modeControls}</aside></div>`;
+    content.querySelectorAll<HTMLButtonElement>("[data-region-mode]").forEach((button) => button.addEventListener("click", () => {
+      this.regionMapMode = button.dataset.regionMode === "fly" ? "fly" : "consult";
+      this.renderRegionMap(content, model);
+    }));
+    content.querySelectorAll<HTMLButtonElement>("[data-source-region-point]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.selectedRegionPointKey = button.dataset.sourceRegionPoint ?? null;
+        if (this.regionMapMode === "fly") {
+          const destination = pointGroups.get(this.selectedRegionPointKey)?.find((point) => point.destination !== null)?.destination;
+          if (destination !== null && destination !== undefined) { this.regionMapMode = "consult"; this.callbacks.onFly(destination); }
+          return;
+        }
+        this.renderRegionMap(content, model);
+      }));
   }
 
   private renderAlchemy(content: HTMLElement, model: SourceMenuViewModel): void {
@@ -693,7 +772,7 @@ export class SourceMenuView {
 
   private renderDevTools(content: HTMLElement, model: SourceMenuViewModel): void {
     const movement = model.movement;
-    const capabilities = (["sprint", "mount", "climb", "surf", "dive", "waterfall"] as const)
+    const capabilities = (["sprint", "mount", "climb", "surf", "dive", "waterfall", "fly"] as const)
       .map((capability: SourceMovementCapability) => `<li class="${movement.unlocks[capability] ? "ready" : "locked"}"><i></i><span><strong>${sourceMovementCapabilityLabel(capability)}</strong><small>${movement.unlocks[capability] ? "Disponible" : "Encore verrouillé par la progression"}</small></span></li>`).join("");
     const diveLabel = movement.canSurfaceHere ? "Remonter à la surface" : "Plonger";
     const pockets = SOURCE_BAG_POCKETS.map((pocket) => `<option value="${pocket.id}"${pocket.id === this.selectedDevPocket ? " selected" : ""}>${escapeSourceHtml(pocket.name)}</option>`).join("");

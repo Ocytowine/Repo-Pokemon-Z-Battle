@@ -353,8 +353,10 @@ export function parseClientMessage(payload: string): ClientMessage {
         || !isIdentifier(value.requestId) || !isIdentifier(value.battleId)) return invalid("leaveBattle mal forme");
       return value as unknown as ClientMessage;
     case "setSourcePresence":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "attached", "avatar"])
+      if (!hasExactKeys(value, ["type", "version", "requestId", "attached", "avatar", "mapId"])
+        && !hasExactKeys(value, ["type", "version", "requestId", "attached", "avatar"])
         || !isIdentifier(value.requestId) || typeof value.attached !== "boolean"
+        || value.mapId !== undefined && !safeInteger(value.mapId, 1, 999_999)
         || value.attached && !isSourceAvatar(value.avatar)
         || !value.attached && value.avatar !== null) {
         return invalid("setSourcePresence mal forme");

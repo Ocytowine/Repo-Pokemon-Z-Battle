@@ -30,6 +30,8 @@ La commande `pnpm extract:pbs` produit :
 | `localization.json` | catalogue francais resolu avec provenance par texte |
 | `localization-report.json` | priorites, compteurs et conflits de traduction |
 | `map-infos.json` | 507 objets `RPG::MapInfo` normalises |
+| `map-battle-metadata.json` | presentation de combat, terrain et position regionale par carte |
+| `region-map.json` | regions, images, reperes et destinations de Vol issus de `PBS/townmap.txt` |
 | `scripts-manifest.json` | index, noms et hashes des 262 scripts Ruby |
 | `runtime-report.json` | controle Marshal, cartes, localisation et charge `Table` |
 | `scripts/*.rb` | scripts decomprimes de reference, jamais executes |

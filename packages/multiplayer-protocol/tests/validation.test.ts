@@ -260,15 +260,17 @@ describe("multiplayer protocol", () => {
   });
 
   it("validates source-map presence changes", () => {
-    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p1","attached":false,"avatar":null}'))
+    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p1","attached":false,"avatar":null,"mapId":7}'))
       .toMatchObject({ type: "setSourcePresence", attached: false });
-    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"}}'))
+    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"legacy","attached":false,"avatar":null}'))
+      .toMatchObject({ type: "setSourcePresence", attached: false });
+    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2","attached":true,"avatar":{"x":1,"y":2,"direction":"up"},"mapId":7}'))
       .toMatchObject({ type: "setSourcePresence", attached: true, avatar: { x: 1, y: 2 } });
-    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2b","attached":true,"avatar":{"x":1,"y":2,"direction":"up","mode":"surf","action":"step"}}'))
+    expect(parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2b","attached":true,"avatar":{"x":1,"y":2,"direction":"up","mode":"surf","action":"step"},"mapId":7}'))
       .toMatchObject({ type: "setSourcePresence", avatar: { mode: "surf", action: "step" } });
-    expect(() => parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2c","attached":true,"avatar":{"x":1,"y":2,"direction":"up","pattern":1}}'))
+    expect(() => parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p2c","attached":true,"avatar":{"x":1,"y":2,"direction":"up","pattern":1},"mapId":7}'))
       .toThrow("setSourcePresence mal forme");
-    expect(() => parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p3","attached":true,"avatar":null}'))
+    expect(() => parseClientMessage('{"type":"setSourcePresence","version":15,"requestId":"p3","attached":true,"avatar":null,"mapId":7}'))
       .toThrow("setSourcePresence mal forme");
   });
 
