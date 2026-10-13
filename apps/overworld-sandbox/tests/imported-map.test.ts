@@ -199,9 +199,10 @@ describe("imported RPG Maker map", () => {
 
   it("loads the minimal trainer data needed by scripted battles", () => {
     expect(parseImportedTrainers({ records: [{ trainerType: "CRISANTO1", name: "Crisanto", version: 2,
+      items: ["SUPERPOTION"],
       pokemon: [{ species: "CHESPIN", level: 5, heldItem: "ORANBERRY",
         moves: [null, null, null, null], abilityIndex: 1 }] }] })).toEqual([
-      { trainerType: "CRISANTO1", name: "Crisanto", version: 2,
+      { trainerType: "CRISANTO1", name: "Crisanto", version: 2, items: ["SUPERPOTION"],
         pokemon: [{ species: "CHESPIN", level: 5, heldItem: "ORANBERRY",
           moves: [null, null, null, null], abilityIndex: 1 }] },
     ]);

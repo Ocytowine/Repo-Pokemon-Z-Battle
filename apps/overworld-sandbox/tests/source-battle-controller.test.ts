@@ -159,7 +159,8 @@ describe("source battle controller", () => {
     expect(eventState.pendingEncounter).toBeNull();
     expect(completed).toHaveBeenCalledWith(true);
     expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({
-      experience: expect.objectContaining({ pokemonName: "Marisson", amount: expect.any(Number) }),
+      experience: expect.objectContaining({ pokemonName: "Marisson", amount: expect.any(Number),
+        calculation: expect.objectContaining({ formula: "legacy-wild", result: expect.any(Number) }) }),
     }));
   });
 

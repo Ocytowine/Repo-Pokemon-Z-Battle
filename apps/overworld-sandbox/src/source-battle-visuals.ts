@@ -148,6 +148,7 @@ export interface SourceBattleVisualOptions {
   readonly effectsVolume?: number;
   readonly onBattleAudioStart?: () => void;
   readonly onBattleAudioEnd?: () => void;
+  readonly abilityName?: (internalName: string) => string;
 }
 
 const BATTLE_STATUS_ROWS: Readonly<Record<string, { readonly row: number; readonly label: string }>> = {
@@ -497,7 +498,9 @@ export class SourceBattleVisuals {
 
   async playTurn(before: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): Promise<void> {
     const session = this.#audioSession;
-    for (const step of buildSourceBattlePresentationSequence(before, events)) {
+    const presentationOptions = this.options.abilityName === undefined
+      ? {} : { abilityName: this.options.abilityName };
+    for (const step of buildSourceBattlePresentationSequence(before, events, presentationOptions)) {
       const stepSide = "side" in step ? step.side : null;
       const active = stepSide === null ? null : step.state.teams[stepSide];
       const stepSlot = active === null ? 0 : Math.max(0,

@@ -197,19 +197,19 @@ describe("multiplayer protocol", () => {
         defeatText: "Perdu" }, rewards: { opponents: [{ memberId: "p1", species: "VENONAT", level: 9,
           baseExperience: 61 }], trainerBaseMoney: 30, experience: { levelCap: 17, experienceDisabled: false,
           boostTenPercent: false, boostTwentyPercent: false } }, continuation: "trainer-sequence" } as const;
-    for (const functionCode of ["00F", "009", "012", "013", "01E", "022", "023", "027", "028", "049",
+    for (const functionCode of ["00F", "009", "012", "013", "01E", "022", "023", "027", "028", "048", "049",
       "04B", "04D", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A7", "0AA", "0AD",
       "0B9", "0BA", "0BC", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
       const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, functionCode };
-      const team = { ...duelTeam, members: [{ ...duelTeam.members[0],
+      const team = { ...duelTeam, items: ["SUPERPOTION"], members: [{ ...duelTeam.members[0],
         heldItem: "EVIOLITE" as const, canEvolve: true,
         volatile: { confusionTurns: 2, flinched: false, focusEnergy: 2, identified: true,
           disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0, bindingMove: null,
           bindingTurns: 0, cursed: false, lastMoveUsed: "TACKLE", activeTurns: 1, protected: false,
-          endured: false, tauntTurns: 0, rage: false }, moves: [{ move, pp: move.pp }] }] };
+          endured: false, protectRate: 2, tauntTurns: 0, rage: false }, moves: [{ move, pp: move.pp }] }] };
       expect(parseClientMessage(JSON.stringify({ type: "openSourceBattle", version: 15,
         requestId: `source-${functionCode}`, context, playerTeam: duelTeam, opponentTeam: team,
-        battleItems: {} }))).toMatchObject({ opponentTeam: { members: [{ volatile: { confusionTurns: 2 },
+        battleItems: {} }))).toMatchObject({ opponentTeam: { items: ["SUPERPOTION"], members: [{ volatile: { confusionTurns: 2, protectRate: 2 },
           moves: [{ move: { functionCode } }] }] } });
     }
   });

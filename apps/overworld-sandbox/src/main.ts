@@ -55,6 +55,7 @@ import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
+import { SourceBattleReportStore } from "./source-battle-report.js";
 import { SourceDialogueView } from "./source-dialogue-view.js";
 import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
@@ -352,6 +353,21 @@ function guestDirectSourceTransfer(active: ActiveSourceAutorun): ImportedTransfe
 
 function startPendingSourceEncounter(): boolean {
   return sourceBattles.startPendingEncounter();
+}
+
+function downloadSourceBattleReport(): void {
+  const payload = sourceBattleReports.serialize();
+  const report = sourceBattleReports.report;
+  if (payload === null || report === null) return;
+  const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = `pokemon-z-combat-${report.battleId.replace(/[^a-zA-Z0-9_-]+/gu, "-")}.json`;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => { URL.revokeObjectURL(url); }, 0);
 }
 
 function currentSourceWorldActors(narrativeState: SourceEventState = sourceEventState): readonly SourceWorldActorSnapshot[] {
@@ -939,12 +955,15 @@ const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   },
   onMoveReorder: reorderSourcePokemonMoves,
 });
-const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter);
+const sourceBattleReports = new SourceBattleReportStore();
+const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter, downloadSourceBattleReport);
 const sourceBattleVisuals = new SourceBattleVisuals({
   musicVolume: sourceAudioPreferences.music / 100,
   effectsVolume: sourceAudioPreferences.effects / 100,
   onBattleAudioStart: () => sourcePresentation.pauseForBattle(),
   onBattleAudioEnd: () => sourcePresentation.resumeAfterBattle(),
+  abilityName: (internalName) => importedAssets?.battleCatalog.abilities
+    .find((ability) => ability.internalName === internalName)?.name ?? internalName,
 });
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
   console.warn(`[player-profile] ${error instanceof Error ? error.message : "profil indisponible"}`);
@@ -973,6 +992,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     persistSourceEventState();
   },
   setNotice: (notice) => { importedNotice = notice; },
+  battleReports: sourceBattleReports,
   render,
   openSharedBattle: (draft) => multiplayer.openSourceBattle({ ...draft, battleItems: battleItemInventory() }),
 });
@@ -1094,11 +1114,24 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   },
   onBattleStarted: (battleId, state) => {
     sessionStorage.setItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY, battleId);
+    sourceBattleReports.start({ battleId, mode: "coop", viewerSide: networkBattleViewerSide(), state,
+      context: multiplayer.current?.snapshot?.battle?.sourceContext ?? null });
     beginNetworkBattlePresentation(battleId, state);
   },
   onBattleExpanded: presentNetworkBattleExpansion,
-  onBattleTurnResolved: presentNetworkBattleTurn,
-  onBattleReplacementResolved: presentNetworkBattleTurn,
+  onBattleTurnResolved: (battleId, before, state, events, trace, actions) => {
+    sourceBattleReports.recordTurn({ battleId, before, after: state, events, trace, actions });
+    const context = multiplayer.current?.snapshot?.battle?.sourceContext;
+    if (state.status === "finished" && (context === null || context === undefined)) {
+      sourceBattleReports.finish(battleId, state,
+        state.winner === networkBattleViewerSide() ? "won" : "lost");
+    }
+    presentNetworkBattleTurn(battleId, before, state, events);
+  },
+  onBattleReplacementResolved: (battleId, before, state, events) => {
+    sourceBattleReports.recordTurn({ battleId, kind: "replacement", before, after: state, events, trace: [] });
+    presentNetworkBattleTurn(battleId, before, state, events);
+  },
   onBattleEscaped: (battleId, state) => {
     if (networkPresentedBattle?.id === battleId) networkPresentedBattle = { id: battleId, state };
     networkBattleAnimating = true;
@@ -1121,6 +1154,7 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     if (assets === null || playerId === undefined) return false;
     networkBattleSettlements.set(settlement.battleId, settlement);
     const previousParty = sourceEventState.party;
+    const moneyBefore = sourceEventState.money;
     const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog,
       settlement.capturedPokemon === undefined ? undefined
         : activePokemonCreationContext(networkBattleContexts.get(settlement.battleId)?.mapId
@@ -1128,9 +1162,13 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     sourceEventState = result.state;
     persistSourceEventState();
     if (result.applied) enqueueAllSourceProgressions();
-    if (result.applied) networkBattleOutcomes.set(settlement.battleId, {
-      experiences: sharedBattleExperiencePresentations(previousParty, result.state.party,
-        result.gains, assets.battleCatalog),
+    const reportExperiences = sharedBattleExperiencePresentations(previousParty, result.state.party,
+      result.gains, assets.battleCatalog);
+    const reportOutcome: SourceBattleOutcome = {
+      experiences: reportExperiences,
+      ...(reportExperiences.length > 0 ? {} : { experienceNotAwardedReason: settlement.outcome === "captured"
+        ? "capture" as const : settlement.outcome === "escaped" ? "escaped" as const
+          : settlement.outcome === "lost" ? "defeat" as const : "no-eligible-recipient" as const }),
       ...(result.moneyDelta === 0 ? {} : { money: result.moneyDelta }),
       ...(settlement.outcome !== "captured" ? {} : { captured: {
         name: settlement.capturedPokemon?.battler.name
@@ -1139,7 +1177,11 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
         ...(settlement.capturedPokemon === undefined ? {} : {
           destination: previousParty.members.length < 6 ? "team" as const : "ranch" as const }),
       } }),
-    });
+    };
+    if (result.applied) networkBattleOutcomes.set(settlement.battleId, reportOutcome);
+    sourceBattleReports.recordSettlement({ battleId: settlement.battleId, settlement,
+      outcome: reportOutcome, moneyBefore, moneyAfter: result.state.money });
+    sourceBattleReports.finish(settlement.battleId, settlement.state, settlement.outcome);
     const experience = result.gains.reduce((total, gain) => total + gain.gained, 0);
     importedNotice = result.applied
       ? `Combat réglé · ${experience} EXP${result.moneyDelta === 0 ? "" : ` · ${result.moneyDelta > 0 ? "+" : ""}${result.moneyDelta} ₽`}.`
@@ -2342,7 +2384,8 @@ function renderImportedView(): void {
       + ` · ${activeSequence.runner.pendingRoutes} route(s)`;
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice, hudNotice: coopHudNotice,
-    parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice });
+    parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
+    battleReport: sourceBattleReports.summary });
   renderSourceDialogue();
   renderEncounter();
   renderSourceMenu();

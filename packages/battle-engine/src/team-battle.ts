@@ -49,7 +49,15 @@ function cloneBattler(battler: BattlerState): BattlerState {
 function cloneTeam(team: BattleTeam): BattleTeam {
   return { activeIndex: team.activeIndex,
     ...(team.activeIndices === undefined ? {} : { activeIndices: [...team.activeIndices] }),
+    ...(team.items === undefined ? {} : { items: [...team.items] }),
     members: team.members.map(cloneBattler) };
+}
+
+function consumeTrainerItem(team: BattleTeam, itemId: string): BattleTeam {
+  if (team.items === undefined) return team;
+  const index = team.items.indexOf(itemId);
+  if (index < 0) return team;
+  return { ...team, items: team.items.filter((_, candidate) => candidate !== index) };
 }
 
 function cloneTeams(state: TeamBattleState): Record<BattleSide, BattleTeam> {
@@ -238,14 +246,33 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const itemOrder = SIDES.filter((side) => actions[side].kind === "item");
   const captureOrder = SIDES.filter((side) => actions[side].kind === "capture");
 
+  for (const side of SIDES) {
+    const action = actions[side];
+    if (action.kind === "move") moveActions[side] = action;
+  }
+  const pursuitEvents: BattleEvent[] = [];
+  const pursuitTrace: TeamTurnResult["trace"][number][] = [];
+  let effects = state.effects;
+  const pursuitSides = SIDES.filter((side) => {
+    const action = moveActions[side];
+    const slot = action === undefined ? undefined : activePokemon(teams[side]).moves[action.moveIndex];
+    return slot?.move.functionCode === "088" && actions[opponentOf(side)].kind === "switch";
+  });
+  for (const side of pursuitSides) {
+    const action = moveActions[side]!;
+    const target = opponentOf(side);
+    const intercepted = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) },
+      { [side]: action }, rng, { endOfTurn: false, switchingTarget: target });
+    storeActiveBattlers(teams, intercepted.state);
+    pursuitEvents.push(...withoutTurnEnvelope(intercepted.events));
+    pursuitTrace.push(...intercepted.trace);
+    effects = intercepted.state.effects;
+    delete moveActions[side];
+  }
   for (const side of switchOrder) {
     const action = actions[side];
     if (action.kind !== "switch") continue;
     switchEvents.push(...switchPokemon(teams, side, action.teamIndex, "voluntary"));
-  }
-  for (const side of SIDES) {
-    const action = actions[side];
-    if (action.kind === "move") moveActions[side] = action;
   }
   for (const side of itemOrder) {
     const action = actions[side];
@@ -257,6 +284,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
     teams[side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };
+    teams[side] = consumeTrainerItem(teams[side], action.itemId);
     itemEvents.push({ type: "trainerItemUsed", side, itemId: action.itemId,
       targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
   }
@@ -284,11 +312,11 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     }
   }
 
-  const result = resolveSelectedMoves(duelState(state, teams), moveActions, rng,
+  const result = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) }, moveActions, rng,
     { switchingTarget: switchOrder[0] ?? null });
   storeActiveBattlers(teams, result.state);
   const moveEvents: BattleEvent[] = withoutTurnEnvelope(result.events);
-  const trace: TeamTurnResult["trace"] = result.trace;
+  const trace: TeamTurnResult["trace"] = [...pursuitTrace, ...result.trace];
   const nextTurn = result.state.turn;
   const orderEvent = result.events.find((event) => event.type === "actionOrdered");
   const moveOrder: readonly BattleSide[] = orderEvent?.order ?? [];
@@ -302,6 +330,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   }
 
   const orderedActions = [
+    ...pursuitSides.map((side) => ({ side, kind: "move" as const })),
     ...switchOrder.map((side) => ({ side, kind: "switch" as const })),
     ...itemOrder.map((side) => ({ side, kind: "item" as const })),
     ...captureOrder.map((side) => ({ side, kind: "capture" as const })),
@@ -311,6 +340,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const events: TeamBattleEvent[] = [
     { type: "turnStarted", turn: state.turn },
     { type: "teamActionOrdered", order: orderedActions },
+    ...pursuitEvents,
     ...switchEvents,
     ...itemEvents,
     ...captureEvents,

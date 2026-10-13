@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-12.
+Derniere mise a jour : 2026-10-13.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -1467,12 +1467,27 @@ Intimidation et Rege-Force disposent de leurs hooks requis. Un audit local a
 projete 19 instances et resolu leurs 74 emplacements de capacites sur les donnees
 2.12 FR. Tests complets, typecheck et build passent sur ce jalon.
 
-Dettes explicites de cette frontiere : la Super Potion de Canola n'est pas encore
-selectionnee par l'IA ; Poursuite sait calculer son bonus mais n'intercepte pas
-encore le Pokemon sortant dans l'ordonnanceur d'equipe ; l'UI agrege les impacts
-des frappes multiples et Detection/Abri n'appliquent pas encore la probabilite
-decroissante des usages consecutifs. Ne pas declarer le combat de Canola fidele de
-bout en bout avant ces quatre raccords. Peche/Surf de Map017 restent hors scope.
+Fermeture P0 Forteresse du 2026-10-13 : les quatre raccords sont implementes dans
+le noyau commun. `ImportedTrainer.items` conserve les objets source et
+`BattleTeam.items` porte uniquement l'inventaire du Dresseur controle par le jeu ;
+le Sac personnel reste hors de ce snapshot. La room est autoritaire, consomme
+l'objet une fois et restaure ce reliquat apres reconnexion. Le choix de soin suit
+les seuils Ruby : garanti sous 25 % des PV, puis tirage de 30 % sous 50 %. Cette
+regle minimale ferme Canola sans pretendre remplacer la future IA tactique.
+
+Poursuite est extraite de l'ordre normal lorsqu'une cible change : elle frappe et
+double ses degats sur le Pokemon sortant, puis le changement a lieu, en simple et
+en double. `protectRate` appartient aux volatiles tactiques, double apres chaque
+Protection/Detection/Tenacite reussie et revient a 1 apres echec ou rupture de la
+chaine. Les frappes `0C0` produisent des evenements `damageApplied` distincts ; le
+sequenceur joue donc chaque impact et chaque palier de PV. Le validateur Coop
+accepte l'inventaire PNJ borne et `protectRate`. `088`, `0AA` et `0C0` quittent la
+liste partielle : le registre courant comptait 55 fonctions de capacite supportees,
+4 partielles, 28 talents actifs et 17/18 methodes d'evolution. La regeneration du
+rapport local n'a pas ete possible sur ce poste car le chemin source memorise dans
+`.pokemon-z/local-test.json` n'existe plus ; les comptes proviennent directement
+des registres testes. La recette manuelle Forteresse et la matrice
+`STAB-BATTLE-1` restent a faire. Peche/Surf de Map017 restent hors scope.
 
 Correctif de projection Coop du 2026-10-09 : le validateur strict du protocole
 n'avait pas repris `030` apres son ajout au type et au resolveur du moteur. Une
@@ -2434,6 +2449,112 @@ combats doubles source et leurs variantes hote/invite dependent des scenes et
 regles atteignables. Le statut devient donc `validation partielle suspendue par
 dependances`, sans bloquer objets, capture et les lots verticaux de regles de
 combat. La recette complete reprendra apres ces dependances.
+
+## Rapport de diagnostic de combat exportable
+
+Jalon du 2026-10-13 : le panneau `Moteur` conserve maintenant un rapport JSON du
+combat courant puis du dernier combat termine. Il contient le contexte et l'etat
+initial, chaque action avec son camp/emplacement, chaque etat avant/apres un tour, les evenements, la trace exacte du RNG et
+des calculs de degats, les remplacements, puis le reglement personnel. Ce dernier
+porte les entrees et sorties utiles au calcul d'EXP (adversaires, experience de
+base, niveaux, participants, politique de plafond/bonus, gains et niveaux obtenus),
+l'argent avant/apres, les objets consommes et la capture eventuelle. Le bouton
+`Telecharger le JSON` produit un fichier directement transmissible pour analyse.
+
+Autorite : le noyau local en solo et la room en Coop. La room transmet desormais
+la `trace` autoritaire avec `turnResolved`; le client ne recalcule pas les effets.
+Domaine et audience : diagnostic personnel du participant, non replique comme un
+etat de jeu. Persistance : aucune; seul le combat courant ou le dernier rapport de
+la page reste en memoire. Le Sac complet et la sauvegarde ne sont jamais inclus,
+seuls les objets effectivement presents dans le snapshot tactique ou le reglement
+apparaissent. Une reconnexion commence un rapport depuis le snapshot autoritaire
+restaure et y joint le reglement idempotent recu ensuite.
+
+Le panneau n'affiche plus l'inventaire ni l'equipe en une phrase illimitee : ces
+deux contenus sont replies par defaut et leur resume indique seulement le nombre
+de sortes/objets ou de Pokemon. Les erreurs et le journal courant restent visibles
+sans allonger la page.
+
+Recette manuelle : terminer un combat sauvage puis un combat de Dresseur en solo,
+telecharger chaque rapport et verifier `turns[].trace`, les etats avant/apres et
+`settlements`. Refaire comme hote et invite; les deux rapports doivent partager
+les memes tours autoritaires, tandis que chaque reglement conserve seulement les
+recompenses de son proprietaire. Tester enfin une capture, une defaite et une fuite.
+
+Complement du 2026-10-13 : `captureAttempted.calculation` conserve desormais le
+taux de base, le taux modifie par la Ball, les termes PV, le multiplicateur de
+statut, le taux final, le seuil des secousses, le tirage de capture critique et
+chaque tirage de secousse. Master Ball et capture automatique par depassement du
+taux indiquent explicitement leur motif sans inventer de RNG. Les gains d'EXP
+embarquent eux aussi leur formule executee et chaque arrondi intermediaire :
+partage entre participants, bonus Dresseur, division par cinq, ajustement de
+niveau, interrupteurs de bonus/desactivation, Oeuf Chance et plafond. Le chemin
+solo historique `legacy-wild` expose sa formule distincte au lieu de la masquer;
+le rapport indique aussi pourquoi aucune EXP n'a ete attribuee lors d'une capture,
+une fuite, une defaite ou faute de beneficiaire eligible.
+
+Correctif diagnostic du 2026-10-13 : un rapport sauvage contre Helionceau a mis
+en evidence que l'identite `RIVALRY` etait conservee mais encore inerte. Le
+calculateur commun applique desormais le comportement reel du Ruby de Z lorsque
+les deux combattants ont un genre male ou femelle : 1,25 pour le meme genre et
+aucune reduction pour des genres opposes. Cette implementation differe de la regle
+Pokemon habituelle et meme de l'estimation de l'IA Ruby, qui emploie 0,75, mais le
+calcul de combat source fait autorite. Un genre absent ou asexue reste neutre. La
+trace de degats expose separement le talent et son multiplicateur. Le rapport
+analyse reste donc correct a 32 degats contre Feunnec male. Autorite : noyau local
+en solo et meme noyau dans la room ; etat :
+genres publics du snapshot tactique ; persistance et intentions reseau : aucune
+donnee nouvelle ; audience : participants via la trace autoritaire.
+
+Audit de conformite des talents du 2026-10-13 : la presence d'un identifiant dans
+le type `ImplementedBattleAbility` n'est plus employee seule comme preuve de
+support. Une matrice exhaustive doit maintenant contenir une entree pour chaque
+talent annonce par le noyau. La comparaison avec les scripts Ruby de Z a corrige
+les hooks suivants : `FLORACION` multiplie le degat final Plante, `KEENEYE` bloque
+les baisses de Precision et ignore l'Esquive positive de la cible, `STATIC` peut
+paralyser apres un contact meme si son porteur vient de tomber K.O., `SYNCHRONIZE`
+renvoie aussi Caduco et Hemorragie, et `MAGICGUARD` annule les degats de ligotage
+et de Malediction sans figer leur duree. `CHEEKPOUCH` soigne apres toute Baie
+consommee par les chemins portes, y compris Payapa et Piqure. `ACOMETIDA` applique
+desormais son bonus de Vitesse du premier tour dans le resolveur double comme dans
+le simple.
+
+Le rapport de support classe desormais honnetement `CHLOROPHYLL` et `DRYSKIN`
+comme partiels tant que le combat ne porte pas un etat meteo tactique complet.
+`INTIMIDATE` reste partiel jusqu'aux immunites et interactions source manquantes.
+La condition Ruby atypique de `SHIELDDUST` a ete confirmee comme une regle voulue
+de cette version : seul le cumul du talent et de `COVERTCLOAK` (Cape Obscure)
+bloque les effets secondaires ; chacun reste inerte seul. Cape Obscure est donc
+un objet tenu supporte et `SHIELDDUST` redevient pleinement supporte. Les identites
+encore partielles restent acceptees et leurs hooks deja portes fonctionnent, mais
+elles ne doivent pas gonfler le total « supported ».
+Autorite et domaine : snapshot tactique, noyau local en solo et meme noyau dans la
+room ; persistance : identite du talent sur le Pokemon, effets temporaires dans le
+combat/reconnexion ; intentions reseau : aucune nouvelle ; audience : participants
+via les evenements et la trace autoritaires.
+
+Correctif de presentation des talents du 2026-10-13 : les evenements tactiques
+continuent de transporter l'identifiant stable (`BIGPECKS`, `KEENEYE`, etc.), mais
+le sequenceur de combat resout maintenant leur nom depuis le catalogue francais.
+Les protections de statistique utilisent la phrase d'effet de Z au lieu du texte
+generique « Le talent X s'active » : Cœur de Coq annonce qu'il empeche la perte de
+Defense et Regard Vif la perte de Precision. Cette transformation est seulement
+visuelle ; l'autorite, le snapshot, la sauvegarde et les intentions Coop ne changent
+pas. Le meme sequenceur couvre le solo et les tours recus de la room.
+
+Correctif Doux Parfum du 2026-10-13 : une equipe de Dresseur a revele la fonction
+de capacite `048` encore absente des registres. Le noyau commun reproduit maintenant
+le Ruby de Pokemon Z avec `USENEWBATTLEMECHANICS = true` : `SWEETSCENT` baisse
+l'Esquive de deux crans. Sa cible source `04` applique le meme effet a chaque
+adversaire actif en combat double, avec une seule consommation de PP. Le code est
+accepte par la projection d'equipe, le validateur Coop et le rapport de support,
+qui compte desormais 56 fonctions pleinement supportees et 4 partielles. Autorite
+et domaine : snapshot tactique resolu par le noyau local en solo ou par la room en
+Coop ; persistance : niveaux de statistiques temporaires dans le combat et sa
+restauration ; intention reseau : choix normal de capacite ; audience : tous les
+participants via les evenements autoritaires. L'utilisation de Doux Parfum hors
+combat pour provoquer une rencontre reste une mecanique d'overworld distincte et
+n'est pas declaree portee par ce correctif.
 
 ## Garde-fou des donnees locales
 

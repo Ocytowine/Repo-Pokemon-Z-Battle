@@ -8,7 +8,8 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   usePokemonEvolutionItem, useRareCandy,
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
-  movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience, publicPokemonIdentity, recalculatePersistentPokemonStats,
+  movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience,
+  pokemonZParticipantExperienceCalculation, publicPokemonIdentity, recalculatePersistentPokemonStats,
   reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
   transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
@@ -199,6 +200,8 @@ describe("persistent player party", () => {
       .toBe("CHEEKPOUCH");
     expect(() => playerPartyToBattleTeam({ ...party,
       members: [{ ...party.members[0]!, ability: "bad ability" }] }, catalog)).toThrow("Identifiant de talent invalide");
+    expect(playerPartyToBattleTeam(party, { ...catalog,
+      moves: [{ ...catalog.moves[0]!, functionCode: "048" }] }).members[0]?.moves[0]?.move.functionCode).toBe("048");
     expect(() => playerPartyToBattleTeam(party, { ...catalog, moves: [{ ...catalog.moves[0]!, functionCode: "999" }] })).toThrow("Fonction");
   });
 
@@ -426,6 +429,10 @@ describe("Pokemon Z shared battle experience", () => {
     const base = { defeatedLevel: 5, defeatedBaseExperience: 112, recipientLevel: 5,
       participantCount: 1, luckyEgg: false };
     expect(pokemonZParticipantExperience(base, { trainerBattle: false, levelCap: 17 })).toBe(113);
+    expect(pokemonZParticipantExperienceCalculation(base, { trainerBattle: false, levelCap: 17 }))
+      .toMatchObject({ formula: "pokemon-z-participant", splitDivisor: 1, afterSplit: 560,
+        afterTrainerBonus: 560, afterDivisionByFive: 112, levelAdjustment: 1,
+        afterLevelAdjustment: 113, result: 113 });
     expect(pokemonZParticipantExperience(base, { trainerBattle: true, levelCap: 17 })).toBe(169);
     expect(pokemonZParticipantExperience({ ...base, luckyEgg: true }, { trainerBattle: true, levelCap: 17 })).toBe(253);
     expect(pokemonZParticipantExperience(base, { trainerBattle: false, levelCap: 17,
@@ -447,8 +454,10 @@ describe("Pokemon Z shared battle experience", () => {
     const applied = applySharedBattleExperience({ schemaVersion: 1, activeIndex: 0, members: [first, second] },
       settlement, creationCatalog, { trainerBattle: false, levelCap: 17 });
     expect(applied.gains).toEqual([
-      expect.objectContaining({ recipientMemberId: "host-a", calculated: 57, gained: 57 }),
-      expect.objectContaining({ recipientMemberId: "host-b", calculated: 57, gained: 57 }),
+      expect.objectContaining({ recipientMemberId: "host-a", calculated: 57, gained: 57,
+        calculation: expect.objectContaining({ participantCount: 2, splitDivisor: 2, result: 57 }) }),
+      expect.objectContaining({ recipientMemberId: "host-b", calculated: 57, gained: 57,
+        calculation: expect.objectContaining({ participantCount: 2, splitDivisor: 2, result: 57 }) }),
     ]);
     expect(applied.party.members.map((pokemon) => pokemon.experience)).toEqual([182, 182]);
   });

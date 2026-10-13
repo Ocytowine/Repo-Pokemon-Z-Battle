@@ -1,6 +1,7 @@
 import { selectEventPage, type ImportedAvatar, type ImportedMapAssets } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
+import type { SourceBattleReportSummary } from "./source-battle-report.js";
 
 export interface SourceOverworldHudModel {
   readonly assets: ImportedMapAssets;
@@ -12,10 +13,14 @@ export interface SourceOverworldHudModel {
   readonly hudNotice?: { readonly text: string; readonly kind: "info" | "error" } | null;
   readonly parallelAuditNotice: string | null;
   readonly sceneAuditNotice: string | null;
+  readonly battleReport: SourceBattleReportSummary;
 }
 
 export class SourceOverworldHud {
-  public constructor(private readonly onStartPendingEncounter: () => void) {}
+  public constructor(
+    private readonly onStartPendingEncounter: () => void,
+    private readonly onDownloadBattleReport: () => void,
+  ) {}
 
   public render(model: SourceOverworldHudModel): void {
     const { avatar } = model;
@@ -40,8 +45,10 @@ export class SourceOverworldHud {
       const page = selectEventPage(event, assets.map.id, eventState);
       return page !== null && (page.graphic.characterName !== "" || page.graphic.tileId > 0);
     }).length;
-    const inventory = Object.entries(eventState.inventory)
+    const inventoryEntries = Object.entries(eventState.inventory).filter(([, quantity]) => quantity > 0);
+    const inventory = inventoryEntries
       .map(([itemId, quantity]) => `${assets.itemNames.get(itemId) ?? itemId} ×${quantity}`).join(", ") || "vide";
+    const inventoryQuantity = inventoryEntries.reduce((total, [, quantity]) => total + quantity, 0);
     const checkpoint = eventState.checkpoint;
     const checkpointLabel = checkpoint === null ? "Bourg Canvas · 28,15"
       : `Map${String(checkpoint.mapId).padStart(3, "0")} · ${checkpoint.x},${checkpoint.y}`;
@@ -53,8 +60,13 @@ export class SourceOverworldHud {
     const encounterLabel = pendingEncounter === null ? "aucune" : !model.battleActive
       ? `${escapeSourceHtml(speciesName(pendingEncounter.species))} N.${pendingEncounter.level} en attente <button id="start-source-encounter">Lancer</button>`
       : `${escapeSourceHtml(speciesName(pendingEncounter.species))} N.${pendingEncounter.level} en cours`;
-    progress.innerHTML = `<p><strong>Source</strong> tileset ${escapeSourceHtml(assets.tileset.tilesetName)}</p><p><strong>Carte</strong> ${assets.map.width} × ${assets.map.height} · ${visibleEvents} événements visibles</p><p><strong>Équipe</strong> ${escapeSourceHtml(party)}</p><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Argent</strong> ${eventState.money.toLocaleString("fr-FR")} ₽</p><p><strong>Inventaire</strong> ${escapeSourceHtml(inventory)}</p><p><strong>Reprise</strong> ${escapeSourceHtml(checkpointLabel)}</p><p><strong>Séquence</strong> ${escapeSourceHtml(model.sequenceStatus)}</p>${model.parallelAuditNotice === null ? "" : `<p><strong>Événement parallèle</strong> ${escapeSourceHtml(model.parallelAuditNotice)}</p>`}${model.sceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${escapeSourceHtml(model.sceneAuditNotice)}</p>`}`;
+    const report = model.battleReport;
+    const reportLabel = !report.available ? "aucun rapport"
+      : `${report.active ? "en cours" : "terminé"} · ${report.turns} tour(s) · ${report.mode ?? "local"}`;
+    progress.innerHTML = `<p><strong>Source</strong> tileset ${escapeSourceHtml(assets.tileset.tilesetName)}</p><p><strong>Carte</strong> ${assets.map.width} × ${assets.map.height} · ${visibleEvents} événements visibles</p><details><summary><strong>Équipe</strong> ${eventState.party.members.length} Pokémon</summary><p>${escapeSourceHtml(party)}</p></details><p><strong>Rencontre</strong> ${encounterLabel}</p><p><strong>Argent</strong> ${eventState.money.toLocaleString("fr-FR")} ₽</p><details><summary><strong>Inventaire</strong> ${inventoryEntries.length} sorte(s) · ${inventoryQuantity} objet(s)</summary><p>${escapeSourceHtml(inventory)}</p></details><p><strong>Reprise</strong> ${escapeSourceHtml(checkpointLabel)}</p><p><strong>Séquence</strong> ${escapeSourceHtml(model.sequenceStatus)}</p>${model.parallelAuditNotice === null ? "" : `<p><strong>Événement parallèle</strong> ${escapeSourceHtml(model.parallelAuditNotice)}</p>`}${model.sceneAuditNotice === null ? "" : `<p><strong>Audit scène</strong> ${escapeSourceHtml(model.sceneAuditNotice)}</p>`}<section class="battle-report-summary"><strong>Rapport combat</strong><span>${escapeSourceHtml(reportLabel)}</span><button id="download-source-battle-report" type="button"${report.available ? "" : " disabled"}>Télécharger le JSON</button></section>`;
     progress.querySelector<HTMLButtonElement>("#start-source-encounter")
       ?.addEventListener("click", this.onStartPendingEncounter);
+    progress.querySelector<HTMLButtonElement>("#download-source-battle-report")
+      ?.addEventListener("click", this.onDownloadBattleReport);
   }
 }

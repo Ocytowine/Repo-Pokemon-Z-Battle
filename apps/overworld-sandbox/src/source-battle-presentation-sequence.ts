@@ -1,5 +1,9 @@
 import type { BattleSide, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 
+export interface SourceBattlePresentationOptions {
+  readonly abilityName?: (internalName: string) => string;
+}
+
 export type SourceBattlePresentationStep =
   | { readonly kind: "action"; readonly side: BattleSide; readonly move: string;
       readonly message: string; readonly state: TeamBattleState }
@@ -81,7 +85,8 @@ function effectivenessMessage(effectiveness: number): string | null {
  * shared by local and network battles and never resolves gameplay a second time.
  */
 export function buildSourceBattlePresentationSequence(before: TeamBattleState,
-  events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): readonly SourceBattlePresentationStep[] {
+  events: readonly (TeamBattleEvent | DoubleBattleEvent)[],
+  options: SourceBattlePresentationOptions = {}): readonly SourceBattlePresentationStep[] {
   let state = before;
   const steps: SourceBattlePresentationStep[] = [];
   const message = (value: string, kind: "message" | "status" = "message"): void => {
@@ -104,7 +109,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         [event.actor.side]: { ...positioned.teams[event.actor.side], activeIndex: actorIndex } } };
       if (target !== undefined && targetIndex !== undefined) positioned = { ...positioned, teams: { ...positioned.teams,
         [target.side]: { ...positioned.teams[target.side], activeIndex: targetIndex } } };
-      const positionedSteps = buildSourceBattlePresentationSequence(positioned, event.events);
+      const positionedSteps = buildSourceBattlePresentationSequence(positioned, event.events, options);
       steps.push(...positionedSteps);
       const resolved = positionedSteps.at(-1)?.state ?? positioned;
       // Conserver les PV/statuts produits par cette action pour la suivante, sans
@@ -209,7 +214,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         targetName: target?.name ?? "Le Pokémon sauvage", shakes: event.shakes,
         critical: event.critical, success: event.success, state });
     } else if (event.type === "abilityActivated") {
-      message(`Le talent ${event.ability} de ${activeName(state, event.side)} s'active !`, "status");
+      const pokemon = activeName(state, event.side);
+      const ability = options.abilityName?.(event.ability) ?? event.ability;
+      const text = event.effect === "prevent-stat-drop" && event.ability === "BIGPECKS"
+        ? `${ability} de ${pokemon} l'empêche de perdre de la Défense !`
+        : event.effect === "prevent-stat-drop" && event.ability === "KEENEYE"
+          ? `${ability} de ${pokemon} l'empêche de perdre de la Précision !`
+          : `Le talent ${ability} de ${pokemon} s'active !`;
+      message(text, "status");
     } else if (event.type === "statStageChanged") {
       message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ${event.delta > 0 ? "augmente" : "baisse"}.`, "status");
     } else if (event.type === "statStageChangeFailed") {

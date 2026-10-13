@@ -970,6 +970,12 @@ de la musique sauvage et du theme de victoire : Route 1 utilise donc `Pradera`,
 alors que le combat du starter conserve `Snow`. Le rapport moteur passe a 55
 mecaniques supportees sur 651.
 
+Rectification d'audit du 2026-10-13 : « accepte » ne signifie pas « complet ».
+`CHLOROPHYLL` attend encore l'etat meteo du combat et est donc partiel ; `STATIC`
+a ete corrige pour pouvoir se declencher apres le K.O. de son porteur. Le rapport
+ne compte plus les talents meteorologiques comme pleinement supportes sur la seule
+base de leur identite.
+
 Troisieme noyau 9.6 valide le 2026-09-28 : les rencontres aleatoires proposent la
 fuite, contrairement au Keunotor obligatoire du scenario. La formule reprend les
 vitesses non modifiees, le tirage sur 256 et le bonus de 30 par tentative du script
@@ -1858,14 +1864,59 @@ double et room Coop, replique dans le snapshot puis efface au switch. La liste
 exacte et les limites sont dans `docs/COMBAT_VERTICAL_AUDIT.md`. Le prochain lot
 porte Navarroc et la Forteresse, ainsi que les objets tenus des equipes source.
 
-Troisieme lot vertical du 2026-10-12 : Map017 terrestre et les sept definitions
+Correctif du 2026-10-13 issu du rapport de combat : `RIVALRY`, rencontre sur
+Helionceau, applique maintenant son multiplicateur de degats selon les genres
+publics des combattants (meme genre x1,25, sinon neutre). Ce comportement suit le
+calcul Ruby reel de Z, qui ne reprend pas le malus x0,75 utilise par son estimation
+d'IA et par d'autres generations Pokemon. La trace autoritaire nomme le talent et
+le multiplicateur ; le meme calcul couvre simple, double, solo et room Coop sans
+nouvelle intention cliente.
+
+Audit transversal talents du 2026-10-13 : une matrice de couverture exhaustive
+est synchronisee avec la liste des talents actifs du noyau. La comparaison directe
+aux scripts Ruby a corrige `FLORACION`, `KEENEYE`, `STATIC`, `SYNCHRONIZE`,
+`MAGICGUARD`, `CHEEKPOUCH` et le tri de Vitesse double d'`ACOMETIDA`. Le rapport
+classe maintenant `CHLOROPHYLL`, `DRYSKIN` et `INTIMIDATE` comme partiels, avec
+leur dette explicite (meteo ou interactions source non encore modelisees), au lieu
+de les annoncer termines. La variante propre a Z de `SHIELDDUST` est confirmee et
+portee : les effets secondaires ne sont bloques que si le porteur tient aussi
+`COVERTCLOAK` (Cape Obscure). Ces corrections utilisent le meme noyau en solo,
+hote et invite et n'ajoutent aucune intention reseau.
+
+Troisieme lot vertical du 2026-10-12, P0 ferme le 2026-10-13 : Map017 terrestre et les sept definitions
 d'Alexandre, Micael, Maria et Canola sont constructibles avec leurs 74 emplacements
 de capacites, objets tenus et talents forces. Vingt-et-une nouvelles fonctions,
 les Gemmes Combat/Insecte, Evoluroc, Baies Aranja/Payapa et les effets de camp ou
-terrain sont executes dans le noyau commun simple/double/Coop. Les dettes P0
-restantes de cette frontiere sont bornees dans `docs/COMBAT_VERTICAL_AUDIT.md` :
-Super Potion de l'IA de Canola, interception exacte de Poursuite, impacts multiples
-non agreges et protections consecutives.
+terrain sont executes dans le noyau commun simple/double/Coop. Les objets de
+Dresseur sont conserves et consommes dans le snapshot autoritaire ; Canola suit
+les seuils source pour sa Super Potion. Poursuite intercepte le sortant avant son
+retrait, `ProtectRate` porte la probabilite des protections consecutives et les
+frappes multiples exposent chaque impact/PV a la presentation. `088`, `0AA` et
+`0C0` sont donc pleinement supportees. La validation manuelle de cette frontiere
+rejoint desormais la recette globale de `STAB-BATTLE-1` ; l'IA tactique generale
+sera traitee dans un lot distinct.
+
+Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
+construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de
+deux crans comme dans les scripts de Z et vise les deux adversaires en double via
+son ciblage source `04`. Projection personnelle, validation Coop et resolution
+autoritaire partagent le meme code ; le registre passe a 56 fonctions pleinement
+supportees. Son utilisation hors combat pour declencher une rencontre reste a
+porter avec les mecanismes d'overworld et ne fait pas partie de ce jalon.
+
+Outil de diagnostic combat du 2026-10-13 : le panneau `Moteur` produit un rapport
+JSON complet du combat courant ou du dernier combat termine. Le solo conserve la
+trace issue du noyau local; la room joint la meme trace autoritaire aux tours Coop.
+Le rapport rassemble contexte, actions positionnees, snapshots avant/apres, evenements, RNG, calculs de
+degats, remplacements et reglement personnel (entrees/sorties EXP, niveaux, argent,
+objets et capture). Il reste local au navigateur et ne contient jamais le Sac
+complet. Equipe et inventaire du panneau sont replies par defaut afin que l'outil
+reste court meme avec une sauvegarde de test tres chargee.
+
+Le rapport detaille egalement la capture (taux de Ball, facteur PV, statut, seuil,
+capture critique et tirages de secousse) et chaque arrondi du calcul d'EXP par
+beneficiaire. Les formules solo historique et Coop autoritaire sont nommees dans
+le JSON afin de rendre leurs divergences eventuelles directement auditables.
 
 Premier increment objets du 2026-10-07 : un registre pur dans `player-state`
 applique hors combat les soins de PV, soins de statut, Restauration Totale et

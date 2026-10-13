@@ -1,5 +1,5 @@
-import type { BattleJoinProposal, BattleSide, BattleTeam, DoubleBattleEvent, SharedBattleLedger,
-  SharedBattleParticipation, SharedBattleSession, TeamBattleAction, TeamBattleEvent,
+import type { BattleJoinProposal, BattleSide, BattleTeam, BattleTrace, DoubleBattleEvent, SharedBattleLedger,
+  SharedBattleParticipation, SharedBattleSession, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent,
   TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
 import type { NetworkPlayerProfile } from "./player-profile.js";
@@ -146,6 +146,9 @@ export type ServerMessage =
       readonly turn: number;
       readonly state: TeamBattleState;
       readonly events: readonly (TeamBattleEvent | DoubleBattleEvent)[];
+      /** Authoritative calculation proof used by the personal battle diagnostic report. */
+      readonly trace: readonly BattleTrace[];
+      readonly actions: readonly PositionedTeamBattleAction[];
     })
   | (VersionedMessage & {
       readonly type: "replacementResolved";

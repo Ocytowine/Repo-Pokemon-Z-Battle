@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION, normalizeRoomCode, parseClientMessage, parseSourceWor
   type SourceBattleInventory,
   type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import type { BattleTeam, DoubleBattleEvent, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleTeam, BattleTrace, DoubleBattleEvent, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -78,7 +78,8 @@ export interface NetworkSessionCallbacks {
   readonly onBattleStarted: (battleId: string, state: TeamBattleState) => void;
   readonly onBattleExpanded: (battleId: string, before: TeamBattleState, state: TeamBattleState) => void;
   readonly onBattleTurnResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
-    events: readonly (TeamBattleEvent | DoubleBattleEvent)[]) => void;
+    events: readonly (TeamBattleEvent | DoubleBattleEvent)[], trace: readonly BattleTrace[],
+    actions: readonly PositionedTeamBattleAction[]) => void;
   readonly onBattleReplacementResolved: (battleId: string, before: TeamBattleState, state: TeamBattleState,
     events: readonly TeamBattleEvent[]) => void;
   readonly onBattleEscaped: (battleId: string, state: TeamBattleState) => void;
@@ -322,7 +323,8 @@ export class OverworldNetworkSession {
       || socket.readyState !== WebSocket.OPEN) return false;
     const threeMemberTeam = (team: BattleTeam): BattleTeam => {
       const ordered = [team.members[team.activeIndex]!, ...team.members.filter((_, index) => index !== team.activeIndex)];
-      return { activeIndex: 0, members: ordered.slice(0, 3) };
+      const { activeIndices: _activeIndices, ...single } = team;
+      return { ...single, activeIndex: 0, members: ordered.slice(0, 3) };
     };
     const playerTeam = threeMemberTeam(draft.playerTeam);
     const opponentTeam = threeMemberTeam(draft.opponentTeam);
@@ -643,7 +645,8 @@ export class OverworldNetworkSession {
           };
           session.submittedTurn = null;
           session.submittedActiveSlots = [];
-          this.callbacks.onBattleTurnResolved(message.battleId, before, message.state, message.events);
+          this.callbacks.onBattleTurnResolved(message.battleId, before, message.state, message.events,
+            message.trace, message.actions);
           this.setStatus(message.state.status === "finished" ? "Combat terminé" : "Combat", message.state.status === "finished"
             ? `Victoire : ${message.state.winner}. Retour dans le monde…`
             : `Tour ${message.state.turn} prêt.`);

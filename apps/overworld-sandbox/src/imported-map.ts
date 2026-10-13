@@ -157,6 +157,7 @@ export interface ImportedTrainer {
   readonly trainerType: string;
   readonly name: string;
   readonly version: number;
+  readonly items: readonly string[];
   readonly pokemon: readonly ImportedTrainerPokemon[];
 }
 
@@ -267,7 +268,9 @@ export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[
   if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue de Dresseurs est invalide.");
   return value.records.map((entry) => {
     if (!isRecord(entry) || typeof entry.trainerType !== "string" || typeof entry.name !== "string"
-      || !Number.isInteger(entry.version) || !Array.isArray(entry.pokemon)) throw new Error("Un Dresseur est invalide.");
+      || !Number.isInteger(entry.version) || !Array.isArray(entry.items)
+      || !entry.items.every((item) => typeof item === "string")
+      || !Array.isArray(entry.pokemon)) throw new Error("Un Dresseur est invalide.");
     const pokemon = entry.pokemon.map((member) => {
       if (!isRecord(member) || typeof member.species !== "string" || !Number.isInteger(member.level)
         || (member.level as number) < 1 || !Array.isArray(member.moves)
@@ -282,7 +285,8 @@ export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[
         abilityIndex: member.abilityIndex as number | null };
     });
     if (pokemon.length < 1 || pokemon.length > 6) throw new Error("Une équipe de Dresseur doit contenir entre un et six Pokémon.");
-    return { trainerType: entry.trainerType, name: entry.name, version: entry.version as number, pokemon };
+    return { trainerType: entry.trainerType, name: entry.name, version: entry.version as number,
+      items: entry.items as string[], pokemon };
   });
 }
 

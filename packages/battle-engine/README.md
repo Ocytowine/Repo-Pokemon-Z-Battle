@@ -23,9 +23,9 @@ presentation puisse afficher ces informations sans lire les traces de diagnostic
   `HEMORRAGIA` avec leurs hooks de tour et de calcul ;
 - talents `GUTS`, `QUICKFEET`, `MAGICGUARD`, `HUGEPOWER` et `PUREPOWER` ;
 - objets tenus `LEFTOVERS`, `BLACKSLUDGE`, `SCOPELENS`, `MUSCLEBAND`,
-  `WISEGLASSES` et `ASSAULTVEST` ;
+  `WISEGLASSES`, `ASSAULTVEST` et `COVERTCLOAK` ;
 - fonctions d'attaque `000`, `003`, `005`, `006`, `007`, `00A`, `00C`, `0A5`,
-  `01C`, `01D`, `01F`, `020`, `042` a `047`, `159` et `906` ;
+  `01C`, `01D`, `01F`, `020`, `042` a `048`, `159` et `906` ;
 - catalogue initial : `TACKLE`, `QUICKATTACK`, `SCRATCH`, `WATERGUN`,
   `VINEWHIP`, `SWIFT`, `SLEEPPOWDER`, `POISONPOWDER`, `TOXIC`, `THUNDERWAVE`
   `WILLOWISP`, `ICEBEAM`, `LUZDECADENTE` et `CUT`.
@@ -51,7 +51,9 @@ Defense Speciale avec interdiction des capacites de statut de `ASSAULTVEST`.
 Les fonctions `01C`, `01D`, `01F` et `020` augmentent respectivement l'Attaque,
 la Defense, la Vitesse et l'Attaque Speciale du lanceur. Les fonctions `042` a
 `047` diminuent respectivement l'Attaque, la Defense, la Vitesse, l'Attaque
-Speciale, la Defense Speciale et la Precision de la cible. Les effets secondaires
+Speciale, la Defense Speciale et la Precision de la cible. La fonction `048`
+diminue l'Esquive de deux crans, conformement aux nouvelles mecaniques actives
+dans Pokemon Z. Les effets secondaires
 utilisent leur probabilite PBS et tous les niveaux sont bornes entre -6 et +6.
 
 Les formules et l'ordre des tirages sont compares aux scripts exportes

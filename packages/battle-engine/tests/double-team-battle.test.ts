@@ -14,6 +14,24 @@ function pokemon(id: string, side: BattleSide, speed: number, targetCode = "00")
 }
 
 describe("double team battles", () => {
+  it("applies Acometida's first-turn speed bonus when ordering double-battle slots", () => {
+    const charger = { ...pokemon("p1", "player", 60), ability: "ACOMETIDA" as const };
+    const state = createDoubleTeamBattleState({
+      player: [charger, pokemon("p2", "player", 10)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 5)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "player", slot: 0 } } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    const resolved = result.events.filter((event) => event.type === "positionedActionResolved");
+    expect(resolved[0]).toMatchObject({ actor: { side: "player", slot: 0 } });
+  });
+
   it("keeps two active slots per camp and resolves four independently targeted actions", () => {
     const state = createDoubleTeamBattleState({
       player: [pokemon("p1", "player", 100), pokemon("p2", "player", 90)],
@@ -51,6 +69,26 @@ describe("double team battles", () => {
     expect(result.state.teams.opponent.members[0]!.hp).toBeLessThan(120);
     expect(result.state.teams.opponent.members[1]!.hp).toBeLessThan(120);
     expect(result.state.teams.player.members[0]!.moves[0]!.pp).toBe(MINIMAL_MOVE_CATALOG.TACKLE.pp - 1);
+  });
+
+  it("applies Sweet Scent to both opposing slots", () => {
+    const sweetScent: BattleMove = { id: 417, internalName: "SWEETSCENT", name: "Doux Parfum",
+      functionCode: "048", power: 0, type: "NORMAL", category: "Status", accuracy: 0, pp: 20,
+      priority: 0, effectChance: 0, targetCode: "04" };
+    const user = { ...pokemon("p1", "player", 100), moves: [{ move: sweetScent, pp: sweetScent.pp }] };
+    const state = createDoubleTeamBattleState({
+      player: [user, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+
+    expect(result.state.teams.opponent.members.map((member) => member.stages.evasion)).toEqual([-2, -2]);
+    expect(result.state.teams.player.members[0]!.moves[0]!.pp).toBe(sweetScent.pp - 1);
   });
 
   it("reuses self stat moves for one precise active slot", () => {
@@ -141,5 +179,30 @@ describe("double team battles", () => {
       actor: { side: "player", slot: 0 }, events: expect.arrayContaining([
         expect.objectContaining({ type: "heldItemConsumed", item: "ORANBERRY" }),
       ]) }));
+  });
+
+  it("intercepts the selected outgoing double-battle slot with Pursuit", () => {
+    const pursuit: BattleMove = { ...MINIMAL_MOVE_CATALOG.SCRATCH, internalName: "PURSUIT",
+      name: "Poursuite", functionCode: "088", power: 40, accuracy: 0 };
+    const hunter = { ...pokemon("o1", "opponent", 80), moves: [{ move: pursuit, pp: pursuit.pp }] };
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("p1", "player", 100), pokemon("p2", "player", 90), pokemon("reserve", "player", 60)],
+      opponent: [hunter, pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "switch", teamIndex: 2 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "player", slot: 0 } } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    const pursuitIndex = result.events.findIndex((event) => event.type === "positionedActionResolved"
+      && event.actor.side === "opponent" && event.actor.slot === 0);
+    const switchIndex = result.events.findIndex((event) => event.type === "pokemonSwitched"
+      && event.side === "player" && event.fromIndex === 0);
+    expect(pursuitIndex).toBeGreaterThan(0);
+    expect(switchIndex).toBeGreaterThan(pursuitIndex);
+    expect(result.state.teams.player.members[0]!.hp).toBeLessThan(120);
+    expect(result.state.teams.player.members[2]!.hp).toBe(120);
   });
 });

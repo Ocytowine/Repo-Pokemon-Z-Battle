@@ -86,7 +86,7 @@ function isSourceBattleInventory(value: unknown): boolean {
 const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
 const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
 const MOVE_FUNCTIONS = new Set(["000", "003", "005", "006", "007", "009", "00A", "00C", "00F", "012", "013",
-  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "049", "04B", "04D",
+  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "048", "049", "04B", "04D",
   "06F", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0C0", "0CF", "0D8", "0DD", "0E8", "0F4", "10D", "10E", "110", "116", "159", "906"]);
 const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
@@ -113,7 +113,7 @@ function isBattleVolatile(value: unknown): boolean {
   if (value === undefined) return true;
   const legacy = ["confusionTurns", "flinched", "focusEnergy", "identified", "disabledMove", "disableTurns",
     "encoreMove", "encoreTurns", "bindingMove", "bindingTurns", "cursed", "lastMoveUsed"];
-  const optional = ["activeTurns", "protected", "endured", "tauntTurns", "rage"];
+  const optional = ["activeTurns", "protected", "endured", "protectRate", "tauntTurns", "rage"];
   if (!isRecord(value) || !legacy.every((key) => key in value)
     || !Object.keys(value).every((key) => legacy.includes(key) || optional.includes(key))) return false;
   return safeInteger(value.confusionTurns, 0, 5) && typeof value.flinched === "boolean"
@@ -126,13 +126,14 @@ function isBattleVolatile(value: unknown): boolean {
     && (value.activeTurns === undefined || safeInteger(value.activeTurns, 0, 999))
     && (value.protected === undefined || typeof value.protected === "boolean")
     && (value.endured === undefined || typeof value.endured === "boolean")
+    && (value.protectRate === undefined || safeInteger(value.protectRate, 1, 65_536))
     && (value.tauntTurns === undefined || safeInteger(value.tauntTurns, 0, 4))
     && (value.rage === undefined || typeof value.rage === "boolean");
 }
 
 function isBattleTeam(value: unknown): value is BattleTeam {
   if (!isRecord(value) || !["activeIndex", "members"].every((key) => key in value)
-    || !Object.keys(value).every((key) => ["activeIndex", "activeIndices", "members"].includes(key))
+    || !Object.keys(value).every((key) => ["activeIndex", "activeIndices", "members", "items"].includes(key))
     || !Array.isArray(value.members) || value.members.length < 1 || value.members.length > 6
     || !safeInteger(value.activeIndex, 0, (value.members as unknown[]).length - 1)) return false;
   if (value.activeIndices !== undefined && (!Array.isArray(value.activeIndices)
@@ -140,6 +141,8 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     || !value.activeIndices.every((index) => safeInteger(index, 0, (value.members as unknown[]).length - 1))
     || new Set(value.activeIndices).size !== value.activeIndices.length
     || value.activeIndices[0] !== value.activeIndex)) return false;
+  if (value.items !== undefined && (!Array.isArray(value.items) || value.items.length > 16
+    || !value.items.every((item) => typeof item === "string" && SOURCE_IDENTIFIER.test(item)))) return false;
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)

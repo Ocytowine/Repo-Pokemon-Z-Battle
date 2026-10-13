@@ -17,7 +17,7 @@ export interface BattleMove {
   readonly functionCode: "000" | "003" | "005" | "006" | "007" | "009" | "00A" | "00C"
     | "00F" | "012" | "013"
     | "01C" | "01D" | "01E" | "01F" | "020" | "022" | "023" | "027" | "028" | "030"
-    | "042" | "043" | "044" | "045" | "046" | "047" | "049" | "04B" | "04D"
+    | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04D"
     | "06F" | "077" | "07B" | "088" | "093" | "09A" | "09E" | "0A1" | "0A2" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B9" | "0BA" | "0BC" | "0C0" | "0CF" | "0D8" | "0DD" | "0E8" | "0F4"
     | "10D" | "10E" | "110" | "116" | "159" | "906";
@@ -33,15 +33,17 @@ export interface BattleMove {
   readonly targetCode?: string;
 }
 
-export type ImplementedBattleAbility = "ACOMETIDA" | "BIGPECKS" | "BLAZE" | "CHEEKPOUCH" | "CHLOROPHYLL"
-  | "CONTRAGUARDIA" | "DRYSKIN" | "FLORACION" | "GUTS" | "HUGEPOWER" | "INNERFOCUS" | "INTIMIDATE"
-  | "KEENEYE" | "MAGICGUARD" | "NOGUARD" | "OVERGROW" | "PUREPOWER" | "QUICKFEET" | "REGENERATOR"
-  | "SERENEGRACE" | "SHEDSKIN" | "SHIELDDUST" | "SIMPLE" | "STATIC" | "STEADFAST" | "SWARM" | "SYNCHRONIZE" | "TORRENT";
+export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "BIGPECKS", "BLAZE", "CHEEKPOUCH",
+  "CONTRAGUARDIA", "DRYSKIN", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "INTIMIDATE",
+  "KEENEYE", "MAGICGUARD", "NOGUARD", "OVERGROW", "PUREPOWER", "QUICKFEET", "REGENERATOR",
+  "RIVALRY", "SERENEGRACE", "SHEDSKIN", "SHIELDDUST", "SIMPLE", "STATIC", "STEADFAST", "SWARM",
+  "SYNCHRONIZE", "TORRENT"] as const;
+export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[number];
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});
 export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT", "FOCUSSASH",
   "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES",
-  "BUGGEM", "EVIOLITE", "FIGHTINGGEM", "ORANBERRY", "PAYAPABERRY"] as const;
+  "BUGGEM", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "ORANBERRY", "PAYAPABERRY"] as const;
 export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number];
 
 export function isHeldItemSupported(value: string): value is HeldItem {
@@ -105,6 +107,8 @@ export interface BattlerState {
     readonly activeTurns?: number;
     readonly protected?: boolean;
     readonly endured?: boolean;
+    /** Source ProtectRate: 1 initially, doubled after each consecutive success. */
+    readonly protectRate?: number;
     readonly tauntTurns?: number;
     readonly rage?: boolean;
   };
@@ -139,6 +143,23 @@ export interface BattleEffects {
   readonly waterSportTurns: number;
 }
 
+export interface PokemonCaptureCalculation {
+  readonly baseRate: number;
+  readonly modifiedRate: number;
+  readonly maximumHp: number;
+  readonly currentHp: number;
+  readonly hpNumerator: number;
+  readonly hpDenominator: number;
+  readonly rateBeforeStatus: number;
+  readonly statusMultiplier: number;
+  readonly finalRate: number;
+  readonly shakeThreshold: number | null;
+  readonly criticalCaptureBonus: number;
+  readonly criticalRoll: number | null;
+  readonly shakeRolls: readonly number[];
+  readonly automaticReason: "master-ball" | "rate-overflow" | null;
+}
+
 export interface MoveAction {
   readonly kind: "move";
   readonly moveIndex: number;
@@ -165,7 +186,7 @@ export type BattleEvent =
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" | "lower-attack" | "heal-on-switch" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" | "lower-attack" | "heal-on-switch" | "heal-on-berry" }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
@@ -181,7 +202,8 @@ export type BattleEvent =
   | { readonly type: "battleEffectChanged"; readonly side: BattleSide | null;
       readonly effect: "reflect" | "lucky-chant" | "water-sport"; readonly turns: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
-      readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean }
+      readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
+      readonly calculation: PokemonCaptureCalculation }
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
   | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" }
   | { readonly type: "fainted"; readonly side: BattleSide }
@@ -199,9 +221,11 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "binding-duration"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "binding-duration" | "protection"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean }
-  | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number; readonly result: number };
+  | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;
+      readonly abilityModifier: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } | null;
+      readonly result: number };
 
 export interface TurnResult {
   readonly state: BattleState;
@@ -241,6 +265,8 @@ export interface BattleTeam {
   /** One index in singles, up to two distinct conscious members in doubles. */
   readonly activeIndices?: readonly number[];
   readonly members: readonly BattlerState[];
+  /** Source-controlled Trainer inventory. Player bags stay outside the public snapshot. */
+  readonly items?: readonly string[];
 }
 
 export interface TeamBattleState {

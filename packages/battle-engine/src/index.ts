@@ -8,7 +8,7 @@ export { activeBattlePositions, activeTeamIndices, battlerAtPosition, createDoub
   resolveDoubleTeamTurn } from "./double-team-battle.js";
 export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,
   chooseSourceBattleReplacement } from "./battle-tactics.js";
-export { resolveTurn } from "./resolve-turn.js";
+export { resolveBattleVolatileEndOfTurn, resolveTurn } from "./resolve-turn.js";
 export { SeededRandom } from "./rng.js";
 export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession, openSharedBattleJoinWindow,
   settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";
@@ -20,7 +20,7 @@ export type { PokemonItemTargetMode, PokemonItemUseEffect, PokemonItemUseFailure
 export { attemptPokemonCapture, isPokemonBallSupported } from "./pokemon-capture.js";
 export type { PokemonCaptureContext, PokemonCaptureResult } from "./pokemon-capture.js";
 export { isKnownType, typeEffectiveness } from "./type-chart.js";
-export { SUPPORTED_HELD_ITEMS, isHeldItemSupported } from "./types.js";
+export { IMPLEMENTED_BATTLE_ABILITIES, SUPPORTED_HELD_ITEMS, isHeldItemSupported } from "./types.js";
 export type {
   BattleAction,
   BattleAbility,
@@ -43,6 +43,7 @@ export type {
   MoveAction,
   MoveCategory,
   MoveSlot,
+  PokemonCaptureCalculation,
   RandomSource,
   StatefulRandomSource,
   StatStages,

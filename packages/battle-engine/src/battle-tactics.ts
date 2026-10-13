@@ -1,16 +1,39 @@
 import { activeBattlers, replaceFaintedPokemon, resolveTeamTurn } from "./team-battle.js";
+import { applyPokemonItemEffect } from "./pokemon-item.js";
 import type { BattleSide, RandomSource, TeamBattleAction, TeamBattleState, TeamTurnResult } from "./types.js";
+
+const TRAINER_HP_ITEMS = new Set(["POTION", "SUPERPOTION", "HYPERPOTION", "MAXPOTION", "MOOMOOMILK", "FULLRESTORE"]);
+
+function chooseSourceTrainerItem(state: TeamBattleState, side: BattleSide, activeSlot: number,
+  rng: RandomSource): TeamBattleAction | null {
+  const team = state.teams[side];
+  const targetTeamIndex = team.activeIndices?.[activeSlot] ?? (activeSlot === 0 ? team.activeIndex : undefined);
+  const active = targetTeamIndex === undefined ? undefined : team.members[targetTeamIndex];
+  if (targetTeamIndex === undefined || active === undefined || active.hp <= 0 || active.hp >= active.stats.maxHp) return null;
+  const itemId = team.items?.find((item) => TRAINER_HP_ITEMS.has(item)
+    && typeof applyPokemonItemEffect(active, item, { context: "battle", revivalAllowed: true }) !== "string");
+  if (itemId === undefined) return null;
+  const quarter = active.hp <= Math.floor(active.stats.maxHp / 4);
+  const half = active.hp <= Math.floor(active.stats.maxHp / 2);
+  if (!quarter && (!half || rng.nextInt(10) >= 3)) return null;
+  return { kind: "item", itemId, targetTeamIndex };
+}
 
 /**
  * Chooses an action for a source-controlled active Pokemon. The caller supplies
  * the authoritative RNG, so solo and room play consume the same decision rule.
  */
 export function chooseSourceBattleAction(state: TeamBattleState, side: BattleSide,
-  rng: RandomSource): TeamBattleAction {
+  rng: RandomSource, activeSlot = 0, allowTrainerItem = true): TeamBattleAction {
   if (state.status !== "active" || state.replacementRequired.length > 0) {
     throw new Error("L'IA ne peut pas choisir d'action dans cet état de combat.");
   }
-  const active = activeBattlers(state)[side];
+  const team = state.teams[side];
+  const activeIndex = team.activeIndices?.[activeSlot] ?? (activeSlot === 0 ? team.activeIndex : undefined);
+  const active = activeIndex === undefined ? undefined : team.members[activeIndex];
+  if (active === undefined) throw new Error("Le Pokemon controle par l'IA est absent de cet emplacement.");
+  const item = allowTrainerItem ? chooseSourceTrainerItem(state, side, activeSlot, rng) : null;
+  if (item !== null) return item;
   const disabledMove = active.volatile?.disableTurns && active.volatile.disableTurns > 0
     ? active.volatile.disabledMove : null;
   const encoreMove = active.volatile?.encoreTurns && active.volatile.encoreTurns > 0

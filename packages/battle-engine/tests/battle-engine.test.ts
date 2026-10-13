@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   MINIMAL_MOVE_CATALOG,
+  IMPLEMENTED_BATTLE_ABILITIES,
   SeededRandom,
   calculateDamage,
+  resolveBattleVolatileEndOfTurn,
   resolveTurn,
   typeEffectiveness,
   type BattleMove,
@@ -329,6 +331,20 @@ describe("stat stages, power abilities and held battle items", () => {
       stat: "speed", delta: 2, stage: 2 });
   });
 
+  it("applies Pokemon Z Sweet Scent as a two-stage evasion drop", () => {
+    const sweetScent: BattleMove = { id: 417, internalName: "SWEETSCENT", name: "Doux Parfum",
+      functionCode: "048", power: 0, type: "NORMAL", category: "Status", accuracy: 0, pp: 20,
+      priority: 0, effectChance: 0, targetCode: "04" };
+    const player = battler("player", { moves: [{ move: sweetScent, pp: sweetScent.pp }] });
+    const result = resolveTurn(battle(player),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 1, 15]));
+
+    expect(result.state.battlers.opponent.stages.evasion).toBe(-2);
+    expect(result.events).toContainEqual({ type: "statStageChanged", source: "player", target: "opponent",
+      stat: "evasion", delta: -2, stage: -2 });
+  });
+
   it("supports Huge Power, Pure Power, Muscle Band and Wise Glasses", () => {
     const neutralPhysical = calculateDamage("player", battler("player"), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
     const hugePower = calculateDamage("player", battler("player", { ability: "HUGEPOWER" }), battler("opponent"), MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
@@ -341,6 +357,42 @@ describe("stat stages, power abilities and held battle items", () => {
     expect(purePower).toBe(hugePower);
     expect(muscleBand).toBeGreaterThan(neutralPhysical);
     expect(wiseGlasses).toBeGreaterThan(neutralSpecial);
+  });
+
+  it("applies Rivalry only when both battlers have a binary gender", () => {
+    const litleo = battler("opponent", {
+      level: 8,
+      ability: "RIVALRY",
+      appearance: { form: 0, shiny: false, gender: "female" },
+      stats: { maxHp: 29, attack: 15, defense: 15, specialAttack: 17, specialDefense: 12, speed: 17 },
+      stages: { ...battler("opponent").stages, attack: 4 },
+    });
+    const target = (gender: "male" | "female" | "genderless" | null) => battler("player", {
+      level: 8,
+      appearance: { form: 0, shiny: false, gender },
+      stats: { maxHp: 25, attack: 16, defense: 12, specialAttack: 15, specialDefense: 14, speed: 15 },
+      stages: { ...battler("player").stages, defense: -1 },
+    });
+    const oppositeTrace: BattleTrace[] = [];
+    const sameTrace: BattleTrace[] = [];
+    const genderlessTrace: BattleTrace[] = [];
+
+    const opposite = calculateDamage("opponent", litleo, target("male"), MINIMAL_MOVE_CATALOG.TACKLE,
+      new ScriptedRandom([4, 3]), oppositeTrace);
+    const same = calculateDamage("opponent", litleo, target("female"), MINIMAL_MOVE_CATALOG.TACKLE,
+      new ScriptedRandom([4, 3]), sameTrace);
+    const genderless = calculateDamage("opponent", litleo, target("genderless"), MINIMAL_MOVE_CATALOG.TACKLE,
+      new ScriptedRandom([4, 3]), genderlessTrace);
+
+    expect(opposite).toBe(32);
+    expect(same).toBe(40);
+    expect(genderless).toBe(32);
+    expect(oppositeTrace.at(-1)).toMatchObject({ type: "damage", statusModifier: 1,
+      abilityModifier: { ability: "RIVALRY", multiplier: 1 }, result: 32 });
+    expect(sameTrace.at(-1)).toMatchObject({ type: "damage", statusModifier: 1.25,
+      abilityModifier: { ability: "RIVALRY", multiplier: 1.25 }, result: 40 });
+    expect(genderlessTrace.at(-1)).toMatchObject({ type: "damage", statusModifier: 1,
+      abilityModifier: null, result: 32 });
   });
 
   it("gives Assault Vest its special defense boost and blocks status moves", () => {
@@ -368,16 +420,19 @@ describe("stat stages, power abilities and held battle items", () => {
   });
 
   it("applies Floracion to Grass attacks without an HP threshold", () => {
+    const floweringTrace: BattleTrace[] = [];
     const neutral = calculateDamage("player", battler("player", { types: ["FAIRY"] }), battler("opponent"),
       MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
     const flowering = calculateDamage("player", battler("player", { types: ["FAIRY"], ability: "FLORACION" }),
-      battler("opponent"), MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), []);
+      battler("opponent"), MINIMAL_MOVE_CATALOG.VINEWHIP, new ScriptedRandom([1, 15]), floweringTrace);
     const nonGrass = calculateDamage("player", battler("player", { ability: "FLORACION" }), battler("opponent"),
       MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
     const neutralNonGrass = calculateDamage("player", battler("player"), battler("opponent"),
       MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), []);
 
     expect(flowering).toBeGreaterThan(neutral);
+    expect(floweringTrace.at(-1)).toMatchObject({ type: "damage",
+      abilityModifier: { ability: "FLORACION", multiplier: 1.5 } });
     expect(nonGrass).toBe(neutralNonGrass);
   });
 
@@ -564,5 +619,143 @@ describe("stat stages, power abilities and held battle items", () => {
     expect(result.state.battlers.player.heldItem).toBeNull();
     expect(result.state.battlers.player.hp).toBeGreaterThan(30);
     expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed", item: "ORANBERRY" }));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "abilityActivated", ability: "CHEEKPOUCH",
+      effect: "heal-on-berry" }));
+  });
+});
+
+describe("ability conformance regressions", () => {
+  it("keeps an explicit audit entry for every ability advertised by the battle core", () => {
+    const audited: Record<(typeof IMPLEMENTED_BATTLE_ABILITIES)[number], string> = {
+      ACOMETIDA: "first active turn speed", BIGPECKS: "defense drop immunity", BLAZE: "low HP fire power",
+      CHEEKPOUCH: "berry consumption healing", CONTRAGUARDIA: "flying redirection", DRYSKIN: "water absorption",
+      FLORACION: "final grass damage", GUTS: "status attack", HUGEPOWER: "physical attack",
+      INNERFOCUS: "flinch immunity", INTIMIDATE: "entry attack drop", KEENEYE: "accuracy and evasion",
+      MAGICGUARD: "indirect damage", NOGUARD: "accuracy bypass", OVERGROW: "low HP grass power",
+      PUREPOWER: "physical attack", QUICKFEET: "status speed", REGENERATOR: "switch healing",
+      RIVALRY: "source gender damage", SERENEGRACE: "secondary chance", SHEDSKIN: "status cure",
+      SHIELDDUST: "secondary prevention", SIMPLE: "stat stage multiplier", STATIC: "contact paralysis",
+      STEADFAST: "flinch speed", SWARM: "low HP bug power", SYNCHRONIZE: "status reflection",
+      TORRENT: "low HP water power",
+    };
+    expect(Object.keys(audited).sort()).toEqual([...IMPLEMENTED_BATTLE_ABILITIES].sort());
+  });
+
+  it("lets Magic Guard block binding and curse while their lifecycle still advances", () => {
+    const guarded = battler("player", { ability: "MAGICGUARD", volatile: {
+      confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false, disabledMove: null,
+      disableTurns: 0, encoreMove: null, encoreTurns: 0, bindingMove: "WRAP", bindingTurns: 2,
+      cursed: true, lastMoveUsed: null,
+    } });
+    const result = resolveBattleVolatileEndOfTurn(guarded, "player");
+    expect(result.battler).toMatchObject({ hp: 100, volatile: { bindingTurns: 1, cursed: true } });
+    expect(result.events.some((event) => event.type === "bindingDamage" || event.type === "curseDamage")).toBe(false);
+  });
+
+  it("labels Keen Eye correctly when it prevents an accuracy drop", () => {
+    const sandAttack: BattleMove = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "SANDATTACK",
+      name: "Jet de Sable", functionCode: "047", accuracy: 0 };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move: sandAttack, pp: sandAttack.pp }] }),
+      battler("opponent", { ability: "KEENEYE" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(21));
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "KEENEYE",
+      effect: "prevent-stat-drop" });
+  });
+
+  it("lets Keen Eye ignore only a target's positive evasion", () => {
+    const evasive = battler("opponent", { stages: { ...battler("opponent").stages, evasion: 6 } });
+    const accurate = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 100 };
+    const result = resolveTurn(battle(battler("player", { ability: "KEENEYE",
+      moves: [{ move: accurate, pp: accurate.pp }] }), evasive),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([99, 1, 15, 99, 1, 15]));
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: "moveMissed", side: "player" }));
+    expect(result.trace).toContainEqual(expect.objectContaining({ type: "accuracy", side: "player",
+      evasionStage: 0, threshold: 100, hit: true }));
+  });
+
+  it("can trigger Static even when the contacted defender is knocked out", () => {
+    const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }),
+      battler("opponent", { hp: 1, ability: "STATIC" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 0]));
+    expect(result.state.battlers.opponent.hp).toBe(0);
+    expect(result.state.battlers.player.majorStatus).toEqual({ kind: "paralysis" });
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "STATIC",
+      effect: "inflict-paralysis" });
+  });
+
+  it("applies Cheek Pouch after a Payapa Berry is consumed", () => {
+    const psychic: BattleMove = { ...MINIMAL_MOVE_CATALOG.SWIFT, internalName: "CONFUSION", type: "PSYCHIC",
+      power: 20, accuracy: 0 };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move: psychic, pp: psychic.pp }] }),
+      battler("opponent", { hp: 50, types: ["POISON"], heldItem: "PAYAPABERRY", ability: "CHEEKPOUCH" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(22));
+    expect(result.state.battlers.opponent.heldItem).toBeNull();
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed", item: "PAYAPABERRY" }));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "abilityActivated", side: "opponent",
+      ability: "CHEEKPOUCH", effect: "heal-on-berry" }));
+  });
+
+  it("applies Cheek Pouch to the Bug Bite user that consumes a stolen Berry", () => {
+    const bugBite: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "BUGBITE", type: "BUG",
+      power: 10, functionCode: "0F4", accuracy: 0 };
+    const result = resolveTurn(battle(battler("player", { hp: 30, ability: "CHEEKPOUCH",
+      moves: [{ move: bugBite, pp: bugBite.pp }] }), battler("opponent", { heldItem: "ORANBERRY" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(23));
+    expect(result.state.battlers.player.hp).toBeGreaterThan(40);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "abilityActivated", side: "player",
+      ability: "CHEEKPOUCH", effect: "heal-on-berry" }));
+  });
+
+  it("lets Synchronize reflect the fangame-specific Caduco status", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.LUZDECADENTE, accuracy: 0 };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move, pp: move.pp }] }),
+      battler("opponent", { ability: "SYNCHRONIZE" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 0, 1, 15, 15]));
+    expect(result.state.battlers.opponent.majorStatus).toEqual({ kind: "caduco" });
+    expect(result.state.battlers.player.majorStatus).toEqual({ kind: "caduco" });
+    expect(result.events).toContainEqual({ type: "statusApplied", source: "opponent", target: "player",
+      status: "caduco" });
+  });
+
+  it("lets Synchronize reflect the fangame-specific Hemorrhage status", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.CUT, accuracy: 0, effectChance: 100 };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move, pp: move.pp }] }),
+      battler("opponent", { ability: "SYNCHRONIZE" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 0, 1, 1, 15]));
+    expect(result.state.battlers.opponent.majorStatus).toEqual({ kind: "hemorrhage" });
+    expect(result.state.battlers.player.majorStatus).toEqual({ kind: "hemorrhage" });
+    expect(result.events).toContainEqual({ type: "statusApplied", source: "opponent", target: "player",
+      status: "hemorrhage" });
+  });
+
+  it("reproduces Z's Shield Dust and Covert Cloak combination", () => {
+    const iceBeam = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, effectChance: 100 };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const shieldDustOnly = resolveTurn(battle(battler("player", { moves: [{ move: iceBeam, pp: iceBeam.pp }] }),
+      battler("opponent", { ability: "SHIELDDUST" })), actions,
+    new ScriptedRandom([99, 1, 15, 0, 99, 1, 15]));
+    const sourceCombination = resolveTurn(battle(battler("player", { moves: [{ move: iceBeam, pp: iceBeam.pp }] }),
+      battler("opponent", { ability: "SHIELDDUST", heldItem: "COVERTCLOAK" })), actions,
+    new ScriptedRandom([99, 1, 15, 0, 99, 1, 15]));
+
+    expect(shieldDustOnly.state.battlers.opponent.majorStatus).toEqual({ kind: "frozen" });
+    expect(sourceCombination.state.battlers.opponent.majorStatus).toBeNull();
+    expect(sourceCombination.events).toContainEqual({ type: "abilityActivated", side: "opponent",
+      ability: "SHIELDDUST", effect: "prevent-additional-effect" });
+
+    const thunderFang = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "THUNDERFANG", functionCode: "009" as const,
+      type: "ELECTRIC", accuracy: 0, effectChance: 100 };
+    const fangCombination = resolveTurn(battle(battler("player", {
+      moves: [{ move: thunderFang, pp: thunderFang.pp }] }), battler("opponent", {
+      ability: "SHIELDDUST", heldItem: "COVERTCLOAK" })), actions,
+    new ScriptedRandom([1, 15, 0, 99, 1, 15]));
+    expect(fangCombination.state.battlers.opponent.majorStatus).toBeNull();
+    expect(fangCombination.events).not.toContainEqual(expect.objectContaining({ type: "volatileApplied",
+      target: "opponent", effect: "flinch" }));
   });
 });

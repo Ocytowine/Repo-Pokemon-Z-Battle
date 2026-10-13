@@ -24,7 +24,7 @@ function volatileOf(battler: BattlerState): BattleVolatile {
   const neutral = { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
     disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
     bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
-    activeTurns: 0, protected: false, endured: false, tauntTurns: 0, rage: false };
+    activeTurns: 0, protected: false, endured: false, protectRate: 1, tauntTurns: 0, rage: false };
   return { ...neutral, ...(battler.volatile ?? {}) };
 }
 
@@ -103,6 +103,7 @@ function statChangeEffect(move: BattleMove): StatChangeEffect | null {
     case "045": return { target: "opponent", stat: "specialAttack", delta: -1 };
     case "046": return { target: "opponent", stat: "specialDefense", delta: -1 };
     case "047": return { target: "opponent", stat: "accuracy", delta: -1 };
+    case "048": return { target: "opponent", stat: "evasion", delta: -2 };
     case "04B": return { target: "opponent", stat: "attack", delta: -2 };
     case "04D": return { target: "opponent", stat: "speed", delta: -2 };
     default: return null;
@@ -118,9 +119,11 @@ function applyStatChange(
 ): void {
   const target = effect.target === "self" ? source : opponent;
   const battler = battlers[target];
-  if (effect.delta < 0 && ((effect.stat === "defense" && battler.ability === "BIGPECKS")
-    || (effect.stat === "accuracy" && battler.ability === "KEENEYE"))) {
-    events.push({ type: "abilityActivated", side: target, ability: "BIGPECKS", effect: "prevent-stat-drop" });
+  const preventingAbility = effect.delta < 0 && effect.stat === "defense" && battler.ability === "BIGPECKS"
+    ? "BIGPECKS" : effect.delta < 0 && effect.stat === "accuracy" && battler.ability === "KEENEYE"
+      ? "KEENEYE" : null;
+  if (preventingAbility !== null) {
+    events.push({ type: "abilityActivated", side: target, ability: preventingAbility, effect: "prevent-stat-drop" });
     return;
   }
   const current = battler.stages[effect.stat];
@@ -200,7 +203,14 @@ function applyMoveEffect(
     const attacker = battlers[source];
     const current = volatileOf(attacker);
     const protect = move.functionCode === "0AA";
-    battlers[source] = withVolatile(attacker, { ...current, protected: protect, endured: !protect });
+    const rate = Math.max(1, current.protectRate);
+    if (rate > 1 && draw(rng, trace, "protection", 65_536) >= Math.floor(65_536 / rate)) {
+      battlers[source] = withVolatile(attacker, { ...current, protected: false, endured: false, protectRate: 1 });
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    battlers[source] = withVolatile(attacker, { ...current, protected: protect, endured: !protect,
+      protectRate: Math.min(65_536, rate * 2) });
     events.push({ type: "volatileApplied", source, target: source,
       effect: protect ? "protect" : "endure", turns: 1, move: move.internalName });
     return;
@@ -314,7 +324,8 @@ function applyStatusMove(
   events.push({ type: "statusApplied", source, target, status: kind });
   const attacker = battlers[source];
   if (defender.ability === "SYNCHRONIZE" && attacker.majorStatus === null
-    && ["poison", "burn", "paralysis"].includes(kind) && !typePreventsStatus(attacker, kind)) {
+    && ["poison", "burn", "paralysis", "caduco", "hemorrhage"].includes(kind)
+    && !typePreventsStatus(attacker, kind)) {
     battlers[source] = { ...attacker, majorStatus: kind === "poison"
       ? { kind: "poison", toxicCounter: null } : { kind } as MajorStatusState };
     events.push({ type: "statusApplied", source: target, target: source, status: kind });
@@ -402,19 +413,23 @@ export function resolveBattleVolatileEndOfTurn(battler: BattlerState, side: Batt
     if (tauntTurns === 0) events.push({ type: "volatileEnded", side, effect: "taunt" });
   }
   if (volatile.bindingTurns > 0 && next.hp > 0) {
-    const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
-    next = { ...next, hp: next.hp - amount };
-    events.push({ type: "bindingDamage", side, move: volatile.bindingMove ?? "BINDING", amount, hp: next.hp });
+    if (next.ability !== "MAGICGUARD") {
+      const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
+      next = { ...next, hp: next.hp - amount };
+      events.push({ type: "bindingDamage", side, move: volatile.bindingMove ?? "BINDING", amount, hp: next.hp });
+    }
     const bindingTurns = volatile.bindingTurns - 1;
     volatile = { ...volatile, bindingTurns, bindingMove: bindingTurns === 0 ? null : volatile.bindingMove };
     if (bindingTurns === 0) events.push({ type: "volatileEnded", side, effect: "binding" });
   }
-  if (volatile.cursed && next.hp > 0) {
+  if (volatile.cursed && next.hp > 0 && next.ability !== "MAGICGUARD") {
     const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 4)));
     next = { ...next, hp: next.hp - amount };
     events.push({ type: "curseDamage", side, amount, hp: next.hp });
   }
-  volatile = { ...volatile, flinched: false, protected: false, endured: false,
+  volatile = { ...volatile, flinched: false,
+    protectRate: volatile.protected || volatile.endured ? volatile.protectRate : 1,
+    protected: false, endured: false,
     activeTurns: Math.min(999, volatile.activeTurns + 1) };
   return { battler: withVolatile(next, volatile), events };
 }
@@ -473,6 +488,16 @@ function applyResidualStatus(
   return null;
 }
 
+function applyCheekPouch(battler: BattlerState, side: BattleSide, events: BattleEvent[]): BattlerState {
+  if (battler.ability !== "CHEEKPOUCH" || battler.hp <= 0 || battler.hp >= battler.stats.maxHp) return battler;
+  const amount = Math.min(battler.stats.maxHp - battler.hp, Math.floor(battler.stats.maxHp / 3));
+  if (amount <= 0) return battler;
+  const next = { ...battler, hp: battler.hp + amount };
+  events.push({ type: "abilityActivated", side, ability: "CHEEKPOUCH", effect: "heal-on-berry" },
+    { type: "hpRestored", side, source: "move", move: "CHEEKPOUCH", amount, hp: next.hp });
+  return next;
+}
+
 export function resolveBattlePassiveEndOfTurn(battler: BattlerState, side: BattleSide,
   rng: RandomSource, trace: BattleTrace[]): { readonly battler: BattlerState; readonly events: readonly BattleEvent[] } {
   const events: BattleEvent[] = [];
@@ -483,11 +508,7 @@ export function resolveBattlePassiveEndOfTurn(battler: BattlerState, side: Battl
       next = { ...next, hp: next.hp + amount, heldItem: null };
       events.push({ type: "itemActivated", side, item: "ORANBERRY", effect: "heal", amount, hp: next.hp });
       events.push({ type: "heldItemConsumed", side, item: "ORANBERRY", effect: "heal", hp: next.hp });
-      if (next.ability === "CHEEKPOUCH" && next.hp < next.stats.maxHp) {
-        const cheekAmount = Math.min(next.stats.maxHp - next.hp, Math.max(1, Math.floor(next.stats.maxHp / 3)));
-        next = { ...next, hp: next.hp + cheekAmount };
-        events.push({ type: "itemActivated", side, item: "ORANBERRY", effect: "heal", amount: cheekAmount, hp: next.hp });
-      }
+      next = applyCheekPouch(next, side, events);
     }
     const heals = next.heldItem === "LEFTOVERS"
       || (next.heldItem === "BLACKSLUDGE" && next.types.includes("POISON"));
@@ -594,13 +615,19 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
     return true;
   }
   const itemModifier = attacker.heldItem === "WIDELENS" ? 1.1 : 1;
-  const evasionStage = defender.volatile?.identified === true ? 0 : defender.stages.evasion;
+  const evasionStage = defender.volatile?.identified === true
+    || (attacker.ability === "KEENEYE" && defender.stages.evasion > 0) ? 0 : defender.stages.evasion;
   const threshold = accuracy * itemModifier * accuracyFactor(attacker.stages.accuracy)
     / accuracyFactor(evasionStage);
   const roll = draw(rng, trace, "accuracy", 100);
   const hit = roll < threshold;
   trace.push({ type: "accuracy", side, base: accuracy, accuracyStage: attacker.stages.accuracy, evasionStage, threshold, hit });
   return hit;
+}
+
+/** Pokemon Z deliberately requires the Shield Dust + Covert Cloak combination. */
+function blocksAdditionalEffects(battler: BattlerState): boolean {
+  return battler.ability === "SHIELDDUST" && battler.heldItem === "COVERTCLOAK";
 }
 
 export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveActions, rng: RandomSource,
@@ -723,17 +750,16 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     const damageContext = { reflect: effects.sides[actualTargetSide].reflectTurns > 0,
       luckyChant: effects.sides[actualTargetSide].luckyChantTurns > 0,
       waterSport: effects.waterSportTurns > 0 };
-    let baseDamage = calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext);
-    if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) baseDamage *= 2;
-    if (slot.move.functionCode === "0C0" && baseDamage > 0) {
+    const damageRolls = [calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext)];
+    if (slot.move.functionCode === "0C0" && damageRolls[0]! > 0) {
       const hitTable = [2, 2, 3, 3, 4, 5] as const;
       const hits = hitTable[draw(rng, trace, "additional-effect", hitTable.length)]!;
       for (let hit = 1; hit < hits; hit += 1) {
-        baseDamage += calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext);
+        damageRolls.push(calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext));
       }
     }
-    let damage = baseDamage === 0 ? 0 : Math.max(1, Math.floor(baseDamage * (options.damageMultiplier ?? 1)));
-    const damageTrace = trace.slice(traceStart).find((entry) => entry.type === "damage");
+    const damageTraces = trace.slice(traceStart).filter((entry) => entry.type === "damage");
+    const damageTrace = damageTraces[0];
     if (damageTrace === undefined) throw new Error("Damage calculation did not emit its trace.");
     const gem = (battlers[side].heldItem === "FIGHTINGGEM" && slot.move.type === "FIGHTING")
       || (battlers[side].heldItem === "BUGGEM" && slot.move.type === "BUG")
@@ -744,21 +770,30 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     }
     const payapa = defender.heldItem === "PAYAPABERRY" && slot.move.type === "PSYCHIC"
       && damageTrace.effectiveness > 1;
-    const focusSash = defender.heldItem === "FOCUSSASH" && defender.hp === defender.stats.maxHp
-      && damage >= defender.hp;
-    if (focusSash) damage = Math.max(0, defender.hp - 1);
-    if (targetVolatile.endured && damage >= defender.hp) damage = Math.max(0, defender.hp - 1);
-    const hp = Math.max(0, defender.hp - damage);
+    let hp = defender.hp;
+    let damage = 0;
+    let focusSash = false;
+    for (const [hitIndex, rawDamage] of damageRolls.entries()) {
+      if (hp <= 0) break;
+      let hitDamage = rawDamage === 0 ? 0 : Math.max(1, Math.floor(rawDamage * (options.damageMultiplier ?? 1)));
+      if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) hitDamage *= 2;
+      const sashOnThisHit: boolean = !focusSash && defender.heldItem === "FOCUSSASH"
+        && hp === defender.stats.maxHp && hitDamage >= hp;
+      if (sashOnThisHit || targetVolatile.endured && hitDamage >= hp) hitDamage = Math.max(0, hp - 1);
+      focusSash = focusSash || sashOnThisHit;
+      const applied = Math.min(hitDamage, hp);
+      hp -= applied;
+      damage += applied;
+      const hitTrace = damageTraces[hitIndex] ?? damageTrace;
+      events.push({ type: "damageApplied", source: side, target: actualTargetSide,
+        amount: applied, hp, critical: hitTrace.critical, effectiveness: hitTrace.effectiveness });
+    }
     battlers[actualTargetSide] = { ...defender, hp, heldItem: focusSash || payapa ? null : defender.heldItem };
-    events.push({
-      type: "damageApplied", source: side, target: actualTargetSide,
-      amount: Math.min(damage, defender.hp), hp,
-      critical: damageTrace.critical, effectiveness: damageTrace.effectiveness,
-    });
     if (focusSash) events.push({ type: "heldItemConsumed", side: actualTargetSide,
       item: "FOCUSSASH", effect: "survive", hp });
     if (payapa) events.push({ type: "heldItemConsumed", side: actualTargetSide,
       item: "PAYAPABERRY", effect: "weaken", hp });
+    if (payapa) battlers[actualTargetSide] = applyCheekPouch(battlers[actualTargetSide], actualTargetSide, events);
     if (slot.move.functionCode === "0DD" && battlers[side].hp > 0) {
       const current = battlers[side];
       const amount = Math.min(current.stats.maxHp - current.hp, Math.round(Math.min(damage, defender.hp) / 2));
@@ -785,11 +820,11 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     const effectChance = Math.min(100, slot.move.effectChance * (battlers[side].ability === "SERENEGRACE" ? 2 : 1));
     if (hp > 0 && effectChance > 0
       && draw(rng, trace, "additional-effect", 100) < effectChance) {
-      if (battlers[actualTargetSide].ability === "SHIELDDUST") {
+      if (blocksAdditionalEffects(battlers[actualTargetSide])) {
         events.push({ type: "abilityActivated", side: actualTargetSide, ability: "SHIELDDUST", effect: "prevent-additional-effect" });
       } else applyMoveEffect(side, actualTargetSide, slot.move, battlers, rng, events, trace, effects);
     }
-    if (hp > 0 && slot.move.functionCode === "009" && battlers[actualTargetSide].ability !== "SHIELDDUST"
+    if (hp > 0 && slot.move.functionCode === "009" && !blocksAdditionalEffects(battlers[actualTargetSide])
       && draw(rng, trace, "additional-effect", 10) === 0) {
       const target = battlers[actualTargetSide];
       if (target.ability !== "INNERFOCUS") {
@@ -818,13 +853,15 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         if (amount > 0) events.push({ type: "hpRestored", side, source: "move", move: slot.move.internalName,
           amount, hp: eater.hp + amount });
       }
+      battlers[side] = applyCheekPouch(battlers[side], side, events);
     }
-    if (hp > 0 && defender.ability === "STATIC" && slot.move.flags?.includes("a") === true
+    if (damage > 0 && defender.ability === "STATIC" && slot.move.flags?.includes("a") === true
+      && battlers[side].hp > 0
       && battlers[side].majorStatus === null && !typePreventsStatus(battlers[side], "paralysis")
       && draw(rng, trace, "ability", 10) < 3) {
       battlers[side] = { ...battlers[side], majorStatus: { kind: "paralysis" } };
-      events.push({ type: "abilityActivated", side: targetSide, ability: "STATIC", effect: "inflict-paralysis" });
-      events.push({ type: "statusApplied", source: targetSide, target: side, status: "paralysis" });
+      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "STATIC", effect: "inflict-paralysis" });
+      events.push({ type: "statusApplied", source: actualTargetSide, target: side, status: "paralysis" });
     }
     if (damage > 0 && slot.move.flags?.includes("a") === true && defender.heldItem === "ROCKYHELMET"
       && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {

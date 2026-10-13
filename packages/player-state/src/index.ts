@@ -237,6 +237,30 @@ export interface PokemonZExperiencePolicy {
   readonly boostTwentyPercent?: boolean;
 }
 
+export interface PokemonZExperienceCalculation {
+  readonly formula: "pokemon-z-participant";
+  readonly defeatedLevel: number;
+  readonly defeatedBaseExperience: number;
+  readonly recipientLevel: number;
+  readonly participantCount: number;
+  readonly luckyEgg: boolean;
+  readonly policy: PokemonZExperiencePolicy;
+  readonly splitDivisor: number;
+  readonly afterSplit: number;
+  readonly afterTrainerBonus: number;
+  readonly afterDivisionByFive: number;
+  readonly levelAdjustmentNumerator: number;
+  readonly levelAdjustmentDenominator: number;
+  readonly levelAdjustment: number;
+  readonly afterLevelAdjustment: number;
+  readonly afterExperienceDisabled: number;
+  readonly afterTenPercentBoost: number;
+  readonly afterTwentyPercentBoost: number;
+  readonly afterLuckyEgg: number;
+  readonly levelCapOverride: boolean;
+  readonly result: number;
+}
+
 export interface SharedBattleExperienceGain {
   readonly turn: number;
   readonly defeatedMemberId: string;
@@ -247,6 +271,7 @@ export interface SharedBattleExperienceGain {
   readonly nextLevel: number;
   readonly learnedMoves: readonly string[];
   readonly skippedMoves: readonly string[];
+  readonly calculation: PokemonZExperienceCalculation;
 }
 
 export interface SharedBattleExperienceSettlement {
@@ -983,7 +1008,7 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
 }
 
 const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "003", "005", "006", "007", "009", "00A", "00C", "00F", "012", "013",
-  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "049", "04B", "04D",
+  "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030", "042", "043", "044", "045", "046", "047", "048", "049", "04B", "04D",
   "06F", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0C0", "0CF", "0D8", "0DD", "0E8", "0F4", "10D", "10E", "110", "116", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
@@ -1048,38 +1073,56 @@ export function pokemonZParticipantExperience(input: {
   readonly participantCount: number;
   readonly luckyEgg: boolean;
 }, policy: PokemonZExperiencePolicy): number {
+  return pokemonZParticipantExperienceCalculation(input, policy).result;
+}
+
+export function pokemonZParticipantExperienceCalculation(input: {
+  readonly defeatedLevel: number;
+  readonly defeatedBaseExperience: number;
+  readonly recipientLevel: number;
+  readonly participantCount: number;
+  readonly luckyEgg: boolean;
+}, policy: PokemonZExperiencePolicy): PokemonZExperienceCalculation {
   if (!integer(input.defeatedLevel, 1, 100) || !integer(input.defeatedBaseExperience, 1)
     || !integer(input.recipientLevel, 1, 100) || !integer(input.participantCount, 1)) {
     throw new Error("Données de calcul d'expérience invalides.");
   }
   if (!integer(policy.levelCap, 1, 100)) throw new Error("Plafond de niveau invalide.");
-  let experience = Math.floor(input.defeatedLevel * input.defeatedBaseExperience
-    / (policy.noSplitExperience === true ? 1 : input.participantCount));
-  if (policy.trainerBattle) experience = Math.floor(experience * 3 / 2);
-  experience = Math.floor(experience / 5);
+  const splitDivisor = policy.noSplitExperience === true ? 1 : input.participantCount;
+  const afterSplit = Math.floor(input.defeatedLevel * input.defeatedBaseExperience / splitDivisor);
+  const afterTrainerBonus = policy.trainerBattle ? Math.floor(afterSplit * 3 / 2) : afterSplit;
+  const afterDivisionByFive = Math.floor(afterTrainerBonus / 5);
   const denominator = input.defeatedLevel + input.recipientLevel + 10;
-  let adjustment: number;
+  let adjustmentNumerator: number;
   if (input.defeatedLevel + 5 <= input.recipientLevel) {
-    adjustment = (input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = input.defeatedLevel + 10;
   } else if (input.defeatedLevel < input.recipientLevel) {
-    adjustment = (1.5 * input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = 1.5 * input.defeatedLevel + 10;
   } else if (input.recipientLevel <= input.defeatedLevel - 2) {
-    adjustment = (2.2 * input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = 2.2 * input.defeatedLevel + 10;
   } else if (input.recipientLevel <= input.defeatedLevel - 5) {
-    adjustment = (2.5 * input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = 2.5 * input.defeatedLevel + 10;
   } else if (input.recipientLevel <= input.defeatedLevel - 10) {
-    adjustment = (3 * input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = 3 * input.defeatedLevel + 10;
   } else {
-    adjustment = (2 * input.defeatedLevel + 10) / denominator;
+    adjustmentNumerator = 2 * input.defeatedLevel + 10;
   }
-  experience = Math.floor(experience * Math.sqrt(adjustment ** 5)) + 1;
-  if (policy.experienceDisabled === true) experience = 0;
-  if (policy.boostTenPercent === true) experience = Math.floor(experience * 1.1);
-  if (policy.boostTwentyPercent === true) experience = Math.floor(experience * 1.2);
-  if (input.luckyEgg) experience = Math.floor(experience * 3 / 2);
+  const adjustment = adjustmentNumerator / denominator;
+  const afterLevelAdjustment = Math.floor(afterDivisionByFive * Math.sqrt(adjustment ** 5)) + 1;
+  const afterExperienceDisabled = policy.experienceDisabled === true ? 0 : afterLevelAdjustment;
+  const afterTenPercentBoost = policy.boostTenPercent === true
+    ? Math.floor(afterExperienceDisabled * 1.1) : afterExperienceDisabled;
+  const afterTwentyPercentBoost = policy.boostTwentyPercent === true
+    ? Math.floor(afterTenPercentBoost * 1.2) : afterTenPercentBoost;
+  const afterLuckyEgg = input.luckyEgg ? Math.floor(afterTwentyPercentBoost * 3 / 2) : afterTwentyPercentBoost;
   // Pokemon Z applies this after switch 661, so an over-cap participant still receives exactly one point.
-  if (input.recipientLevel > policy.levelCap) experience = 1;
-  return experience;
+  const levelCapOverride = input.recipientLevel > policy.levelCap;
+  const result = levelCapOverride ? 1 : afterLuckyEgg;
+  return { formula: "pokemon-z-participant", ...input, policy: { ...policy }, splitDivisor, afterSplit,
+    afterTrainerBonus, afterDivisionByFive, levelAdjustmentNumerator: adjustmentNumerator,
+    levelAdjustmentDenominator: denominator, levelAdjustment: adjustment, afterLevelAdjustment,
+    afterExperienceDisabled, afterTenPercentBoost, afterTwentyPercentBoost, afterLuckyEgg,
+    levelCapOverride, result };
 }
 
 /** Applies only one owner's immutable K.O. credits; callers persist the returned party atomically. */
@@ -1098,9 +1141,10 @@ export function applySharedBattleExperience(party: PlayerPartyState, settlement:
       const memberIndex = members.findIndex((pokemon) => pokemon.id === recipientId);
       if (memberIndex < 0) throw new Error(`Pokémon bénéficiaire absent de l'équipe : ${recipientId}.`);
       const pokemon = members[memberIndex]!;
-      const calculated = pokemonZParticipantExperience({ defeatedLevel: credit.defeatedBattler.level,
+      const calculation = pokemonZParticipantExperienceCalculation({ defeatedLevel: credit.defeatedBattler.level,
         defeatedBaseExperience: defeated.baseExperience, recipientLevel: pokemon.level,
         participantCount: credit.participantCount, luckyEgg: pokemon.heldItem === "LUCKYEGG" }, policy);
+      const calculated = calculation.result;
       const result = grantPokemonExperience(pokemon, calculated, catalog);
       members[memberIndex] = result.pokemon;
       if (result.levelsGained > 0 && (result.pokemon.pendingMoves?.length ?? 0) === 0) {
@@ -1112,7 +1156,7 @@ export function applySharedBattleExperience(party: PlayerPartyState, settlement:
       gains.push({ turn: credit.turn, defeatedMemberId: credit.defeatedBattler.id,
         recipientMemberId: recipientId, calculated, gained: result.gained,
         previousLevel: pokemon.level, nextLevel: result.pokemon.level,
-        learnedMoves: result.learnedMoves, skippedMoves: result.skippedMoves });
+        learnedMoves: result.learnedMoves, skippedMoves: result.skippedMoves, calculation });
     }
   }
   return { party: { ...party, members }, gains };

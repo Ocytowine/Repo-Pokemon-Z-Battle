@@ -8,6 +8,7 @@ import {
   replaceFaintedPokemon,
   resolveTeamTurn,
   type BattleSide,
+  type BattleMove,
   type BattlerState,
   type RandomSource,
 } from "../src/index.js";
@@ -157,6 +158,62 @@ describe("team battles", () => {
     ] });
     expect(() => resolveTeamTurn(state, { player: { kind: "item", itemId: "POTION", targetTeamIndex: 0 },
       opponent: { kind: "wait" } }, new ScriptedRandom([]))).toThrow("no-effect");
+  });
+
+  it("lets source Trainer AI consume its own healing item exactly once", () => {
+    const base = createTeamBattleState({ player: [pokemon("hero", "player")],
+      opponent: [pokemon("canola", "opponent", { hp: 20 })] });
+    const state = { ...base, teams: { ...base.teams,
+      opponent: { ...base.teams.opponent, items: ["SUPERPOTION"] } } };
+    const action = chooseSourceBattleAction(state, "opponent", new ScriptedRandom([]));
+    expect(action).toEqual({ kind: "item", itemId: "SUPERPOTION", targetTeamIndex: 0 });
+    const result = resolveTeamTurn(state, { player: { kind: "wait" }, opponent: action }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent).toMatchObject({ items: [], members: [{ hp: 70 }] });
+    expect(chooseSourceBattleAction(result.state, "opponent", new ScriptedRandom([0])))
+      .toEqual({ kind: "move", moveIndex: 0 });
+  });
+
+  it("intercepts a voluntary switch with Pursuit before the outgoing Pokemon leaves", () => {
+    const pursuit: BattleMove = { ...MINIMAL_MOVE_CATALOG.SCRATCH, internalName: "PURSUIT",
+      name: "Poursuite", functionCode: "088", power: 40, accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [pokemon("outgoing", "player"), pokemon("incoming", "player")],
+      opponent: [pokemon("hunter", "opponent", { moves: [{ move: pursuit, pp: pursuit.pp }] })],
+    });
+    const result = resolveTeamTurn(state, { player: { kind: "switch", teamIndex: 1 },
+      opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([1, 15]));
+    const damageIndex = result.events.findIndex((event) => event.type === "damageApplied");
+    const switchIndex = result.events.findIndex((event) => event.type === "pokemonSwitched");
+    expect(damageIndex).toBeGreaterThan(1);
+    expect(switchIndex).toBeGreaterThan(damageIndex);
+    expect(result.state.teams.player.members[0]!.hp).toBeLessThan(100);
+    expect(result.state.teams.player.members[1]!.hp).toBe(100);
+  });
+
+  it("halves consecutive Protect success and resets the rate after failure", () => {
+    const protect: BattleMove = { ...MINIMAL_MOVE_CATALOG.HOWL, internalName: "PROTECT",
+      name: "Abri", functionCode: "0AA", priority: 4 };
+    const state = createTeamBattleState({ player: [pokemon("guard", "player", {
+      moves: [{ move: protect, pp: protect.pp }] })], opponent: [pokemon("foe", "opponent")] });
+    const first = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([]));
+    expect(first.state.teams.player.members[0]!.volatile).toMatchObject({ protectRate: 2, protected: false });
+    const second = resolveTeamTurn(first.state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([40_000, 99, 1, 15]));
+    expect(second.events).toContainEqual({ type: "moveFailed", side: "player", move: "PROTECT", reason: "condition" });
+    expect(second.state.teams.player.members[0]!.volatile).toMatchObject({ protectRate: 1, protected: false });
+  });
+
+  it("emits one damage event per hit of a multi-hit move", () => {
+    const multi: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FURYATTACK",
+      name: "Furie", functionCode: "0C0", accuracy: 0 };
+    const state = createTeamBattleState({ player: [pokemon("multi", "player", {
+      moves: [{ move: multi, pp: multi.pp }] })], opponent: [pokemon("target", "opponent")] });
+    const result = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, { nextInt: () => 0 });
+    const hits = result.events.filter((event) => event.type === "damageApplied");
+    expect(hits).toHaveLength(2);
+    expect(hits[1]).toMatchObject({ hp: result.state.teams.opponent.members[0]!.hp });
   });
 
   it("applies bitter medicine happiness and source revival exceptions in battle", () => {

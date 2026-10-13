@@ -32,7 +32,7 @@ export function calculateDamage(
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
     const result = Math.max(1, Math.floor((attacker.level * variance) / 100));
     trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
-      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, result });
+      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, abilityModifier: null, result });
     return result;
   }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
@@ -51,7 +51,6 @@ export function calculateDamage(
   const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
     : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
   if (lowHpAbilityType === move.type && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
-  if (attacker.ability === "FLORACION" && move.type === "GRASS") attack = Math.round(attack * 1.5);
   if (attacker.ability === "SWARM" && move.type === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
@@ -90,9 +89,20 @@ export function calculateDamage(
   if ((attacker.heldItem === "FIGHTINGGEM" && move.type === "FIGHTING")
     || (attacker.heldItem === "BUGGEM" && move.type === "BUG")) statusModifier *= 1.3;
   if (defender.heldItem === "PAYAPABERRY" && move.type === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
+  const attackerGender = attacker.appearance?.gender;
+  const defenderGender = defender.appearance?.gender;
+  const abilityModifier = attacker.ability === "FLORACION" && move.type === "GRASS"
+    ? { ability: "FLORACION" as const, multiplier: 1.5 }
+    : attacker.ability === "RIVALRY"
+    && (attackerGender === "male" || attackerGender === "female")
+    && (defenderGender === "male" || defenderGender === "female")
+    ? { ability: "RIVALRY" as const, multiplier: attackerGender === defenderGender ? 1.25 : 1 }
+    : null;
+  if (abilityModifier !== null) statusModifier *= abilityModifier.multiplier;
   result = Math.round(result * statusModifier);
   if (effectiveness !== 0) result = Math.max(1, result);
 
-  trace.push({ type: "damage", side, move: move.internalName, attack, defense, baseDamage, critical, variance, stab, effectiveness, statusModifier, result });
+  trace.push({ type: "damage", side, move: move.internalName, attack, defense, baseDamage, critical, variance, stab, effectiveness, statusModifier,
+    abilityModifier, result });
   return result;
 }

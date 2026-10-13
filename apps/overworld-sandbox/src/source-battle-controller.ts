@@ -1,11 +1,11 @@
-import { activeBattlePositions, activeTeamIndices, closeSharedBattleSession, createSharedBattleSession,
+import { activeBattlePositions, activeTeamIndices, chooseSourceBattleAction, closeSharedBattleSession, createSharedBattleSession,
   replaceFaintedDoublePokemon, resolveDoubleTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
   settleSharedBattleSession, type BattlePosition, type BattleSide, type DoubleBattleEvent,
   type PositionedTeamBattleAction, type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
   storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
-  type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
+  type PokemonZExperienceCalculation, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
 import {
   attemptSourceEncounterEscape,
@@ -15,10 +15,12 @@ import {
   resolveSourceEncounterAction,
   settleSourceEncounter,
   storeSourceEncounterParty,
+  type ScaledWildExperienceCalculation,
   type SourceTrainerDefinition,
 } from "./source-encounter.js";
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
+import type { SourceBattleReportStore } from "./source-battle-report.js";
 
 export interface SourceBattleResources {
   readonly catalog: PlayerCreationCatalog;
@@ -50,6 +52,7 @@ export interface SourceBattleExperiencePresentation {
   readonly growthRate: string;
   readonly learnedMoves: readonly string[];
   readonly skippedMoves: readonly string[];
+  readonly calculation: PokemonZExperienceCalculation | ScaledWildExperienceCalculation;
 }
 
 export interface SourceBattleOutcome {
@@ -59,6 +62,7 @@ export interface SourceBattleOutcome {
   readonly trainerDefeatText?: string;
   readonly escaped?: boolean;
   readonly captured?: { readonly name: string; readonly destination?: "team" | "ranch" };
+  readonly experienceNotAwardedReason?: "capture" | "escaped" | "defeat" | "no-eligible-recipient";
 }
 
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
@@ -76,7 +80,8 @@ export function sharedBattleExperiencePresentations(before: PlayerPartyState, af
       beforeLevel: gain.previousLevel, afterLevel: gain.nextLevel,
       beforeExperience: Math.max(previous.experience, experienceAtLevel(previous.level, definition.growthRate)),
       afterExperience: next.experience, growthRate: definition.growthRate,
-      learnedMoves: gain.learnedMoves.map(moveName), skippedMoves: gain.skippedMoves.map(moveName) }];
+      learnedMoves: gain.learnedMoves.map(moveName), skippedMoves: gain.skippedMoves.map(moveName),
+      calculation: gain.calculation }];
   });
 }
 
@@ -99,6 +104,7 @@ function battleExperiencePresentation(before: PlayerPartyState, after: PlayerPar
     growthRate: definition.growthRate,
     learnedMoves: reward.learnedMoves.map(moveName),
     skippedMoves: reward.skippedMoves.map(moveName),
+    calculation: reward.calculation,
   };
 }
 
@@ -113,6 +119,7 @@ export interface SourceBattleCallbacks {
   /** Historique personnel uniquement : aucune donnée de Pokédex n'est répliquée par la room. */
   readonly recordPokedexSeen?: (species: readonly string[]) => void;
   readonly render: () => void;
+  readonly battleReports?: SourceBattleReportStore;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
     readonly playerTeam: TeamBattleState["teams"]["player"];
     readonly opponentTeam: TeamBattleState["teams"]["opponent"] }) => boolean;
@@ -196,6 +203,8 @@ export class SourceBattleController {
       }
       this.battle = battle;
       this.localSession = this.createLocalSession("source-wild", resources.mapId);
+      this.callbacks.battleReports?.start({ battleId: this.localSession.battleId, mode: "solo",
+        viewerSide: "player", state: battle, context: { ...context, narrativeOwnerId: "local" } });
       this.rng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
@@ -249,6 +258,8 @@ export class SourceBattleController {
       }
       this.battle = battle;
       this.localSession = this.createLocalSession("source-trainer", resources.mapId);
+      this.callbacks.battleReports?.start({ battleId: this.localSession.battleId, mode: "solo",
+        viewerSide: "player", state: battle, context: { ...context, narrativeOwnerId: "local" } });
       this.rng = new SeededRandom(encounterSeed(`${trainer.trainerType}:${trainer.name}`, trainer.version));
       this.escapeAttempts = 0;
       this.trainerCompletion = onComplete;
@@ -284,6 +295,7 @@ export class SourceBattleController {
       const result = attemptSourceEncounterEscape(before, this.escapeAttempts, this.rng);
       this.escapeAttempts += 1;
       if (result.escaped) {
+        const battleId = this.localSession?.battleId;
         const encounterCompletion = this.encounterCompletion;
         this.callbacks.updateEventState({
           ...eventState,
@@ -295,6 +307,12 @@ export class SourceBattleController {
           this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
         }
         await this.presentation.endBattle(null, { escaped: true });
+        if (battleId !== undefined) {
+          this.callbacks.battleReports?.recordSettlement({ battleId,
+            outcome: { escaped: true, experienceNotAwardedReason: "escaped" },
+            moneyBefore: eventState.money, moneyAfter: eventState.money });
+          this.callbacks.battleReports?.finish(battleId, before, "escaped");
+        }
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
         encounterCompletion?.(false);
@@ -305,6 +323,11 @@ export class SourceBattleController {
           await this.presentation.playTurn(result.turn.state, replacements.events);
         }
         this.battle = replacements.state;
+        if (this.localSession !== null) {
+          this.callbacks.battleReports?.recordTurn({ battleId: this.localSession.battleId, before,
+            after: replacements.state, events: [...result.turn.events, ...replacements.events],
+            trace: result.turn.trace, actions: [] });
+        }
         if (this.battle.status === "finished") {
           const encounterCompletion = this.encounterCompletion;
           const settlement = settleSourceEncounter(eventState.party, this.battle,
@@ -312,7 +335,15 @@ export class SourceBattleController {
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
           this.closeFinishedLocalSession(this.battle);
-          await this.presentation.endBattle(this.battle.winner, { ...(loss > 0 ? { money: -loss } : {}) });
+          const outcome: SourceBattleOutcome = { ...(loss > 0 ? { money: -loss } : {}),
+            experienceNotAwardedReason: "defeat" };
+          const battleId = this.localSession?.battleId;
+          await this.presentation.endBattle(this.battle.winner, outcome);
+          if (battleId !== undefined) {
+            this.callbacks.battleReports?.recordSettlement({ battleId, outcome,
+              moneyBefore: eventState.money, moneyAfter: eventState.money - loss });
+            this.callbacks.battleReports?.finish(battleId, this.battle, "lost");
+          }
           this.clear();
           this.callbacks.setNotice(`Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.${loss > 0 ? ` · -${loss.toLocaleString("fr-FR")} ₽` : ""}`);
           encounterCompletion?.(false);
@@ -415,18 +446,25 @@ export class SourceBattleController {
       const itemPolicy = { context: "battle" as const, revivalAllowed: true,
         battleHealingAllowed: eventState.switches["666"] !== true };
       const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
-      const result = before.format === "double"
-        ? resolveDoubleTeamTurn(before, [
-          ...this.localDoubleActions,
-          ...activeTeamIndices(before.teams.opponent).map((_, slot) => {
-            const battler = before.teams.opponent.members[activeTeamIndices(before.teams.opponent)[slot]!]!;
-            const choices = battler.moves.map((entry, moveIndex) => ({ entry, moveIndex })).filter(({ entry }) => entry.pp > 0);
-            const selected = choices[this.rng!.nextInt(choices.length)];
-            if (selected === undefined) throw new Error("Le Pokemon adverse n'a aucune capacite disponible.");
-            return { actor: { side: "opponent" as const, slot }, action: { kind: "move" as const, moveIndex: selected.moveIndex } };
-          }),
-        ], this.rng, itemPolicy)
-        : resolveSourceEncounterAction(before, action, this.rng, itemPolicy);
+      let opponentItemChosen = false;
+      const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent).map((_, slot) => {
+        const action = chooseSourceBattleAction(before, "opponent", this.rng!, slot, !opponentItemChosen);
+        if (action.kind === "item") opponentItemChosen = true;
+        return { actor: { side: "opponent" as const, slot }, action };
+      });
+      let result;
+      let reportedActions: readonly PositionedTeamBattleAction[];
+      if (before.format === "double") {
+        reportedActions = [...this.localDoubleActions, ...automaticOpponentActions];
+        result = resolveDoubleTeamTurn(before, reportedActions, this.rng, itemPolicy);
+      } else {
+        const singleResult = resolveSourceEncounterAction(before, action, this.rng, itemPolicy);
+        result = singleResult;
+        reportedActions = [
+          { actor: { side: "player", slot: 0 }, action: singleResult.actions.player },
+          { actor: { side: "opponent", slot: 0 }, action: singleResult.actions.opponent },
+        ];
+      }
       const usedItems = submittedActions.flatMap((entry) => entry.kind === "item" ? [entry.itemId]
         : entry.kind === "capture" ? [entry.ballId] : []);
       if (usedItems.length > 0) {
@@ -461,6 +499,11 @@ export class SourceBattleController {
       }
       if (replacementEvents.length > 0) await this.presentation.playTurn(result.state, replacementEvents);
       this.battle = replacementState;
+      if (this.localSession !== null) {
+        this.callbacks.battleReports?.recordTurn({ battleId: this.localSession.battleId, before,
+          after: replacementState, events: [...result.events, ...replacementEvents], trace: result.trace,
+          actions: reportedActions });
+      }
       if (this.battle.status === "finished") {
         const captureEvent = result.events.flatMap((event) => event.type === "positionedActionResolved"
           ? [...event.events] : event.type === "captureAttempted" ? [event] : [])
@@ -488,9 +531,17 @@ export class SourceBattleController {
             : { ...eventState, party, ranch: addPokemonToStorage(eventState.ranch, pokemon) };
           const nextState = completePendingEncounter(capturedState);
           const encounterCompletion = this.encounterCompletion;
+          const battleId = this.localSession?.battleId;
           this.closeFinishedLocalSession(this.battle);
-          await this.presentation.endBattle("player", { captured: { name: target.name, destination } });
+          const outcome: SourceBattleOutcome = { captured: { name: target.name, destination },
+            experienceNotAwardedReason: "capture" };
+          await this.presentation.endBattle("player", outcome);
           this.callbacks.updateEventState(nextState);
+          if (battleId !== undefined) {
+            this.callbacks.battleReports?.recordSettlement({ battleId, outcome,
+              moneyBefore: eventState.money, moneyAfter: nextState.money });
+            this.callbacks.battleReports?.finish(battleId, this.battle, "captured");
+          }
           this.clear();
           this.callbacks.setNotice(`${target.name} capturé · envoyé ${destination === "team" ? "dans l'équipe" : "au Ranch"}.`);
           encounterCompletion?.(true);
@@ -519,15 +570,24 @@ export class SourceBattleController {
         }
         const experience = settlement.experience === null || resources === null ? undefined
           : battleExperiencePresentation(eventState.party, settlement.party, settlement.experience, resources.catalog);
+        const battleId = this.localSession?.battleId;
         this.closeFinishedLocalSession(this.battle);
-        await this.presentation.endBattle(winner, {
+        const outcome: SourceBattleOutcome = {
           ...(experience === undefined ? {} : { experience }),
+          ...(experience !== undefined ? {} : { experienceNotAwardedReason: winner === "player"
+            ? "no-eligible-recipient" as const : "defeat" as const }),
           ...(moneyDelta === 0 ? {} : { money: moneyDelta }),
           ...(winner === "player" && trainerCompletion !== null && this.trainerAudio?.defeatText !== undefined
             ? { trainerDefeatText: this.trainerAudio.defeatText } : {}),
-        });
+        };
+        await this.presentation.endBattle(winner, outcome);
         if (trainerCompletion === null && settlement.completed) nextState = completePendingEncounter(nextState);
         this.callbacks.updateEventState(nextState);
+        if (battleId !== undefined) {
+          this.callbacks.battleReports?.recordSettlement({ battleId, outcome,
+            moneyBefore: eventState.money, moneyAfter: nextState.money });
+          this.callbacks.battleReports?.finish(battleId, this.battle, winner === "player" ? "won" : "lost");
+        }
         this.clear();
         const skippedMoves = settlement.experience?.skippedMoves.map((internalName) => resources?.catalog.moves
           .find((move) => move.internalName === internalName)?.name ?? internalName) ?? [];

@@ -1,4 +1,4 @@
-import type { BattlerState, RandomSource } from "./types.js";
+import type { BattlerState, PokemonCaptureCalculation, RandomSource } from "./types.js";
 
 const BALL_IDS = new Set([
   "POKEBALL", "GREATBALL", "SAFARIBALL", "ULTRABALL", "MASTERBALL", "NETBALL", "DIVEBALL",
@@ -21,7 +21,8 @@ export interface PokemonCaptureContext {
   readonly sameSpeciesOppositeGender?: boolean;
   readonly criticalCaptureBonus?: number;
 }
-export interface PokemonCaptureResult { readonly shakes: number; readonly critical: boolean; readonly success: boolean }
+export interface PokemonCaptureResult { readonly shakes: number; readonly critical: boolean; readonly success: boolean;
+  readonly calculation: PokemonCaptureCalculation }
 
 export function isPokemonBallSupported(itemId: string): boolean { return BALL_IDS.has(itemId); }
 
@@ -65,20 +66,43 @@ export function attemptPokemonCapture(ballId: string, target: BattlerState, cont
   rng: RandomSource): PokemonCaptureResult {
   if (!isPokemonBallSupported(ballId)) throw new Error(`Ball non supportee : ${ballId}.`);
   if (target.hp <= 0 || target.capture === undefined) throw new Error("Ce Pokemon ne peut pas etre capture.");
-  if (ballId === "MASTERBALL") return { shakes: 4, critical: false, success: true };
+  const baseRate = target.capture.rate;
   const rate = modifiedRate(ballId, target, context);
-  let x = Math.floor(((target.stats.maxHp * 3 - target.hp * 2) * rate) / (target.stats.maxHp * 3));
-  if (target.majorStatus?.kind === "sleep" || target.majorStatus?.kind === "frozen") x = Math.floor(x * 2.5);
-  else if (target.majorStatus !== null) x = Math.floor(x * 1.5);
-  if (x > 255) return { shakes: 4, critical: false, success: true };
+  const hpNumerator = target.stats.maxHp * 3 - target.hp * 2;
+  const hpDenominator = target.stats.maxHp * 3;
+  const rateBeforeStatus = Math.floor((hpNumerator * rate) / hpDenominator);
+  const statusMultiplier = target.majorStatus?.kind === "sleep" || target.majorStatus?.kind === "frozen" ? 2.5
+    : target.majorStatus !== null ? 1.5 : 1;
+  let x = Math.floor(rateBeforeStatus * statusMultiplier);
+  const baseCalculation = { baseRate, modifiedRate: rate, maximumHp: target.stats.maxHp, currentHp: target.hp,
+    hpNumerator, hpDenominator, rateBeforeStatus, statusMultiplier,
+    criticalCaptureBonus: Math.max(0, Math.floor(context.criticalCaptureBonus ?? 0)) };
+  if (ballId === "MASTERBALL") return { shakes: 4, critical: false, success: true,
+    calculation: { ...baseCalculation, finalRate: x, shakeThreshold: null, criticalRoll: null,
+      shakeRolls: [], automaticReason: "master-ball" } };
+  if (x > 255) return { shakes: 4, critical: false, success: true,
+    calculation: { ...baseCalculation, finalRate: x, shakeThreshold: null, criticalRoll: null,
+      shakeRolls: [], automaticReason: "rate-overflow" } };
   x = Math.max(1, x);
   const threshold = Math.floor(65536 / ((255 / x) ** 0.1875));
-  const criticalBonus = Math.max(0, Math.floor(context.criticalCaptureBonus ?? 0));
-  if (criticalBonus > 0 && rng.nextInt(256) < criticalBonus) {
-    const success = rng.nextInt(65536) < threshold;
-    return { shakes: success ? 4 : 0, critical: true, success };
+  const criticalBonus = baseCalculation.criticalCaptureBonus;
+  const criticalRoll = criticalBonus > 0 ? rng.nextInt(256) : null;
+  if (criticalRoll !== null && criticalRoll < criticalBonus) {
+    const shakeRoll = rng.nextInt(65536);
+    const success = shakeRoll < threshold;
+    return { shakes: success ? 4 : 0, critical: true, success,
+      calculation: { ...baseCalculation, finalRate: x, shakeThreshold: threshold, criticalRoll,
+        shakeRolls: [shakeRoll], automaticReason: null } };
   }
   let shakes = 0;
-  while (shakes < 4 && rng.nextInt(65536) < threshold) shakes += 1;
-  return { shakes, critical: false, success: shakes === 4 };
+  const shakeRolls: number[] = [];
+  while (shakes < 4) {
+    const roll = rng.nextInt(65536);
+    shakeRolls.push(roll);
+    if (roll >= threshold) break;
+    shakes += 1;
+  }
+  return { shakes, critical: false, success: shakes === 4,
+    calculation: { ...baseCalculation, finalRate: x, shakeThreshold: threshold, criticalRoll,
+      shakeRolls, automaticReason: null } };
 }

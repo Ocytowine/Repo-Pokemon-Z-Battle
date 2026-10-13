@@ -105,6 +105,8 @@ describe("authoritative battle room", () => {
     const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "duel-turn-opponent",
       battleId: battle.id, turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(resolved.map((entry) => entry.message.type)).toEqual(["ack", "turnResolved", "snapshot"]);
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage" })]) });
     expect(room.snapshot().battle?.state.status).toBe("finished");
     const left = room.receive("alice", { type: "leaveBattle", version: 15,
       requestId: "duel-leave", battleId: battle.id });
@@ -1057,6 +1059,31 @@ describe("authoritative battle room", () => {
       battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
     expect(resumed.map((entry) => entry.message.type)).toContain("turnResolved");
     expect(room.snapshot().battle?.state.turn).toBe(2);
+  });
+
+  it("keeps and consumes a source Trainer item in the authoritative snapshot", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    const opponentTeam = { ...initial.teams.opponent, items: ["SUPERPOTION"],
+      members: initial.teams.opponent.members.map((member) => ({ ...member, hp: 20 })) };
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "trainer-item-open",
+      context: sourceTrainerBattleContext("alice"), playerTeam: initial.teams.player, opponentTeam });
+    const battleId = room.snapshot().battle!.id;
+    expect(room.snapshot().battle?.state.teams.opponent.items).toEqual(["SUPERPOTION"]);
+    room.receive("alice", { type: "closeBattleJoinWindow", version: 15,
+      requestId: "trainer-item-solo", battleId });
+    const resolved = room.receive("alice", { type: "submitAction", version: 15,
+      requestId: "trainer-item-turn", battleId, turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "trainerItemUsed",
+        side: "opponent", itemId: "SUPERPOTION" })]) });
+    expect(room.snapshot().battle?.state.teams.opponent).toMatchObject({ items: [], members: [{ hp: 70 }] });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().battle?.state.teams.opponent.items).toEqual([]);
   });
 
   it("automatically replaces an unowned source Pokemon after a KO", () => {

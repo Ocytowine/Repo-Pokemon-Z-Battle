@@ -21,12 +21,13 @@ export interface EngineSupportInput {
 const SUPPORTED_MOVE_FUNCTION_CODES = new Set([
   "00", "000", "003", "005", "006", "007", "009", "00A", "00C", "00F", "012", "013",
   "01C", "01D", "01E", "01F", "020", "022", "023", "027", "028", "030",
-  "042", "043", "044", "045", "046", "047", "04B", "04D",
-  "06F", "077", "07B", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AD", "0B9", "0BA", "0BC", "0CF", "0D8", "0DD", "0E8", "10D", "10E", "116", "159", "906",
+  "042", "043", "044", "045", "046", "047", "048", "04B", "04D",
+  "06F", "077", "07B", "088", "09A", "09E", "0A1", "0A2", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0C0", "0CF", "0D8", "0DD", "0E8", "10D", "10E", "116", "159", "906",
 ]);
-const PARTIAL_MOVE_FUNCTION_CODES = new Set(["049", "088", "093", "0AA", "0C0", "0F4", "110"]);
-const SUPPORTED_ABILITIES = new Set(["ACOMETIDA", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "CHLOROPHYLL", "CONTRAGUARDIA", "DRYSKIN", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "INTIMIDATE", "KEENEYE", "MAGICGUARD", "NOGUARD", "OVERGROW",
-  "PUREPOWER", "QUICKFEET", "REGENERATOR", "SERENEGRACE", "SHEDSKIN", "SHIELDDUST", "SIMPLE", "STATIC", "STEADFAST", "SWARM", "SYNCHRONIZE", "TORRENT"]);
+const PARTIAL_MOVE_FUNCTION_CODES = new Set(["049", "093", "0F4", "110"]);
+const SUPPORTED_ABILITIES = new Set(["ACOMETIDA", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "CONTRAGUARDIA", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "KEENEYE", "MAGICGUARD", "NOGUARD", "OVERGROW",
+  "PUREPOWER", "QUICKFEET", "REGENERATOR", "RIVALRY", "SERENEGRACE", "SHEDSKIN", "SHIELDDUST", "SIMPLE", "STATIC", "STEADFAST", "SWARM", "SYNCHRONIZE", "TORRENT"]);
+const PARTIAL_ABILITIES = new Set(["CHLOROPHYLL", "DRYSKIN", "INTIMIDATE"]);
 const SUPPORTED_EVOLUTION_METHODS = new Set([
   "AtkDefEqual", "AttackGreater", "Cascoon", "DayHoldItem", "DefenseGreater",
   "Happiness", "HappinessDay", "HappinessNight", "HasInParty", "HasMove",
@@ -59,7 +60,7 @@ export function createEngineSupportReport(input: EngineSupportInput): EngineSupp
       SUPPORTED_MOVE_FUNCTION_CODES,
       PARTIAL_MOVE_FUNCTION_CODES,
     ),
-    abilities: entries(input.abilities.records.map((record) => record.internalName), SUPPORTED_ABILITIES),
+    abilities: entries(input.abilities.records.map((record) => record.internalName), SUPPORTED_ABILITIES, PARTIAL_ABILITIES),
     itemTypes: entries(
       input.items.records.map((record) =>
         record.itemType === null ? "none" : String(record.itemType),

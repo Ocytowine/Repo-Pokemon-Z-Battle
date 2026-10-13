@@ -33,6 +33,19 @@ describe("source battle presentation sequence", () => {
     expect(sequence[4]).toMatchObject({ message: "C'est super efficace !" });
   });
 
+  it("keeps every multi-hit impact and intermediate HP value", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "damageApplied", source: "player", target: "opponent", amount: 4, hp: 16,
+        critical: false, effectiveness: 1 },
+      { type: "damageApplied", source: "player", target: "opponent", amount: 5, hp: 11,
+        critical: false, effectiveness: 1 },
+    ]);
+    expect(sequence.map((step) => step.kind)).toEqual(["impact", "health", "impact", "health"]);
+    expect(sequence[1]).toMatchObject({ from: 20, to: 16 });
+    expect(sequence[3]).toMatchObject({ from: 16, to: 11 });
+  });
+
   it.each([
     [0, "Cela n'affecte pas la cible…"],
     [0.5, "Ce n'est pas très efficace…"],
@@ -147,5 +160,16 @@ describe("source battle presentation sequence", () => {
       state: { teams: { player: { members: [{ moves: [{ pp: 15 }] }] } } } });
     expect(sequence[1]).toMatchObject({ message: "Héros reçoit XATTACK : Attaque augmente.",
       state: { teams: { player: { members: [{ stages: { attack: 1 } }] } } } });
+  });
+
+  it("uses Z's localized effect message instead of a generic ability identifier", () => {
+    const passerouge = { ...battler("Passerouge"), ability: "BIGPECKS" as const };
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [passerouge] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "abilityActivated", side: "opponent", ability: "BIGPECKS", effect: "prevent-stat-drop" },
+    ], { abilityName: (internalName) => internalName === "BIGPECKS" ? "Cœur de Coq" : internalName });
+
+    expect(sequence).toEqual([expect.objectContaining({ kind: "status",
+      message: "Cœur de Coq de Passerouge l'empêche de perdre de la Défense !" })]);
   });
 });

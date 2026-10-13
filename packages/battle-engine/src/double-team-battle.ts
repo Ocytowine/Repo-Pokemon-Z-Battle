@@ -68,6 +68,7 @@ function effectiveSpeed(battler: BattlerState): number {
   const staged = stage >= 0 ? Math.floor((battler.stats.speed * (2 + stage)) / 2)
     : Math.floor((battler.stats.speed * 2) / (2 - stage));
   if (battler.ability === "QUICKFEET" && battler.majorStatus !== null) return Math.max(1, Math.round(staged * 1.5));
+  if (battler.ability === "ACOMETIDA" && (battler.volatile?.activeTurns ?? 0) === 0) return Math.max(1, Math.round(staged * 1.5));
   return battler.majorStatus?.kind === "paralysis" ? Math.max(1, Math.round(staged / 4)) : staged;
 }
 
@@ -252,6 +253,23 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   const itemEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "item");
   const captureEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "capture");
   const events: DoubleBattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
+  const trace: DoubleTurnResult["trace"][number][] = [];
+  let effects = state.effects;
+  const pursuitKeys = new Set<string>();
+  for (const entry of effectiveSubmitted) {
+    if (entry.action.kind !== "move") continue;
+    const attacker = battlerAtPosition({ ...state, teams }, entry.actor);
+    if (attacker?.moves[entry.action.moveIndex]?.move.functionCode !== "088") continue;
+    const target = moveTargets({ ...state, teams }, entry.actor, entry.action, rng)
+      .find((candidate) => effectiveSubmitted.some((submitted) => key(submitted.actor) === key(candidate)
+        && submitted.action.kind === "switch"));
+    if (target === undefined) continue;
+    const result = executeMove(state, teams, entry.actor, entry.action, [target], rng, effectiveSubmitted, effects);
+    effects = result.effects;
+    events.push({ type: "positionedActionResolved", actor: entry.actor, targets: [target], events: result.events });
+    trace.push(...result.trace);
+    pursuitKeys.add(key(entry.actor));
+  }
   for (const entry of switchEntries) events.push(...switchAt(teams, entry.actor, (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex));
   for (const entry of itemEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "item" }>;
@@ -262,10 +280,16 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     if (typeof applied === "string") throw new Error(`Objet ${action.itemId} inutilisable : ${applied}.`);
     teams[entry.actor.side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };
+    if (team.items !== undefined) {
+      const consumedIndex = team.items.indexOf(action.itemId);
+      if (consumedIndex >= 0) teams[entry.actor.side] = { ...teams[entry.actor.side],
+        items: team.items.filter((_, index) => index !== consumedIndex) };
+    }
     events.push({ type: "trainerItemUsed", side: entry.actor.side, itemId: action.itemId,
       targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
   }
-  const moves = effectiveSubmitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } => entry.action.kind === "move")
+  const moves = effectiveSubmitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } =>
+    entry.action.kind === "move" && !pursuitKeys.has(key(entry.actor)))
     .map((entry) => { const battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
@@ -278,8 +302,6 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     ...effectiveSubmitted.filter((entry) => entry.action.kind === "wait").map((entry) => ({ side: entry.actor.side, kind: "wait" as const })),
     ...moves.map((entry) => ({ side: entry.actor.side, kind: "move" as const })),
   ] });
-  const trace: DoubleTurnResult["trace"][number][] = [];
-  let effects = state.effects;
   for (const entry of captureEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "capture" }>;
     const enemies = activeTeamIndices(teams[otherSide(entry.actor.side)]).map((_, slot) =>

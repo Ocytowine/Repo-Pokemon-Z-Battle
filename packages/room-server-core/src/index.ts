@@ -672,6 +672,11 @@ export class AuthoritativeBattleRoom {
         turn: resolvedTurn,
         state: result.state,
         events: result.events,
+        trace: result.trace,
+        actions: [
+          { actor: { side: "player", slot: 0 }, action: actions.player },
+          { actor: { side: "opponent", slot: 0 }, action: actions.opponent },
+        ],
       },
     });
     output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
@@ -782,14 +787,14 @@ export class AuthoritativeBattleRoom {
     const cancelledEscape = this.#escapeConfirmations.size > 0;
     this.#escapeConfirmations.clear();
     this.#pendingDoubleActions.set(actionKey, { actor: position, action: message.action });
+    const aiItemSides = new Set<BattleSide>();
     for (const candidate of activeBattlePositions(state)) {
       const key = `${candidate.side}:${candidate.slot}`;
       if (this.#pendingDoubleActions.has(key) || activeBattleControllerAt(participation, candidate) !== null) continue;
-      const battler = state.teams[candidate.side].members[activeTeamIndices(state.teams[candidate.side])[candidate.slot]!]!;
-      const moves = battler.moves.map((slot, moveIndex) => ({ slot, moveIndex })).filter(({ slot }) => slot.pp > 0);
-      const selected = moves[this.#rng.nextInt(moves.length)];
-      if (selected === undefined) throw new Error("Le Pokemon source n'a aucune capacite disponible.");
-      this.#pendingDoubleActions.set(key, { actor: candidate, action: { kind: "move", moveIndex: selected.moveIndex } });
+      const action = chooseSourceBattleAction(state, candidate.side, this.#rng, candidate.slot,
+        !aiItemSides.has(candidate.side));
+      if (action.kind === "item") aiItemSides.add(candidate.side);
+      this.#pendingDoubleActions.set(key, { actor: candidate, action });
     }
     if (this.#battleSession?.lifecycle === "join-window") this.#battleSession = activateSharedBattleSession(this.#battleSession);
     this.#revision += 1;
@@ -820,6 +825,12 @@ export class AuthoritativeBattleRoom {
     const beforeState = this.#battleState;
     const itemPolicy = { context: "battle" as const, revivalAllowed: true,
       battleHealingAllowed: source?.healingItemsAllowed ?? true };
+    const resolvedActions: readonly PositionedTeamBattleAction[] = double
+      ? [...this.#pendingDoubleActions.values()]
+      : [
+        { actor: { side: "player", slot: 0 }, action: playerAction! },
+        { actor: { side: "opponent", slot: 0 }, action: opponentAction! },
+      ];
     const result = double
       ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy)
       : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy);
@@ -849,7 +860,8 @@ export class AuthoritativeBattleRoom {
     this.#pendingDoubleActions.clear();
     this.#revision += 1;
     output.push({ audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
-      battleId, turn: resolvedTurn, state: result.state, events: result.events } });
+      battleId, turn: resolvedTurn, state: result.state, events: result.events,
+      trace: result.trace, actions: resolvedActions } });
 
     if (result.state.status === "active" && (result.state.replacementRequired.length > 0
       || (result.state.slotReplacements?.length ?? 0) > 0)) {
@@ -1343,6 +1355,8 @@ export class AuthoritativeBattleRoom {
         : createTeamBattleState({ player: message.playerTeam.members,
           opponent: message.opponentTeam.members }, { player: message.playerTeam.activeIndex,
           opponent: message.opponentTeam.activeIndex });
+      this.#battleState = { ...this.#battleState, teams: { ...this.#battleState.teams,
+        opponent: { ...this.#battleState.teams.opponent, items: [...(message.opponentTeam.items ?? [])] } } };
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;
       this.#escapeConfirmations.clear();
@@ -1448,7 +1462,13 @@ export class AuthoritativeBattleRoom {
         }
         this.#battleJoinInventory = null;
         if (this.#sourceBattleContext !== null) this.#sourceBattleContext = { ...this.#sourceBattleContext, format: "double" };
-        this.#battleState = { ...createDoubleTeamBattleState(teams, activeIndices), turn: previousState.turn };
+        const joinedState = createDoubleTeamBattleState(teams, activeIndices);
+        this.#battleState = { ...joinedState, turn: previousState.turn, teams: {
+          player: { ...joinedState.teams.player, ...(previousState.teams.player.items === undefined
+            ? {} : { items: [...previousState.teams.player.items] }) },
+          opponent: { ...joinedState.teams.opponent, ...(previousState.teams.opponent.items === undefined
+            ? {} : { items: [...previousState.teams.opponent.items] }) },
+        } };
         this.synchronizeBattleParticipation();
         if (this.#activeEncounter !== null) this.#battleLedger = createSharedBattleLedger(this.#battleState);
         this.#battleJoinProposal = null;
@@ -1613,7 +1633,7 @@ export class AuthoritativeBattleRoom {
         { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
         { audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
           battleId, turn: resolvedTurn, state: this.#battleState,
-          events: [{ type: "battleEnded", winner }] } },
+          events: [{ type: "battleEnded", winner }], trace: [], actions: [] } },
         { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
       ];
     }

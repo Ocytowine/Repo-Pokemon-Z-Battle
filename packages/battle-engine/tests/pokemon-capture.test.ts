@@ -17,9 +17,14 @@ describe("Pokemon Z capture", () => {
   it("uses the four-shake formula and the unconditional Master Ball", () => {
     const target = battler("wild", true);
     expect(attemptPokemonCapture("POKEBALL", target, { turn: 1, actorLevels: [10] }, new ZeroRandom()))
-      .toEqual({ shakes: 4, critical: false, success: true });
+      .toMatchObject({ shakes: 4, critical: false, success: true, calculation: {
+        baseRate: 45, modifiedRate: 45, maximumHp: 30, currentHp: 10,
+        hpNumerator: 70, hpDenominator: 90, rateBeforeStatus: 35, statusMultiplier: 1,
+        finalRate: 35, criticalCaptureBonus: 0, criticalRoll: null,
+        shakeRolls: [0, 0, 0, 0], automaticReason: null } });
     expect(attemptPokemonCapture("MASTERBALL", target, { turn: 1, actorLevels: [10] }, new ZeroRandom()))
-      .toEqual({ shakes: 4, critical: false, success: true });
+      .toMatchObject({ shakes: 4, critical: false, success: true,
+        calculation: { automaticReason: "master-ball", shakeThreshold: null, shakeRolls: [] } });
   });
 
   it("ends the turn without an opposing attack after a successful capture", () => {
@@ -28,7 +33,8 @@ describe("Pokemon Z capture", () => {
       opponent: { kind: "move", moveIndex: 0 } }, new ZeroRandom());
     expect(result.state).toMatchObject({ status: "finished", winner: "player", turn: 2 });
     expect(result.state.teams.player.members[0]?.hp).toBe(10);
-    expect(result.events).toContainEqual({ type: "captureAttempted", side: "player", ballId: "MASTERBALL",
-      target: "wild", shakes: 4, critical: false, success: true });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "captureAttempted", side: "player",
+      ballId: "MASTERBALL", target: "wild", shakes: 4, critical: false, success: true,
+      calculation: expect.objectContaining({ automaticReason: "master-ball" }) }));
   });
 });

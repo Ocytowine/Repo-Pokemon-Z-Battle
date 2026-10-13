@@ -162,6 +162,14 @@ describe("source encounter bridge", () => {
       ability: "MOODY" });
   });
 
+  it("preserves the source Trainer inventory in the authoritative battle state", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "LIDER1", name: "Canola", version: 0,
+      items: ["SUPERPOTION"], pokemon: [{ species: "BIDOOF", level: 3,
+        moves: ["TACKLE", null, null, null] }] }, catalog);
+    expect(battle.teams.opponent.items).toEqual(["SUPERPOTION"]);
+  });
+
   it("starts a trainer battle while preserving a source ability whose effect is not implemented yet", () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 8, catalog));
     const battle = createSourceTrainerBattle(party, { trainerType: "CAMPESINO", name: "Jean", version: 0,
@@ -217,7 +225,10 @@ describe("source encounter bridge", () => {
     expect(defeat).toMatchObject({ completed: false, experience: null, party: { members: [{ hp: 22 }] } });
     const victory = settleSourceEncounter(party, { ...battle, status: "finished", winner: "player" }, catalog);
     expect(scaledWildExperience(2, 50, 5)).toBe(13);
-    expect(victory).toMatchObject({ completed: true, experience: { amount: 13, levelsGained: 0 },
+    expect(victory).toMatchObject({ completed: true, experience: { amount: 13, levelsGained: 0,
+      calculation: { formula: "legacy-wild", defeatedLevel: 2, defeatedBaseExperience: 50,
+        recipientLevel: 5, multipliedExperience: 100, afterDivisionByFive: 20,
+        afterLevelAdjustment: 12, result: 13 } },
       party: { members: [{ experience: 148 }] } });
   });
 
