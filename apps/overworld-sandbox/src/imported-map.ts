@@ -6,6 +6,7 @@ import { parseAssetManifest, parsePokemonAssetsManifest, resolvePokemonSummaryAs
 import type { SourceShopItem } from "./source-economy.js";
 import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.js";
 import { clearSourceLocalDataCache, validateSourceLocalData } from "./source-local-data.js";
+import { parseSourceAlchemyCatalog, type SourceAlchemyCatalog } from "./source-alchemy.js";
 import type { SourceMovementAction, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
   type SourceFieldMark } from "./source-field-effects.js";
@@ -115,6 +116,7 @@ export interface ImportedMapAssets {
   readonly mapTranslations: ReadonlyMap<string, string>;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
+  readonly alchemy: SourceAlchemyCatalog;
   readonly machineCompatibility: ReadonlyMap<string, ReadonlySet<string>>;
   readonly pokemonOverworldPaths: ReadonlyMap<string, string>;
   readonly battleCatalog: PlayerDetailsCatalog;
@@ -752,10 +754,11 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
   await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`]);
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
+  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, alchemyValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
     movesValue, abilitiesValue, encountersValue, battleMetadataValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
+    fetchJson("/__pokemon-z/data/alchemy-recipes.json"),
     fetchJson("/__pokemon-z/data/machines.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/pokemon-assets.json"),
     fetchJson("/__pokemon-z/data/asset-manifest.json"), fetchJson("/__pokemon-z/data/moves.json"),
@@ -769,6 +772,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const events = parseMapEvents(eventValue);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const items = parseImportedItems(itemsValue, localizationValue);
+  const alchemy = parseSourceAlchemyCatalog(alchemyValue);
   const machineCompatibility = parseImportedMachineCompatibility(machinesValue);
   const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, abilitiesValue, localizationValue);
@@ -803,7 +807,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
     fieldEffectImages: { footprint: footprintImage, mountedFootprint: mountedFootprintImage,
       waterRipple: waterRippleImage },
-    mapTranslations, itemNames, items, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
+    mapTranslations, itemNames, items, alchemy, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
     trainers, trainerTypes,
     encounter: parseEncounter(encountersValue, mapId), ...battlePresentation };

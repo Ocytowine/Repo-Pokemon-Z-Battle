@@ -49,7 +49,8 @@ import { SourceParallelController, type SourceParallelTask } from "./source-para
 import { SourceFollowerMotionController } from "./source-follower-motion.js";
 import { AVATAR_LAB_MAP_ID, AvatarLabView } from "./avatar-lab-view.js";
 import { isSourceStateCommand, sourceCommandCapability } from "./source-command-registry.js";
-import { SourceSceneCoordinator, type SourceMenuTab, type SourceSceneActivity } from "./source-scene-coordinator.js";
+import { SourceSceneCoordinator, isSourceMenuTab,
+  type SourceSceneActivity } from "./source-scene-coordinator.js";
 import { parseSourceAudio, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
@@ -94,6 +95,7 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
 import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
+import { craftSourceAlchemyRecipe, sourceAlchemyUnlockLevel } from "./source-alchemy.js";
 import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
   type SourceFieldMark } from "./source-field-effects.js";
@@ -932,6 +934,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onUsePokemonItem: useSourcePokemonItem,
   onUseRareCandy: useSourceRareCandy,
   onUsePokemonPartyItem: useSourcePokemonPartyItem,
+  onCraftAlchemy: craftSourceAlchemy,
 });
 const sourceProgressionView = new SourceProgressionView({
   onLearnMove: learnSourcePendingMove,
@@ -1828,8 +1831,10 @@ function applySourceSequenceMovementMode(mode: SourceMovementMode): void {
 function renderSourceMenu(): void {
   if (importedAssets === null) return;
   const network = multiplayer.current;
+  const renderedState = renderedSourceEventState();
   sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets: importedAssets,
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
+    alchemyUnlockLevel: sourceAlchemyUnlockLevel(importedAssets.alchemy, renderedState.variables),
     profileBodyModel: activePlayerSelection.profile.bodyModel,
     movement: sourceMovementMenuModel(),
     dev: { storyLevelCap: pokemonZLevelCap(sourceEventState.switches),
@@ -1841,6 +1846,32 @@ function renderSourceMenu(): void {
       players: (network?.snapshot?.players ?? []).map((player) => ({ side: player.side,
         name: player.profile.profile.displayName, connected: player.connected,
         connectionState: player.connectionState ?? (player.connected ? "connected" : "reconnecting") })) } });
+}
+
+function craftSourceAlchemy(itemId: string, quantity: number): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const assets = importedAssets;
+  if (assets === null) return { ok: false, message: "Catalogue d'Alchimie indisponible.", eventState: sourceEventState };
+  const result = craftSourceAlchemyRecipe(sourceEventState, assets.alchemy, itemId, quantity,
+    renderedSourceEventState().variables);
+  if (!result.ok) {
+    const message = result.reason === "locked" ? "Cette recette n'est pas encore débloquée."
+      : result.reason === "missing-ingredients" ? "Vous ne possédez plus les ingrédients requis."
+        : result.reason === "bag-full" ? "Le Sac ne peut pas contenir le résultat."
+          : result.reason === "invalid-quantity" ? "La quantité à fabriquer est invalide."
+            : "Recette inconnue.";
+    importedNotice = message;
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = result.state;
+  persistSourceEventState();
+  const name = assets.items.get(itemId)?.name ?? itemId;
+  const message = `${result.quantity} × ${name} fabriqué${result.quantity > 1 ? "s" : ""}.`;
+  importedNotice = message;
+  return { ok: true, message, eventState: sourceEventState };
 }
 
 function closeSourceShop(): void {
@@ -3285,8 +3316,8 @@ window.addEventListener("beforeunload", () => {
 });
 document.querySelector<HTMLButtonElement>("#close-source-menu")?.addEventListener("click", toggleSourceMenu);
 document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => button.addEventListener("click", () => {
-  const tab = button.dataset.sourceMenuTab as SourceMenuTab | undefined;
-  if (tab === undefined || !["team", "pokedex", "bag", "movement", "save", "coop", "options"].includes(tab)) return;
+  const tab = button.dataset.sourceMenuTab;
+  if (!isSourceMenuTab(tab)) return;
   if (tab === "pokedex" && !sourceEventState.pokedexEnabled) return;
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();

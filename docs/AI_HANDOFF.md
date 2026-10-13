@@ -2627,6 +2627,68 @@ explicite : l'animation Ruby en bandes de `pbCaveEntranceEx` et le point de reto
 utilise par une future Corde Sortie ne sont pas portes par ce correctif ; ils ne
 sont pas inventes par le `runtime-noop`.
 
+Premier lot de reprise narrative apres la Grotte Navarre du 2026-10-13 : les
+references d'objet Ruby `:ITEM` et `PBItems::ITEM` sont maintenant normalisees par
+le meme porteur pour `pbReceiveItem`, `pbItemBall`, `pbStoreItem` et
+`pbDeleteItem`, avec quantite optionnelle strictement positive. La casse de
+l'identifiant source est preservee afin de rester compatible avec les noms mixtes
+du catalogue, par exemple `ACapsula` et `Cenizas`. Les conditions
+`$PokemonBag.pbQuantity(...)` acceptent les six comparateurs `<`, `<=`, `==`,
+`!=`, `>=` et `>` ainsi qu'un seuil entier positif ou nul. Le deverrouillage de
+test des mouvements est applique comme une possession virtuelle avant la meme
+comparaison, sans branche speciale `> 0`.
+
+Ce lot rend executables le don de `POLVOBRILLANTE` et `BRASACANDENTE` ainsi que
+leurs branches de recuperation `< 1` sur Map016. L'effacement temporaire du rocher
+et sa rencontre aleatoire restent les etapes suivantes de l'ordre valide.
+Autorite et Coop : les
+mutations et lectures du Sac restent personnelles et persistantes dans
+`SourceEventState.inventory`; le monde partage ne replique pas le contenu du Sac.
+La narration demeure sous l'autorite de l'hote et ne recoit que le resultat de la
+condition necessaire a son branchement. L'invite en excursion reutilise exactement
+le meme noyau local, sans seconde implementation de l'inventaire.
+
+Deuxieme lot de reprise narrative du 2026-10-13 : l'Alchimie est integree comme
+rubrique du menu en jeu. L'extracteur lit declarativement `RECETAS_CRAFTEO` et les
+blocs `stock.push` sans executer Ruby, puis produit `alchemy-recipes.json`. Les 50
+recettes de la source sont conservees avec niveau de deblocage, resultat,
+ingredients et quantites ; le fichier fait partie du manifeste local obligatoire,
+donc une extraction ancienne demande `corepack pnpm prepare:local`.
+
+Le noyau `source-alchemy.ts` valide le catalogue et realise une transaction
+atomique : recette connue et debloquee, quantite entiere, ingredients suffisants
+et resultat sous la limite de 999 objets sont tous controles avant la moindre
+mutation. Le menu affiche uniquement les recettes apprises, les noms et icones du
+catalogue d'objets, les quantites possedees/requises et le maximum fabricable. La
+fabrication de `POLVOEXPLOSIVO` devient ainsi disponible des que Map016 place la
+variable 926 a 3 et remet les deux ingredients.
+
+Finition visuelle apres controle du 2026-10-13 : l'entree du menu utilise les
+assets source `crafteoA.png` et `crafteoB.png`, avec la meme bascule et la meme
+animation active que les autres rubriques. L'atelier reutilise egalement
+`Crafting/bg.png`, `menu_craft.png` et les deux `seleccionador*.png` pour son fond
+et ses recettes, tout en conservant la disposition responsive et les cibles
+tactiles du menu web. Aucun asset source n'est ajoute a Git.
+
+Le grimoire a ensuite ete ferme sans defilement interne : cinq recettes occupent
+la page gauche et des boutons precedent/suivant changent de feuillet avec une
+courte animation 3D, neutralisee par `prefers-reduced-motion`. La page droite
+reste fixe, compacte les controles de quantite et affiche la description francaise
+de l'objet produit. Le cas complet de 50 recettes donne dix feuillets ; les rendus
+bureau et telephone ont ete controles sans debordement de la page de details.
+Le selecteur de fabrication possede son propre composant visuel : `Max` reste dans
+l'entete de l'encart, les pas `-10/-1/+1/+10` encadrent la quantite sur une seule
+ligne bornee, puis l'action principale occupe seule la ligne suivante. Cette
+structure remplace le selecteur generique du Sac qui se chevauchait dans la page
+etroite ; elle a ete verifiee avec une limite fabricable de 99 sur les deux formats.
+
+Autorite et Coop : le niveau de recette appartient a la narration de l'hote et est
+lu depuis son snapshot par l'invite present ; ingredients, resultat et transaction
+restent personnels, persistants et absents du protocole. Une reconnexion restaure
+le Sac local puis relit le niveau narratif partage. L'invite en excursion utilise
+ses variables et son Sac locaux. L'audience de l'interface et de son resultat est
+le seul joueur concerne.
+
 La reprise des cinq lots d'effets overworld a commencé par une capacité générique
 `source-field-effects.ts`, sans exception liée à une carte ou un événement. Elle
 lit les terrains et le bit buisson du tileset, puis produit les règles de rendu et

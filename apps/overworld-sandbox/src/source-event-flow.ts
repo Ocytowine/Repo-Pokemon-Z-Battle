@@ -1,6 +1,7 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
-import { portSourceRubyCommand, portSourceRubyCondition } from "./source-script-ports.js";
+import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
+  portSourceRubyCondition } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 
@@ -28,19 +29,31 @@ function integer(value: unknown): value is number {
   return Number.isInteger(value);
 }
 
+function compareInventoryQuantity(left: number, comparator: string, right: number): boolean {
+  switch (comparator) {
+    case "<": return left < right;
+    case "<=": return left <= right;
+    case "==": return left === right;
+    case "!=": return left !== right;
+    case ">=": return left >= right;
+    case ">": return left > right;
+    default: return false;
+  }
+}
+
 function evaluateCondition(command: EventCommand, state: SourceEventState, mapId: number, eventId: number,
   context?: EventFlowContext): boolean | null {
   const kind = command.data.kind;
   const operands = command.data.operands;
   if (typeof kind !== "string") return null;
   if (kind === "ruby-script" && typeof command.data.script === "string") {
-    const quantity = /^\$PokemonBag\.pbQuantity\(PBItems::([A-Za-z][A-Za-z0-9_]*)\)\s*>\s*0$/u
-      .exec(command.data.script.trim());
-    if (quantity !== null) {
-      const item = quantity[1]?.toUpperCase();
-      if (item === undefined) return null;
-      const movementItem = item === "SURFMONTURA" || /^BICYCLE\d*$/u.test(item);
-      return (state.inventory[item] ?? 0) > 0 || movementItem && context?.movementTestUnlocks === true;
+    const condition = parseSourceInventoryQuantityCondition(command.data.script);
+    if (condition !== null) {
+      const movementItem = condition.itemId === "SURFMONTURA" || /^BICYCLE\d*$/u.test(condition.itemId);
+      const owned = movementItem && context?.movementTestUnlocks === true
+        ? Math.max(state.inventory[condition.itemId] ?? 0, 1)
+        : state.inventory[condition.itemId] ?? 0;
+      return compareInventoryQuantity(owned, condition.comparator, condition.quantity);
     }
     return null;
   }

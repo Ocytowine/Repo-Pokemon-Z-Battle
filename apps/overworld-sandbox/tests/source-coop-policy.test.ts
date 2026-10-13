@@ -41,6 +41,10 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },
     ] })).toBe("personal");
+    expect(guestSourceEventAccess({ ...ranch, commands: [
+      { kind: "ruby-script", text: null, indent: 0,
+        data: { source: "Kernel.pbReceiveItem(PBItems::POLVOBRILLANTE)" } },
+    ] })).toBe("blocked");
   });
 
   it("uses the authoritative shared avatars to offer a PvP challenge to either player", () => {

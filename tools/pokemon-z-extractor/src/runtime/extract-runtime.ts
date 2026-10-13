@@ -12,6 +12,7 @@ import { extractScripts } from "./extract-scripts.js";
 import { extractBattleAnimations } from "./extract-battle-animations.js";
 import { extractMapBattleMetadata } from "./extract-map-metadata.js";
 import { extractMapAnimations } from "./extract-map-animations.js";
+import { extractAlchemyRecipes } from "./extract-alchemy-recipes.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -86,6 +87,7 @@ export async function extractRuntimeData(
     extractMapBattleMetadata(paths.source),
     extractMapAnimations(paths.source),
   ]);
+  const alchemyRecipes = await extractAlchemyRecipes(paths.output, scripts);
   const mapIds = new Set(maps.map((entry) => entry.id));
   const missingEncounterMaps = encounters.records
     .filter((entry) => !mapIds.has(entry.mapId))
@@ -153,6 +155,7 @@ export async function extractRuntimeData(
       coordinateSystem: { cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
       animations: mapAnimations.animations,
     }),
+    writeJsonAtomically(paths.output, "alchemy-recipes.json", alchemyRecipes),
   ]);
   return {
     outputDirectory: paths.output,

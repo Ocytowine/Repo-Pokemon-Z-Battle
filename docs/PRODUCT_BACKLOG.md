@@ -565,9 +565,11 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-ALCHEMY-1 — Alchimie
 
-- Priorite/statut : `P2` / `A qualifier`.
-- Necessite l'audit cible des recettes, ingredients, conditions narratives et de
-  l'evenement commun 59 deja signale dans le handoff.
+- Priorite/statut : `P0` / `fonctionnel dans le menu`.
+- Les 50 recettes, ingredients et conditions narratives sont extraits sans Ruby ;
+  la transaction personnelle atomique est raccordee au menu et au contrat Coop.
+- La destruction temporaire du rocher et sa rencontre aleatoire restent suivies
+  par `SOLO-NARRATIVE-1` et non par le noyau d'Alchimie.
 
 ### SOLO-ACHIEVEMENTS-1 — Succes
 

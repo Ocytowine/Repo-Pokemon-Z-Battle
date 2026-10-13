@@ -1,9 +1,9 @@
-Titre : Atter
-Description : il n'y a pas d'animation lors de la capture comme dans le jeu de base.
+Titre : Atterissage de la pokeball
+Description : La pokeball lors d'une capture n'atterie pas au centre de la zone adverse, elle tombe soit trop haut soit trop bas
 Étapes pour reproduire :
 1. Je déclenche un combat contre un sauvage
 2. Je tente de capturer le Pokémon sauvage.
 3. Je lance la Pokéball.
-4. Je constate qu'il n'y a pas d'animation lors de la capture.
-Résultat attendu : Il devrait y avoir une animation lors de la capture du Pokémon. la pokeball est sencé bouger de droite à gauche. et si le pokemon est capturé la pokeball devient grise et le message apparait.
-Résultat réel : Il n'y a pas d'animation lors de la capture, le message apparait en bas disant que la capture a échoué ou réussi, intantanement apres le lancé de la Pokéball.
+4. Je constate que la pokeball n'atterit pas au centre de la zone adverse.
+Résultat attendu : La pokeball devrait atterir au centre de la zone adverse, comme dans le jeu de base. (et encore je la trouve aussi pas ouf)
+Résultat réel : La pokeball n'atterit pas au centre de la zone adverse, elle tombe soit trop haut soit trop bas.

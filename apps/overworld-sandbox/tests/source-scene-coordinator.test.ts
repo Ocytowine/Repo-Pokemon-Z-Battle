@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { SourceSceneCoordinator, type SourceSceneActivity } from "../src/source-scene-coordinator.js";
+import { SOURCE_MENU_TABS, SourceSceneCoordinator, isSourceMenuTab,
+  type SourceSceneActivity } from "../src/source-scene-coordinator.js";
 
 const idle: SourceSceneActivity = { dialogue: false, battle: false, transition: false, sequence: false, movement: false };
 
@@ -23,6 +24,12 @@ describe("source scene coordinator", () => {
     scenes.selectMenuTab("coop");
     scenes.openMenu(idle);
     expect(scenes.menuTab).toBe("coop");
+  });
+
+  it("keeps every rendered menu section in the shared navigation registry", () => {
+    expect(SOURCE_MENU_TABS).toContain("alchemy");
+    for (const tab of SOURCE_MENU_TABS) expect(isSourceMenuTab(tab)).toBe(true);
+    expect(isSourceMenuTab("unknown")).toBe(false);
   });
 
   it.each(["world-input", "scene-change", "start-sequence"] as const)("only allows %s from an idle overworld", (action) => {

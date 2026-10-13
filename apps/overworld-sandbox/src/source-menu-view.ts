@@ -21,6 +21,7 @@ import { sourceItemActions, sourceItemDisplayName } from "./source-item-actions.
 import { persistSourceAudioChannel, sourceAudioSettings, type SourceAudioChannel,
   type SourceAudioSettings } from "./source-audio-settings.js";
 import { SourcePokedexView } from "./source-pokedex-view.js";
+import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -33,6 +34,15 @@ export function sourceQuantitySelectorHtml(label: string, value: number, maximum
   const button = (delta: number, text: string): string => `<button type="button" data-source-quantity-delta="${delta}"${current + delta < 1 || current + delta > max ? " disabled" : ""} aria-label="${delta > 0 ? "Ajouter" : "Retirer"} ${Math.abs(delta)}">${text}</button>`;
   return `<div class="source-quantity-picker" role="group" aria-label="${escapeSourceHtml(label)}"><span>${escapeSourceHtml(label)}</span><div>${button(-10, "−10")}${button(-1, "−")}<output aria-live="polite" data-source-quantity-value>${current}</output>${button(1, "+")}${button(10, "+10")}</div><button type="button" data-source-quantity-max${current === max ? " disabled" : ""}>Max · ${max}</button></div>`;
 }
+
+function sourceAlchemyQuantitySelectorHtml(value: number, maximum: number): string {
+  const max = Math.max(1, Math.floor(maximum));
+  const current = Math.max(1, Math.min(max, Math.floor(value)));
+  const button = (delta: number, text: string): string => `<button type="button" data-source-quantity-delta="${delta}"${current + delta < 1 || current + delta > max ? " disabled" : ""} aria-label="${delta > 0 ? "Ajouter" : "Retirer"} ${Math.abs(delta)}">${text}</button>`;
+  return `<section class="source-alchemy-quantity" aria-label="Quantité à fabriquer"><header><span>FABRICATIONS</span><button type="button" data-source-quantity-max${current === max ? " disabled" : ""}>MAX · ${max}</button></header><div>${button(-10, "−10")}${button(-1, "−")}<output aria-live="polite" data-source-quantity-value>${current}</output>${button(1, "+")}${button(10, "+10")}</div></section>`;
+}
+
+const SOURCE_ALCHEMY_RECIPES_PER_PAGE = 5;
 
 function bindSourceItemIconFallback(root: ParentNode): void {
   root.querySelectorAll<HTMLImageElement>("[data-source-item-icon]").forEach((image) => {
@@ -50,6 +60,7 @@ export interface SourceMenuViewModel {
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
   readonly dev: SourceMenuDevModel;
+  readonly alchemyUnlockLevel: number;
   /** Morphologie strictement locale, utilisée uniquement pour les variantes visuelles du menu source. */
   readonly profileBodyModel: string;
 }
@@ -125,6 +136,11 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onCraftAlchemy: (itemId: string, quantity: number) => {
+    readonly ok: boolean;
+    readonly message: string;
+    readonly eventState: SourceEventState;
+  };
 }
 
 export class SourceMenuView {
@@ -145,6 +161,11 @@ export class SourceMenuView {
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
   private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" = "movement";
+  private selectedAlchemyRecipeId: string | null = null;
+  private alchemyQuantity = 1;
+  private alchemyNotice: string | null = null;
+  private alchemyPage = 0;
+  private alchemyPageTurn: "forward" | "backward" | null = null;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -156,12 +177,15 @@ export class SourceMenuView {
     if (!model.open) return;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
+    content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
     const header = model.tab === "team"
       ? { context: "COMPAGNONS", title: "Équipe Pokémon", meta: `${model.eventState.party.members.length}/6` }
       : model.tab === "pokedex"
         ? { context: "ENCYCLOPÉDIE", title: "Pokédex", meta: `${model.eventState.pokedex.caughtSpecies.length} OBTENUS` }
       : model.tab === "movement"
         ? { context: "OUTILS LOCAUX", title: "Test dev", meta: "PERSONNEL" }
+        : model.tab === "alchemy"
+          ? { context: "ATELIER", title: "Alchimie Pokémon", meta: `RECETTES ${model.alchemyUnlockLevel + 1}` }
         : model.tab === "save"
           ? { context: "PROGRESSION", title: "Sauvegarde", meta: model.worldSave === null ? "VIDE" : "MANUELLE" }
           : model.tab === "coop"
@@ -173,6 +197,8 @@ export class SourceMenuView {
     document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
       const active = button.dataset.sourceMenuTab === model.tab;
       button.classList.toggle("active", active);
+      if (active) button.setAttribute("aria-current", "page");
+      else button.removeAttribute("aria-current");
       const icon = button.querySelector<HTMLImageElement>("[data-source-menu-icon]");
       if (icon !== null) {
         const gendered = model.profileBodyModel.includes("feminine") ? icon.dataset.iconActiveFeminine
@@ -190,10 +216,79 @@ export class SourceMenuView {
       party: model.eventState.party, ranch: model.eventState.ranch,
       catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets });
     else if (model.tab === "bag") this.renderBag(content, model);
+    else if (model.tab === "alchemy") this.renderAlchemy(content, model);
     else if (model.tab === "movement") this.renderDevTools(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
     else if (model.tab === "coop") this.renderCoop(content, model.coop);
     else this.renderOptions(content);
+  }
+
+  private renderAlchemy(content: HTMLElement, model: SourceMenuViewModel): void {
+    const recipes = model.assets.alchemy.recipes.filter((recipe) => recipe.unlockLevel <= model.alchemyUnlockLevel);
+    const pageCount = Math.max(1, Math.ceil(recipes.length / SOURCE_ALCHEMY_RECIPES_PER_PAGE));
+    this.alchemyPage = Math.max(0, Math.min(pageCount - 1, this.alchemyPage));
+    const pageRecipes = recipes.slice(this.alchemyPage * SOURCE_ALCHEMY_RECIPES_PER_PAGE,
+      (this.alchemyPage + 1) * SOURCE_ALCHEMY_RECIPES_PER_PAGE);
+    const selected = pageRecipes.find((recipe) => recipe.output.itemId === this.selectedAlchemyRecipeId)
+      ?? pageRecipes[0] ?? null;
+    this.selectedAlchemyRecipeId = selected?.output.itemId ?? null;
+    const maximum = selected === null ? 0 : sourceAlchemyCraftLimit(model.eventState.inventory, selected);
+    this.alchemyQuantity = Math.max(1, Math.min(Math.max(1, maximum), this.alchemyQuantity));
+    const itemName = (itemId: string): string => model.assets.items.get(itemId)?.name ?? itemId;
+    const itemDescription = (itemId: string): string => model.assets.items.get(itemId)?.description
+      ?? "Aucune description disponible.";
+    const itemIcon = (itemId: string): string => {
+      const item = model.assets.items.get(itemId);
+      return item === undefined ? "" : `<img src="${sourceItemIconUrl(item.id)}" data-source-item-icon alt="">`;
+    };
+    const cards = pageRecipes.map((recipe) => {
+      const craftable = sourceAlchemyCraftLimit(model.eventState.inventory, recipe);
+      return `<button type="button" class="source-alchemy-recipe${recipe.output.itemId === selected?.output.itemId ? " selected" : ""}" data-source-alchemy-recipe="${escapeSourceHtml(recipe.output.itemId)}">${itemIcon(recipe.output.itemId)}<span><strong>${escapeSourceHtml(itemName(recipe.output.itemId))}</strong><small>${recipe.ingredients.map((ingredient) => `${escapeSourceHtml(itemName(ingredient.itemId))} ×${ingredient.quantity}`).join(" · ")}</small></span><em>${craftable > 0 ? `×${craftable}` : "Incomplet"}</em></button>`;
+    }).join("");
+    const details = selected === null ? `<div class="source-menu-empty"><strong>Aucune recette</strong><small>Progressez dans l'histoire pour apprendre l'Alchimie Pokémon.</small></div>`
+      : `<section class="source-alchemy-detail"><header>${itemIcon(selected.output.itemId)}<div><small>RÉSULTAT</small><strong>${escapeSourceHtml(itemName(selected.output.itemId))}</strong><span>Vous en possédez ${model.eventState.inventory[selected.output.itemId] ?? 0}.</span></div></header><p class="source-alchemy-description">${escapeSourceHtml(itemDescription(selected.output.itemId))}</p><div class="source-alchemy-ingredients">${selected.ingredients.map((ingredient) => { const owned = model.eventState.inventory[ingredient.itemId] ?? 0; const required = ingredient.quantity * this.alchemyQuantity; return `<article class="${owned >= required ? "ready" : "missing"}">${itemIcon(ingredient.itemId)}<span><strong>${escapeSourceHtml(itemName(ingredient.itemId))}</strong><small>${owned} possédé${owned > 1 ? "s" : ""} / ${required} requis</small></span></article>`; }).join("")}</div>${maximum > 0 ? `${sourceAlchemyQuantitySelectorHtml(this.alchemyQuantity, maximum)}<button type="button" class="source-alchemy-craft" data-source-alchemy-craft>Fabriquer ×${this.alchemyQuantity}</button>` : `<p class="source-alchemy-unavailable">Ingrédients insuffisants ou emplacement de Sac plein.</p>`}${this.alchemyNotice === null ? "" : `<p class="source-alchemy-notice" role="status">${escapeSourceHtml(this.alchemyNotice)}</p>`}</section>`;
+    const pagination = pageCount <= 1 ? "" : `<footer class="source-alchemy-pagination" aria-label="Pages du grimoire"><button type="button" data-source-alchemy-page="-1"${this.alchemyPage === 0 ? " disabled" : ""} aria-label="Page précédente">‹</button><span>FEUILLET <b>${this.alchemyPage + 1}</b> / ${pageCount}</span><button type="button" data-source-alchemy-page="1"${this.alchemyPage === pageCount - 1 ? " disabled" : ""} aria-label="Page suivante">›</button></footer>`;
+    const turnClass = this.alchemyPageTurn === null ? "" : ` turn-${this.alchemyPageTurn}`;
+    this.alchemyPageTurn = null;
+    this.setMenuHeader("ATELIER", "Alchimie Pokémon", `${recipes.length}/${model.assets.alchemy.recipes.length} RECETTES`);
+    content.innerHTML = `<div class="source-menu-title"><div><small>RECETTES D'OLIVIER</small><h3>Alchimie Pokémon</h3></div><span>NIVEAU ${model.alchemyUnlockLevel}</span></div><div class="source-alchemy-layout"><section class="source-alchemy-page${turnClass}"><nav class="source-alchemy-recipes" aria-label="Recettes disponibles">${cards}</nav>${pagination}</section>${details}</div>`;
+    bindSourceItemIconFallback(content);
+    content.querySelectorAll<HTMLButtonElement>("[data-source-alchemy-recipe]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.selectedAlchemyRecipeId = button.dataset.sourceAlchemyRecipe ?? null;
+        this.alchemyQuantity = 1;
+        this.alchemyNotice = null;
+        this.renderAlchemy(content, model);
+      }));
+    content.querySelectorAll<HTMLButtonElement>("[data-source-alchemy-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const direction = Number(button.dataset.sourceAlchemyPage);
+        if (direction !== -1 && direction !== 1) return;
+        this.alchemyPage = Math.max(0, Math.min(pageCount - 1, this.alchemyPage + direction));
+        this.alchemyPageTurn = direction > 0 ? "forward" : "backward";
+        this.selectedAlchemyRecipeId = null;
+        this.alchemyQuantity = 1;
+        this.alchemyNotice = null;
+        this.renderAlchemy(content, model);
+      }));
+    content.querySelectorAll<HTMLButtonElement>("[data-source-quantity-delta]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const delta = Number(button.dataset.sourceQuantityDelta);
+        if (!Number.isSafeInteger(delta)) return;
+        this.alchemyQuantity = Math.max(1, Math.min(maximum, this.alchemyQuantity + delta));
+        this.renderAlchemy(content, model);
+      }));
+    content.querySelector<HTMLButtonElement>("[data-source-quantity-max]")?.addEventListener("click", () => {
+      this.alchemyQuantity = maximum;
+      this.renderAlchemy(content, model);
+    });
+    content.querySelector<HTMLButtonElement>("[data-source-alchemy-craft]")?.addEventListener("click", () => {
+      if (selected === null) return;
+      const result = this.callbacks.onCraftAlchemy(selected.output.itemId, this.alchemyQuantity);
+      this.alchemyNotice = result.message;
+      this.alchemyQuantity = 1;
+      this.renderAlchemy(content, { ...model, eventState: result.eventState });
+    });
   }
 
   private renderTeam(content: HTMLElement, model: SourceMenuViewModel): void {

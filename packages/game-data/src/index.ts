@@ -5,6 +5,7 @@ export const LOCAL_DATA_MANIFEST_FILE = "local-data-manifest.json" as const;
 
 export const LOCAL_DATA_REQUIRED_FILES = Object.freeze([
   "abilities.json",
+  "alchemy-recipes.json",
   "asset-manifest.json",
   "battle-animations.json",
   "encounters.json",

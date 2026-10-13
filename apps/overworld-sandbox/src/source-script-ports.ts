@@ -2,6 +2,14 @@ import type { ImportedEventPage } from "./imported-map.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
+export type SourceInventoryComparator = "<" | "<=" | "==" | "!=" | ">=" | ">";
+
+export interface SourceInventoryQuantityCondition {
+  readonly itemId: string;
+  readonly comparator: SourceInventoryComparator;
+  readonly quantity: number;
+}
+
 function positiveInteger(value: string | undefined): number | null {
   const parsed = value === undefined ? 1 : Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
@@ -13,6 +21,15 @@ function command(source: EventCommand, kind: string, data: Readonly<Record<strin
 
 function rubySource(source: EventCommand): string | null {
   return source.kind === "ruby-script" && typeof source.data.source === "string" ? source.data.source.trim() : null;
+}
+
+export function parseSourceInventoryQuantityCondition(ruby: string): SourceInventoryQuantityCondition | null {
+  const match = /^\$PokemonBag\.pbQuantity\(\s*(?::|PBItems::)([A-Za-z][A-Za-z0-9_]*)\s*\)\s*(<=|>=|==|!=|<|>)\s*(\d+)\s*$/u
+    .exec(ruby.trim());
+  if (match === null) return null;
+  const quantity = Number(match[3]);
+  if (!Number.isSafeInteger(quantity) || quantity < 0) return null;
+  return { itemId: match[1]!, comparator: match[2] as SourceInventoryComparator, quantity };
 }
 
 export function isSourceStarterSelectionPage(page: ImportedEventPage): boolean {
@@ -73,22 +90,15 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   match = /^pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-encounter", { species: match[1], level: Number(match[2]), policy: "HOST_ONLY" });
   if (/^pbPokemonFollow\(-?\d+\)$/u.test(ruby)) return command(source, "set-follower", { policy: "SHARED" });
-  match = /^(?:Kernel\.)?pbItemBall\(PBItems::([A-Za-z][A-Za-z0-9_]*)\)$/u.exec(ruby);
-  if (match !== null) return command(source, "grant-item", { itemId: match[1], quantity: 1, policy: "PERSONAL" });
-  match = /^(?:Kernel\.)?pbReceiveItem\(:(\w+)(?:,\s*(\d+))?\)$/u.exec(ruby);
+  match = /^(?:(?:Kernel\.)?pb(?:ItemBall|ReceiveItem)|\$PokemonBag\.pbStoreItem)\(\s*(?::|PBItems::)([A-Za-z][A-Za-z0-9_]*)(?:\s*,\s*(\d+))?\s*\)$/u.exec(ruby);
   if (match !== null) {
     const quantity = positiveInteger(match[2]);
-    return quantity === null ? null : command(source, "grant-item", { itemId: match[1]?.toUpperCase(), quantity, policy: "PERSONAL" });
+    return quantity === null ? null : command(source, "grant-item", { itemId: match[1], quantity, policy: "PERSONAL" });
   }
-  match = /^\$PokemonBag\.pbStoreItem\(:(\w+),\s*(\d+)\)$/u.exec(ruby);
+  match = /^\$PokemonBag\.pbDeleteItem\(\s*(?::|PBItems::)([A-Za-z][A-Za-z0-9_]*)(?:\s*,\s*(\d+))?\s*\)$/u.exec(ruby);
   if (match !== null) {
     const quantity = positiveInteger(match[2]);
-    return quantity === null ? null : command(source, "grant-item", { itemId: match[1]?.toUpperCase(), quantity, policy: "PERSONAL" });
-  }
-  match = /^\$PokemonBag\.pbDeleteItem\(:(\w+),\s*(\d+)\)$/u.exec(ruby);
-  if (match !== null) {
-    const quantity = positiveInteger(match[2]);
-    return quantity === null ? null : command(source, "remove-item", { itemId: match[1]?.toUpperCase(), quantity, policy: "PERSONAL" });
+    return quantity === null ? null : command(source, "remove-item", { itemId: match[1], quantity, policy: "PERSONAL" });
   }
   match = /^pbPlayCry\(PBSpecies::([A-Z][A-Z0-9_]*)\)$/u.exec(ruby);
   if (match !== null) return command(source, "play-cry", { speciesId: match[1], policy: "PERSONAL" });

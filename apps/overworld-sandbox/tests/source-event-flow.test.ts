@@ -109,6 +109,56 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands[0]).toMatchObject({ kind: "grant-item", data: { itemId: "ACapsula", quantity: 1 } });
   });
 
+  it("normalizes source inventory mutations across item-reference syntaxes", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "Kernel.pbReceiveItem(PBItems::Cenizas)" }),
+      command("ruby-script", 0, { source: "pbReceiveItem(:POTION, 3)" }),
+      command("ruby-script", 0, { source: "$PokemonBag.pbStoreItem(PBItems::ACapsula)" }),
+      command("ruby-script", 0, { source: "$PokemonBag.pbDeleteItem(PBItems::POTION, 2)" }),
+      command("ruby-script", 0, { source: "pbItemBall(:POLVOBRILLANTE, 2)" }),
+    ]), [], createSourceEventState(), 16, 16);
+
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "grant-item", data: { itemId: "Cenizas", quantity: 1, policy: "PERSONAL" } }),
+      expect.objectContaining({ kind: "grant-item", data: { itemId: "POTION", quantity: 3, policy: "PERSONAL" } }),
+      expect.objectContaining({ kind: "grant-item", data: { itemId: "ACapsula", quantity: 1, policy: "PERSONAL" } }),
+      expect.objectContaining({ kind: "remove-item", data: { itemId: "POTION", quantity: 2, policy: "PERSONAL" } }),
+      expect.objectContaining({ kind: "grant-item", data: { itemId: "POLVOBRILLANTE", quantity: 2,
+        policy: "PERSONAL" } }),
+    ]);
+  });
+
+  it.each([
+    ["<", 1, 0, true], ["<=", 1, 1, true], ["==", 2, 2, true], ["!=", 2, 1, true],
+    [">=", 2, 2, true], [">", 2, 3, true], [">", 2, 2, false],
+  ] as const)("evaluates inventory quantity conditions with %s", (comparator, expected, owned, branchMatches) => {
+    const eventPage = page([
+      command("condition", 0, { kind: "ruby-script",
+        script: `$PokemonBag.pbQuantity(PBItems::BRASACANDENTE)${comparator}${expected}` }),
+      command("show-text", 1, { text: "vrai" }), command("else", 0),
+      command("show-text", 1, { text: "faux" }), command("condition-end", 0),
+    ]);
+    const state = { ...createSourceEventState(),
+      inventory: owned === 0 ? {} : { BRASACANDENTE: owned } };
+    const result = resolveEventFlow(eventPage, [], state, 16, 17);
+
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands[0]?.text).toBe(branchMatches ? "vrai" : "faux");
+  });
+
+  it("supports symbol item references and applies movement test unlocks before comparison", () => {
+    const eventPage = page([
+      command("condition", 0, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(:BICYCLE)<1" }),
+      command("show-text", 1, { text: "absent" }), command("else", 0),
+      command("show-text", 1, { text: "présent" }), command("condition-end", 0),
+    ]);
+    expect(resolveEventFlow(eventPage, [], createSourceEventState(), 16, 17,
+      { playerDirection: 2, movementTestUnlocks: false }).page.commands[0]?.text).toBe("absent");
+    expect(resolveEventFlow(eventPage, [], createSourceEventState(), 16, 17,
+      { playerDirection: 2, movementTestUnlocks: true }).page.commands[0]?.text).toBe("présent");
+  });
+
   it("ports healing checkpoints and accepts non-authoritative presentation commands", () => {
     const eventPage = page([
       command("ruby-script", 0, { source: "Kernel.pbSetPokemonCenter" }), command("recover-all", 0),

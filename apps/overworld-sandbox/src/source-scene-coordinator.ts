@@ -1,7 +1,12 @@
 export type SourceSceneMode = "overworld" | "dialogue" | "battle" | "menu" | "transition";
-export type SourceMenuTab = "team" | "pokedex" | "bag" | "movement" | "save" | "coop" | "options";
+export const SOURCE_MENU_TABS = ["team", "pokedex", "bag", "alchemy", "movement", "save", "coop", "options"] as const;
+export type SourceMenuTab = typeof SOURCE_MENU_TABS[number];
 export type SourceSceneAction = "ambient-motion" | "world-input" | "dialogue-input" | "scene-change"
   | "start-sequence" | "source-transfer";
+
+export function isSourceMenuTab(value: string | undefined): value is SourceMenuTab {
+  return value !== undefined && (SOURCE_MENU_TABS as readonly string[]).includes(value);
+}
 
 export interface SourceSceneActivity {
   readonly dialogue: boolean;
