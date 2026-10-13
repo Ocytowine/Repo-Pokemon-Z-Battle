@@ -30,6 +30,17 @@ export function sourceWorldUpdateIsStaleDuringGuestExcursion(guest: boolean, exc
   return guest && excursion && presence === "shared" && localMapId !== null && localMapId !== hostMapId;
 }
 
+/**
+ * Une transition locale de l'hote est la source d'autorite du prochain mapId.
+ * Un snapshot recu pendant son chargement peut encore decrire la carte de
+ * depart : le rejouer ensuite provoquerait une boucle interieur/exterieur.
+ * L'invite, lui, doit toujours consommer le dernier monde differe de l'hote.
+ */
+export function shouldApplyDeferredSourceWorld(guest: boolean, localMapId: number | null,
+  deferredMapId: number): boolean {
+  return guest || localMapId === null || localMapId === deferredMapId;
+}
+
 export function sourceBattleAllowsAttachment(battle: {
   readonly state: { readonly status: string };
   readonly sourceContext: { readonly mapId: number } | null;

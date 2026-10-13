@@ -1,6 +1,6 @@
 import { MINIMAL_MOVE_CATALOG, SeededRandom, createTeamBattleState, type BattleSide, type BattlerState, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { describe, expect, it } from "vitest";
-import { AuthoritativeBattleRoom, PLAYER_RECONNECT_GRACE_MS } from "../src/index.js";
+import { AuthoritativeBattleRoom, PLAYER_RECONNECT_GRACE_MS, type PersistedRoomState } from "../src/index.js";
 import { createDefaultNetworkPlayerProfile, createNetworkPlayerProfile } from "@pokemon-z-battle/multiplayer-protocol";
 import { DEMO_WORLD_CATALOG, createDemoWorldState, createOverworldState, type OverworldCatalog } from "@pokemon-z-battle/overworld-engine";
 
@@ -281,6 +281,26 @@ describe("authoritative battle room", () => {
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
       worldWithSource, persisted);
     expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
+  });
+
+  it("migrates a room persisted before regional map ids and survives the next host transfer", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const persisted = room.exportState();
+    const { regionalMapIds: _regionalMapIds, followers: _followers, ...legacySourceWorld }
+      = persisted.sourceWorldState!;
+    const legacy = { ...persisted, sourceWorldState: legacySourceWorld } as unknown as PersistedRoomState;
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(legacy.rngState),
+      worldWithSource, legacy);
+
+    expect(restored.snapshot().sourceWorld).toMatchObject({ regionalMapIds: { player: 3, opponent: 3 },
+      followers: {} });
+    const changed = { ...sourceWorld, mapId: 7, host: { x: 0, y: 0, direction: "right" as const } };
+    expect(() => restored.receive("alice", { type: "setSourceWorld", version: 15,
+      requestId: "legacy-source-host-map", world: changed })).not.toThrow();
+    expect(restored.snapshot().sourceWorld).toMatchObject({ mapId: 7,
+      regionalMapIds: { player: 7, opponent: 3 }, presence: { opponent: "away" } });
   });
 
   it("uses host-published NPCs as authoritative collisions and restores them with the room", () => {

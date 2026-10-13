@@ -497,7 +497,7 @@ export class AuthoritativeBattleRoom {
     };
     const publishedWorld = publishedHost === world.host ? world : { ...world, host: publishedHost };
     const nextWorld = sourceWorldSnapshot(publishedWorld, this.sourceSpawn(publishedWorld, previousGuest));
-    const previousGuestFollower = this.#sourceWorldState?.followers.opponent;
+    const previousGuestFollower = this.#sourceWorldState?.followers?.opponent;
     // Un changement de carte de l'hote ne deplace jamais l'invite. Celui-ci reste
     // sur sa carte locale jusqu'a ce que les deux mapId coincident de nouveau.
     const guestPresence = sameMap ? this.#sourceWorldState?.presence.opponent ?? "shared" : "away";
@@ -508,7 +508,8 @@ export class AuthoritativeBattleRoom {
       } : {}),
       presence: { ...nextWorld.presence, opponent: guestPresence },
       regionalMapIds: { player: world.mapId,
-        opponent: this.#sourceWorldState?.regionalMapIds.opponent ?? world.mapId } };
+        opponent: this.#sourceWorldState?.regionalMapIds?.opponent
+          ?? this.#sourceWorldState?.mapId ?? world.mapId } };
     this.#sourceWorldState = previousGuestFollower === undefined ? withPresence : { ...withPresence,
       followers: { ...withPresence.followers, opponent: sameMap ? previousGuestFollower
         : { ...this.sourceFollowerSpawn(withPresence, "opponent", previousGuestFollower.species),
@@ -554,7 +555,7 @@ export class AuthoritativeBattleRoom {
           "opponent", guestFollower.species),
         ...(guestFollower.appearance === undefined ? {} : { appearance: guestFollower.appearance }) } },
       presence: { ...world.presence, opponent: attached ? "shared" : "away" },
-      regionalMapIds: { ...world.regionalMapIds, opponent: mapId } };
+      regionalMapIds: { player: world.regionalMapIds?.player ?? world.mapId, opponent: mapId } };
     this.#revision += 1;
     return [
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },

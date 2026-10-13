@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
+import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
+  shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "../src/source-coop-policy.js";
@@ -78,6 +79,13 @@ describe("guest source event policy", () => {
     expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "shared", 7, 3)).toBe(true);
     expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "away", 7, 3)).toBe(false);
     expect(sourceWorldUpdateIsStaleDuringGuestExcursion(true, true, "shared", 7, 7)).toBe(false);
+  });
+
+  it("does not replay the host departure map after a local map transition", () => {
+    expect(shouldApplyDeferredSourceWorld(false, 7, 3)).toBe(false);
+    expect(shouldApplyDeferredSourceWorld(false, 7, 7)).toBe(true);
+    expect(shouldApplyDeferredSourceWorld(false, null, 3)).toBe(true);
+    expect(shouldApplyDeferredSourceWorld(true, 7, 3)).toBe(true);
   });
 
   it("allows an away guest to attach on the map of an active source battle", () => {

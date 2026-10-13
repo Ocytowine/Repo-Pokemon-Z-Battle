@@ -87,7 +87,8 @@ import { applySourceBattleSettlement } from "./source-shared-battle-settlement.j
 import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceTestItemPocket, SOURCE_BAG_POCKETS,
   sourceBagEntries } from "./source-bag.js";
 import { isSourceItemDiscardable } from "./source-item-actions.js";
-import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldRejoinSharedSourceMap,
+import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
+  shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "./source-coop-policy.js";
@@ -1466,7 +1467,7 @@ function closeNetworkBattlePresentation(battleId: string): void {
 }
 
 async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: boolean, applyOwnAvatar: boolean): Promise<void> {
-  if (isNetworkGuest() && sourceTransitionInProgress) {
+  if (sourceTransitionInProgress) {
     deferredNetworkSourceWorld = { world, animate, applyOwnAvatar };
     return;
   }
@@ -2866,7 +2867,8 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   }
   const deferredWorld = deferredNetworkSourceWorld;
   deferredNetworkSourceWorld = null;
-  if (deferredWorld !== null) queueMicrotask(() => {
+  if (deferredWorld !== null && shouldApplyDeferredSourceWorld(guestSession,
+    importedAssets?.map.id ?? null, deferredWorld.world.mapId)) queueMicrotask(() => {
     void applyNetworkSourceWorld(deferredWorld.world, deferredWorld.animate, deferredWorld.applyOwnAvatar);
   });
   if (sourceSequences.current === null) queueMicrotask(beginPendingSourceMapEntryAutorun);

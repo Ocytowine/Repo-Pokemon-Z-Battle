@@ -2920,6 +2920,18 @@ prépare le raccord futur, mais l'action Ranch `Relâcher` reste désactivée ta
 sa confirmation destructive et la restitution éventuelle de l'objet tenu ne sont
 pas implémentées. Aucun lieu de capture n'est inventé avant le module Carte.
 
+Correctif de stabilité des transferts Coop du 2026-10-13 : les snapshots du monde
+source sont maintenant différés pour l'hôte comme pour l'invité pendant tout
+chargement de carte. À la fin d'un transfert local de l'hôte, un snapshot encore
+attaché à la carte de départ est jeté au lieu d'être rechargé et republié. Ce
+garde-fou casse la boucle intérieur/extérieur qui faisait clignoter les deux
+clients, relançait alternativement leurs événements et survivait à une
+actualisation via l'état autoritaire de la room. `room-server-core` tolère aussi
+explicitement une room vivante ou persistée antérieure à `regionalMapIds` lors de
+la première publication ou mise à jour de présence. La politique pure est couverte
+dans `source-coop-policy.test.ts`; le transfert reste local en solo, autoritaire
+côté hôte, et l'invité consomme toujours le dernier snapshot différé de l'hôte.
+
 ## Commandes utiles
 
 ```powershell
