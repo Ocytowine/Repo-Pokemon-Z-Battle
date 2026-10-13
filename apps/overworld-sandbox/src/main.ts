@@ -74,7 +74,7 @@ import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
   sourceDirection, type LoadedSourceWorld } from "./source-world-navigation.js";
 import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
-import { clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
+import { clearSourceWorldSave, createSourceGuestProgressSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   sourceEventStateForLaunch, type SourceWorldSave } from "./source-world-save.js";
 import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGameSetup, sourceAdventureSaveExists,
   sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_DESTINATION,
@@ -1115,6 +1115,9 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   },
   onSourceActorsState: (mapId, actorRevision, actors) => {
     if (!isNetworkGuest() || guestSourceExcursion || importedAssets?.map.id !== mapId) return;
+    // Une mise à jour de même révision peut accompagner un snapshot du monde
+    // reçu juste avant elle sans que ses poses aient encore été appliquées.
+    if (networkSourceWorld?.mapId === mapId && actorRevision < networkSourceWorld.actorRevision) return;
     sourceNpcMotions.applyNetworkWorldActors(actors, performance.now());
     if (networkSourceWorld?.mapId === mapId) networkSourceWorld = { ...networkSourceWorld, actors, actorRevision };
   },
@@ -1661,18 +1664,19 @@ function animateImportedMap(now: number): void {
     importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
-    const trainerTargets: GridPoint[] = importedPlayerMotion === null
+    const narrativeTargets: GridPoint[] = importedPlayerMotion === null
       ? [importedAvatar] : [importedPlayerMotion.from, importedPlayerMotion.to];
+    const collisionTargets = [...narrativeTargets];
     const guest = networkSourceWorld?.mapId === importedAssets.map.id
       && networkSourceWorld.presence.opponent === "shared"
       && networkPlayerConnections.opponent === "connected"
       ? networkSourceWorld.avatars.opponent : null;
     if (guest !== null) {
-      trainerTargets.push(...(networkRemoteSourceMotion === null
+      collisionTargets.push(...(networkRemoteSourceMotion === null
         ? [guest] : [networkRemoteSourceMotion.from, networkRemoteSourceMotion.to]));
     }
     const contact = sourceNpcMotions.update(now, importedAssets.map, importedAssets.events, sourceEventState,
-      trainerTargets);
+      collisionTargets, narrativeTargets);
     publishCurrentSourceActors();
     if (contact !== null) {
       if (importedPlayerMotion !== null) pendingSourceNpcContact = contact;
@@ -1756,12 +1760,17 @@ function sourceSceneActivity(): SourceSceneActivity {
 
 function saveCurrentSourceWorld(): void {
   if (importedAssets === null) return;
-  sourceWorldSave = createSourceWorldSave(importedAssets.map.id, importedAvatar.x, importedAvatar.y,
-    importedAvatar.direction, Date.now(), sourceMovementMode === "run" ? "walk" : sourceMovementMode,
-    sourceEventState);
+  const guestProgressOnly = multiplayer.active && isNetworkGuest();
+  sourceWorldSave = guestProgressOnly
+    ? createSourceGuestProgressSave(sourceWorldSave, sourceEventState)
+    : createSourceWorldSave(importedAssets.map.id, importedAvatar.x, importedAvatar.y,
+      importedAvatar.direction, Date.now(), sourceMovementMode === "run" ? "walk" : sourceMovementMode,
+      sourceEventState);
   persistSourceWorldSave(localStorage, sourceWorldSave);
   persistSourceEventState();
-  importedNotice = `Partie sauvegardée dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
+  importedNotice = guestProgressOnly
+    ? "Progression personnelle sauvegardée. Votre position de reprise solo reste inchangée."
+    : `Partie sauvegardée dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
   renderImportedView();
 }
 
@@ -1893,6 +1902,7 @@ function renderSourceMenu(): void {
   const renderedState = renderedSourceEventState();
   sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets: importedAssets,
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
+    personalProgressSaveOnly: multiplayer.active && isNetworkGuest(),
     alchemyUnlockLevel: sourceAlchemyUnlockLevel(importedAssets.alchemy, renderedState.variables),
     profileBodyModel: activePlayerSelection.profile.bodyModel,
     movement: sourceMovementMenuModel(),

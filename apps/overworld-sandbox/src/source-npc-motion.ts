@@ -97,7 +97,7 @@ export class SourceNpcMotionController {
   }
 
   public update(now: number, map: ImportedMap, events: readonly ImportedMapEvent[], state: SourceEventState,
-    players: readonly GridPoint[]): SourceNpcEventContact | null {
+    players: readonly GridPoint[], narrativePlayers: readonly GridPoint[] = players): SourceNpcEventContact | null {
     if (this.mapId !== map.id) this.reset(map.id, events, now);
     if (players.length === 0) return null;
     for (const event of events) {
@@ -122,7 +122,7 @@ export class SourceNpcMotionController {
       }
       const sightRange = page.settings.trigger === 2 ? sourceTrainerSightRange(event.name) : null;
       const sightTarget = sightRange === null ? null
-        : this.trainerSightTarget(runtime, event, sightRange, players, map, events, state);
+        : this.trainerSightTarget(runtime, event, sightRange, narrativePlayers, map, events, state);
       if (sightTarget === null) runtime.noticeLatched = false;
       if (sightTarget !== null && !runtime.noticeLatched && now >= runtime.noticeCooldownUntil) {
         runtime.noticeLatched = true;
@@ -133,7 +133,7 @@ export class SourceNpcMotionController {
       const actor = this.runtimeActor(runtime, page);
       const route = page.settings.moveType === 3 ? page.settings.moveRoute ?? null : null;
       const step = route?.steps[runtime.routeIndex] ?? null;
-      const nearestPlayer = this.nearestPlayer(runtime, players);
+      const nearestPlayer = this.nearestPlayer(runtime, narrativePlayers.length > 0 ? narrativePlayers : players);
       const result = step === null ? null : executeSourceMoveRouteStep(actor, step,
         { player: nearestPlayer, randomDirection: DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down" });
       if (route !== null && result !== null) {
@@ -163,7 +163,7 @@ export class SourceNpcMotionController {
       if (!page.settings.directionFix) runtime.direction = direction;
       const destination = { x: runtime.x + (direction === "left" ? -1 : direction === "right" ? 1 : 0),
         y: runtime.y + (direction === "up" ? -1 : direction === "down" ? 1 : 0) };
-      const touchedPlayer = players.find((player) => destination.x === player.x && destination.y === player.y);
+      const touchedPlayer = narrativePlayers.find((player) => destination.x === player.x && destination.y === player.y);
       if (page.settings.trigger === 2 && touchedPlayer !== undefined) {
         runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
         return { event, page, pageIndex: selection.pageIndex, target: { ...touchedPlayer } };
@@ -316,8 +316,8 @@ export class SourceNpcMotionController {
     for (const actor of actors) {
       const runtime = this.runtimes.get(actor.eventId);
       if (runtime === undefined) continue;
-      const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
-      const moved = before.x !== actor.x || before.y !== actor.y;
+      const before = this.displayedPoint(runtime, now);
+      const moved = runtime.x !== actor.x || runtime.y !== actor.y;
       runtime.x = actor.x;
       runtime.y = actor.y;
       runtime.direction = actor.direction;
@@ -329,7 +329,7 @@ export class SourceNpcMotionController {
       else runtime.pattern = actor.pattern;
       const currentMotion = runtime.motion;
       runtime.motion = moved ? createSourceGridMotion(before, actor, actor.direction, now,
-        { duration: sourceNpcStepDuration(3), walkingPattern: runtime.walkingPattern })
+        { duration: this.networkMotionDuration(before, actor, 3), walkingPattern: runtime.walkingPattern })
         : currentMotion !== null && !sampleSourceGridMotion(currentMotion, now).complete ? currentMotion : null;
       if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     }
@@ -339,19 +339,31 @@ export class SourceNpcMotionController {
     for (const actor of actors) {
       const runtime = this.runtimes.get(actor.eventId);
       if (runtime === undefined) continue;
-      const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
-      const moved = before.x !== actor.x || before.y !== actor.y;
+      const before = this.displayedPoint(runtime, now);
+      const moved = runtime.x !== actor.x || runtime.y !== actor.y;
       runtime.x = actor.x;
       runtime.y = actor.y;
       runtime.direction = actor.direction;
       const currentMotion = runtime.motion;
       runtime.motion = moved && actor.action === "step"
         ? createSourceGridMotion(before, actor, actor.direction, now,
-          { duration: sourceNpcStepDuration(actor.moveSpeed), walkingPattern: runtime.walkingPattern })
+          { duration: this.networkMotionDuration(before, actor, actor.moveSpeed),
+            walkingPattern: runtime.walkingPattern })
         : !moved && currentMotion !== null && !sampleSourceGridMotion(currentMotion, now).complete
           ? currentMotion : null;
       if (moved) runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     }
+  }
+
+  private displayedPoint(runtime: NpcRuntime, now: number): GridPoint & { readonly direction: Direction } {
+    if (runtime.motion === null) return { x: runtime.x, y: runtime.y, direction: runtime.direction };
+    const pose = sampleSourceGridMotion(runtime.motion, now);
+    return { x: pose.x, y: pose.y, direction: pose.direction };
+  }
+
+  private networkMotionDuration(from: GridPoint, to: GridPoint, moveSpeed: number): number {
+    const distance = Math.abs(to.x - from.x) + Math.abs(to.y - from.y);
+    return Math.max(1, sourceNpcStepDuration(moveSpeed) * distance);
   }
 
   public poses(now: number): ReadonlyMap<number, ImportedEventPose> {

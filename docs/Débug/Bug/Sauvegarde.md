@@ -6,3 +6,9 @@ Description : Quand le joueur rejoins une partie en co-op et qu'il tente de sauv
 3. Observer le comportement du jeu.
 Résultat attendu : Le jeu ne doit pas sauvegarder la position du joueur et doit le renvoyer au dernier point de sauvegarde. Les objets, pokemons, états des pokemons et autres éléments du jeu doivent être sauvegardés, mais la position du joueur ne doit pas l'être pour maintenir la continuité scénaristique.
 Résultat réel : Le jeu sauvegarde la position du joueur, ce qui casse la continuité scénaristique.
+
+Statut au 2026-10-13 : correctif implémenté, validation manuelle requise.
+En tant qu'invité, Sauvegarder actualise les états personnels mais garde les
+coordonnées et le mode de déplacement de la dernière sauvegarde solo. Après avoir
+quitté la Coop puis rechargé l'application, vérifier la reprise à cet ancien point
+avec l'équipe, les PV, le Sac et l'argent modifiés pendant la session Coop.

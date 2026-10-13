@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { SOURCE_WORLD_SAVE_KEY, clearSourceWorldSave, createSourceWorldSave, loadSourceWorldSave,
+import { SOURCE_WORLD_SAVE_KEY, clearSourceWorldSave, createSourceGuestProgressSave, createSourceWorldSave, loadSourceWorldSave,
   parseSourceWorldSave, persistSourceWorldSave, sourceEventStateForLaunch } from "../src/source-world-save.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
@@ -27,6 +27,25 @@ describe("source world save", () => {
     expect(sourceEventStateForLaunch(workingState,
       parseSourceWorldSave({ schemaVersion: 1, mapId: 3, x: 15, y: 16,
         direction: "down", savedAt: 1234 }), false)).toBe(workingState);
+  });
+
+  it("saves guest personal progress without replacing the solo resume position", () => {
+    const previousState = createSourceEventState();
+    const previous = createSourceWorldSave(7, 4, 8, "left", 1_234, "mount", previousState);
+    const currentState = { ...createSourceEventState(), money: 42_000,
+      inventory: { POTION: 5 } };
+    expect(createSourceGuestProgressSave(previous, currentState, 5_678)).toEqual({
+      ...previous, savedAt: 5_678, eventState: currentState,
+    });
+  });
+
+  it("falls back to the new-game position when a guest has no manual save yet", () => {
+    const currentState = { ...createSourceEventState(),
+      checkpoint: { mapId: 9, x: 6, y: 11, direction: "down" as const } };
+    expect(createSourceGuestProgressSave(null, currentState, 5_678)).toMatchObject({
+      mapId: 3, x: 28, y: 15, direction: "up", movementMode: "walk", savedAt: 5_678,
+      eventState: currentState,
+    });
   });
 
   it.each([

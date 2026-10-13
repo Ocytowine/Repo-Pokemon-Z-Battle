@@ -33,6 +33,19 @@ export function createSourceWorldSave(mapId: number, x: number, y: number, direc
   return parseSourceWorldSave(value);
 }
 
+/**
+ * En Coop, la progression personnelle de l'invite continue d'etre sauvegardee,
+ * mais sa position temporaire dans le monde de l'hote ne doit jamais remplacer
+ * son point de reprise personnel.
+ */
+export function createSourceGuestProgressSave(previous: SourceWorldSave | null, eventState: SourceEventState,
+  savedAt = Date.now()): SourceWorldSave {
+  const position = previous ?? { mapId: 3, x: 28, y: 15,
+    direction: "up" as Direction, movementMode: "walk" as const };
+  return createSourceWorldSave(position.mapId, position.x, position.y, position.direction, savedAt,
+    position.movementMode, eventState);
+}
+
 export function parseSourceWorldSave(value: unknown): SourceWorldSave {
   if (!record(value) || value.schemaVersion !== 1 && value.schemaVersion !== SOURCE_WORLD_SAVE_SCHEMA_VERSION
     || !integer(value.mapId, 1, 999) || !integer(value.x, 0) || !integer(value.y, 0)

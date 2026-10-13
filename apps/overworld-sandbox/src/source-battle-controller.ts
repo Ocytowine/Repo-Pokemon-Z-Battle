@@ -46,6 +46,7 @@ export interface SourceBattlePresentation {
 }
 
 export interface SourceBattleExperiencePresentation {
+  readonly pokemonId: string;
   readonly pokemonName: string;
   readonly amount: number;
   readonly beforeLevel: number;
@@ -71,6 +72,11 @@ export interface SourceBattleOutcome {
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
   gains: readonly SharedBattleExperienceGain[], catalog: PlayerCreationCatalog,
 ): readonly SourceBattleExperiencePresentation[] {
+  const experienceByPokemon = new Map(before.members.map((pokemon) => {
+    const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+    return [pokemon.id, definition === undefined ? pokemon.experience
+      : Math.max(pokemon.experience, experienceAtLevel(pokemon.level, definition.growthRate))] as const;
+  }));
   return gains.flatMap((gain) => {
     const previous = before.members.find((pokemon) => pokemon.id === gain.recipientMemberId);
     const next = after.members.find((pokemon) => pokemon.id === gain.recipientMemberId);
@@ -79,10 +85,13 @@ export function sharedBattleExperiencePresentations(before: PlayerPartyState, af
     if (previous === undefined || next === undefined || definition === undefined) return [];
     const moveName = (internalName: string): string => catalog.moves
       .find((move) => move.internalName === internalName)?.name ?? internalName;
-    return [{ pokemonName: next.nickname ?? definition.name, amount: gain.gained,
+    const beforeExperience = experienceByPokemon.get(gain.recipientMemberId)
+      ?? Math.max(previous.experience, experienceAtLevel(previous.level, definition.growthRate));
+    const afterExperience = Math.min(next.experience, beforeExperience + gain.gained);
+    experienceByPokemon.set(gain.recipientMemberId, afterExperience);
+    return [{ pokemonId: gain.recipientMemberId, pokemonName: next.nickname ?? definition.name, amount: gain.gained,
       beforeLevel: gain.previousLevel, afterLevel: gain.nextLevel,
-      beforeExperience: Math.max(previous.experience, experienceAtLevel(previous.level, definition.growthRate)),
-      afterExperience: next.experience, growthRate: definition.growthRate,
+      beforeExperience, afterExperience, growthRate: definition.growthRate,
       learnedMoves: gain.learnedMoves.map(moveName), skippedMoves: gain.skippedMoves.map(moveName),
       calculation: gain.calculation }];
   });
@@ -98,6 +107,7 @@ function battleExperiencePresentation(before: PlayerPartyState, after: PlayerPar
   if (definition === undefined) return undefined;
   const moveName = (internalName: string): string => catalog.moves.find((move) => move.internalName === internalName)?.name ?? internalName;
   return {
+    pokemonId: reward.pokemonId,
     pokemonName: next.nickname ?? definition.name,
     amount: reward.amount,
     beforeLevel: previous.level,

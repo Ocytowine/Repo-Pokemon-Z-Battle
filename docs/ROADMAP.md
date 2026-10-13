@@ -1802,6 +1802,17 @@ La phase 10 formalise la sortie de l'increment 9.8 et peut etre menee en paralle
 des validations narratives sans modifier leur ordre. Aucun ajout produit lourd ne
 doit masquer un P0 ouvert.
 
+Correctif Coop transverse du 2026-10-13, implémenté et en validation manuelle :
+l'audience des contacts de PNJ est séparée de leur collision. Seul l'hôte peut
+déclencher narration, dialogue et combat de Dresseur, tandis que l'invité continue
+de bloquer les cases et de voir la scène partagée. La sauvegarde manuelle d'un
+invité conserve désormais son ancien point de reprise solo tout en actualisant ses
+données personnelles. Enfin, les acteurs de carte ignorent les révisions réseau
+strictement anciennes (une révision égale reste applicable) et poursuivent une correction depuis leur pose affichée afin
+d'éviter les sauts des PNJ et Pokémon de grotte. La clôture attend une recette à
+deux navigateurs couvrant déclencheur, sauvegarde/rechargement et mouvements
+autonomes sur une même carte.
+
 ### Phase 11 - Mecanismes solo structurants
 
 L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les

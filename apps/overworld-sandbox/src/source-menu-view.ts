@@ -59,6 +59,7 @@ export interface SourceMenuViewModel {
   readonly eventState: SourceEventState;
   readonly avatar: ImportedAvatar;
   readonly worldSave: SourceWorldSave | null;
+  readonly personalProgressSaveOnly: boolean;
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
   readonly dev: SourceMenuDevModel;
@@ -745,7 +746,12 @@ export class SourceMenuView {
   private renderSave(content: HTMLElement, model: SourceMenuViewModel): void {
     const savedLabel = model.worldSave === null ? "Aucune position enregistrée"
       : `Map${String(model.worldSave.mapId).padStart(3, "0")} · ${model.worldSave.x},${model.worldSave.y} · ${new Date(model.worldSave.savedAt).toLocaleString("fr-FR")}`;
-    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>${model.worldSave === null ? "VIDE" : "MANUELLE"}</span></div><div class="source-save-card"><div class="source-save-location"><small>POSITION ACTUELLE</small><strong>${escapeSourceHtml(model.assets.map.name)}</strong><span>${model.avatar.x}, ${model.avatar.y} · direction ${model.avatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeSourceHtml(savedLabel)}</strong><small>La position, l'équipe, le Sac et la progression narrative sont enregistrés ensemble.</small></div></div><div class="source-save-actions"><button id="save-source-world">Sauvegarder ici</button>${model.worldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>`;
+    const locationLabel = model.personalProgressSaveOnly ? "POSITION COOP TEMPORAIRE" : "POSITION ACTUELLE";
+    const saveHelp = model.personalProgressSaveOnly
+      ? "L'équipe, le Sac et vos états personnels sont sauvegardés. Votre position de reprise personnelle reste inchangée."
+      : "La position, l'équipe, le Sac et la progression narrative sont enregistrés ensemble.";
+    const actionLabel = model.personalProgressSaveOnly ? "Sauvegarder ma progression" : "Sauvegarder ici";
+    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>${model.worldSave === null ? "VIDE" : "MANUELLE"}</span></div><div class="source-save-card"><div class="source-save-location"><small>${locationLabel}</small><strong>${escapeSourceHtml(model.assets.map.name)}</strong><span>${model.avatar.x}, ${model.avatar.y} · direction ${model.avatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeSourceHtml(savedLabel)}</strong><small>${saveHelp}</small></div></div><div class="source-save-actions"><button id="save-source-world">${actionLabel}</button>${model.worldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>`;
     content.querySelector<HTMLButtonElement>("#save-source-world")?.addEventListener("click", this.callbacks.onSave);
     content.querySelector<HTMLButtonElement>("#delete-source-world")?.addEventListener("click", this.callbacks.onDeleteSave);
   }

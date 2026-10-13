@@ -7,3 +7,9 @@ Description : Lorsqu'un joueur invité rejoint une partie, cela déclenche des �
 
 Résultat attendu : Les événements de narration ne devraient pas se déclencher par et pour le joueur invité.
 Résultat réel : Les événements de narration se déclenchent pour et par le joueur invité, perturbant l'expérience de jeu.
+
+Statut au 2026-10-13 : correctif implémenté, validation manuelle requise.
+Le moteur distingue maintenant les positions de collision (hôte et invité) des
+cibles narratives (hôte uniquement). Vérifier avec un Dresseur à portée de
+l'invité puis de l'hôte : l'invité ne doit rien déclencher, l'hôte doit encore
+obtenir l'approche, le dialogue et le combat visibles sur les deux clients.

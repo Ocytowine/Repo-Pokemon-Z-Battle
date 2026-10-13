@@ -1375,13 +1375,15 @@ scene sans executer une seconde IA locale. Cette presentation n'est pas
 persistante : apres reconnexion, le snapshot de scene et les poses courantes de la
 room suffisent tant que la sequence est active.
 
-Correctif de detection Coop des Dresseurs du 2026-10-06 : le noyau generique de
-mouvement des PNJ recoit maintenant toutes les positions de joueurs eligibles sur
-la carte et choisit deterministement la cible visible la plus proche. Le contact
-transporte une copie de cette position dans `SourceSequenceSession`; l'orientation,
-la bulle et les commandes `step-toward-player` visent donc le joueur effectivement
-detecte, y compris l'invite, au lieu de toujours viser l'avatar local de l'hote.
-Les collisions autonomes tiennent egalement compte de tous les participants.
+Correctif de detection Coop des Dresseurs du 2026-10-06, revise le 2026-10-13 :
+le noyau generique de mouvement des PNJ distingue desormais les participants qui
+bloquent physiquement une case de ceux qui peuvent declencher une sequence
+narrative. Tous les joueurs presents restent des obstacles pour les routes
+autonomes, mais seul l'hote appartient a l'audience narrative. Un Dresseur ne peut
+donc plus remarquer l'invite, marcher vers lui, ouvrir son dialogue ou lancer son
+combat. Le contact transporte toujours une copie de la position canonique de
+l'hote dans `SourceSequenceSession` pour l'orientation, la bulle et les commandes
+`step-toward-player`.
 
 L'autorite reste exclusivement l'hote : l'invite n'execute aucune IA ni narration
 locale et n'envoie pas de nouvelle intention de combat. Ses position et presence
@@ -1392,15 +1394,16 @@ selon le contrat Coop existant. La rotation initiale et chaque pas de l'approche
 sont maintenant republies dans `sourceActorsUpdated`, meme pendant la sequence qui
 suspend l'animation ambiante. Les poses canoniques de la room restaurent le rendu
 apres une reconnexion ; la cible ponctuelle n'est pas persistante une fois la
-sequence terminee. Tests ajoutes : selection de l'invite visible le plus proche et
-copie immuable de la cible dans la session.
+sequence terminee. Le noyau sait encore sélectionner la cible la plus proche parmi
+plusieurs cibles narratives, mais l'adaptateur du monde source ne lui transmet
+désormais que l'hôte. La copie immuable de cette cible dans la session reste testée.
 
-Correctif de reprise Dresseur du 2026-10-06 : un contact detecte pendant
+Correctif de reprise Dresseur du 2026-10-06 : un contact de l'hote detecte pendant
 l'interpolation d'un pas est conserve jusqu'a la fin du mouvement, puis demarre
 avant l'evenement de case et la rencontre sauvage. Les positions de depart et
 d'arrivee du pas local ou distant participent a la detection ; traverser rapidement
 une ligne de vue ne perd donc plus l'alerte. Une alerte reste ensuite verrouillee
-tant que tous les participants n'ont pas quitte la ligne de vue, ce qui empeche un
+tant que l'hote n'a pas quitte la ligne de vue, ce qui empeche un
 dialogue de Dresseur echoue de se relancer chaque seconde.
 
 La resolution d'equipe accepte aussi une variante localisee non ambigue du nom,
@@ -2932,6 +2935,43 @@ la première publication ou mise à jour de présence. La politique pure est cou
 dans `source-coop-policy.test.ts`; le transfert reste local en solo, autoritaire
 côté hôte, et l'invité consomme toujours le dernier snapshot différé de l'hôte.
 
+Lot de stabilisation Coop du 2026-10-13, en attente de recette manuelle à deux
+navigateurs : trois régressions sont corrigées sans créer de chemin métier
+distinct. Premièrement, l'hôte reste l'unique audience des contacts narratifs de
+PNJ ; l'invité conserve sa collision physique et reçoit seulement la présentation
+partagée. Deuxièmement, le bouton Sauvegarde de l'invité persiste son équipe, son
+Ranch, son Sac, son argent et ses autres états personnels, mais conserve les
+coordonnées et le mode de sa dernière sauvegarde solo. Sans sauvegarde antérieure,
+la reprise utilise le point initial Map003 28,15 ; une position ou un checkpoint
+obtenu temporairement dans le monde de l'hôte n'est jamais adopté implicitement.
+Le menu annonce explicitement ce mode `progression personnelle`.
+
+Troisièmement, les mises à jour séparées de `sourceActorsUpdated` sont ignorées si
+leur `actorRevision` est strictement plus ancienne. Une révision égale doit être
+réappliquée : elle peut accompagner un snapshot reçu juste avant que ses poses
+aient été installées. Cette correction du 2026-10-13 remplace la garde `<=` qui
+figeait tous les PNJ chez l'invité lors de la première recette manuelle. Lorsqu'un nouvel instantané arrive pendant
+une interpolation, le PNJ repart de sa pose réellement affichée et ajuste la durée
+à la distance restante au lieu de sauter depuis son ancienne case logique. Cette
+règle couvre les PNJ et Pokémon de terrain rendus comme acteurs source ; l'hôte et
+la room restent autoritaires, les invités n'exécutent aucune IA locale. Tests
+ajoutés : invité bloquant mais non narratif, sauvegarde personnelle sans déplacement
+du point de reprise, repli sans sauvegarde et correction d'une trajectoire réseau
+en cours. Les trois fiches de `docs/Débug/Bug` portent la recette manuelle restante.
+
+Correctif de présentation de combat Coop du 2026-10-13, issu du rapport
+`ZENSD5-1` : le règlement autoritaire était correct (BUNNELBY à 0 PV au tour 1 et
+crédits d'EXP affectés au bon identifiant), mais la vue perdait l'identité du
+bénéficiaire. Chaque présentation d'EXP transporte maintenant `pokemonId`. La
+jauge principale ne s'anime que si cet identifiant occupe réellement son slot ;
+un Pokémon remplacé conserve son message d'EXP sans faire progresser la jauge du
+Pokémon actif. Plusieurs crédits successifs du même Pokémon utilisent des segments
+contigus au lieu de rejouer chacun la progression cumulée complète. Enfin, après
+un rerendu asynchrone (extension en double ou changement de composition), les
+classes K.O. sont réappliquées immédiatement après le nettoyage des sprites : un
+adversaire vaincu ne peut plus réapparaître en fondu pendant le chargement de son
+image.
+
 ## Commandes utiles
 
 ```powershell
@@ -2942,7 +2982,9 @@ corepack pnpm build
 corepack pnpm --filter @pokemon-z-battle/overworld-sandbox typecheck
 ```
 
-Le Worker multijoueur local se lance separement si necessaire :
+Le serveur multijoueur de production est le Worker hébergé sur Cloudflare. Le
+Worker Wrangler local ci-dessous est uniquement un outil de développement et de
+test :
 
 ```powershell
 corepack pnpm multiplayer:dev

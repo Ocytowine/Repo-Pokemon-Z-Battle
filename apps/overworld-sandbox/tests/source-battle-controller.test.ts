@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
+import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon,
+  pokemonZParticipantExperienceCalculation, type PlayerCreationCatalog,
+  type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import {
-  SourceBattleController,
+  SourceBattleController, sharedBattleExperiencePresentations,
   type SourceBattleCallbacks,
   type SourceBattlePresentation,
   type SourceBattleResources,
@@ -23,6 +25,28 @@ const catalog: PlayerCreationCatalog = {
   ],
   moves: [tackle],
 };
+
+it("presents repeated experience credits as contiguous ranges for the same Pokémon", () => {
+  const pokemon = createPersistentPokemon("recipient", "CHESPIN", 5, catalog);
+  const before = addPokemonToParty(createEmptyPlayerParty(), pokemon);
+  const afterExperience = pokemon.experience + 21;
+  const after = { ...before, members: [{ ...pokemon, experience: afterExperience }] };
+  const calculation = pokemonZParticipantExperienceCalculation({ defeatedLevel: 6,
+    defeatedBaseExperience: 48, recipientLevel: 5, participantCount: 1, luckyEgg: false },
+  { trainerBattle: true, levelCap: 100 });
+  const gain = (gained: number, defeatedMemberId: string): SharedBattleExperienceGain => ({
+    turn: 1, defeatedMemberId, recipientMemberId: pokemon.id, calculated: gained, gained,
+    previousLevel: 5, nextLevel: 5, learnedMoves: [], skippedMoves: [], calculation,
+  });
+
+  expect(sharedBattleExperiencePresentations(before, after,
+    [gain(15, "first"), gain(6, "second")], catalog)).toMatchObject([
+    { pokemonId: pokemon.id, amount: 15, beforeExperience: pokemon.experience,
+      afterExperience: pokemon.experience + 15 },
+    { pokemonId: pokemon.id, amount: 6, beforeExperience: pokemon.experience + 15,
+      afterExperience },
+  ]);
+});
 
 function presentation(): SourceBattlePresentation {
   return {

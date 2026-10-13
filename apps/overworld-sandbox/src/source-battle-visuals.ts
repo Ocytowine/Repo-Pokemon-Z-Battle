@@ -91,6 +91,14 @@ export function sourceHealthAnimationDuration(from: number, to: number, maximum:
   return Math.round(Math.max(420, Math.min(900, changedRatio * 1_050)));
 }
 
+export function sourceExperienceHudSlot(state: TeamBattleState | null, pokemonId: string): number | null {
+  if (state === null) return null;
+  const team = state.teams.player;
+  const active = team.activeIndices ?? [team.activeIndex];
+  const slot = active.findIndex((index) => team.members[index]?.id === pokemonId);
+  return slot < 0 ? null : slot;
+}
+
 export function joinedBattlePositions(before: TeamBattleState, after: TeamBattleState): readonly {
   readonly side: BattleSide; readonly slot: number; readonly battler: BattlerState;
 }[] {
@@ -203,6 +211,7 @@ export class SourceBattleVisuals {
   #animations: AnimatedCanvas[] = [];
   #renderedSpecies = "";
   #rendering: Promise<void> | null = null;
+  #renderedState: TeamBattleState | null = null;
   #battleMusic: HTMLAudioElement | null = null;
   #outroMusic: HTMLAudioElement | null = null;
   #oneShots = new Set<HTMLAudioElement>();
@@ -261,6 +270,7 @@ export class SourceBattleVisuals {
     this.#capturePresented = false;
     this.#battleback = audio.battleback ?? "snow";
     this.#renderedSpecies = "";
+    this.#renderedState = state;
     this.resetBattlerTransforms();
     const panel = document.getElementById("encounter-panel");
     const stage = document.getElementById("source-battle-stage");
@@ -415,6 +425,7 @@ export class SourceBattleVisuals {
   }
 
   async render(state: TeamBattleState, battleback = "snow"): Promise<void> {
+    this.#renderedState = state;
     this.#battleback = battleback;
     document.getElementById("source-battle-stage")?.classList.toggle("double-battle", state.format === "double");
     this.updateHud(state);
@@ -435,6 +446,10 @@ export class SourceBattleVisuals {
       try {
         const manifests = await this.manifests();
         this.clearSprites();
+        // clearSprites retire les classes de l'ancien rendu. Réappliquer les K.O.
+        // avant les chargements d'images évite qu'un battler vaincu réapparaisse
+        // brièvement pendant un changement de format ou de composition.
+        this.synchronizeFaintedSprites(state);
         const scenes = buildBattleScenes(manifests.assets);
         const requestedScene = battleback.toLocaleLowerCase("fr");
         const scene = scenes.find((candidate) => candidate.id === requestedScene && candidate.complete)
@@ -873,32 +888,42 @@ export class SourceBattleVisuals {
     const bar = document.getElementById("source-player-exp-bar");
     const level = document.getElementById("source-player-level");
     const track = document.getElementById("source-player-exp-track");
-    if (bar === null || level === null || track === null) return;
-    track.classList.add("active");
+    const hudSlot = sourceExperienceHudSlot(this.#renderedState, experience.pokemonId);
+    const animatePrimaryHud = hudSlot === 0 && bar !== null && level !== null && track !== null;
+    if (animatePrimaryHud) track.classList.add("active");
     this.message(`${experience.pokemonName} gagne ${experience.amount} points d'Expérience !`);
     await readableMessageDelay(850);
-    let cursor = experience.beforeExperience;
-    for (let currentLevel = experience.beforeLevel; currentLevel <= experience.afterLevel && cursor <= experience.afterExperience; currentLevel += 1) {
-      if (session !== this.#audioSession) return;
-      const floor = experienceAtLevel(currentLevel, experience.growthRate);
-      const ceiling = currentLevel >= 100 ? floor + 1 : experienceAtLevel(currentLevel + 1, experience.growthRate);
-      const target = Math.min(experience.afterExperience, ceiling);
-      const startRatio = Math.max(0, Math.min(1, (cursor - floor) / Math.max(1, ceiling - floor)));
-      const endRatio = Math.max(0, Math.min(1, (target - floor) / Math.max(1, ceiling - floor)));
-      bar.style.width = `${startRatio * 100}%`;
-      const animation = bar.animate([{ width: `${startRatio * 100}%` }, { width: `${endRatio * 100}%` }],
-        { duration: Math.max(260, (endRatio - startRatio) * 1_150), fill: "forwards", easing: "linear" });
-      await animation.finished.catch(() => undefined);
-      animation.cancel(); bar.style.width = `${endRatio * 100}%`;
-      cursor = target;
-      if (cursor >= ceiling && currentLevel < experience.afterLevel) {
-        await this.playCue("expfull", 0.8);
-        level.textContent = `N. ${currentLevel + 1}`;
-        this.message(`${experience.pokemonName} monte au niveau ${currentLevel + 1} !`);
-        await readableMessageDelay(850);
-        bar.style.width = "0%";
+    if (animatePrimaryHud) {
+      let cursor = experience.beforeExperience;
+      for (let currentLevel = experience.beforeLevel; currentLevel <= experience.afterLevel && cursor <= experience.afterExperience; currentLevel += 1) {
+        if (session !== this.#audioSession) return;
+        const floor = experienceAtLevel(currentLevel, experience.growthRate);
+        const ceiling = currentLevel >= 100 ? floor + 1 : experienceAtLevel(currentLevel + 1, experience.growthRate);
+        const target = Math.min(experience.afterExperience, ceiling);
+        const startRatio = Math.max(0, Math.min(1, (cursor - floor) / Math.max(1, ceiling - floor)));
+        const endRatio = Math.max(0, Math.min(1, (target - floor) / Math.max(1, ceiling - floor)));
+        bar.style.width = `${startRatio * 100}%`;
+        const animation = bar.animate([{ width: `${startRatio * 100}%` }, { width: `${endRatio * 100}%` }],
+          { duration: Math.max(260, (endRatio - startRatio) * 1_150), fill: "forwards", easing: "linear" });
+        await animation.finished.catch(() => undefined);
+        animation.cancel(); bar.style.width = `${endRatio * 100}%`;
+        cursor = target;
+        if (cursor >= ceiling && currentLevel < experience.afterLevel) {
+          await this.playCue("expfull", 0.8);
+          level.textContent = `N. ${currentLevel + 1}`;
+          this.message(`${experience.pokemonName} monte au niveau ${currentLevel + 1} !`);
+          await readableMessageDelay(850);
+          bar.style.width = "0%";
+        }
+        if (currentLevel >= experience.afterLevel || currentLevel >= 100) break;
       }
-      if (currentLevel >= experience.afterLevel || currentLevel >= 100) break;
+    } else {
+      for (let levelGained = experience.beforeLevel + 1; levelGained <= experience.afterLevel; levelGained += 1) {
+        if (session !== this.#audioSession) return;
+        await this.playCue("expfull", 0.8);
+        this.message(`${experience.pokemonName} monte au niveau ${levelGained} !`);
+        await readableMessageDelay(850);
+      }
     }
     for (const move of experience.learnedMoves) {
       this.message(`${experience.pokemonName} apprend ${move} !`);

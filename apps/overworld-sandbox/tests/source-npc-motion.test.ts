@@ -84,6 +84,19 @@ describe("source NPC motion", () => {
       .toMatchObject({ event: { id: trainer.id }, target: { x: 2, y: 2 } });
   });
 
+  it("keeps a guest blocking without letting them trigger host narration", () => {
+    const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
+      pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
+        settings: { ...event.pages[0]!.settings, moveType: 3, trigger: 2,
+          moveRoute: { repeat: true, skippable: false,
+            steps: [{ kind: "step-down", parameters: [] }] } } }] };
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [trainer], 0);
+    expect(controller.update(150, map, [trainer], createSourceEventState(),
+      [{ x: 2, y: 2 }, { x: 4, y: 4 }], [{ x: 4, y: 4 }])).toBeNull();
+    expect(controller.logicalEvents([trainer])[0]).toMatchObject({ x: 2, y: 1 });
+  });
+
   it("does not retrigger a trainer until every participant has left its sight", () => {
     const trainer: ImportedMapEvent = { ...event, name: "Trainer(4)", x: 2, y: 1,
       pages: [{ ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, direction: 2 },
@@ -180,5 +193,17 @@ describe("source NPC motion", () => {
     controller.applyNetworkWorldActors([{ eventId: event.id, x: 3, y: 2, direction: "right",
       blocking: true, moveSpeed: 3, action: "idle" }], 2_000);
     expect(controller.poses(2_000).get(event.id)).toMatchObject({ x: 3, y: 2, direction: 6 });
+  });
+
+  it("continues a corrected network step from the displayed pose without jumping", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    controller.applyNetworkWorldActors([{ eventId: event.id, x: 3, y: 2, direction: "right",
+      blocking: true, moveSpeed: 3, action: "step" }], 1_000);
+    expect(controller.poses(1_125).get(event.id)).toMatchObject({ x: 2.5, y: 2 });
+    controller.applyNetworkWorldActors([{ eventId: event.id, x: 4, y: 2, direction: "right",
+      blocking: true, moveSpeed: 3, action: "step" }], 1_125);
+    expect(controller.poses(1_125).get(event.id)).toMatchObject({ x: 2.5, y: 2 });
+    expect(controller.poses(1_500).get(event.id)).toMatchObject({ x: 4, y: 2 });
   });
 });
