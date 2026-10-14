@@ -17,6 +17,7 @@ describe("source command registry", () => {
     ["show-text", "dialogue", "rendered", false],
     ["set-switches", "state", "executed", true],
     ["change-money", "state", "executed", true],
+    ["refill-poke-vial", "state", "executed", true],
     ["move-route", "movement", "rendered", false],
     ["trainer-notice", "movement", "rendered", false],
     ["screen-tone", "audiovisual", "rendered", false],

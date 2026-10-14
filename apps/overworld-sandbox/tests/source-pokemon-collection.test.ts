@@ -63,6 +63,23 @@ describe("shared Pokemon collection presentation", () => {
     expect(filterSourcePokemonCollection(collection, { ...base, sort: "potential-power" })[0]?.pokemon.species).toBe("CHARIZARD");
   });
 
+  it("sorts by primary type and by the exact IV/EV averages", () => {
+    const ranch = { ...createEmptyPlayerPokemonStorage(), members: [
+      pokemon("a", "BULBASAUR", 5, 10, { iv: 31, ev: 0 }),
+      pokemon("b", "CHARMANDER", 5, 10, { iv: 10, ev: 20 }),
+      pokemon("c", "CHARIZARD", 5, 10, { iv: 20, ev: 70 }),
+    ] };
+    const collection = createSourcePokemonCollection(createEmptyPlayerParty(), ranch, catalog);
+    const base = { query: "", firstType: null, secondType: null, potentialTier: "all" as const,
+      minimumIvStars: "all" as const, minimumEvStars: "all" as const };
+    expect(filterSourcePokemonCollection(collection, { ...base, sort: "type" }).map((entry) => entry.pokemon.species))
+      .toEqual(["CHARMANDER", "CHARIZARD", "BULBASAUR"]);
+    expect(filterSourcePokemonCollection(collection, { ...base, sort: "iv-quality" })[0]?.pokemon.species)
+      .toBe("BULBASAUR");
+    expect(filterSourcePokemonCollection(collection, { ...base, sort: "ev-training" })[0]?.pokemon.species)
+      .toBe("CHARIZARD");
+  });
+
   it("uses the six potential bands and independent average IV/EV star filters", () => {
     expect([299, 300, 400, 450, 500, 600].map((score) => sourcePokemonPowerTier(score).id)).toEqual([
       "very-low", "low", "moderate", "good", "very-powerful", "super-powerful",

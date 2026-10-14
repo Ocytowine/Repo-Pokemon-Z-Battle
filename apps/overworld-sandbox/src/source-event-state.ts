@@ -4,6 +4,7 @@ import { addPokemonToParty, addPokemonToStorage, createEmptyPlayerParty, createE
   type PlayerPokemonStorageState } from "@pokemon-z-battle/player-state";
 import { isSourceStarterSelectionPage } from "./source-script-ports.js";
 import { isKnownSourceCommand, isSourceStateCommand } from "./source-command-registry.js";
+import { reconcileSourcePokeVial, refillSourcePokeVial, type SourcePokeVialState } from "./source-poke-vial.js";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -14,6 +15,7 @@ export interface SourceEventState {
   readonly runningShoes: boolean;
   readonly pokedexEnabled: boolean;
   readonly pokedex: SourcePokedexHistory;
+  readonly pokeVial: SourcePokeVialState;
   readonly followerEnabled: boolean;
   readonly checkpoint: SourceCheckpoint | null;
   readonly party: PlayerPartyState;
@@ -68,7 +70,7 @@ export interface StateCommandResult {
 }
 
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
-  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, followerEnabled: false, checkpoint: null,
+  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, pokeVial: Object.freeze({ current: 0, maximum: 0 }), followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
   pendingEncounter: null,
@@ -79,7 +81,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
     happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] };
 }
 
@@ -182,7 +184,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, pendingEncounter,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
         appliedBattleSettlementIds: state.appliedBattleSettlementIds });
@@ -236,6 +238,10 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       checkpoint = { ...context.checkpoint };
     } else if (command.kind === "heal-party") {
       party = healPlayerParty(party);
+    } else if (command.kind === "refill-poke-vial") {
+      const refilled = refillSourcePokeVial({ ...state, switches, variables, selfSwitches, inventory, money,
+        runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter });
+      variables = { ...refilled.variables };
     } else if (command.kind === "add-pokemon") {
       const species = command.data.species;
       const level = command.data.level;
@@ -261,11 +267,11 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     appliedCommands += 1;
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
-    pokedexEnabled, pokedex: state.pokedex, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, pendingEncounter,
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
     appliedBattleSettlementIds: state.appliedBattleSettlementIds };
-  return { state: reconcileSourcePokedex(nextState), appliedCommands, safe: true, reason: null };
+  return { state: reconcileSourcePokedex(reconcileSourcePokeVial(nextState)), appliedCommands, safe: true, reason: null };
 }
 
 export function completePendingEncounter(state: SourceEventState): SourceEventState {
@@ -333,6 +339,11 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const money = value.money === undefined ? SOURCE_INITIAL_MONEY : value.money;
   const runningShoes = value.runningShoes === undefined ? false : value.runningShoes;
   const pokedexEnabled = value.pokedexEnabled === undefined ? false : value.pokedexEnabled;
+  const pokeVialValue = value.pokeVial;
+  const pokeVial = pokeVialValue === undefined ? { current: 0, maximum: 0 }
+    : isRecord(pokeVialValue) && finiteInteger(pokeVialValue.current) && finiteInteger(pokeVialValue.maximum)
+      && pokeVialValue.current >= 0 && pokeVialValue.maximum >= pokeVialValue.current && pokeVialValue.maximum <= 5
+      ? { current: pokeVialValue.current, maximum: pokeVialValue.maximum } : null;
   const followerValue = value.followerEnabled;
   const checkpointValue = value.checkpoint;
   const checkpoint = checkpointValue === undefined || checkpointValue === null ? null
@@ -382,7 +393,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const caughtSpecies = parsedCaught === null ? null : addSpecies(parsedCaught, currentSpecies);
   const seenSpecies = parsedSeen === null || caughtSpecies === null ? null : addSpecies(parsedSeen,
     [...caughtSpecies, ...(pendingEncounter === null || pendingEncounter === undefined ? [] : [pendingEncounter.species])]);
-  if (switches === null || variables === null || selfSwitches === null || inventory === null || typeof runningShoes !== "boolean" || typeof pokedexEnabled !== "boolean"
+  if (switches === null || variables === null || selfSwitches === null || inventory === null || pokeVial === null
+    || typeof runningShoes !== "boolean" || typeof pokedexEnabled !== "boolean"
     || typeof followerEnabled !== "boolean"
     || !finiteInteger(money) || money < 0 || money > SOURCE_MAX_MONEY
     || Object.values(inventory).some((quantity) => quantity < 1) || checkpoint === undefined || pendingEncounter === undefined
@@ -391,7 +403,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
     || appliedBattleSettlementIds === null || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
-  return { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
-    pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, followerEnabled, checkpoint, party, ranch, pendingEncounter,
-    happinessSteps, wildEncounterSteps, wildEncounterRngState, appliedBattleSettlementIds };
+  return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
+    pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
+    party, ranch, pendingEncounter, happinessSteps, wildEncounterSteps, wildEncounterRngState,
+    appliedBattleSettlementIds });
 }

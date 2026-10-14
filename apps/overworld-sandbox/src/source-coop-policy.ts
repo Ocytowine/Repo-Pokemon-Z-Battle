@@ -3,6 +3,7 @@ import type { SourceEventState } from "./source-event-state.js";
 import type { SourceStorySnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { portSourceRubyCommand } from "./source-script-ports.js";
+import { sourceVariablesWithPersonalPokeVial } from "./source-poke-vial.js";
 
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
 export type SourceInteractionTarget = "event" | "player" | null;
@@ -51,12 +52,14 @@ export function sourceBattleAllowsAttachment(battle: {
 export function sourceStateWithHostStory(local: SourceEventState, story: SourceStorySnapshot | null,
   guest: boolean): SourceEventState {
   return !guest || story === null ? local : { ...local, switches: story.switches,
-    variables: story.variables, selfSwitches: story.selfSwitches };
+    variables: sourceVariablesWithPersonalPokeVial(story.variables, local.variables),
+    selfSwitches: story.selfSwitches };
 }
 
 /** Keeps personal effects while preventing the host story projection from leaking into the guest save. */
 export function sourceStateWithLocalStory(local: SourceEventState, applied: SourceEventState): SourceEventState {
-  return { ...applied, switches: local.switches, variables: local.variables,
+  return { ...applied, switches: local.switches,
+    variables: sourceVariablesWithPersonalPokeVial(local.variables, applied.variables),
     selfSwitches: local.selfSwitches };
 }
 
@@ -79,7 +82,8 @@ export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEven
 
 /** State effects retained from a personal service while the host owns the story. */
 export function guestSourceStateCommandAllowed(page: ImportedEventPage, kind: string): boolean {
-  return guestSourceEventAccess(page) === "personal" && (kind === "heal-party" || kind === "set-checkpoint");
+  return guestSourceEventAccess(page) === "personal"
+    && (kind === "heal-party" || kind === "set-checkpoint" || kind === "refill-poke-vial");
 }
 
 /**

@@ -23,6 +23,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "remove-item": capability("state", "executed", "retrait d'objet"),
   "set-checkpoint": capability("state", "executed", "point de reprise"),
   "heal-party": capability("state", "executed", "soin de l'equipe"),
+  "refill-poke-vial": capability("state", "executed", "recharge personnelle du Pokevial"),
   "add-pokemon": capability("state", "executed", "ajout a l'equipe"),
   "request-encounter": capability("state", "executed", "rencontre source"),
   "request-trainer-battle": capability("transition", "executed", "combat de Dresseur source"),

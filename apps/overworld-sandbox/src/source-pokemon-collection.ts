@@ -3,7 +3,7 @@ import type { PersistentPokemon, PlayerCreationCatalog, PlayerPartyState,
 import { resolvePokemonAsset, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 
 export type SourcePokemonLocation = "team" | "ranch";
-export type SourcePokemonSort = "number" | "name" | "potential-power" | "level";
+export type SourcePokemonSort = "number" | "name" | "level" | "type" | "potential-power" | "iv-quality" | "ev-training";
 export type SourcePokemonPowerTier = "all" | "very-low" | "low" | "moderate" | "good" | "very-powerful" | "super-powerful";
 export type SourcePokemonQualityTier = "all" | "one" | "two" | "three" | "four";
 
@@ -155,8 +155,11 @@ export function filterSourcePokemonCollection(collection: readonly SourcePokemon
   return result.sort((left, right) => {
     const difference = filters.sort === "number" ? left.number - right.number
         : filters.sort === "name" ? left.displayName.localeCompare(right.displayName, "fr")
+          : filters.sort === "type" ? (left.types[0] ?? "").localeCompare(right.types[0] ?? "", "fr")
           : filters.sort === "potential-power" ? right.potentialPower - left.potentialPower
-            : right.pokemon.level - left.pokemon.level;
+            : filters.sort === "iv-quality" ? right.ivAverage - left.ivAverage
+              : filters.sort === "ev-training" ? right.evAverage - left.evAverage
+                : right.pokemon.level - left.pokemon.level;
     return difference || left.number - right.number || left.pokemon.id.localeCompare(right.pokemon.id);
   });
 }

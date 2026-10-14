@@ -171,6 +171,15 @@ describe("source event choice and condition flow", () => {
     ]);
   });
 
+  it("ports the Pokemon Center vial refill as a personal state command", () => {
+    const result = resolveEventFlow(page([
+      command("recover-all", 0), command("change-variables", 0, { firstId: 238, lastId: 238,
+        operation: "set", operand: { kind: "variable", values: [239] } }),
+    ]), [], createSourceEventState(), 10, 4);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual(["heal-party", "refill-poke-vial"]);
+  });
+
   it("ports the source starter, follower and forced encounter sequence", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "pbAddPokemon(:CHESPIN,5)" }),

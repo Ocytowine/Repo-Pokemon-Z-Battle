@@ -529,7 +529,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-POKEVIAL-1 — Pokévial rechargeable
 
-- Priorite/statut : `P2` / bloque par `SOLO-ITEMS-1`.
+- Priorite/statut : `P2` / réalisé le 2026-10-14.
 - Etat personnel confirme : nombre d'utilisations courant/maximal ; soigne toute
   l'equipe et consomme une charge, rechargee par les services prevus par Z.
 - En Coop, le dialogue et le soin ne sont visibles que par le joueur concerne.

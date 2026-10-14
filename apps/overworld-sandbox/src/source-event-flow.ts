@@ -4,6 +4,7 @@ import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
   portSourceRubyCondition } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
+import { portSourcePokeVialCommand } from "./source-poke-vial.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -195,7 +196,8 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         sourceCommand = { ...command, data: { ...command.data, source: lines.join("\n") } };
       }
       const executable = sourceCommand.kind === "ruby-script" ? portSourceRubyCommand(sourceCommand)
-        : sourceCommand.kind === "recover-all" ? { ...sourceCommand, kind: "heal-party" } : sourceCommand;
+        : sourceCommand.kind === "recover-all" ? { ...sourceCommand, kind: "heal-party" }
+          : portSourcePokeVialCommand(sourceCommand) ?? sourceCommand;
       if (executable === null || !isKnownSourceCommand(executable.kind)) {
         blockedReason = `commande ${command.kind} non prise en charge`;
         return false;

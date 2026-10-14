@@ -35,6 +35,8 @@ describe("guest source event policy", () => {
     expect(guestSourceEventAccess(technicalHealing)).toBe("personal");
     expect(guestSourceStateCommandAllowed(technicalHealing, "heal-party")).toBe(true);
     expect(guestSourceStateCommandAllowed(technicalHealing, "set-self-switch")).toBe(false);
+    const centerHealing = page(["heal-party", "refill-poke-vial"]);
+    expect(guestSourceStateCommandAllowed(centerHealing, "refill-poke-vial")).toBe(true);
     const technicalTransfer = page(["transfer-player", "set-switches"]);
     expect(guestSourceEventAccess(technicalTransfer)).toBe("transfer");
     expect(guestSourceStateCommandAllowed(technicalTransfer, "set-switches")).toBe(false);
@@ -98,10 +100,11 @@ describe("guest source event policy", () => {
   });
 
   it("uses the host story even while the guest is on another map", () => {
-    const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 } };
+    const local = { ...createSourceEventState(), switches: { "10": false },
+      variables: { "2": 1, "238": 1, "239": 3 }, pokeVial: { current: 1, maximum: 3 } };
     const synchronized = sourceStateWithHostStory(local,
       { switches: { "10": true }, variables: { "2": 7 }, selfSwitches: { "4:2:A": true } }, true);
-    expect(synchronized).toMatchObject({ switches: { "10": true }, variables: { "2": 7 },
+    expect(synchronized).toMatchObject({ switches: { "10": true }, variables: { "2": 7, "238": 1, "239": 3 },
       selfSwitches: { "4:2:A": true } });
     expect(synchronized.party).toBe(local.party);
     expect(synchronized.ranch).toBe(local.ranch);
@@ -110,10 +113,11 @@ describe("guest source event policy", () => {
   it("keeps personal effects without copying the projected host story into the guest save", () => {
     const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 },
       selfSwitches: { "3:4:A": false }, money: 500 };
-    const applied = { ...local, switches: { "10": true }, variables: { "2": 7 },
-      selfSwitches: { "3:4:A": true }, money: 750 };
+    const applied = { ...local, switches: { "10": true }, variables: { "2": 7, "238": 3, "239": 3 },
+      pokeVial: { current: 3, maximum: 3 }, selfSwitches: { "3:4:A": true }, money: 750 };
     expect(sourceStateWithLocalStory(local, applied)).toMatchObject({
-      switches: { "10": false }, variables: { "2": 1 }, selfSwitches: { "3:4:A": false }, money: 750,
+      switches: { "10": false }, variables: { "2": 1, "238": 3, "239": 3 },
+      pokeVial: { current: 3, maximum: 3 }, selfSwitches: { "3:4:A": false }, money: 750,
     });
   });
 });

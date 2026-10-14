@@ -1830,6 +1830,14 @@ Tour de Combat sont inventories dans `docs/PRODUCT_BACKLOG.md` sans devancer les
 P0. Chaque mecanique est concue une fois pour l'adaptateur local et la room
 autoritaire.
 
+Increment Pokévial du 2026-10-14 : le soin portable est désormais un état
+personnel persistant, compatible avec les variables source 238/239 et leurs quatre
+améliorations. Le bouton de l'en-tête Équipe emploie l'icône originale, confirme
+le soin complet puis consomme une charge. Les Centres Pokémon portent leur
+recharge explicite via `refill-poke-vial`. Les compteurs ne sont pas inclus dans
+la projection narrative Coop ; hôte et invité utilisent et rechargent chacun leur
+propre Pokévial sans intention réseau.
+
 Premier increment Pokedex du 2026-10-12 : l'onglet du menu est débloqué par le
 switch narratif source déjà porté et affiche le catalogue extrait dans une grille
 paginée. Recherche par nom/numéro, deux types cumulables, tri et filtres de statut
@@ -1855,6 +1863,49 @@ Les icônes locales `DP Pause Menu` décorent les rubriques avec l'état gris
 emploient leurs variantes `Bf/Bm`. Aucun asset n'est versionné. Ce lot demeure une
 présentation et un état personnel : aucune donnée
 de filtre, de Ranch ou de Pokédex n'est répliquée à la room Coop.
+
+Correctif UX Ranch du 2026-10-14 : la mention `PC de Léo` a été retirée et
+l'équipe et le stockage sont maintenant deux zones visuellement séparées. Une
+commande fixe déplie l'équipe sans agir sur le stockage ; la sélection est fermée
+avant un transfert pour éviter qu'une carte déposée suive le repli du panneau.
+La grille paginée affiche 3 × 3 cartes lorsque l'équipe est ouverte et 4 × 4
+lorsqu'elle est repliée. Filtre et tri utilisent deux tiroirs fermés par défaut ;
+le tri purement visuel couvre numéro, nom, niveau, type principal, potentiel, IV
+et EV. Le décor `Graphics/Ranch.png` est légèrement flouté et animé, sauf avec la
+préférence de réduction des mouvements ; la palette du Ranch est désormais verte.
+La carte Pokémon commune possède une variante compacte conservant identité, niveau,
+PV, statut et objet tenu. Les badges de types et les quatre capacités y restent
+visibles dans une grille 2 × 2 resserrée. Elle affiche le nom français de l'objet
+tenu dans l'Équipe comme dans le Ranch. Il n'existe aucune nouvelle mutation ni
+donnée réseau : la collection, l'ordre persistant et l'objet restent personnels.
+
+Finition de densité du 2026-10-14 : les cartes compactes retirent la ligne redondante
+`numéro · emplacement`. Le panneau Équipe occupe désormais exactement 25 % de la
+surface, soit la largeur d'une carte : les cartes du stockage conservent donc la
+même largeur en 3 × 3 avec l'équipe ou en 4 × 4 sans elle. Le sprite couvre les
+deux rangées gauches, les types deviennent des badges d'icône sous le nom et les
+capacités restent en 2 × 2 dans la colonne droite. La variante Équipe est resserrée
+pour empêcher tout débordement ; la variante Ranch ne rend plus la barre de PV.
+Le voile du décor est désormais uniforme, sans bande sombre produite par l'ancien
+dégradé vertical.
+
+Correction complémentaire du 2026-10-14 : lorsque le panneau Équipe masqué sortait
+du placement automatique CSS Grid, le stockage occupait par erreur sa colonne de
+largeur nulle et paraissait lui aussi replié. Les zones nommées `team` et `storage`
+ancrent désormais chaque panneau à sa colonne, avec un test de régression dédié.
+
+Finition visuelle du 2026-10-14 : le fond animé a été déplacé sur la racine stable
+du Ranch afin que les rendus provoqués par Filtre, Tri et le repli de l'équipe ne
+redémarrent plus son animation. La disposition repliée est maintenant une véritable
+grille à une colonne `storage`, sans piste nulle ni assombrissement résiduel.
+
+Correctif structurel du 2026-10-14 : les zones verticales `toolbar`, `tools` et
+`content` sont maintenant nommees explicitement. La fermeture du tiroir Filtre/Tri
+ne peut plus faire remonter le contenu dans une ligne automatique et abandonner la
+ligne extensible en bas de l'ecran. La grille et sa pagination utilisent toute la
+hauteur ; les commandes de page restent au pied du stockage. Le bandeau secondaire
+qui repetait le nombre de resultats et le tri a ete supprime, le compteur de
+stockage de l'en-tete restant la reference visible.
 
 L'historique `pokedex` appartient au joueur, persiste dans sa sauvegarde locale et
 n'est jamais répliqué à la room. Les combats locaux et partagés enregistrent les

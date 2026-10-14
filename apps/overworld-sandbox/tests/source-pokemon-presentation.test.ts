@@ -6,6 +6,7 @@ import { sourcePokemonCardHtml } from "../src/source-pokemon-card-view.js";
 import { createSourcePokemonCollection } from "../src/source-pokemon-collection.js";
 import { canManageSourceHeldItem, sourceHeldItemEntries, sourceHeldItemManagerHtml }
   from "../src/source-held-item-view.js";
+import { sourceRanchPageCount, sourceRanchPageSize } from "../src/source-ranch-view.js";
 
 const pokemon: PersistentPokemon = {
   id: "starter", species: "CHESPIN", nickname: "Marisson", level: 5, experience: 0,
@@ -31,6 +32,13 @@ function entry(location: "team" | "ranch" = "team") {
 }
 
 describe("shared Pokemon card and contextual actions", () => {
+  it("uses a 3x3 Ranch page with the Team open and 4x4 when it is folded", () => {
+    expect(sourceRanchPageSize(true)).toBe(9);
+    expect(sourceRanchPageSize(false)).toBe(16);
+    expect(sourceRanchPageCount(25, sourceRanchPageSize(true))).toBe(3);
+    expect(sourceRanchPageCount(25, sourceRanchPageSize(false))).toBe(2);
+  });
+
   it("shows four typed move slots without exposing power scores on the card", () => {
     const html = sourcePokemonCardHtml(entry());
     expect(html).toContain("Charge");
@@ -51,6 +59,43 @@ describe("shared Pokemon card and contextual actions", () => {
     const knockedOut = sourcePokemonCardHtml({ ...healthy, pokemon: { ...healthy.pokemon, hp: 0 } });
     expect(knockedOut).toContain('class="source-pokemon-icon"');
     expect(knockedOut).not.toContain("--pokemon-icon-cycle");
+  });
+
+  it("shows the localized held-item name on shared Team and Ranch cards", () => {
+    const held = { ...entry(), pokemon: { ...pokemon, heldItem: "LEFTOVERS" } };
+    const html = sourcePokemonCardHtml(held, { heldItemName: "Restes" });
+    expect(html).toContain("source-pokemon-held-item");
+    expect(html).toContain("Objet tenu : Restes");
+    expect(html).toContain("<b>Restes</b>");
+    expect(html).not.toContain("<b>LEFTOVERS</b>");
+    expect(sourcePokemonCardHtml(entry())).not.toContain("source-pokemon-held-item");
+  });
+
+  it("marks Ranch cards as compact without changing the shared Pokemon data", () => {
+    const html = sourcePokemonCardHtml(entry("ranch"), { compact: true });
+    expect(html).toContain("source-pokemon-card compact");
+    expect(html).toContain("Marisson");
+    expect(html).not.toContain("source-pokemon-vitals");
+    expect(html).not.toContain("18/21 PV");
+    expect(html).toContain("Plante");
+    expect(html).toContain("Charge");
+    expect(html).toContain("Fouet Lianes");
+    expect(html.match(/source-pokemon-move/g)).toHaveLength(5);
+    expect(html).not.toContain("#650");
+    expect(html).not.toContain("RANCH");
+  });
+
+  it("keeps HP on compact Team cards", () => {
+    const html = sourcePokemonCardHtml(entry("team"), { compact: true });
+    expect(html).toContain("source-pokemon-vitals");
+    expect(html).toContain("18/21 PV");
+  });
+
+  it("shows a localized major status on compact collection cards", () => {
+    const burned = { ...entry("ranch"), pokemon: { ...pokemon, majorStatus: { kind: "burn" as const } } };
+    expect(sourcePokemonCardHtml(burned, { compact: true })).toContain("Brûlure");
+    const knockedOut = { ...entry("ranch"), pokemon: { ...pokemon, hp: 0 } };
+    expect(sourcePokemonCardHtml(knockedOut, { compact: true })).toContain("K.O.");
   });
 
   it("offers team actions according to the selected Pokemon state", () => {

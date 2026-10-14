@@ -24,6 +24,7 @@ import { SourcePokedexView } from "./source-pokedex-view.js";
 import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
 import { sourceRegionForMap, sourceRegionImageUrl, sourceVisibleRegionPoints,
   type SourceRegionDestination, type SourceRegionPoint } from "./source-region-map.js";
+import { sourcePokeVialStatus } from "./source-poke-vial.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -117,6 +118,11 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onUsePokeVial: () => {
+    readonly ok: boolean;
+    readonly message: string;
+    readonly eventState: SourceEventState;
+  };
   readonly onDiscardItem: (itemId: string, quantity: number) => {
     readonly ok: boolean;
     readonly message: string;
@@ -174,6 +180,7 @@ export class SourceMenuView {
   private alchemyPageTurn: "forward" | "backward" | null = null;
   private selectedRegionPointKey: string | null = null;
   private regionMapMode: "consult" | "fly" = "consult";
+  private pokeVialConfirming = false;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -182,7 +189,7 @@ export class SourceMenuView {
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
-    if (!model.open) return;
+    if (!model.open) { this.pokeVialConfirming = false; return; }
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
@@ -205,6 +212,7 @@ export class SourceMenuView {
               ? { context: "PRÉFÉRENCES", title: "Options", meta: "LOCAL" }
               : { context: "SAC", title: "Inventaire", meta: `${model.eventState.money.toLocaleString("fr-FR")} ₽` };
     this.setMenuHeader(header.context, header.title, header.meta);
+    this.renderPokeVialHeader(content, model);
     document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
       const active = button.dataset.sourceMenuTab === model.tab;
       button.classList.toggle("active", active);
@@ -293,9 +301,11 @@ export class SourceMenuView {
     }));
     content.querySelectorAll<HTMLButtonElement>("[data-source-region-point]").forEach((button) =>
       button.addEventListener("click", () => {
-        this.selectedRegionPointKey = button.dataset.sourceRegionPoint ?? null;
+        const pointKey = button.dataset.sourceRegionPoint ?? null;
+        this.selectedRegionPointKey = pointKey;
         if (this.regionMapMode === "fly") {
-          const destination = pointGroups.get(this.selectedRegionPointKey)?.find((point) => point.destination !== null)?.destination;
+          const destination = pointKey === null ? null
+            : pointGroups.get(pointKey)?.find((point) => point.destination !== null)?.destination;
           if (destination !== null && destination !== undefined) { this.regionMapMode = "consult"; this.callbacks.onFly(destination); }
           return;
         }
@@ -382,6 +392,7 @@ export class SourceMenuView {
     const heldItemTarget = entries.find((entry) => entry.pokemon.id === this.heldItemPokemonId) ?? null;
     const activePokemonId = model.eventState.party.activeIndex === null ? null
       : model.eventState.party.members[model.eventState.party.activeIndex]?.id ?? null;
+    const pokeVial = sourcePokeVialStatus(model.eventState);
     const wheel = selected === null ? "" : sourcePokemonActionWheelHtml(selected,
       sourcePokemonActions("team", selected, { partySize: members.length, partyFull: members.length >= 6,
         activePokemonId, heldItemManagementAvailable: canManageSourceHeldItem(model.eventState.inventory,
@@ -391,16 +402,31 @@ export class SourceMenuView {
     const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml(entry, {
       active: entry.teamIndex === model.eventState.party.activeIndex,
       selected: entry.pokemon.id === this.selectedTeamPokemonId,
+      heldItemName: entry.pokemon.heldItem === null ? null
+        : model.assets.items.get(entry.pokemon.heldItem)?.name ?? entry.pokemon.heldItem,
     })).join("");
     const emptySlots = Array.from({ length: Math.max(0, 6 - entries.length) }, (_, index) =>
       `<article class="source-team-empty-slot" aria-label="Emplacement ${entries.length + index + 1} libre"><span>${entries.length + index + 1}</span><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Emplacement libre</strong></article>`).join("");
-    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${wheel}${heldItemPanel}`;
+    const pokeVialConfirm = !this.pokeVialConfirming ? "" : `<section class="source-poke-vial-confirm" role="dialog" aria-modal="true" aria-label="Utiliser le Pokévial"><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/vial.png" alt=""><div><small>SOIGNER L'ÉQUIPE</small><strong>Utiliser le Pokévial ?</strong><p>Les PV, statuts et PP de toute l'équipe seront restaurés. Il restera ${pokeVial.current - 1}/${pokeVial.maximum} soin${pokeVial.maximum > 1 ? "s" : ""}.</p><nav><button type="button" data-source-poke-vial-cancel>Annuler</button><button type="button" data-source-poke-vial-confirm>Soigner</button></nav></div></section>`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${pokeVialConfirm}${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
       button.addEventListener("click", () => {
         this.selectedTeamPokemonId = button.dataset.pokemonId ?? null;
         this.renderTeam(content, model);
       });
+    });
+    content.querySelector<HTMLButtonElement>("[data-source-poke-vial-cancel]")?.addEventListener("click", () => {
+      this.pokeVialConfirming = false;
+      this.renderTeam(content, model);
+    });
+    content.querySelector<HTMLButtonElement>("[data-source-poke-vial-confirm]")?.addEventListener("click", () => {
+      this.pokeVialConfirming = false;
+      const result = this.callbacks.onUsePokeVial();
+      this.bagNotice = result.message;
+      const nextModel = { ...model, eventState: result.eventState };
+      this.renderPokeVialHeader(content, nextModel);
+      this.renderTeam(content, nextModel);
     });
     content.querySelector<HTMLButtonElement>("[data-source-wheel-close]")?.addEventListener("click", () => {
       this.selectedTeamPokemonId = null;
@@ -437,6 +463,24 @@ export class SourceMenuView {
         this.heldItemPokemonId = null;
         this.callbacks.onPokemonHeldItem(heldItemTarget.pokemon.id, button.dataset.heldItemEquip);
       }));
+  }
+
+  private renderPokeVialHeader(content: HTMLElement, model: SourceMenuViewModel): void {
+    const button = document.querySelector<HTMLButtonElement>("#source-poke-vial");
+    const charges = document.querySelector<HTMLElement>("#source-poke-vial-charges");
+    if (button === null || charges === null) return;
+    const vial = sourcePokeVialStatus(model.eventState);
+    if (model.tab !== "team" || !vial.canUse) this.pokeVialConfirming = false;
+    button.hidden = model.tab !== "team" || !vial.owned;
+    button.disabled = !vial.canUse;
+    button.title = vial.canUse ? "Soigner toute l'équipe"
+      : "Le Pokévial est vide. Rechargez-le dans un Centre Pokémon.";
+    charges.textContent = `${vial.current}/${vial.maximum} soin${vial.maximum > 1 ? "s" : ""}`;
+    button.onclick = button.hidden || !vial.canUse ? null : () => {
+      this.pokeVialConfirming = true;
+      this.bagNotice = null;
+      this.renderTeam(content, model);
+    };
   }
 
   private setMenuHeader(context: string, title: string, meta: string): void {

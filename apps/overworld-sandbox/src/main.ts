@@ -98,6 +98,7 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
 import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
+import { sourceStoryVariables, useSourcePokeVial } from "./source-poke-vial.js";
 import { craftSourceAlchemyRecipe, sourceAlchemyUnlockLevel } from "./source-alchemy.js";
 import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
@@ -279,7 +280,7 @@ function sourceWorldHostState(narrativeState: SourceEventState = sourceEventStat
     follower: !sourceEventState.followerEnabled || member === null || followerPosition === null ? null
       : { ...followerPosition, species: member.species,
         appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } },
-    story: { switches: narrativeState.switches, variables: narrativeState.variables,
+    story: { switches: narrativeState.switches, variables: sourceStoryVariables(narrativeState.variables),
       selfSwitches: narrativeState.selfSwitches } };
 }
 
@@ -941,6 +942,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onPokemonLead: setSourcePartyLead,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
   onPokemonHeldItem: changeSourcePokemonHeldItem,
+  onUsePokeVial: useCurrentSourcePokeVial,
   onDiscardItem: discardSourceItem,
   onTeachMachineMove: teachSourcePokemonMachineMove,
   onUsePokemonItem: useSourcePokemonItem,
@@ -1491,9 +1493,10 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
     networkSourceWorld = world;
     publishActiveSourceFollower();
     const battleAllowsAttachment = currentBattleAllowsSourceAttachment(world.mapId);
-    if (shouldRejoinSharedSourceMap(true, world.presence.opponent, importedAssets?.map.id ?? null, world.mapId,
+    const localMapId = importedAssets?.map.id ?? null;
+    if (shouldRejoinSharedSourceMap(true, world.presence.opponent, localMapId, world.mapId,
       session.roomBattleActive, battleAllowsAttachment)) {
-      multiplayer.setSourcePresence(true, importedAvatar, importedAssets.map.id);
+      multiplayer.setSourcePresence(true, importedAvatar, localMapId!);
       importedNotice = "L'hôte a rejoint votre carte : rattachement à l'instance partagée…";
     } else {
       importedNotice = "Carte différente de celle de l'hôte · progression narrative de l'hôte conservée.";
@@ -1898,12 +1901,13 @@ function applySourceSequenceMovementMode(mode: SourceMovementMode): void {
 
 function renderSourceMenu(): void {
   if (importedAssets === null) return;
+  const assets = importedAssets;
   const network = multiplayer.current;
   const renderedState = renderedSourceEventState();
-  sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets: importedAssets,
+  sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets,
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
     personalProgressSaveOnly: multiplayer.active && isNetworkGuest(),
-    alchemyUnlockLevel: sourceAlchemyUnlockLevel(importedAssets.alchemy, renderedState.variables),
+    alchemyUnlockLevel: sourceAlchemyUnlockLevel(assets.alchemy, renderedState.variables),
     profileBodyModel: activePlayerSelection.profile.bodyModel,
     movement: sourceMovementMenuModel(),
     dev: { storyLevelCap: pokemonZLevelCap(sourceEventState.switches),
@@ -1916,8 +1920,28 @@ function renderSourceMenu(): void {
         name: player.profile.profile.displayName, connected: player.connected,
         connectionState: player.connectionState ?? (player.connected ? "connected" : "reconnecting"),
         bodyModel: player.profile.profile.bodyModel,
-        mapId: player.side === network?.ticket.side ? importedAssets.map.id
+        mapId: player.side === network?.ticket.side ? assets.map.id
           : networkSourceWorld?.regionalMapIds?.[player.side] ?? networkSourceWorld?.mapId ?? null })) } });
+}
+
+function useCurrentSourcePokeVial(): {
+  readonly ok: boolean;
+  readonly message: string;
+  readonly eventState: SourceEventState;
+} {
+  const result = useSourcePokeVial(sourceEventState);
+  if (!result.ok) {
+    const message = result.reason === "empty"
+      ? "Le Pokévial est vide. Rechargez-le dans un Centre Pokémon."
+      : "Vous ne possédez pas encore le Pokévial.";
+    importedNotice = message;
+    return { ok: false, message, eventState: sourceEventState };
+  }
+  sourceEventState = result.state;
+  persistSourceEventState();
+  const message = "Votre équipe a été entièrement soignée.";
+  importedNotice = message;
+  return { ok: true, message, eventState: sourceEventState };
 }
 
 function craftSourceAlchemy(itemId: string, quantity: number): {
@@ -2868,7 +2892,8 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
     pendingTransferMovementMode = null;
     if (leavingSharedWorld) {
       guestSourceExcursion = false;
-      multiplayer.setSourcePresence(true, importedAvatar, importedAssets.map.id);
+      const localMapId = importedAssets?.map.id;
+      if (localMapId !== undefined) multiplayer.setSourcePresence(true, importedAvatar, localMapId);
     }
     importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
   } finally {

@@ -655,6 +655,74 @@ quatre emplacements de capacites, avec le nom localise et l'icone de type de cha
 attaque. Le modele de collection resout ces capacites une seule fois depuis le
 catalogue et reste commun a l'equipe, au Ranch et aux futures selections de combat.
 
+Correctif UX du 2026-10-14 : l'ecran Ranch ne melange plus les deux emplacements
+dans une collection unique et son titre ne reprend plus la mention source
+`PC de Leo`. L'equipe possede un tiroir repliable expose par une commande fixe ;
+son conteneur et celui du stockage sont freres, de sorte que replier l'equipe ne
+peut plus masquer un Pokemon qui vient d'etre depose. La selection contextuelle
+est egalement fermee avant chaque transfert.
+
+Correction complementaire du 2026-10-14 : masquer le noeud Equipe le retirait du
+placement automatique de la grille CSS et faisait glisser le stockage dans la
+premiere colonne, volontairement reduite a zero. Les deux panneaux utilisent
+desormais les zones nommees `team` et `storage` ; le stockage reste donc ancre dans
+sa propre colonne lorsque l'equipe est absente du rendu. Le test
+`source-ranch-layout.test.ts` verrouille ce contrat de disposition.
+
+Finition visuelle du 2026-10-14 : le fond anime etait porte par
+`source-ranch-workspace`, noeud reconstruit lors de l'ouverture des filtres, du tri
+ou du repli de l'equipe. Chaque rendu redemarrait donc l'animation et produisait un
+micro-saut. Le calque appartient maintenant a la racine stable `source-ranch`.
+Le mode replie ne conserve plus une premiere colonne de largeur zero : il utilise
+une grille a une seule zone `storage`, ce qui supprime les bandes sombres residuelles.
+
+La grille du Ranch est paginee : 3 colonnes sur 3 lignes avec l'equipe ouverte,
+puis 4 colonnes sur 4 lignes avec l'equipe repliee. Le changement de disposition
+conserve autant que possible le premier resultat visible. Les filtres et le tri
+sont deux tiroirs independants, fermes a chaque nouvelle ouverture. Le tri par
+defaut est le numero croissant ; nom, niveau, type principal, potentiel, moyenne
+IV et moyenne EV sont aussi proposes sans modifier l'ordre persistant du stockage.
+L'image locale `Graphics/Ranch.png` forme un decor legerement floute, assombri et
+anime, avec respect de `prefers-reduced-motion`. L'en-tete, les commandes et les
+cartes du Ranch emploient une palette verte coherente avec ce decor.
+
+Les cartes restent la primitive commune au tiroir Equipe, au Ranch et a l'onglet
+Equipe. Leur variante compacte conserve nom, niveau, PV, objet tenu et
+statut majeur. Les types restent visibles sous forme de petits badges avec leur
+icone, et les quatre emplacements de capacite sont ranges dans une grille 2 x 2
+resserree afin de ne pas agrandir fortement la carte. Lorsqu'un Pokemon tient un
+objet, elles affichent un repere dore et le nom francais resolu depuis le catalogue
+d'objets ; un identifiant source inconnu reste un repli explicite. Ce changement
+est purement visuel : equipe, Ranch, inventaire et objet tenu restent des donnees
+personnelles, sans nouvelle intention ni replication Coop.
+
+Finition de densite du 2026-10-14 : la variante compacte ne rend plus la ligne
+bleue `numero - emplacement`, deja implicite dans le panneau qui contient la carte.
+Le panneau Equipe occupe exactement 25 % de la surface : ses trois colonnes de
+stockage restantes ont donc la meme largeur que les quatre colonnes obtenues apres
+repli. Les cartes du Ranch ne changent plus de largeur ni de composition.
+
+Dans chaque carte compacte, le sprite occupe la colonne gauche sur toute la hauteur,
+tandis que l'identite puis les capacites 2 x 2 utilisent la colonne droite. Les
+types sont places sous le nom sous forme de badges d'icone accessibles. Les cartes
+Equipe conservent leurs PV ; les cartes du stockage ne rendent plus cette barre,
+redondante dans le Ranch. Les dimensions specifiques du tiroir permettent aux six
+cartes Equipe et a leurs capacites de rester dans leurs emplacements sans deborder.
+Enfin, le voile du decor est une teinte uniforme : l'ancien degrade vertical, qui
+produisait une bande sombre visible en bas lorsque le stockage n'etait pas masque
+par l'etat vide, a ete retire.
+
+Correctif structurel du 2026-10-14 : lorsque le tiroir Filtre/Tri etait vide,
+l'auto-placement de la grille faisait remonter `source-ranch-content` dans la
+deuxieme ligne de hauteur automatique. La troisieme ligne extensible restait alors
+inutilisee et laissait voir une large zone du decor en bas. Les trois niveaux sont
+maintenant ancres dans les zones nommees `toolbar`, `tools` et `content` ; le
+stockage occupe donc toute la hauteur disponible dans tous les etats. Le petit
+bandeau de rappel du nombre de resultats et du tri a ete retire, le compteur global
+restant visible dans l'en-tete du stockage. La pagination demeure dans la derniere
+ligne du stockage, au pied de l'ecran. Le mode replie exploite la hauteur liberee
+avec 16 cartes par page en grille 4 x 4, contre 9 cartes en 3 x 3 avec l'equipe.
+
 Un clic ouvre `source-pokemon-actions.ts`, menu radial dont le contrat varie entre
 equipe, Ranch et combat. `Placer en tete`, `Deposer` et `Retirer` sont raccordes au
 noyau personnel persistant ; le placement en tete reordonne reellement l'equipe et
@@ -2977,6 +3045,25 @@ un rerendu asynchrone (extension en double ou changement de composition), les
 classes K.O. sont réappliquées immédiatement après le nettoyage des sprites : un
 adversaire vaincu ne peut plus réapparaître en fondu pendant le chargement de son
 image.
+
+Raccord Pokévial du 2026-10-14 : le noyau `source-poke-vial.ts` reproduit le
+contrat de `200-37313625-pokevial.rb` et du menu amélioré source. La possession de
+`POKEVIAL` révèle dans l'en-tête de l'Équipe un bouton utilisant l'asset officiel
+`Graphics/Pictures/DP Pause Menu/vial.png`, avec compteur courant/maximal et une
+confirmation intégrée. Une utilisation restaure PV, statuts et PP de toute
+l'équipe puis consomme exactement une charge. Les anciennes sauvegardes qui
+possèdent déjà l'objet sans compteurs migrent vers `1/1`; les améliorations source
+de la variable 239 restent compatibles jusqu'au plafond de cinq soins.
+
+La recharge exacte `variable 238 = variable 239` des Centres Pokémon est portée
+en commande générique `refill-poke-vial`, déclarée dans le registre et auditée
+comme effet personnel. L'état typé `pokeVial` reste synchronisé avec les variables
+historiques 238/239 pour les événements source, mais ces deux variables sont
+retirées de `SourceStorySnapshot`. En Coop, chaque joueur conserve donc ses
+charges dans sa sauvegarde personnelle, l'invité peut recharger son propre vial
+au Centre, et aucun clic, soin ni compteur n'est envoyé à la room ou présenté à
+l'autre participant. Le comportement solo, la migration, la consommation, la
+recharge, le port de commande et l'isolation narrative sont couverts par tests.
 
 ## Commandes utiles
 
