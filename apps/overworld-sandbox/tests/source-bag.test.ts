@@ -62,8 +62,18 @@ describe("source bag", () => {
     expect(itemHtml).toContain('data-source-bag-item="POTION"');
     expect(itemHtml).toContain('data-source-inventory-kind="item"');
     expect(itemHtml).toContain("source-inventory-copy");
+    expect(itemHtml).toContain("source-inventory-counts");
     expect(itemHtml).toContain("source-inventory-primary-count");
     expect(itemHtml).toContain("×27");
+    const berries = Array.from({ length: 8 }, (_, index) => ({
+      item: { ...potion, id: 389 + index, internalName: `BERRY_${index}BERRY`, pocket: 5, itemType: 5 }, quantity: 10,
+    }));
+    const familyHtml = sourceBagGridHtml(sourceBagNodes(berries, 8), {
+      itemAttribute: "data-source-bag-item", familyAttribute: "data-source-bag-family",
+    });
+    expect(familyHtml).toContain("80 objets");
+    expect(familyHtml).not.toContain("sortes");
+    expect(familyHtml).not.toContain("source-inventory-secondary-count");
     expect(sourceBagPaginationHtml(1, 3)).toContain("Page <b>2</b> / 3");
   });
 
@@ -104,7 +114,7 @@ describe("source bag", () => {
       { id: "specific:register", label: "Enregistrer", symbol: "R", enabled: false, hint: "À raccorder" },
     ] });
     expect(actions.map(({ id, enabled }) => [id, enabled])).toEqual([
-      ["use", true], ["give", false], ["discard", true], ["specific:register", false],
+      ["use", true], ["give", true], ["discard", true], ["specific:register", false],
     ]);
     expect(isSourceItemDiscardable({ ...potion, itemType: 6 })).toBe(false);
     expect(isSourceItemDiscardable({ ...potion, fieldUse: 3, machineMove: "HONECLAWS" })).toBe(false);

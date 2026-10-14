@@ -21,7 +21,8 @@ export { isPokemonEvolutionItem, isPokemonItemUseSupported, isPokemonItemUsableI
   POKEMON_Z_EVOLUTION_ITEMS, type PokemonItemUseResult } from "./item-use.js";
 export { equipPokemonHeldItem, removePokemonHeldItem, type HeldItemChangeFailure,
   changePokemonCollectionHeldItem, type HeldItemChangeResult,
-  type PokemonCollectionHeldItemChangeResult } from "./held-item.js";
+  type PokemonCollectionHeldItemChangeResult, releaseStoredPokemon,
+  type StoredPokemonReleaseResult } from "./held-item.js";
 export { isHeldItemSupported, SUPPORTED_HELD_ITEMS } from "@pokemon-z-battle/battle-engine";
 export { teachPokemonMachineMove, type MachineLearningFailure,
   type MachineLearningResult } from "./machine-learning.js";

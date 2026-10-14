@@ -14,11 +14,11 @@ export type HeldItemChangeResult =
 export type PokemonCollectionHeldItemChangeResult =
   | { readonly ok: true; readonly inventory: PlayerInventory; readonly party: PlayerPartyState;
       readonly storage: PlayerPokemonStorageState; readonly pokemon: PersistentPokemon;
-      readonly location: "team" | "ranch"; readonly equipped: HeldItem | null; readonly returned: string | null }
+      readonly location: "team" | "ranch"; readonly equipped: string | null; readonly returned: string | null }
   | { readonly ok: false; readonly inventory: PlayerInventory; readonly party: PlayerPartyState;
       readonly storage: PlayerPokemonStorageState; readonly reason: HeldItemChangeFailure };
 
-function replaceMember(party: PlayerPartyState, index: number, heldItem: HeldItem | null): PlayerPartyState {
+function replaceMember(party: PlayerPartyState, index: number, heldItem: string | null): PlayerPartyState {
   return { ...party, members: party.members.map((pokemon, candidate) => candidate === index
     ? { ...pokemon, heldItem } : pokemon) };
 }
@@ -60,7 +60,7 @@ export function removePokemonHeldItem(inventory: PlayerInventory, party: PlayerP
 }
 
 function replaceStoredMember(storage: PlayerPokemonStorageState, index: number,
-  heldItem: HeldItem | null): PlayerPokemonStorageState {
+  heldItem: string | null): PlayerPokemonStorageState {
   return { ...storage, members: storage.members.map((pokemon, candidate) => candidate === index
     ? { ...pokemon, heldItem } : pokemon) };
 }
@@ -77,9 +77,6 @@ export function changePokemonCollectionHeldItem(inventory: PlayerInventory, part
   const location = partyIndex >= 0 ? "team" as const : "ranch" as const;
   const pokemon = location === "team" ? party.members[partyIndex]! : storage.members[storageIndex]!;
   if (itemId === pokemon.heldItem) return { ok: false, inventory, party, storage, reason: "no-effect" };
-  if (itemId !== null && !isHeldItemSupported(itemId)) {
-    return { ok: false, inventory, party, storage, reason: "unsupported-item" };
-  }
   if (itemId !== null) {
     const quantity = inventory[itemId] ?? 0;
     if (!Number.isSafeInteger(quantity) || quantity <= 0) {
@@ -100,4 +97,26 @@ export function changePokemonCollectionHeldItem(inventory: PlayerInventory, part
   const nextPokemon = location === "team" ? nextParty.members[partyIndex]! : nextStorage.members[storageIndex]!;
   return { ok: true, inventory: nextInventory, party: nextParty, storage: nextStorage,
     pokemon: nextPokemon, location, equipped: itemId, returned: pokemon.heldItem };
+}
+
+export type StoredPokemonReleaseResult =
+  | { readonly ok: true; readonly inventory: PlayerInventory; readonly storage: PlayerPokemonStorageState;
+      readonly pokemon: PersistentPokemon; readonly returnedItem: string | null }
+  | { readonly ok: false; readonly inventory: PlayerInventory; readonly storage: PlayerPokemonStorageState;
+      readonly reason: "target-not-found" | "bag-full" };
+
+/** Personal atomic release. A held item is always returned before the stored Pokemon is removed. */
+export function releaseStoredPokemon(inventory: PlayerInventory, storage: PlayerPokemonStorageState,
+  pokemonId: string): StoredPokemonReleaseResult {
+  const index = storage.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (index < 0) return { ok: false, inventory, storage, reason: "target-not-found" };
+  const pokemon = storage.members[index]!;
+  if (pokemon.heldItem !== null && (inventory[pokemon.heldItem] ?? 0) >= 999) {
+    return { ok: false, inventory, storage, reason: "bag-full" };
+  }
+  const nextInventory = pokemon.heldItem === null ? inventory
+    : { ...inventory, [pokemon.heldItem]: (inventory[pokemon.heldItem] ?? 0) + 1 };
+  return { ok: true, inventory: nextInventory,
+    storage: { ...storage, members: storage.members.filter((_, candidate) => candidate !== index) },
+    pokemon, returnedItem: pokemon.heldItem };
 }

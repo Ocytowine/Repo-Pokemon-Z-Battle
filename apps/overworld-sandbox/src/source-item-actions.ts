@@ -1,4 +1,4 @@
-import { isHeldItemSupported, isPokemonItemUsableInField, isPokemonPartyItemUsableInField,
+import { isPokemonItemUsableInField, isPokemonPartyItemUsableInField,
   pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
 import type { SourceActionWheelAction } from "./source-action-wheel.js";
 import type { SourceShopItem } from "./source-economy.js";
@@ -43,12 +43,17 @@ export function isSourceItemDiscardable(item: SourceShopItem): boolean {
   return item.itemType !== 6 && item.fieldUse !== 3 && item.fieldUse !== 4;
 }
 
+/** Pokemon Z lets ordinary Bag items be held even when their battle effect is not ported yet. */
+export function isSourceItemHoldable(item: SourceShopItem): boolean {
+  return isSourceItemDiscardable(item);
+}
+
 /** Extension-ready item menu: item-specific actions are appended by feature modules through options. */
 export function sourceItemActions(item: SourceShopItem,
   options: SourceItemActionOptions): readonly SourceActionWheelAction<SourceItemActionId>[] {
   const usable = isPokemonItemUsableInField(item.internalName)
     || isPokemonPartyItemUsableInField(item.internalName);
-  const giveable = isHeldItemSupported(item.internalName);
+  const giveable = isSourceItemHoldable(item);
   const discardable = isSourceItemDiscardable(item) && options.quantity > 0;
   const primary: SourceActionWheelAction<SourceItemActionId> = item.machineMove !== null
     && item.machineMove !== undefined
@@ -60,7 +65,7 @@ export function sourceItemActions(item: SourceShopItem,
   return [
     primary,
     { id: "give", label: "Donner", symbol: "◇", enabled: giveable,
-      hint: giveable ? "Faire tenir à un Pokémon" : "Effet tenu pas encore disponible" },
+      hint: giveable ? "Faire tenir à un Pokémon" : "Objet important impossible à donner" },
     { id: "discard", label: "Jeter", symbol: "×", enabled: discardable,
       hint: discardable ? "Choisir une quantité à jeter" : "Objet important impossible à jeter" },
     ...(options.specificActions ?? []),

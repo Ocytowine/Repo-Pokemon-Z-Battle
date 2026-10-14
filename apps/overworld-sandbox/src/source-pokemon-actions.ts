@@ -42,7 +42,8 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
   }
   return [details, { id: "withdraw", label: "Retirer", symbol: "↑", enabled: !options.partyFull,
     hint: options.partyFull ? "Équipe complète" : "Vers l'équipe" }, item,
-  future("mark", "Marquer", "●"), future("release", "Relâcher", "×")];
+  future("mark", "Marquer", "●"),
+  { id: "release", label: "Relâcher", symbol: "×", enabled: true, hint: "Demander confirmation" }];
 }
 
 export function sourcePokemonActionWheelHtml(entry: SourcePokemonCollectionEntry,

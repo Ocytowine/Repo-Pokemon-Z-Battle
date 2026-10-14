@@ -42,3 +42,14 @@ occupent des zones verticales nommees. Quand le tiroir est ferme, le contenu res
 donc dans la ligne extensible et couvre toute la hauteur au lieu de laisser une
 zone de decor assombrie en bas. Le bandeau redondant des resultats a ete retire et
 les boutons de pagination restent fixes au pied du stockage.
+
+Raccord des actions : la roue est maintenant centree dans le panneau du jeu plutot
+que dans le viewport du navigateur. Un Pokemon stocke peut etre relache apres une
+confirmation explicite ; son objet tenu retourne au Sac et l'historique Pokedex est
+mis a jour. Le gestionnaire d'objet propose tous les objets ordinaires du Sac,
+independamment de la disponibilite actuelle de leur effet en combat.
+
+Le choix d'un objet tenu passe maintenant par une roue reprenant les huit
+categories et icones du Sac. Chaque categorie ouvre une modale de six objets par
+page ; les dossiers de rangement automatiques du Sac y sont conserves, avec retour
+au dossier parent, page precedente et page suivante.

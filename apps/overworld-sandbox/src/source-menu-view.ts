@@ -169,6 +169,9 @@ export class SourceMenuView {
   private selectedBagReplacementIndex: number | null = null;
   private bagResult: { readonly message: string; readonly itemId: string; readonly repeatAction: "use" | "give" | null } | null = null;
   private heldItemPokemonId: string | null = null;
+  private heldItemPocket: number | null = null;
+  private heldItemFamilyId: string | null = null;
+  private heldItemPage = 0;
   private bagNotice: string | null = null;
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
@@ -396,9 +399,10 @@ export class SourceMenuView {
     const wheel = selected === null ? "" : sourcePokemonActionWheelHtml(selected,
       sourcePokemonActions("team", selected, { partySize: members.length, partyFull: members.length >= 6,
         activePokemonId, heldItemManagementAvailable: canManageSourceHeldItem(model.eventState.inventory,
-          selected.pokemon.heldItem) }));
+          selected.pokemon.heldItem, model.assets.items) }));
     const heldItemPanel = heldItemTarget === null ? "" : sourceHeldItemManagerHtml(heldItemTarget.displayName,
-      heldItemTarget.pokemon.heldItem, model.eventState.inventory, model.assets.items);
+      heldItemTarget.pokemon.heldItem, model.eventState.inventory, model.assets.items,
+      { pocket: this.heldItemPocket, familyId: this.heldItemFamilyId, page: this.heldItemPage });
     const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml(entry, {
       active: entry.teamIndex === model.eventState.party.activeIndex,
       selected: entry.pokemon.id === this.selectedTeamPokemonId,
@@ -428,15 +432,29 @@ export class SourceMenuView {
       this.renderPokeVialHeader(content, nextModel);
       this.renderTeam(content, nextModel);
     });
-    content.querySelector<HTMLButtonElement>("[data-source-wheel-close]")?.addEventListener("click", () => {
+    content.querySelectorAll<HTMLButtonElement>("[data-source-wheel-close]").forEach((button) => button.addEventListener("click", () => {
+      if (heldItemTarget !== null) {
+        this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+        this.renderTeam(content, model);
+        return;
+      }
       this.selectedTeamPokemonId = null;
       this.renderTeam(content, model);
-    });
-    content.querySelector<HTMLElement>("[data-source-wheel-dismiss]")?.addEventListener("click", (event) => {
+    }));
+    content.querySelectorAll<HTMLElement>("[data-source-wheel-dismiss]").forEach((backdrop) => backdrop.addEventListener("click", (event) => {
       if (event.target !== event.currentTarget) return;
+      if (heldItemTarget !== null) {
+        this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+      }
       this.selectedTeamPokemonId = null;
       this.renderTeam(content, model);
-    });
+    }));
     content.querySelector<HTMLButtonElement>('[data-source-wheel-action="make-lead"]')?.addEventListener("click", () => {
       if (selected !== null) this.callbacks.onPokemonLead(selected.pokemon.id);
     });
@@ -446,21 +464,66 @@ export class SourceMenuView {
     content.querySelector<HTMLButtonElement>('[data-source-wheel-action="give-item"]')?.addEventListener("click", () => {
       if (selected === null) return;
       this.heldItemPokemonId = selected.pokemon.id;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
       this.renderTeam(content, model);
     });
     content.querySelector<HTMLButtonElement>("[data-held-item-close]")?.addEventListener("click", () => {
       this.heldItemPokemonId = null;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
       this.renderTeam(content, model);
     });
+    content.querySelectorAll<HTMLButtonElement>('[data-source-wheel-action^="held-pocket:"]').forEach((button) =>
+      button.addEventListener("click", () => {
+        const pocket = Number(button.dataset.sourceWheelAction?.split(":")[1]);
+        if (!Number.isInteger(pocket)) return;
+        this.heldItemPocket = pocket;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+        this.renderTeam(content, model);
+      }));
+    content.querySelector<HTMLButtonElement>("[data-held-item-pocket-back]")?.addEventListener("click", () => {
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
+      this.renderTeam(content, model);
+    });
+    content.querySelectorAll<HTMLButtonElement>("[data-held-item-family]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.heldItemFamilyId = button.dataset.heldItemFamily ?? null;
+        this.heldItemPage = 0;
+        this.renderTeam(content, model);
+      }));
+    content.querySelector<HTMLButtonElement>("[data-held-item-family-back]")?.addEventListener("click", () => {
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
+      this.renderTeam(content, model);
+    });
+    content.querySelectorAll<HTMLButtonElement>(".source-held-item-browser [data-source-inventory-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const page = Number(button.dataset.sourceInventoryPage);
+        if (!Number.isInteger(page)) return;
+        this.heldItemPage = page;
+        this.renderTeam(content, model);
+      }));
     content.querySelector<HTMLButtonElement>("[data-held-item-remove]")?.addEventListener("click", () => {
       if (heldItemTarget === null) return;
       this.heldItemPokemonId = null;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
       this.callbacks.onPokemonHeldItem(heldItemTarget.pokemon.id, null);
     });
     content.querySelectorAll<HTMLButtonElement>("[data-held-item-equip]").forEach((button) =>
       button.addEventListener("click", () => {
         if (heldItemTarget === null || button.dataset.heldItemEquip === undefined) return;
         this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
         this.callbacks.onPokemonHeldItem(heldItemTarget.pokemon.id, button.dataset.heldItemEquip);
       }));
   }
@@ -575,7 +638,7 @@ export class SourceMenuView {
       `${model.eventState.money.toLocaleString("fr-FR")} ₽`);
     content.innerHTML = `<nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
         `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === this.selectedPocket ? "active" : ""}" title="${escapeSourceHtml(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeSourceHtml(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
-      ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.length} sortes · ${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
+      ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
       <section class="source-inventory-browser"><div class="source-bag-list">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>("[data-source-quantity-delta]").forEach((button) =>

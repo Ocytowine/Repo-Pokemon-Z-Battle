@@ -1,7 +1,34 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
-describe("Ranch panel layout", () => {
+describe("Ranch and shared inventory panel layout", () => {
+  it("centers the shared action wheel inside its game panel", async () => {
+    const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+
+    expect(css).toMatch(/\.source-action-wheel-backdrop\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0[^}]*place-items:\s*center/s);
+    expect(css).not.toMatch(/\.source-action-wheel-backdrop\s*\{[^}]*position:\s*fixed/s);
+  });
+
+  it("keeps held-item pagination inside the modal without vertical scrolling", async () => {
+    const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+
+    expect(css).toMatch(/\.source-held-item-panel\s*\{[^}]*height:\s*min\(440px, 100%\)[^}]*grid-template-rows:\s*auto auto minmax\(0, 1fr\) auto[^}]*overflow:\s*hidden/s);
+    expect(css).toMatch(/\.source-held-item-browser\s*\{[^}]*display:\s*grid[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\) auto[^}]*overflow:\s*hidden/s);
+    expect(css).toMatch(/\.source-held-item-browser > \.source-inventory-pagination\s*\{[^}]*grid-row:\s*3[^}]*margin:\s*4px auto 0/s);
+    expect(css).toMatch(/\.source-held-item-browser > \.source-inventory-grid\s*\{[^}]*grid-row:\s*2[^}]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)[^}]*grid-template-rows:\s*repeat\(2, minmax\(0, 68px\)\)[^}]*overflow:\s*hidden/s);
+    expect(css).not.toMatch(/\.source-held-item-browser > \.source-inventory-grid\s*\{[^}]*overflow-y:\s*(?:auto|scroll)/s);
+    expect(css).toMatch(/\.source-held-item-browser \.source-inventory-copy > strong\s*\{[^}]*white-space:\s*normal[^}]*text-overflow:\s*clip[^}]*line-clamp:\s*unset/s);
+    expect(css).toMatch(/\.source-held-item-browser \.source-inventory-card\s*\{[^}]*grid-template-areas:\s*"art copy" "counts copy"/s);
+    expect(css).toMatch(/\.source-held-item-browser \.source-inventory-copy > small\s*\{[^}]*line-clamp:\s*5/s);
+    expect(css).toMatch(/\.source-held-item-browser \.source-inventory-counts\s*\{[^}]*display:\s*flex[^}]*width:\s*40px[^}]*grid-area:\s*counts[^}]*justify-content:\s*center/s);
+    expect(css).toMatch(/\.source-held-item-browser \.source-inventory-copy\s*\{[^}]*border:\s*0[^}]*outline:\s*0/s);
+    expect(css).toMatch(/\.source-menu-content-bag \.source-inventory-card\s*\{[^}]*grid-template-areas:\s*"art copy"\s*"counts copy"/s);
+    expect(css).toMatch(/\.source-menu-content-bag \.source-inventory-counts\s*\{[^}]*display:\s*flex[^}]*width:\s*40px[^}]*grid-area:\s*counts[^}]*justify-content:\s*center/s);
+    expect(css).toMatch(/\.source-menu-content-bag \.source-inventory-copy\s*\{[^}]*border:\s*0[^}]*outline:\s*0/s);
+    expect(css).toMatch(/\.source-menu-content-bag \.source-inventory-copy > small\s*\{[^}]*line-clamp:\s*6/s);
+    expect(css).toMatch(/@media \(max-width:\s*430px\)[\s\S]*\.source-menu-content-bag \.source-inventory-copy > small\s*\{[^}]*line-clamp:\s*8/s);
+  });
+
   it("pins the content to the fill row even when the tools drawer is empty", async () => {
     const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
 

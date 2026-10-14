@@ -6,7 +6,8 @@ import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarra
 import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, reconcileSourcePokedex,
-  recordSourcePokedexEvolution, recordSourcePokedexSeen, type SourceEventState } from "./source-event-state.js";
+  recordSourcePokedexEvolution, recordSourcePokedexRelease, recordSourcePokedexSeen,
+  type SourceEventState } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
@@ -14,7 +15,7 @@ import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   isPokemonEvolutionItem, learnPendingPokemonMove, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
   recalculatePersistentPokemonStats,
   recalculatePlayerPokemonCollection, resolvePendingPokemonEvolution,
-  reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
+  releaseStoredPokemon, reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
   usePokemonEvolutionItem, useRareCandy,
   teachPokemonMachineMove,
   type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
@@ -961,7 +962,8 @@ const sourceProgressionView = new SourceProgressionView({
 });
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
-  (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem);
+  (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem,
+  releaseSourceRanchPokemon);
 const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   onClose: closeSourcePokemonSummary,
   onPokemonChanged: (pokemonId, cryPath) => {
@@ -2113,6 +2115,28 @@ function transferSourceRanchPokemon(pokemonId: string, destination: "team" | "ra
     importedNotice = error instanceof Error ? error.message : "Transfert du Pokémon impossible.";
     renderSourceRanch();
   }
+}
+
+function releaseSourceRanchPokemon(pokemonId: string): void {
+  const result = releaseStoredPokemon(sourceEventState.inventory, sourceEventState.ranch, pokemonId);
+  if (!result.ok) {
+    importedNotice = result.reason === "bag-full"
+      ? "Impossible de relâcher ce Pokémon : son objet tenu ne rentre pas dans le Sac."
+      : "Ce Pokémon n'est plus dans le Ranch.";
+    renderSourceRanch();
+    return;
+  }
+  sourceEventState = recordSourcePokedexRelease({ ...sourceEventState,
+    inventory: result.inventory, ranch: result.storage }, result.pokemon.species);
+  persistSourceEventState();
+  const pokemonName = result.pokemon.nickname
+    ?? importedAssets?.battleCatalog.pokemon.find((candidate) => candidate.internalName === result.pokemon.species)?.name
+    ?? result.pokemon.species;
+  const returnedItemName = result.returnedItem === null ? null
+    : importedAssets?.items.get(result.returnedItem)?.name ?? result.returnedItem;
+  importedNotice = returnedItemName === null ? `${pokemonName} a été relâché.`
+    : `${pokemonName} a été relâché. ${returnedItemName} retourne dans le Sac.`;
+  renderSourceRanch();
 }
 
 function discardSourceItem(itemId: string, quantity: number): {

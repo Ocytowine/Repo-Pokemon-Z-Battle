@@ -417,11 +417,15 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   la cible de capacite et le cloisonnement proprietaire en combat simple/double,
   reconnexion comprise. Puissance et Garde-Stats attendent les etats volatils
   correspondants.
-- Increment gestion d'objets tenus implemente le 2026-10-08 : les onze objets dont
-  le moteur applique deja l'effet peuvent etre equipes, remplaces ou retires sur
-  un Pokemon de l'Equipe ou du Ranch. Une transaction personnelle unique echange
+- Increment gestion d'objets tenus implemente le 2026-10-08 et elargi le 2026-10-14 :
+  tout objet ordinaire non important peut etre equipe, remplace ou retire sur un
+  Pokemon de l'Equipe ou du Ranch. Une transaction personnelle unique echange
   l'objet avec le Sac, protege la limite de 999 et refuse les cibles etrangeres ;
   elle est identique en solo, chez l'hote et chez l'invite sans replication du Sac.
+  Un effet tenu encore absent est neutralise uniquement dans la projection de
+  combat. La liberation confirmee d'un Pokemon du Ranch restitue aussi son objet.
+  Le selecteur partage Equipe/Ranch utilise une roue de huit categories, puis le
+  navigateur pagine et les sous-dossiers automatiques deja definis pour le Sac.
 - Increment UI du Sac implemente le 2026-10-08 : toute entree ouvre la meme roue
   generique que les cartes Pokemon avec Utiliser, Donner, Jeter et annulation au
   centre. Le jet quantifie utilise une mutation personnelle atomique et protege

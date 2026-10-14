@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { changePokemonCollectionHeldItem, createEmptyPlayerParty, createEmptyPlayerPokemonStorage,
-  createPersistentPokemonMetadata, removePokemonHeldItem, type PersistentPokemon } from "../src/index.js";
+  createPersistentPokemonMetadata, releaseStoredPokemon, removePokemonHeldItem,
+  type PersistentPokemon } from "../src/index.js";
 
 function pokemon(id: string, heldItem: string | null = null): PersistentPokemon {
   return { id, species: "PIKACHU", nickname: null, level: 5, experience: 125,
@@ -28,11 +29,11 @@ describe("personal held item transactions", () => {
         storage: { members: [{ heldItem: "ROCKYHELMET" }] }, location: "ranch" });
   });
 
-  it("rejects unsupported, absent and foreign items without mutation", () => {
+  it("accepts source held items while rejecting absent and foreign items without mutation", () => {
     const party = { ...createEmptyPlayerParty(), activeIndex: 0, members: [pokemon("team")] };
     const storage = createEmptyPlayerPokemonStorage();
     expect(changePokemonCollectionHeldItem({ POTION: 1 }, party, storage, "team", "POTION"))
-      .toMatchObject({ ok: false, reason: "unsupported-item", inventory: { POTION: 1 }, party, storage });
+      .toMatchObject({ ok: true, inventory: {}, party: { members: [{ heldItem: "POTION" }] }, storage });
     expect(changePokemonCollectionHeldItem({}, party, storage, "team", "LEFTOVERS"))
       .toMatchObject({ ok: false, reason: "item-not-owned" });
     expect(changePokemonCollectionHeldItem({ LEFTOVERS: 1 }, party, storage, "guest", "LEFTOVERS"))
@@ -45,5 +46,17 @@ describe("personal held item transactions", () => {
       inventory: { LEGACYITEM: 1 }, party: { members: [{ heldItem: null }] }, returned: "LEGACYITEM" });
     expect(changePokemonCollectionHeldItem({}, party, createEmptyPlayerPokemonStorage(), "team", null))
       .toMatchObject({ ok: true, inventory: { LEGACYITEM: 1 }, party: { members: [{ heldItem: null }] } });
+  });
+
+  it("releases only a stored Pokemon and atomically returns its held item", () => {
+    const stored = pokemon("stored", "POTION");
+    const storage = { ...createEmptyPlayerPokemonStorage(), members: [stored, pokemon("other")] };
+    expect(releaseStoredPokemon({ POTION: 2 }, storage, "stored")).toMatchObject({
+      ok: true, inventory: { POTION: 3 }, storage: { members: [{ id: "other" }] },
+      pokemon: { id: "stored" }, returnedItem: "POTION",
+    });
+    expect(releaseStoredPokemon({}, storage, "missing")).toMatchObject({ ok: false, reason: "target-not-found" });
+    expect(releaseStoredPokemon({ POTION: 999 }, storage, "stored"))
+      .toMatchObject({ ok: false, reason: "bag-full", storage });
   });
 });

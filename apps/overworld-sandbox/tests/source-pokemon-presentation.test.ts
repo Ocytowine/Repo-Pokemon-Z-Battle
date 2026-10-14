@@ -140,18 +140,38 @@ describe("shared Pokemon card and contextual actions", () => {
         hint: "Indisponible pendant le combat" });
   });
 
-  it("offers only implemented held items and keeps removal available", () => {
+  it("offers ordinary source items to hold and keeps removal available", () => {
     const items = new Map([
       ["LEFTOVERS", { id: 93, internalName: "LEFTOVERS", name: "Restes", description: "Restaure des PV.", pocket: 1, price: 200 }],
       ["POTION", { id: 1, internalName: "POTION", name: "Potion", description: "Restaure des PV.", pocket: 2, price: 300 }],
     ]);
     expect(sourceHeldItemEntries({ LEFTOVERS: 2, POTION: 4 }, items))
-      .toEqual([{ item: items.get("LEFTOVERS"), quantity: 2 }]);
-    expect(canManageSourceHeldItem({}, "LEGACYITEM")).toBe(true);
-    const html = sourceHeldItemManagerHtml("Marisson", "LEFTOVERS", { LEFTOVERS: 2, POTION: 4 }, items);
-    expect(html).toContain('data-held-item-equip="LEFTOVERS"');
-    expect(html).toContain("data-held-item-remove");
-    expect(html).not.toContain('data-held-item-equip="POTION"');
+      .toEqual([{ item: items.get("POTION"), quantity: 4 }, { item: items.get("LEFTOVERS"), quantity: 2 }]);
+    expect(canManageSourceHeldItem({}, "LEGACYITEM", items)).toBe(true);
+    const wheel = sourceHeldItemManagerHtml("Marisson", "LEFTOVERS", { LEFTOVERS: 2, POTION: 4 }, items);
+    expect(wheel).toContain("Donner un objet");
+    expect(wheel.match(/data-source-wheel-action="held-pocket:/g)).toHaveLength(8);
+    expect(wheel).toContain("bagPocket1.png");
+    const objects = sourceHeldItemManagerHtml("Marisson", "LEFTOVERS", { LEFTOVERS: 2, POTION: 4 }, items,
+      { pocket: 1, familyId: null, page: 0 });
+    expect(objects).toContain('data-held-item-equip="LEFTOVERS"');
+    expect(objects).not.toContain('data-held-item-equip="POTION"');
+    expect(objects).toContain("data-held-item-remove");
+  });
+
+  it("reuses automatic Bag folders and pagination in the held-item browser", () => {
+    const equipment = Array.from({ length: 9 }, (_, index) => ({ id: 66 + index,
+      internalName: `GEAR${index}`, name: `Objet ${index}`, description: "Objet tenu.", pocket: 1, price: 100 }));
+    const items = new Map(equipment.map((item) => [item.internalName, item]));
+    const inventory = Object.fromEntries(equipment.map((item) => [item.internalName, 1]));
+    const root = sourceHeldItemManagerHtml("Marisson", null, inventory, items,
+      { pocket: 1, familyId: null, page: 0 });
+    expect(root).toContain('data-held-item-family="held-battle"');
+    const folder = sourceHeldItemManagerHtml("Marisson", null, inventory, items,
+      { pocket: 1, familyId: "held-battle", page: 0 });
+    expect(folder.match(/data-held-item-equip=/g)).toHaveLength(6);
+    expect(folder).toContain("Page <b>1</b> / 2");
+    expect(folder).toContain('data-source-inventory-page="1"');
   });
 
   it("uses distinct Ranch actions for team and stored Pokemon", () => {
@@ -163,5 +183,8 @@ describe("shared Pokemon card and contextual actions", () => {
     expect(sourcePokemonActions("ranch", entry("ranch"),
       { partySize: 6, partyFull: true, activePokemonId: null }).find((action) => action.id === "withdraw"))
       .toMatchObject({ enabled: false, hint: "Équipe complète" });
+    expect(sourcePokemonActions("ranch", entry("ranch"),
+      { partySize: 6, partyFull: true, activePokemonId: null }).find((action) => action.id === "release"))
+      .toMatchObject({ enabled: true, hint: "Demander confirmation" });
   });
 });

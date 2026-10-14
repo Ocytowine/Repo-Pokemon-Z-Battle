@@ -37,6 +37,10 @@ export class SourceRanchView {
     sort: "number" };
   private selectedPokemonId: string | null = null;
   private heldItemPokemonId: string | null = null;
+  private heldItemPocket: number | null = null;
+  private heldItemFamilyId: string | null = null;
+  private heldItemPage = 0;
+  private releasePokemonId: string | null = null;
   private teamExpanded = true;
   private toolsPanel: "filters" | "sort" | null = null;
   private wasOpen = false;
@@ -46,7 +50,8 @@ export class SourceRanchView {
     private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void,
     private readonly onLead: (pokemonId: string) => void,
     private readonly onDetails: (pokemonId: string) => void,
-    private readonly onHeldItem: (pokemonId: string, itemId: string | null) => void) {}
+    private readonly onHeldItem: (pokemonId: string, itemId: string | null) => void,
+    private readonly onRelease: (pokemonId: string) => void) {}
 
   public render(model: SourceRanchViewModel): void {
     const root = document.querySelector<HTMLElement>("#source-ranch");
@@ -57,6 +62,10 @@ export class SourceRanchView {
       this.toolsPanel = null;
       this.teamExpanded = true;
       this.ranchPage = 0;
+      this.releasePokemonId = null;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
       this.filters = { query: "", firstType: null, secondType: null, potentialTier: "all",
         minimumIvStars: "all", minimumEvStars: "all", sort: "number" };
     }
@@ -75,13 +84,23 @@ export class SourceRanchView {
     }
     const selected = collection.find((entry) => entry.pokemon.id === this.selectedPokemonId) ?? null;
     const heldItemTarget = collection.find((entry) => entry.pokemon.id === this.heldItemPokemonId) ?? null;
+    const releaseTarget = collection.find((entry) => entry.location === "ranch"
+      && entry.pokemon.id === this.releasePokemonId) ?? null;
+    if (this.releasePokemonId !== null && releaseTarget === null) this.releasePokemonId = null;
     const activePokemonId = model.party.activeIndex === null ? null : model.party.members[model.party.activeIndex]?.id ?? null;
     const wheel = selected === null ? "" : sourcePokemonActionWheelHtml(selected,
       sourcePokemonActions("ranch", selected, { partySize: model.party.members.length,
         partyFull: model.party.members.length >= 6, activePokemonId,
-        heldItemManagementAvailable: canManageSourceHeldItem(model.inventory, selected.pokemon.heldItem) }));
+        heldItemManagementAvailable: canManageSourceHeldItem(model.inventory, selected.pokemon.heldItem, model.items) }));
     const heldItemPanel = heldItemTarget === null ? "" : sourceHeldItemManagerHtml(heldItemTarget.displayName,
-      heldItemTarget.pokemon.heldItem, model.inventory, model.items);
+      heldItemTarget.pokemon.heldItem, model.inventory, model.items,
+      { pocket: this.heldItemPocket, familyId: this.heldItemFamilyId, page: this.heldItemPage });
+    const releasePanel = releaseTarget === null ? "" : `<div class="source-ranch-release-backdrop">
+      <section class="source-ranch-release" role="alertdialog" aria-modal="true" aria-label="Relâcher ${escapeAttribute(releaseTarget.displayName)}">
+        <small>CONFIRMATION</small><strong>Relâcher ${escapeAttribute(releaseTarget.displayName)} ?</strong>
+        <p>Cette action est définitive.${releaseTarget.pokemon.heldItem === null ? "" : ` L'objet ${escapeAttribute(model.items.get(releaseTarget.pokemon.heldItem)?.name ?? releaseTarget.pokemon.heldItem)} retournera dans le Sac.`}</p>
+        <footer><button type="button" data-source-release-cancel>Annuler</button><button type="button" class="danger" data-source-release-confirm>Relâcher</button></footer>
+      </section></div>`;
     const card = (entry: (typeof collection)[number], options: Parameters<typeof sourcePokemonCardHtml>[1] = {}): string =>
       sourcePokemonCardHtml(entry, { ...options, heldItemName: entry.pokemon.heldItem === null ? null
         : model.items.get(entry.pokemon.heldItem)?.name ?? entry.pokemon.heldItem });
@@ -113,7 +132,7 @@ export class SourceRanchView {
                 highlightTraining: this.filters.minimumIvStars !== "all" || this.filters.minimumEvStars !== "all" })).join("")}</div>
             <nav class="source-ranch-pages" aria-label="Pages du Ranch"${pageCount <= 1 ? " hidden" : ""}><button type="button" data-source-ranch-page="previous"${this.ranchPage === 0 ? " disabled" : ""}>‹ Précédente</button><span>Page ${this.ranchPage + 1}/${pageCount}</span><button type="button" data-source-ranch-page="next"${this.ranchPage >= pageCount - 1 ? " disabled" : ""}>Suivante ›</button></nav></section>
         </div>
-      </div>${wheel}${heldItemPanel}`;
+      </div>${wheel}${heldItemPanel}${releasePanel}`;
     bindSourceHeldItemIconFallback(root);
     root.querySelector<HTMLButtonElement>("#close-source-ranch")?.addEventListener("click", this.onClose);
     root.querySelector<HTMLButtonElement>("[data-source-ranch-team-toggle]")?.addEventListener("click", () => {
@@ -175,15 +194,29 @@ export class SourceRanchView {
       this.selectedPokemonId = button.dataset.pokemonId ?? null;
       this.render(model);
     }));
-    root.querySelector<HTMLButtonElement>("[data-source-wheel-close]")?.addEventListener("click", () => {
+    root.querySelectorAll<HTMLButtonElement>("[data-source-wheel-close]").forEach((button) => button.addEventListener("click", () => {
+      if (heldItemTarget !== null) {
+        this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+        this.render(model);
+        return;
+      }
       this.selectedPokemonId = null;
       this.render(model);
-    });
-    root.querySelector<HTMLElement>("[data-source-wheel-dismiss]")?.addEventListener("click", (event) => {
+    }));
+    root.querySelectorAll<HTMLElement>("[data-source-wheel-dismiss]").forEach((backdrop) => backdrop.addEventListener("click", (event) => {
       if (event.target !== event.currentTarget) return;
+      if (heldItemTarget !== null) {
+        this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+      }
       this.selectedPokemonId = null;
       this.render(model);
-    });
+    }));
     root.querySelectorAll<HTMLButtonElement>("[data-source-wheel-action]").forEach((button) => {
       button.addEventListener("click", () => {
         if (selected === null) return;
@@ -197,23 +230,83 @@ export class SourceRanchView {
         else if (button.dataset.sourceWheelAction === "details") this.onDetails(selected.pokemon.id);
         else if (button.dataset.sourceWheelAction === "give-item") {
           this.heldItemPokemonId = selected.pokemon.id;
+          this.heldItemPocket = null;
+          this.heldItemFamilyId = null;
+          this.heldItemPage = 0;
+          this.render(model);
+        }
+        else if (button.dataset.sourceWheelAction === "release" && selected.location === "ranch") {
+          this.selectedPokemonId = null;
+          this.heldItemPokemonId = null;
+          this.releasePokemonId = selected.pokemon.id;
           this.render(model);
         }
       });
     });
-    root.querySelector<HTMLButtonElement>("[data-held-item-close]")?.addEventListener("click", () => {
-      this.heldItemPokemonId = null;
+    root.querySelector<HTMLButtonElement>("[data-source-release-cancel]")?.addEventListener("click", () => {
+      this.releasePokemonId = null;
       this.render(model);
     });
+    root.querySelector<HTMLButtonElement>("[data-source-release-confirm]")?.addEventListener("click", () => {
+      if (releaseTarget === null) return;
+      this.releasePokemonId = null;
+      this.onRelease(releaseTarget.pokemon.id);
+    });
+    root.querySelector<HTMLButtonElement>("[data-held-item-close]")?.addEventListener("click", () => {
+      this.heldItemPokemonId = null;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
+      this.render(model);
+    });
+    root.querySelectorAll<HTMLButtonElement>('[data-source-wheel-action^="held-pocket:"]').forEach((button) =>
+      button.addEventListener("click", () => {
+        const pocket = Number(button.dataset.sourceWheelAction?.split(":")[1]);
+        if (!Number.isInteger(pocket)) return;
+        this.heldItemPocket = pocket;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
+        this.render(model);
+      }));
+    root.querySelector<HTMLButtonElement>("[data-held-item-pocket-back]")?.addEventListener("click", () => {
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
+      this.render(model);
+    });
+    root.querySelectorAll<HTMLButtonElement>("[data-held-item-family]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.heldItemFamilyId = button.dataset.heldItemFamily ?? null;
+        this.heldItemPage = 0;
+        this.render(model);
+      }));
+    root.querySelector<HTMLButtonElement>("[data-held-item-family-back]")?.addEventListener("click", () => {
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
+      this.render(model);
+    });
+    root.querySelectorAll<HTMLButtonElement>(".source-held-item-browser [data-source-inventory-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const page = Number(button.dataset.sourceInventoryPage);
+        if (!Number.isInteger(page)) return;
+        this.heldItemPage = page;
+        this.render(model);
+      }));
     root.querySelector<HTMLButtonElement>("[data-held-item-remove]")?.addEventListener("click", () => {
       if (heldItemTarget === null) return;
       this.heldItemPokemonId = null;
+      this.heldItemPocket = null;
+      this.heldItemFamilyId = null;
+      this.heldItemPage = 0;
       this.onHeldItem(heldItemTarget.pokemon.id, null);
     });
     root.querySelectorAll<HTMLButtonElement>("[data-held-item-equip]").forEach((button) =>
       button.addEventListener("click", () => {
         if (heldItemTarget === null || button.dataset.heldItemEquip === undefined) return;
         this.heldItemPokemonId = null;
+        this.heldItemPocket = null;
+        this.heldItemFamilyId = null;
+        this.heldItemPage = 0;
         this.onHeldItem(heldItemTarget.pokemon.id, button.dataset.heldItemEquip);
       }));
   }

@@ -1913,9 +1913,10 @@ espèces adverses du point de vue de chaque participant ; cadeaux, captures et
 créations de test sont réconciliés depuis la collection personnelle ; les deux
 chemins d'évolution enregistrent l'espèce quittée. Les anciennes sauvegardes
 reconstituent seulement les espèces encore présentes dans l'équipe ou au Ranch :
-une évolution ou une libération antérieure ne peut pas être inventée. Le contrat
-de libération est prêt, mais son action destructive dans le Ranch reste à porter
-avec confirmation.
+une évolution ou une libération antérieure ne peut pas être inventée. La
+libération depuis le Ranch exige maintenant une confirmation, retire le Pokemon
+du stockage personnel, restitue son objet tenu au Sac et enregistre son espèce
+dans l'historique persistant.
 
 Premier incrément Carte du 2026-10-13 : `PBS/townmap.txt` est extrait dans un
 catalogue régional générique et `MapPosition` rejoint les métadonnées normalisées.
@@ -2076,14 +2077,28 @@ puis conserve consommation et reliquat a travers reconnexion et reglement. Le
 solo, l'hote et l'invite utilisent tous `applyPokemonItemEffect` ; aucun objet ne
 permet de modifier le Pokemon de l'autre Dresseur.
 
-Cinquieme increment objets du 2026-10-08 : la roue commune Equipe/Ranch active la
-gestion des onze objets tenus dont les effets de combat sont deja implementes.
-Le choix vient du stock personnel reel ; equipement, remplacement et retrait sont
+Cinquieme increment objets du 2026-10-08, elargi le 2026-10-14 : la roue commune
+Equipe/Ranch active la gestion des objets tenus. Tout objet ordinaire non important
+peut etre donne, meme si son effet tactique n'est pas encore porte. Le choix vient
+du stock personnel reel ; equipement, remplacement et retrait sont
 une transaction atomique partagee entre l'equipe et le stockage, avec retour de
 l'ancien objet au Sac et controle de sa limite. Le solo, l'hote et l'invite
 emploient ce meme noyau local sans publier inventaire ou Ranch dans la room. Les
-autres objets tenus restent invisibles dans ce selecteur tant que leur hook source
-n'est pas porte, mais un objet historique inerte peut toujours etre retire.
+effets non portes sont neutralises dans la projection de combat sans alterer la
+collection personnelle ; objets importants et CT/CS ne peuvent pas etre donnes.
+
+Finition UI du 2026-10-14 : depuis une carte Pokemon, `Donner objet` conserve le
+template radial commun et expose les huit categories du Sac avec leurs icones. Le
+choix ouvre une modale paginee qui partage le classement semantique du Sac, y
+compris ses sous-dossiers automatiques. Le meme composant et le meme etat personnel
+sont utilises dans l'Equipe et le Ranch. La modale reserve une rangee fixe a sa
+pagination et borne six objets par page dans une grille 3 x 2 : il n'existe aucun
+defilement vertical et les commandes de page restent dans le cadre sur une surface
+tactile Android. Chaque carte affiche un seul compteur sous son icone : quantite
+de la pile pour un objet, ou total d'objets pour un dossier automatique. Le nombre
+de sortes est retire. La zone de texte, sans delimitation pointillee, occupe toute
+la hauteur restante. Cela supprime la rangee vide, ramene les cartes de 92 a 68 px
+et preserve nom et description sans chevauchement.
 
 Correctif Coop du 2026-10-08 : les projections de combat PvP et sauvage valident
 maintenant ces onze objets via le registre canonique du moteur. La liste partielle
@@ -2189,6 +2204,15 @@ de trois lignes par trois colonnes. Le mobile et le combat restent limites a qua
 cartes par page. Exception fonctionnelle
 validee : la poche CT/CS ne cree jamais de dossier ; elle reste plate et paginee
 jusqu'au futur filtre dedie a ce catalogue.
+
+Alignement visuel du 2026-10-14 : le Sac principal adopte la carte compacte validee
+pour le selecteur d'objet tenu. Le compteur unique est place sous l'icone, tandis
+que le nom et la description sans delimitation occupent toute la colonne droite.
+Il indique la quantite pour un objet et le nombre total d'objets pour un dossier ;
+le nombre de sortes n'est plus presente, y compris dans le fil d'Ariane du dossier.
+La description utilise jusqu'a six lignes, ou huit sur la carte mobile plus haute,
+afin d'exploiter l'espace vertical avant toute ellipse. La pagination et les tailles
+de page existantes sont conservees.
 
 Refonte du menu principal : le bandeau global remplace les titres de contenu
 dupliques et affiche la metadonnee propre a chaque onglet. Le pied de page a ete

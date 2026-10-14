@@ -4,12 +4,14 @@ export interface SourceActionWheelAction<ActionId extends string = string> {
   readonly symbol: string;
   readonly enabled: boolean;
   readonly hint: string;
+  readonly iconUrl?: string;
 }
 
 export interface SourceActionWheelModel<ActionId extends string = string> {
   readonly label: string;
   readonly centerHtml: string;
   readonly actions: readonly SourceActionWheelAction<ActionId>[];
+  readonly className?: string;
 }
 
 function escapeHtml(value: string): string {
@@ -21,10 +23,10 @@ function escapeHtml(value: string): string {
 export function sourceActionWheelHtml<ActionId extends string>(model: SourceActionWheelModel<ActionId>): string {
   const buttons = model.actions.map((action, index) => {
     const angle = -90 + (360 / model.actions.length) * index;
-    return `<button type="button" class="source-action-wheel-action" style="--action-angle:${angle}deg;--action-counter-angle:${-angle}deg" data-source-wheel-action="${escapeHtml(action.id)}"${action.enabled ? "" : " disabled"} title="${escapeHtml(action.hint)}"><b>${escapeHtml(action.symbol)}</b><span>${escapeHtml(action.label)}</span><small>${escapeHtml(action.hint)}</small></button>`;
+    return `<button type="button" class="source-action-wheel-action" style="--action-angle:${angle}deg;--action-counter-angle:${-angle}deg" data-source-wheel-action="${escapeHtml(action.id)}"${action.enabled ? "" : " disabled"} title="${escapeHtml(action.hint)}">${action.iconUrl === undefined ? `<b>${escapeHtml(action.symbol)}</b>` : `<img src="${escapeHtml(action.iconUrl)}" alt="">`}<span>${escapeHtml(action.label)}</span><small>${escapeHtml(action.hint)}</small></button>`;
   }).join("");
   return `<div class="source-action-wheel-backdrop" data-source-wheel-dismiss>
-    <section class="source-action-wheel" role="dialog" aria-modal="true" aria-label="${escapeHtml(model.label)}">
+    <section class="source-action-wheel${model.className === undefined ? "" : ` ${escapeHtml(model.className)}`}" role="dialog" aria-modal="true" aria-label="${escapeHtml(model.label)}">
       ${buttons}<button type="button" class="source-action-wheel-center" data-source-wheel-close aria-label="Annuler">${model.centerHtml}<small>Annuler</small></button>
     </section>
   </div>`;

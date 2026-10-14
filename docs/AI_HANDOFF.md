@@ -726,11 +726,55 @@ avec 16 cartes par page en grille 4 x 4, contre 9 cartes en 3 x 3 avec l'equipe.
 Un clic ouvre `source-pokemon-actions.ts`, menu radial dont le contrat varie entre
 equipe, Ranch et combat. `Placer en tete`, `Deposer` et `Retirer` sont raccordes au
 noyau personnel persistant ; le placement en tete reordonne reellement l'equipe et
-selectionne son premier membre. `Details`, gestion d'objet, marquage, liberation et
-changement en combat sont deja classes mais restent visiblement indisponibles tant
-que leur mecanique ou leur ecran n'existe pas. Les choix observes dans les scripts
+selectionne son premier membre. `Details`, la gestion d'objet et la liberation
+depuis le stockage sont raccordes. Le marquage et le changement en combat restent
+visiblement indisponibles tant que leur mecanique ou leur ecran n'existe pas. Les choix observes dans les scripts
 source sont Donnees/Deplacer/Objet pour l'equipe et
 Deplacer/Donnees/Deposer-Retirer/Objet/Marquer/Relacher pour le PC.
+
+Raccord fonctionnel du 2026-10-14 : la roue d'action n'utilise plus le viewport du
+navigateur comme repere ; son voile absolu est centre dans le panneau de jeu qui
+la contient. `Relacher` est actif uniquement pour un Pokemon du stockage et ouvre
+une confirmation destructive explicite. La transaction personnelle retire le
+Pokemon, restitue d'abord son objet tenu au Sac avec controle de la limite de 999,
+persiste l'etat et renseigne `releasedSpecies` dans l'historique Pokedex.
+
+La gestion d'objet tenu distingue maintenant possession et effet tactique. Tout
+objet ordinaire non important peut etre donne depuis le Sac ou le selecteur
+Equipe/Ranch, remplace ou retire par la meme transaction atomique. Si son effet de
+combat n'est pas encore porte, la preparation de combat le neutralise sans modifier
+la collection personnelle. Les objets importants et CT/CS restent exclus du don.
+
+Finition du selecteur d'objet tenu du 2026-10-14 : `Donner objet` ouvre d'abord la
+roue generique avec les huit categories reelles du Sac et leurs icones source ; une
+categorie sans objet admissible reste visible mais desactivee. Son choix ouvre un
+navigateur modal commun a l'Equipe et au Ranch. Il reutilise directement
+`sourceBagNodes`, les sous-dossiers automatiques, les cartes d'objet et la
+pagination du Sac, avec six entrees par page, retour au dossier puis retour a la
+roue. Aucun nouvel etat persistant ou reseau n'est cree par cette navigation.
+
+Correctif d'integration du 2026-10-14 : la modale d'objet tenu reserve maintenant
+explicitement une rangee basse a la pagination. Sa hauteur est bornee par le
+panneau de jeu et six objets par page occupent une grille 3 x 2, sans aucun
+defilement vertical. Chaque carte consacre sa rangee principale a l'icone, au nom
+sans ellipse et a la description jusqu'a quatre lignes. Une unique pastille compacte
+affiche le compteur sous l'icone : quantite de la pile pour un objet ordinaire, ou
+nombre total d'objets pour un dossier automatique. Le nombre de sortes n'est plus
+affiche. Le texte utilise toute la hauteur a droite, sans bordure ni contour autour
+de la description. Cette structure supprime la rangee vide et ramene les cartes de
+92 a 68 px. Les boutons
+`Precedente` et `Suivante` restent dans le cadre sur Android.
+
+Alignement du Sac principal du 2026-10-14 : le navigateur du menu reutilise la
+meme construction de carte que le selecteur d'objet tenu. Icone et compteur
+occupent la colonne gauche ; nom et description sans cadre occupent la colonne
+droite. Une pile affiche uniquement sa quantite et un dossier uniquement son total
+d'objets. Le rappel du nombre de sortes est aussi retire du fil d'Ariane. La grille
+reste paginee, sans liste verticale, avec quatre cartes en telephone portrait et
+neuf sur les surfaces plus larges. La description exploite toute la hauteur utile :
+jusqu'a six lignes sur la carte standard et huit sur la carte mobile plus haute,
+au lieu d'une ellipse prematuree apres quatre lignes. Cette modification est exclusivement visuelle :
+l'inventaire reste personnel, persistant et non replique en Coop.
 
 Autorite Coop : ces mutations appartiennent au joueur concerne, sont conservees
 dans son `SourceEventState` et ne produisent aucune intention ni replication dans
@@ -2986,10 +3030,10 @@ du point de vue local. La sauvegarde réconcilie automatiquement équipe et Ranc
 pour couvrir cadeaux, captures et outils de test. Les évolutions par objet et par
 progression enregistrent l'espèce d'origine dans `evolvedSpecies`. La migration
 des anciennes sauvegardes sait uniquement déduire les espèces encore possédées ;
-elle n'invente ni évolution ni libération passée. `recordSourcePokedexRelease`
-prépare le raccord futur, mais l'action Ranch `Relâcher` reste désactivée tant que
-sa confirmation destructive et la restitution éventuelle de l'objet tenu ne sont
-pas implémentées. Aucun lieu de capture n'est inventé avant le module Carte.
+elle n'invente ni évolution ni libération passée. L'action Ranch `Relâcher`
+alimente maintenant `recordSourcePokedexRelease` après confirmation et restitue
+atomiquement l'objet tenu au Sac. Aucun lieu de capture n'est inventé avant le
+module Carte.
 
 Correctif de stabilité des transferts Coop du 2026-10-13 : les snapshots du monde
 source sont maintenant différés pour l'hôte comme pour l'invité pendant tout
