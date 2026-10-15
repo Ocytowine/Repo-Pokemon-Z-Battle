@@ -3334,6 +3334,111 @@ du profil, tandis que canne, fil et contours non recolorables conservent la pale
 source. Le même contrat est appliqué par l'overworld, l'écran de personnalisation
 intégré et l'Avatar Lab ; il ne crée aucun nouvel état persistant ou réseau.
 
+Correctifs HUD/capture/remplacement du 2026-10-15 : les indicateurs d'équipe du
+HUD de combat ne sont plus des cercles CSS inventés. Ils affichent les assets
+source `ballnormal`, `ballstatus` et `ballfainted`, avec le symbole de genre issu
+du `BattlerState`. Le lancer de capture est légèrement ralenti et agrandi ; après
+l'absorption, la Ball retombe sur le centre déclaré du rectangle `enemybase*`
+(384, 158 dans le repère source 512 x 384), indépendamment de la taille du sprite
+adverse. Ce placement reste une présentation locale dérivée du combat et ne crée
+aucun état réseau.
+
+Le remplacement après K.O. a également été remis sous le contrôle explicite du
+joueur dans le combat local. Le noyau partagé conserve `replacementRequired`, la
+vue demande le membre à envoyer et le contrôleur applique cette intention ; seuls
+les Pokémon sans propriétaire contrôlés par l'IA restent automatiques. En Coop,
+la room demeure autoritaire et reçoit la même intention de remplacement. Cet état
+tactique est transitoire, déjà contenu dans le snapshot de combat et restauré par
+la reconnexion ; son audience est limitée aux participants et observateurs du
+combat. Validation manuelle encore attendue pour le rendu exact de la Ball, les
+trois symboles d'équipe et un K.O. avec plusieurs réserves.
+
+Deuxième passe des fiches Débug du 2026-10-15 : l'animation de capture complète
+était déjà fonctionnelle et sa fiche est refermée. Le Dresseur adverse réapparaît
+maintenant avant son dialogue de fin ; le visuel vient du jeu source en solo et du
+profil public adverse en Coop/PvP. Cette présentation reste locale et dérivée du
+contexte de combat partagé, sans nouvel état persistant ou répliqué.
+
+Le noyau d'évolution apprend maintenant les capacités de niveau `0`, convention
+Essentials pour une capacité propre à l'évolution, ainsi que celles du niveau
+courant. Une capacité excédant les quatre emplacements rejoint le même
+`pendingMoves` personnel que les apprentissages de niveau et passe donc par le
+sélecteur existant. Enfin, les événements autoritaires de statut transportent une
+intention visuelle : sommeil, paralysie, gel, brûlure, poison, confusion, peur et
+variations de statistiques animent le bon sprite en simple ou double. La fiche
+globale des animations reste ouverte pour inventorier les capacités sans mapping
+source ; aucun résultat de combat n'est recalculé par ces effets visuels.
+
+Reprise HUD/capture après validation visuelle du 2026-10-15 : les indicateurs de
+l'équipe sont désormais posés dans six cellules régulières de 14 px séparées de
+3 px. L'asset source K.O. est renforcé par une pastille rouge et une croix blanche,
+sans modifier l'état de combat. La capture n'enchaîne plus des animations Web avec
+leurs `fill` encore actifs : chaque position est figée avant l'étape suivante.
+L'ordre visible est fermé en vol, pause, ouverture et absorption, fermeture,
+chute vers l'ancre `enemybase`, puis oscillations sur le seul axe horizontal. Le
+ratio vertical réel `32 x 64` des fichiers Ball est conservé pendant cette scène,
+ce qui évite leur compression et les faux déplacements verticaux. Ces changements
+sont strictement locaux et s'appliquent de la même façon aux snapshots solo et
+Coop.
+
+Ajustement demandé après essai : le vol de capture utilise de nouveau sa durée de
+base de 680 ms et la largeur de la Ball passe de 7,5 % à 5,5 % du canvas. Son ratio
+vertical source reste conservé ; seules la vitesse du vol et l'échelle changent.
+
+Finition d'absorption du 2026-10-15 : lorsque la Ball ouverte intercepte la cible,
+un flash radial bleu apparaît dans la couche d'effets, sous la Ball et devant le
+Pokémon. Le sprite se surexpose en bleu puis se contracte rapidement vers son
+centre, qui correspond à la position de la Ball, avant la fermeture et la chute.
+L'effet et le repli sont joués en parallèle à partir du même événement de capture ;
+ils restent purement visuels, locaux et compatibles avec `prefers-reduced-motion`.
+
+Synchronisation affinée le 2026-10-15 : les pauses artificielles précédant le flash
+ont été supprimées. À la fin exacte du vol, la Ball passe ouverte, le son de rappel,
+le flash renforcé et l'absorption démarrent ensemble. Si la capture échoue, la Ball
+se rouvre sur l'ancre `enemybase`, rejoue le même flash et le Pokémon se redéploie
+depuis cette position vers sa place de combat. Cette séquence est une présentation
+locale dérivée du résultat autoritaire ; aucun état solo ou Coop supplémentaire
+n'est introduit.
+
+Réussite de capture affinée le 2026-10-15 : après la dernière secousse, la Ball
+émet un bref éclat puis passe progressivement en niveaux de gris. Cet état reste
+visible pendant le message de réussite et son filtre est restauré au nettoyage,
+afin de ne pas contaminer une capture ou une animation ultérieure. Le résultat de
+capture reste celui du noyau autoritaire ; il s'agit uniquement de sa présentation.
+
+Échec de capture affiné le 2026-10-15 : après la réouverture, le flash et le
+redéploiement de la cible ne sont plus suivis d'un rejet séparé. Le flash forme une
+explosion commune : la cible jaillit avec une enveloppe bleutée et la Ball encore
+ouverte reçoit simultanément une forte impulsion vers la droite, avec rotation et
+disparition hors du canvas. Ce rejet réutilise le même résultat de capture local
+ou Coop et ne modifie aucune règle métier.
+
+Oscillations de capture affinées le 2026-10-15 : le son source `ballshake` est
+toujours démarré juste avant son mouvement associé. L'oscillation dure désormais
+310 ms (180 ms en capture critique), utilise une amplitude latérale et angulaire
+plus marquée, puis revient sèchement au centre. La pause inter-secousses passe à
+190 ms pour préserver le lien perceptible entre chaque son et chaque mouvement.
+
+Flux post-capture du 2026-10-15 : le noyau local et le règlement Coop ne placent
+plus automatiquement le Pokémon dans l'équipe. La capture autoritaire et sa
+consommation de Ball sont d'abord appliquées une seule fois, puis le Pokémon est
+stocké durablement au Ranch du lanceur. Un état personnel
+`pokemon-z-battle.pending-capture.v1` ouvre ensuite une scène obligatoire dans le
+canvas : conservation ou saisie d'un surnom (12 caractères), choix Équipe/Ranch,
+et, si les six places sont prises, sélection explicite du membre à échanger.
+`placeCapturedPokemon` réalise cet échange atomiquement dans `player-state` pour
+éviter tout état intermédiaire dupliqué ou perdu. Le choix en attente survit au
+rafraîchissement et à la reconnexion ; il n'est jamais répliqué aux autres joueurs.
+Autorité : room pour le résultat tactique en Coop, adaptateur local en solo, puis
+propriétaire pour surnom et rangement. Domaine/persistance : collection et
+historique Pokédex personnels. Audience : uniquement le propriétaire de la capture.
+
+Dans un combat sauvage, le pied du HUD adverse ne simule plus une équipe de
+Dresseur. Il montre l'asset source `battleBoxOwned.png` coloré si l'espèce figure
+dans `caughtSpecies`, et sa variante grisée si elle n'a encore jamais été capturée.
+Ce renseignement est calculé depuis le Pokédex local de chaque participant et ne
+fait donc entrer aucune donnée personnelle supplémentaire dans le snapshot Coop.
+
 ## Commandes utiles
 
 ```powershell

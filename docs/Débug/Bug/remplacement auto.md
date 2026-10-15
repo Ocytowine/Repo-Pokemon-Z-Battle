@@ -7,3 +7,8 @@ Description : Normalement le changement des pokemon du joueur aprés un KO n'est
 
 Résultat attendu : Le joueur devrait être invité à choisir un nouveau Pokémon lorsque l'un de ses Pokémon est mis K.O.
 Résultat réel : Le remplacement du Pokémon se fait automatiquement sans intervention du joueur.
+
+Statut au 2026-10-15 : corrigé dans le code, validation manuelle requise. En solo,
+le joueur doit choisir explicitement la réserve à envoyer ; seule l'IA choisit
+encore automatiquement. En Coop, le choix reste une intention validée par la room
+autoritaire.

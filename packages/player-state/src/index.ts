@@ -511,6 +511,56 @@ export function transferPokemonToParty(party: PlayerPartyState, storage: PlayerP
     storage: { ...storage, members: storage.members.filter((_, memberIndex) => memberIndex !== index) } };
 }
 
+export type CapturedPokemonPlacementResult = PlayerPokemonCollectionState & {
+  readonly pokemon: PersistentPokemon;
+  readonly exchangedPokemon: PersistentPokemon | null;
+};
+
+/**
+ * Places a newly captured Pokemon that was durably staged in storage.
+ * A full party requires an explicit member exchange; the operation is atomic so
+ * no intermediate save can duplicate or lose either Pokemon.
+ */
+export function placeCapturedPokemon(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  pokemonId: string, destination: "team" | "ranch", exchangePartyPokemonId?: string): CapturedPokemonPlacementResult {
+  const storedIndex = storage.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (storedIndex < 0) throw new Error("Pokémon capturé absent du Ranch.");
+  const pokemon = storage.members[storedIndex]!;
+  if (destination === "ranch") return { party, storage, pokemon, exchangedPokemon: null };
+  if (party.members.length < MAX_PARTY_SIZE) {
+    const next = transferPokemonToParty(party, storage, pokemonId);
+    return { ...next, pokemon, exchangedPokemon: null };
+  }
+  if (exchangePartyPokemonId === undefined) throw new Error("Choisissez le Pokémon de l'équipe à envoyer au Ranch.");
+  const partyIndex = party.members.findIndex((candidate) => candidate.id === exchangePartyPokemonId);
+  if (partyIndex < 0) throw new Error("Pokémon à échanger absent de l'équipe.");
+  const exchangedPokemon = party.members[partyIndex]!;
+  const partyMembers = party.members.map((candidate, index) => index === partyIndex ? pokemon : candidate);
+  const storageMembers = storage.members.map((candidate, index) => index === storedIndex ? exchangedPokemon : candidate);
+  return {
+    party: { ...party, members: partyMembers },
+    storage: { ...storage, members: storageMembers },
+    pokemon,
+    exchangedPokemon,
+  };
+}
+
+/** Applies the owner's nickname choice in either personal collection location. */
+export function nicknameOwnedPokemon(party: PlayerPartyState, storage: PlayerPokemonStorageState,
+  pokemonId: string, nickname: string | null): PlayerPokemonCollectionState {
+  const normalized = nickname === null ? null : [...nickname.trim()].slice(0, 12).join("");
+  const nextNickname = normalized === "" ? null : normalized;
+  const partyIndex = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  const storageIndex = storage.members.findIndex((pokemon) => pokemon.id === pokemonId);
+  if (partyIndex >= 0 && storageIndex >= 0) throw new Error("Pokémon dupliqué entre l'équipe et le Ranch.");
+  if (partyIndex < 0 && storageIndex < 0) throw new Error("Pokémon absent de la collection.");
+  return partyIndex >= 0
+    ? { party: { ...party, members: party.members.map((pokemon, index) => index === partyIndex
+      ? { ...pokemon, nickname: nextNickname } : pokemon) }, storage }
+    : { party, storage: { ...storage, members: storage.members.map((pokemon, index) => index === storageIndex
+      ? { ...pokemon, nickname: nextNickname } : pokemon) } };
+}
+
 /** Places one personal Pokemon at the head of the party and makes it the active member. */
 export function movePokemonToPartyFront(party: PlayerPartyState, pokemonId: string): PlayerPartyState {
   const index = party.members.findIndex((pokemon) => pokemon.id === pokemonId);
@@ -836,7 +886,10 @@ function evolvedPokemon(pokemon: PersistentPokemon, evolution: PokemonEvolutionC
   let moves = pokemon.moves.map((slot) => ({ ...slot }));
   const learnedMoves: string[] = [];
   const skippedMoves: string[] = [];
-  for (const entry of target.levelUpMoves.filter((move) => move.level === pokemon.level)) {
+  // Essentials reserve le niveau 0 aux capacites apprises au moment precis de
+  // l'evolution. Une espece peut aussi apprendre une capacite au niveau courant :
+  // les deux familles sont proposees, sans doublon avec le moveset existant.
+  for (const entry of target.levelUpMoves.filter((move) => move.level === 0 || move.level === pokemon.level)) {
     if (moves.some((slot) => slot.internalName === entry.move)) continue;
     const move = catalog.moves.find((candidate) => candidate.internalName === entry.move);
     if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);

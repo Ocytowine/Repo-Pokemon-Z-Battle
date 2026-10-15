@@ -1,8 +1,10 @@
-import { attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBattleState, createTeamBattleState, replaceFaintedPokemon, resolveTeamTurn,
+import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction, createDoubleTeamBattleState, createTeamBattleState,
+  replaceFaintedDoublePokemon, replaceFaintedPokemon, resolveTeamTurn,
   sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
   type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
-  type TeamBattleState, type TeamReplacementResult, type TeamTurnActions, type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
+  type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
+  type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
   storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
@@ -119,6 +121,57 @@ export function resolveAutomaticReplacements(state: TeamBattleState): TeamReplac
     replacements[side] = replacement;
   }
   return replaceFaintedPokemon(state, replacements);
+}
+
+/** Remplace uniquement les combattants sans proprietaire, donc le camp IA. */
+export function resolveSourceControlledReplacements(state: TeamBattleState): TeamReplacementResult {
+  if (state.status === "finished") return { state, events: [], trace: [] };
+  if (state.format !== "double") {
+    // replaceFaintedPokemon exige de resoudre simultanement les deux camps. Si
+    // le joueur doit choisir, l'IA attend ce choix et sera resolue avec lui.
+    if (state.replacementRequired.includes("player")) return { state, events: [], trace: [] };
+    return resolveAutomaticReplacements(state);
+  }
+  let next = state;
+  const events: TeamBattleEvent[] = [];
+  for (const position of [...(next.slotReplacements ?? [])].filter((entry) => entry.side === "opponent")) {
+    const team = next.teams.opponent;
+    const active = activeTeamIndices(team);
+    const replacement = team.members.findIndex((member, index) => member.hp > 0 && !active.includes(index));
+    if (replacement < 0) throw new Error("Aucun remplaçant valide pour opponent.");
+    const fromIndex = active[position.slot]!;
+    events.push({ type: "pokemonSwitched", side: "opponent", fromIndex, toIndex: replacement,
+      from: team.members[fromIndex]!.id, to: team.members[replacement]!.id, reason: "replacement" });
+    next = replaceFaintedDoublePokemon(next, position, replacement);
+  }
+  return { state: next, events, trace: [] };
+}
+
+/** Applique le choix explicite du joueur et complete les remplacements IA requis. */
+export function resolvePlayerReplacement(state: TeamBattleState, teamIndex: number,
+  activeSlot = 0): TeamReplacementResult {
+  if (state.format !== "double") {
+    if (!state.replacementRequired.includes("player")) throw new Error("Aucun remplacement joueur n'est requis.");
+    const replacements: Partial<Record<"player" | "opponent", number>> = { player: teamIndex };
+    if (state.replacementRequired.includes("opponent")) {
+      const opponent = state.teams.opponent;
+      const automatic = opponent.members.findIndex((member, index) => index !== opponent.activeIndex && member.hp > 0);
+      if (automatic < 0) throw new Error("Aucun remplaçant valide pour opponent.");
+      replacements.opponent = automatic;
+    }
+    return replaceFaintedPokemon(state, replacements);
+  }
+  const position = { side: "player" as const, slot: activeSlot };
+  if (!state.slotReplacements?.some((entry) => entry.side === "player" && entry.slot === activeSlot)) {
+    throw new Error("Aucun remplacement joueur n'est requis à cet emplacement.");
+  }
+  const team = state.teams.player;
+  const fromIndex = activeTeamIndices(team)[activeSlot]!;
+  const next = replaceFaintedDoublePokemon(state, position, teamIndex);
+  const event = { type: "pokemonSwitched" as const, side: "player" as const, fromIndex, toIndex: teamIndex,
+    from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason: "replacement" as const };
+  const automatic = resolveSourceControlledReplacements(next);
+  return { state: automatic.state, events: [event, ...automatic.events], trace: [] };
 }
 
 export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleState {

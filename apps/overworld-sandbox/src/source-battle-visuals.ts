@@ -4,10 +4,11 @@ import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, sel
 import type { BattleMove, BattleSide, BattlerState, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
-  sourceTrainerSpritePlacement } from "./source-battle-layout.js";
+  sourceEnemyBaseCenter, sourceTrainerSpritePlacement } from "./source-battle-layout.js";
 import { experienceAtLevel } from "@pokemon-z-battle/player-state";
 import type { SourceBattleExperiencePresentation, SourceBattleOutcome } from "./source-battle-controller.js";
 import { buildSourceBattlePresentationSequence } from "./source-battle-presentation-sequence.js";
+import type { SourceBattleStatusVisual } from "./source-battle-presentation-sequence.js";
 import { selectSourceBattleTransition, SOURCE_TRANSITION_FRAME_MS, sourceTrainerBandFrames,
   sourceWildOutdoorFrames } from "./source-battle-transition.js";
 
@@ -21,6 +22,20 @@ interface AnimatedCanvas {
 
 function sourceUrl(path: string): string {
   return `/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`;
+}
+
+export function sourceBattleGenderSymbol(gender: NonNullable<BattlerState["appearance"]>["gender"] | undefined): string {
+  return gender === "male" ? "♂" : gender === "female" ? "♀" : "";
+}
+
+export function sourceBattleTeamBallPath(battler: Pick<BattlerState, "hp" | "majorStatus">): string {
+  return battler.hp <= 0 ? "Graphics/Pictures/ballfainted.png"
+    : battler.majorStatus !== null ? "Graphics/Pictures/ballstatus.PNG"
+      : "Graphics/Pictures/ballnormal.png";
+}
+
+export function sourceWildPokemonCaught(species: string, caughtSpecies: readonly string[]): boolean {
+  return caughtSpecies.includes(species);
 }
 
 async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCanvas> {
@@ -157,6 +172,8 @@ export interface SourceBattleVisualOptions {
   readonly onBattleAudioStart?: () => void;
   readonly onBattleAudioEnd?: () => void;
   readonly abilityName?: (internalName: string) => string;
+  /** Personal Pokédex history, read locally and never projected into shared battle state. */
+  readonly caughtSpecies?: () => readonly string[];
 }
 
 const BATTLE_STATUS_ROWS: Readonly<Record<string, { readonly row: number; readonly label: string }>> = {
@@ -220,6 +237,7 @@ export class SourceBattleVisuals {
   #battleback = "snow";
   #playerTrainerImage: HTMLImageElement | null = null;
   #opponentTrainerImage: HTMLImageElement | null = null;
+  #opponentTrainerData: { readonly id: number; readonly name: string } | null = null;
   #musicVolume: number;
   #effectsVolume: number;
   #audioBaseVolumes = new WeakMap<HTMLAudioElement, number>();
@@ -268,6 +286,7 @@ export class SourceBattleVisuals {
     this.stopAudio();
     this.options.onBattleAudioStart?.();
     this.#capturePresented = false;
+    this.#opponentTrainerData = audio.opponentTrainer ?? null;
     this.#battleback = audio.battleback ?? "snow";
     this.#renderedSpecies = "";
     this.#renderedState = state;
@@ -282,6 +301,7 @@ export class SourceBattleVisuals {
     panel?.classList.add("entering");
     panel?.classList.add("intro-playing");
     stage?.classList.add("intro-playing");
+    stage?.classList.remove("trainer-outro");
     stage?.classList.toggle("opponent-intro", audio.opponentTrainer !== undefined);
     const experienceTrack = document.getElementById("source-player-exp-track");
     const experienceBar = document.getElementById("source-player-exp-bar");
@@ -378,6 +398,8 @@ export class SourceBattleVisuals {
     panel?.classList.add("outro-playing");
     await this.fadeAudio(this.#battleMusic, winner === "player" ? 350 : 1_000);
     this.#battleMusic = null;
+    const trainerReturned = this.#opponentTrainerData === null || outcome.captured !== undefined
+      ? false : await this.playOpponentTrainerOutro(this.#opponentTrainerData, session);
     if (outcome.captured !== undefined) {
       if (!this.#capturePresented) {
         this.message(`${outcome.captured.name} a été capturé !`);
@@ -419,8 +441,14 @@ export class SourceBattleVisuals {
     await Promise.all([delay(900), this.fadeAudio(this.#outroMusic, 900)]);
     panel?.classList.remove("leaving");
     panel?.classList.remove("outro-playing");
+    if (trainerReturned) {
+      const trainer = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
+      if (trainer !== null) trainer.hidden = true;
+      document.getElementById("source-battle-stage")?.classList.remove("trainer-outro");
+    }
     this.stopAudio();
     this.#victoryMusicPath = null;
+    this.#opponentTrainerData = null;
     this.options.onBattleAudioEnd?.();
   }
 
@@ -544,9 +572,16 @@ export class SourceBattleVisuals {
         this.message(step.message);
         await Promise.all([this.animateHealth(step.side, step.from, step.to, step.state),
           readableMessageDelay(700)]);
-      } else if (step.kind === "message" || step.kind === "status") {
+      } else if (step.kind === "message") {
         this.message(step.message);
-        await readableMessageDelay(step.kind === "status" ? 850 : 750);
+        await readableMessageDelay(750);
+      } else if (step.kind === "status") {
+        this.message(step.message);
+        await Promise.all([
+          step.side === undefined || step.visual === undefined
+            ? Promise.resolve() : this.playStatusVisual(step.side, step.visual, step.state),
+          readableMessageDelay(850),
+        ]);
       } else if (step.kind === "faint") {
         this.updateHud(step.state);
         this.message(step.message);
@@ -884,6 +919,29 @@ export class SourceBattleVisuals {
     stage.classList.remove("opponent-intro");
   }
 
+  private async playOpponentTrainerOutro(trainerData: { readonly id: number; readonly name: string },
+    session: number): Promise<boolean> {
+    const trainer = document.getElementById("source-opponent-trainer") as HTMLImageElement | null;
+    const stage = document.getElementById("source-battle-stage");
+    if (trainer === null || stage === null) return false;
+    const customTrainer = this.#opponentTrainerImage;
+    trainer.src = customTrainer?.src
+      ?? sourceUrl(`Graphics/Characters/trainer${String(trainerData.id).padStart(3, "0")}.png`);
+    try { await trainer.decode(); } catch { return false; }
+    if (session !== this.#audioSession) return false;
+    this.placeTrainer(trainer, "opponent", customTrainer?.naturalWidth ?? trainer.naturalWidth,
+      customTrainer?.naturalHeight ?? trainer.naturalHeight);
+    stage.classList.add("trainer-outro");
+    trainer.hidden = false;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const arrival = trainer.animate([
+      { transform: "translateX(150px)", opacity: 0 },
+      { transform: "translateX(0)", opacity: 1 },
+    ], { duration: reduced ? 20 : 520, fill: "forwards", easing: "ease-out" });
+    await arrival.finished.catch(() => undefined);
+    return session === this.#audioSession;
+  }
+
   private async playExperience(experience: SourceBattleExperiencePresentation, session: number): Promise<void> {
     const bar = document.getElementById("source-player-exp-bar");
     const level = document.getElementById("source-player-level");
@@ -954,6 +1012,7 @@ export class SourceBattleVisuals {
       const hud = slot === 0 ? null : document.getElementById(`source-${side}-hud${suffix}`);
       if (hud !== null) hud.hidden = false;
       const name = document.getElementById(`source-${side}-name${suffix}`);
+      const gender = document.getElementById(`source-${side}-gender${suffix}`);
       const level = document.getElementById(`source-${side}-level${suffix}`);
       const hp = document.getElementById(`source-${side}-hp${suffix}`);
       const bar = document.getElementById(`source-${side}-hp-bar${suffix}`);
@@ -961,6 +1020,20 @@ export class SourceBattleVisuals {
       const status = document.getElementById(`source-${side}-status${suffix}`);
       const teamState = document.getElementById(`source-${side}-team`);
       if (name !== null) name.textContent = battler.name;
+      if (gender !== null) {
+        const symbol = sourceBattleGenderSymbol(battler.appearance?.gender);
+        gender.textContent = symbol;
+        gender.hidden = symbol === "";
+        if (symbol !== "") {
+          gender.dataset.gender = battler.appearance?.gender === "female" ? "female" : "male";
+          gender.title = battler.appearance?.gender === "female" ? "Femelle" : "Mâle";
+          gender.setAttribute("aria-label", gender.title);
+        } else {
+          delete gender.dataset.gender;
+          gender.removeAttribute("title");
+          gender.removeAttribute("aria-label");
+        }
+      }
       if (level !== null) level.textContent = `N. ${battler.level}`;
       if (hp !== null) hp.textContent = side === "player" ? `${battler.hp} / ${battler.stats.maxHp}` : `${battler.hp} PV`;
       if (bar !== null) {
@@ -986,11 +1059,36 @@ export class SourceBattleVisuals {
         }
       }
       if (teamState !== null) {
-        teamState.replaceChildren(...team.members.map((member, index) => {
-          const dot = document.createElement("i");
-          dot.className = member.hp <= 0 ? "fainted" : active.includes(index) ? "active" : "ready";
-          dot.title = `${member.name} · ${member.hp}/${member.stats.maxHp} PV`;
-          return dot;
+        if (side === "opponent" && this.#opponentTrainerData === null) {
+          const caught = sourceWildPokemonCaught(battler.species, this.options.caughtSpecies?.() ?? []);
+          const marker = document.createElement("span");
+          marker.className = "source-battle-wild-caught";
+          marker.dataset.caught = String(caught);
+          marker.setAttribute("role", "img");
+          marker.setAttribute("aria-label", caught ? `${battler.name} a déjà été capturé`
+            : `${battler.name} n'a pas encore été capturé`);
+          marker.title = caught ? "Espèce déjà capturée" : "Espèce encore jamais capturée";
+          const icon = document.createElement("img");
+          icon.src = sourceUrl("Graphics/Pictures/battleBoxOwned.png");
+          icon.alt = "";
+          marker.append(icon);
+          teamState.replaceChildren(marker);
+        } else teamState.replaceChildren(...team.members.map((member, index) => {
+          const stateName = member.hp <= 0 ? "fainted"
+            : member.majorStatus !== null ? "status" : active.includes(index) ? "active" : "ready";
+          const marker = document.createElement("span");
+          marker.className = "source-battle-team-ball";
+          marker.dataset.state = stateName;
+          marker.setAttribute("role", "img");
+          marker.setAttribute("aria-label", `${member.name} : ${stateName === "fainted" ? "K.O."
+            : stateName === "status" ? "altéré" : stateName === "active" ? "au combat" : "disponible"}`);
+          marker.title = `${member.name} · ${member.hp}/${member.stats.maxHp} PV${member.hp <= 0 ? " · K.O."
+            : member.majorStatus === null ? "" : " · statut"}`;
+          const icon = document.createElement("img");
+          icon.src = sourceUrl(sourceBattleTeamBallPath(member));
+          icon.alt = "";
+          marker.append(icon);
+          return marker;
         }));
       }
       if (battler.hp > 0) document.getElementById(`source-${side}-sprite${suffix}`)?.classList.remove("fainted");
@@ -1235,9 +1333,13 @@ export class SourceBattleVisuals {
 
   private resetBattlerTransforms(): void {
     for (const side of ["player", "opponent"] as const) {
-      const sprite = document.getElementById(`source-${side}-sprite`);
-      if (sprite === null) continue;
-      for (const property of ["translate", "rotate", "scale", "opacity"]) sprite.style.removeProperty(property);
+      for (const suffix of ["", "-2"] as const) {
+        const sprite = document.getElementById(`source-${side}-sprite${suffix}`);
+        if (sprite === null) continue;
+        sprite.getAnimations().forEach((animation) => animation.cancel());
+        for (const property of ["transform", "transform-origin", "filter"]) sprite.style.removeProperty(property);
+        for (const property of ["translate", "rotate", "scale", "opacity"]) sprite.style.removeProperty(property);
+      }
     }
   }
 
@@ -1249,6 +1351,49 @@ export class SourceBattleVisuals {
       form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
       female: battler.appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
     if (cry !== null) this.playAudio(cry, { volume: 0.8, oneShot: true });
+  }
+
+  private async playStatusVisual(side: BattleSide, visual: SourceBattleStatusVisual,
+    state: TeamBattleState): Promise<void> {
+    const team = state.teams[side];
+    const active = team.activeIndices ?? [team.activeIndex];
+    const slot = Math.max(0, active.indexOf(team.activeIndex));
+    const sprite = document.getElementById(`source-${side}-sprite${slot === 0 ? "" : `-${slot + 1}`}`);
+    if (sprite === null) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const frames: Keyframe[] = visual === "sleep" ? [
+      { transform: "translateY(0)", opacity: 1 }, { transform: "translateY(5px)", opacity: .65 },
+      { transform: "translateY(0)", opacity: 1 },
+    ] : visual === "paralysis" ? [
+      { transform: "translateX(0)", filter: "brightness(1)" },
+      { transform: "translateX(-4px)", filter: "brightness(1.8) sepia(1) saturate(5) hue-rotate(5deg)" },
+      { transform: "translateX(4px)", filter: "brightness(1.8) sepia(1) saturate(5) hue-rotate(5deg)" },
+      { transform: "translateX(0)", filter: "brightness(1)" },
+    ] : visual === "confusion" ? [
+      { transform: "rotate(0deg)" }, { transform: "rotate(-7deg)" },
+      { transform: "rotate(7deg)" }, { transform: "rotate(0deg)" },
+    ] : visual === "flinch" ? [
+      { transform: "translateX(0) scale(1)" }, { transform: "translateX(-8px) scale(.94)" },
+      { transform: "translateX(0) scale(1)" },
+    ] : visual === "stat-up" || visual === "cured" ? [
+      { filter: "brightness(1)", transform: "translateY(0)" },
+      { filter: "brightness(1.8) drop-shadow(0 0 7px #7dffc2)", transform: "translateY(-5px)" },
+      { filter: "brightness(1)", transform: "translateY(0)" },
+    ] : visual === "stat-down" ? [
+      { filter: "brightness(1)", transform: "translateY(0)" },
+      { filter: "brightness(.55) drop-shadow(0 0 7px #8c69ff)", transform: "translateY(5px)" },
+      { filter: "brightness(1)", transform: "translateY(0)" },
+    ] : [
+      { filter: "brightness(1) saturate(1)" },
+      { filter: visual === "burn" ? "brightness(1.6) sepia(1) saturate(6) hue-rotate(330deg)"
+        : visual === "frozen" ? "brightness(1.5) sepia(1) saturate(4) hue-rotate(155deg)"
+          : visual === "poison" ? "brightness(.8) sepia(1) saturate(5) hue-rotate(235deg)"
+            : visual === "hemorrhage" ? "brightness(.8) sepia(1) saturate(6) hue-rotate(300deg)"
+              : "brightness(.75) saturate(.6)" },
+      { filter: "brightness(1) saturate(1)" },
+    ];
+    const animation = sprite.animate(frames, { duration: reduced ? 20 : 620, easing: "ease-in-out" });
+    await animation.finished.catch(() => undefined);
   }
 
   private async playCue(name: string, volume = 1): Promise<void> {
@@ -1279,44 +1424,100 @@ export class SourceBattleVisuals {
       const targetY = targetRect.top - stageRect.top + targetRect.height / 2;
       const ballIndex = String(sourceCaptureBallIndex(step.ballId)).padStart(2, "0");
       const previousBallBackground = ball.style.backgroundImage;
+      const previousBallFilter = ball.style.filter;
       ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}.png`)}")`;
+      ball.classList.add("capturing");
+      ball.style.left = "8%";
+      ball.style.top = "82%";
+      ball.style.transform = "translate(-50%,-50%) rotate(0deg)";
       ball.hidden = false;
       const flight = ball.animate([
         { left: "8%", top: "82%", transform: "translate(-50%,-50%) rotate(0deg)" },
         { left: "42%", top: "20%", transform: "translate(-50%,-50%) rotate(420deg)" },
         { left: `${targetX}px`, top: `${targetY}px`, transform: "translate(-50%,-50%) rotate(760deg)" },
-      ], { duration: reduced ? 20 : 680, fill: "forwards", easing: "ease-in" });
+      ], { duration: reduced ? 20 : 680, fill: "forwards", easing: "ease-in-out" });
       await flight.finished.catch(() => undefined);
       if (session !== this.#audioSession) {
         ball.hidden = true;
+        ball.classList.remove("capturing");
         ball.style.backgroundImage = previousBallBackground;
+        ball.style.filter = previousBallFilter;
         return;
       }
+      ball.style.left = `${targetX}px`;
+      ball.style.top = `${targetY}px`;
+      ball.style.transform = "translate(-50%,-50%) rotate(0deg)";
+      flight.cancel();
       ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}_open.png`)}")`;
-      await this.playCue("recall", 0.85);
-      const absorb = target.animate([{ opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
-        { opacity: 0, transform: "scale(.08)", filter: "brightness(4)" }],
-      { duration: reduced ? 20 : 460, fill: "forwards", easing: "ease-in" });
-      await absorb.finished.catch(() => undefined);
+      const effects = document.getElementById("source-move-effects");
+      const createCaptureFlash = (x: number, y: number): { element: HTMLElement; animation: Animation } => {
+        const element = document.createElement("i");
+        element.className = "source-capture-flash";
+        element.style.left = `${x}px`;
+        element.style.top = `${y}px`;
+        effects?.append(element);
+        const animation = element.animate([
+          { opacity: 0, transform: "translate(-50%,-50%) scale(.12)" },
+          { opacity: 1, transform: "translate(-50%,-50%) scale(.72)", offset: .16 },
+          { opacity: .98, transform: "translate(-50%,-50%) scale(1.12)", offset: .42 },
+          { opacity: .66, transform: "translate(-50%,-50%) scale(1.48)", offset: .68 },
+          { opacity: 0, transform: "translate(-50%,-50%) scale(2.05)" },
+        ], { duration: reduced ? 20 : 520, easing: "cubic-bezier(.16,.76,.3,1)" });
+        return { element, animation };
+      };
+      void this.playCue("recall", 0.9);
+      const captureFlash = createCaptureFlash(targetX, targetY);
+      const previousTransformOrigin = target.style.transformOrigin;
+      target.style.transformOrigin = "50% 50%";
+      const absorb = target.animate([
+        { opacity: 1, transform: "scale(1)", filter: "brightness(1)" },
+        { opacity: 1, transform: "scale(1.08)", filter: "brightness(2.8) sepia(.25) saturate(2.4) hue-rotate(155deg) drop-shadow(0 0 9px #7deaff)", offset: .2 },
+        { opacity: .72, transform: "scale(.46)", filter: "brightness(3.8) sepia(.35) saturate(3) hue-rotate(155deg) drop-shadow(0 0 13px #5bdcff)", offset: .56 },
+        { opacity: 0, transform: "scale(.025)", filter: "brightness(6) sepia(.4) saturate(3.2) hue-rotate(155deg) drop-shadow(0 0 16px #fff)" },
+      ], { duration: reduced ? 20 : 430, fill: "forwards", easing: "cubic-bezier(.55,.05,.85,.35)" });
+      await Promise.all([absorb.finished.catch(() => undefined), captureFlash.animation.finished.catch(() => undefined)]);
+      captureFlash.element.remove();
+      target.style.transformOrigin = previousTransformOrigin;
       ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}.png`)}")`;
       await this.playCue("jumptoball", 0.8);
-      flight.cancel();
-      ball.style.left = `${targetX}px`;
-      ball.style.top = `${Math.min(stage.clientHeight - 42, targetY + 70)}px`;
-      ball.style.transform = "translate(-50%,-50%)";
+      await delay(reduced ? 20 : 160);
+      const baseCenter = sourceEnemyBaseCenter();
+      const landingX = baseCenter.x / 512 * stage.clientWidth;
+      const landingY = baseCenter.y / 384 * stage.clientHeight;
+      const drop = ball.animate([
+        { left: `${targetX}px`, top: `${targetY}px`, transform: "translate(-50%,-50%) rotate(0deg)" },
+        { left: `${landingX}px`, top: `${landingY}px`, transform: "translate(-50%,-50%) rotate(90deg)" },
+      ], { duration: reduced ? 20 : 380, fill: "forwards", easing: "cubic-bezier(.45,.05,.85,.45)" });
+      await drop.finished.catch(() => undefined);
+      ball.style.left = `${landingX}px`;
+      ball.style.top = `${landingY}px`;
+      ball.style.transform = "translate(-50%,-50%) rotate(0deg)";
+      drop.cancel();
+      await delay(reduced ? 20 : 260);
       for (let shake = 0; shake < step.shakes; shake += 1) {
-        await this.playCue("ballshake", 0.8);
+        await this.playCue("ballshake", 0.9);
         const wobble = ball.animate([
           { transform: "translate(-50%,-50%) rotate(0deg)" },
-          { transform: "translate(-62%,-50%) rotate(-18deg)" },
-          { transform: "translate(-38%,-50%) rotate(18deg)" },
+          { transform: "translate(-50%,-50%) translateX(-11px) rotate(-21deg) scale(1.04)", offset: .18 },
+          { transform: "translate(-50%,-50%) translateX(2px) rotate(4deg) scale(.98)", offset: .38 },
+          { transform: "translate(-50%,-50%) translateX(11px) rotate(21deg) scale(1.04)", offset: .58 },
+          { transform: "translate(-50%,-50%) translateX(-2px) rotate(-4deg) scale(.99)", offset: .78 },
           { transform: "translate(-50%,-50%) rotate(0deg)" },
-        ], { duration: reduced ? 20 : step.critical ? 240 : 430, easing: "ease-in-out" });
+        ], { duration: reduced ? 20 : step.critical ? 180 : 310, easing: "cubic-bezier(.3,.02,.25,1)" });
         await wobble.finished.catch(() => undefined);
-        await delay(reduced ? 20 : 260);
+        await delay(reduced ? 20 : 190);
       }
       if (step.success) {
-        await this.playCue("balldrop", 0.85);
+        void this.playCue("balldrop", 0.85);
+        const capturedBallFilter = "grayscale(1) saturate(0) brightness(.72) contrast(1.12) drop-shadow(0 4px 3px #0008)";
+        const captured = ball.animate([
+          { filter: "grayscale(0) saturate(1) brightness(1) drop-shadow(0 4px 3px #0008)" },
+          { filter: "grayscale(.55) saturate(.4) brightness(1.65) drop-shadow(0 0 8px #e9f7ff)", offset: .42 },
+          { filter: capturedBallFilter },
+        ], { duration: reduced ? 20 : 340, fill: "forwards", easing: "ease-out" });
+        await captured.finished.catch(() => undefined);
+        ball.style.filter = capturedBallFilter;
+        captured.cancel();
         const manifests = await this.manifests().catch(() => null);
         const jingle = manifests === null ? null : availableAudioStem(manifests.assets, "Audio/ME/Jingle - HMTM");
         if (jingle !== null) this.playAudio(jingle, { volume: 0.7, oneShot: true });
@@ -1324,18 +1525,83 @@ export class SourceBattleVisuals {
         this.#capturePresented = true;
         await readableMessageDelay(950);
       } else {
-        ball.hidden = true;
+        ball.style.backgroundImage = `url("${sourceUrl(`Graphics/Pictures/ball${ballIndex}_open.png`)}")`;
+        void this.playCue("recall", 0.9);
+        const releaseFlash = createCaptureFlash(landingX, landingY);
+        const releaseX = landingX - targetX;
+        const releaseY = landingY - targetY;
+        target.style.transformOrigin = "50% 50%";
+        target.style.opacity = "0";
+        target.style.transform = `translate(${releaseX}px, ${releaseY}px) scale(.025)`;
+        target.style.filter = "brightness(6) sepia(.4) saturate(3.2) hue-rotate(155deg) drop-shadow(0 0 16px #fff)";
         absorb.cancel();
+        const rejectionEndX = stage.clientWidth + Math.max(ball.offsetWidth, 32);
+        const rejectionEndY = Math.max(0, landingY - stage.clientHeight * .1);
+        const rejection = ball.animate([
+          {
+            left: `${landingX}px`,
+            top: `${landingY}px`,
+            opacity: 1,
+            transform: "translate(-50%,-50%) rotate(0deg) scale(1)",
+          },
+          {
+            left: `${landingX + stage.clientWidth * .14}px`,
+            top: `${landingY - stage.clientHeight * .105}px`,
+            opacity: 1,
+            transform: "translate(-50%,-50%) rotate(210deg) scale(1.06)",
+            offset: .2,
+          },
+          {
+            left: `${landingX + stage.clientWidth * .38}px`,
+            top: `${landingY - stage.clientHeight * .16}px`,
+            opacity: .86,
+            transform: "translate(-50%,-50%) rotate(540deg) scale(.9)",
+            offset: .55,
+          },
+          {
+            left: `${rejectionEndX}px`,
+            top: `${rejectionEndY}px`,
+            opacity: 0,
+            transform: "translate(-50%,-50%) rotate(980deg) scale(.68)",
+          },
+        ], { duration: reduced ? 20 : 460, fill: "forwards", easing: "cubic-bezier(.12,.72,.22,1)" });
+        const release = target.animate([
+          {
+            opacity: 0,
+            transform: `translate(${releaseX}px, ${releaseY}px) scale(.025)`,
+            filter: "brightness(6) sepia(.4) saturate(3.2) hue-rotate(155deg) drop-shadow(0 0 16px #fff)",
+          },
+          {
+            opacity: .9,
+            transform: `translate(${releaseX * .26}px, ${releaseY * .26}px) scale(.72)`,
+            filter: "brightness(4) sepia(.3) saturate(3.2) hue-rotate(155deg) drop-shadow(0 0 17px #50d9ff)",
+            offset: .5,
+          },
+          { opacity: 1, transform: "translate(0, 0) scale(1.12)", filter: "brightness(2.2) saturate(1.5) drop-shadow(0 0 13px #70e5ff)", offset: .82 },
+          { opacity: 1, transform: "translate(0, 0) scale(1)", filter: "brightness(1)" },
+        ], { duration: reduced ? 20 : 500, fill: "forwards", easing: "cubic-bezier(.12,.78,.2,1)" });
+        await Promise.all([
+          release.finished.catch(() => undefined),
+          releaseFlash.animation.finished.catch(() => undefined),
+          rejection.finished.catch(() => undefined),
+        ]);
+        releaseFlash.element.remove();
         target.style.opacity = "1";
         target.style.transform = "";
         target.style.filter = "";
+        target.style.transformOrigin = previousTransformOrigin;
+        release.cancel();
+        ball.hidden = true;
+        rejection.cancel();
         this.message(step.shakes === 0 ? "Oh non ! Le Pokémon s'est libéré immédiatement !"
           : step.shakes === 1 ? "Presque ! Il semblait pris !"
             : step.shakes === 2 ? "Aïe ! C'était tout près !" : "Mince ! Il manquait si peu !");
         await readableMessageDelay(850);
       }
       ball.hidden = true;
+      ball.classList.remove("capturing");
       ball.style.backgroundImage = previousBallBackground;
+      ball.style.filter = previousBallFilter;
       return;
     }
     this.message(step.success ? `${step.targetName} est capturé !` : "Le Pokémon s'est libéré !");

@@ -9,6 +9,7 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience,
+  nicknameOwnedPokemon, placeCapturedPokemon,
   pokemonZParticipantExperienceCalculation, publicPokemonIdentity, recalculatePersistentPokemonStats,
   reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
   transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
@@ -138,6 +139,34 @@ describe("persistent player party", () => {
       ...party.members[0]!, id: `pokemon-${index}` })), activeIndex: 0 };
     const storage = { ...createEmptyPlayerPokemonStorage(), members: [{ ...party.members[0]!, id: "stored" }] };
     expect(() => transferPokemonToParty(fullParty, storage, "stored")).toThrow("six Pokémon");
+  });
+
+  it("stages captured Pokemon in the Ranch then places or exchanges them atomically", () => {
+    const captured = { ...party.members[0]!, id: "captured" };
+    const storage = { ...createEmptyPlayerPokemonStorage(), members: [captured] };
+    const added = placeCapturedPokemon(party, storage, "captured", "team");
+    expect(added.party.members.map((pokemon) => pokemon.id)).toEqual(["starter", "captured"]);
+    expect(added.storage.members).toEqual([]);
+
+    const fullParty = { ...party, activeIndex: 2, members: Array.from({ length: 6 }, (_, index) => ({
+      ...party.members[0]!, id: `pokemon-${index}` })) };
+    expect(() => placeCapturedPokemon(fullParty, storage, "captured", "team")).toThrow("Choisissez");
+    const exchanged = placeCapturedPokemon(fullParty, storage, "captured", "team", "pokemon-2");
+    expect(exchanged.party.activeIndex).toBe(2);
+    expect(exchanged.party.members.map((pokemon) => pokemon.id))
+      .toEqual(["pokemon-0", "pokemon-1", "captured", "pokemon-3", "pokemon-4", "pokemon-5"]);
+    expect(exchanged.storage.members).toMatchObject([{ id: "pokemon-2" }]);
+    expect(exchanged.exchangedPokemon?.id).toBe("pokemon-2");
+  });
+
+  it("applies a bounded nickname in either personal collection location", () => {
+    const named = nicknameOwnedPokemon(party, createEmptyPlayerPokemonStorage(), "starter", "  Tonnerre  ");
+    expect(named.party.members[0]?.nickname).toBe("Tonnerre");
+    const captured = { ...party.members[0]!, id: "captured" };
+    const storage = { ...createEmptyPlayerPokemonStorage(), members: [captured] };
+    expect(nicknameOwnedPokemon(party, storage, "captured", "ABCDEFGHIJKLMNO").storage.members[0]?.nickname)
+      .toBe("ABCDEFGHIJKL");
+    expect(nicknameOwnedPokemon(party, storage, "captured", "   ").storage.members[0]?.nickname).toBeNull();
   });
 
   it("moves a selected Pokemon to the party lead without changing its identity", () => {
@@ -347,9 +376,11 @@ describe("persistent player party", () => {
       evolutions: [{ species: "RAICHU", method: "Level", parameter: "6" }] };
     const raichu = { ...pikachu, internalName: "RAICHU", name: "Raichu", abilities: ["SURGE"],
       baseStats: { hp: 60, attack: 90, defense: 55, specialAttack: 90, specialDefense: 80, speed: 110 },
-      levelUpMoves: [{ level: 6, move: "GROWL" }], evolutions: [] };
+      levelUpMoves: [{ level: 0, move: "SPARK" }, { level: 6, move: "GROWL" }], evolutions: [] };
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [pikachu, raichu],
-      moves: [...catalog.moves, { ...catalog.moves[0]!, internalName: "GROWL", name: "Rugissement", pp: 40 }] };
+      moves: [...catalog.moves,
+        { ...catalog.moves[0]!, internalName: "GROWL", name: "Rugissement", pp: 40 },
+        { ...catalog.moves[0]!, internalName: "SPARK", name: "Étincelle", pp: 20 }] };
     const created = createPersistentPokemon("candy-mon", "PIKACHU", 5, creationCatalog);
     const result = useRareCandy({ RARECANDY: 5 }, { schemaVersion: 1, activeIndex: 0, members: [created] },
       created.id, 3, 6, creationCatalog);
@@ -358,8 +389,10 @@ describe("persistent player party", () => {
       evolutionCandidates: [{ species: "RAICHU", method: "Level", parameter: "6" }] });
     if (!result.ok) throw new Error("Bonbon Rare attendu.");
     expect(resolvePendingPokemonEvolution(result.party, created.id, true, creationCatalog))
-      .toMatchObject({ ok: true, previousSpecies: "PIKACHU",
-        pokemon: { species: "RAICHU", ability: "SURGE" } });
+      .toMatchObject({ ok: true, previousSpecies: "PIKACHU", learnedMoves: ["SPARK"],
+        pokemon: { species: "RAICHU", ability: "SURGE", moves: expect.arrayContaining([
+          expect.objectContaining({ internalName: "SPARK", pp: 20 }),
+        ]) } });
     expect(pokemonZLevelCap({})).toBe(17);
     expect(pokemonZLevelCap({ "88": true, "97": true })).toBe(36);
   });

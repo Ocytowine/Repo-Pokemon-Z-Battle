@@ -1708,7 +1708,13 @@ Ordre convenu :
   Dresseur et ouverture sauvage symetrique hote/invite sur la carte partagee ;
   vrai moteur double, controle par proprietaire et ciblage explicite implementes ;
   placements source, HUD types/statuts, envoi du partenaire et consensus de fuite
-  implementes ;
+  implementes ; le HUD emploie aussi les symboles d'equipe source et le genre ;
+  en local, un K.O. attend desormais le choix explicite du joueur tandis que l'IA
+  seule choisit automatiquement son remplacant, comme dans la room autoritaire ;
+  la Ball de capture retombe sur le centre du socle adverse plutot que sur un
+  decalage arbitraire lie au sprite ;
+  le Dresseur adverse revient avant son dialogue de fin et les statuts principaux
+  possedent un effet visuel generique derive des evenements autoritaires ;
   `ebWildAnimationOutdoor` et `ebTrainerAnimation3` sont portees avec leurs frames
   et `vsBall`; toutes les autres transitions source sont reportees apres la
   consolidation globale des fonctionnalites ;
@@ -2148,8 +2154,12 @@ Troisieme increment objets/capture du 2026-10-07 : les Balls et la formule de Z
 sont executees par le moteur commun en simple et double. Le protocole v14 transporte
 l'intention, puis la room valide cible sauvage, stock et proprietaire avant les
 tirages. Le reglement ne remet le Pokemon qu'au lanceur ; son client conserve les
-faits tactiques et cree les metadonnees personnelles avant insertion dans l'equipe
-ou au Ranch. Consommation et acquisition sont idempotentes apres reconnexion. Le
+faits tactiques et cree les metadonnees personnelles. Depuis le 2026-10-15, toute
+capture est d'abord conservee au Ranch, puis son proprietaire choisit le surnom et
+la destination dans un flux bloquant : Ranch, place libre dans l'equipe, ou echange
+atomique avec un des six membres. Le choix en attente est personnel et persistant ;
+il reprend apres rafraichissement ou reconnexion sans perte ni duplication.
+Consommation et acquisition sont idempotentes apres reconnexion. Le
 solo reutilise le meme noyau avec un adaptateur local. L'ancien don global de 99
 objets a ete remplace dans `Test dev` par une selection de poche, d'objet et de
 quantite, avec remise a zero confirmee par poche.
@@ -2313,8 +2323,10 @@ L'onglet Equipe affiche maintenant les six places simultanement dans une grille
 vacantes restent visibles mais non interactives ; les places occupees continuent
 d'utiliser la carte commune Equipe/Ranch et sa roue contextuelle.
 
-La finition visuelle de capture et le surnom sont reportes a la reprise des visuels.
-Capture critique/Pokedex et bonus dependants de l'heure, de la plongee, de la peche
+La finition visuelle de capture, le surnom et le choix Equipe/Ranch sont implementes.
+Le HUD sauvage remplace les symboles d'equipe adverses par `battleBoxOwned` colore
+si l'espece appartient a l'historique personnel, ou grise si elle n'a jamais ete
+capturee. Capture critique et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
 Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
 effets d'objets tenus non portes restent ouverts dans `SOLO-ITEMS-1`. Les 21

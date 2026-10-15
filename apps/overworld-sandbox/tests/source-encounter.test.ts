@@ -2,13 +2,13 @@ import { describe, expect, it } from "vitest";
 import { SeededRandom, createDoubleTeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon, type PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSourceTrainerBattle,
-  resolveAutomaticReplacements, resolveSourceEncounterAction, resolveSourceEncounterTurn,
+  resolvePlayerReplacement, resolveSourceControlledReplacements, resolveSourceEncounterAction, resolveSourceEncounterTurn,
   scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, joinedBattlePositions,
   selectSourceBattleAnimation, selectSourceBattleAudio,
   sourcePlayerBallKeyframes, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
 import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
-  sourceTrainerSpritePlacement } from "../src/source-battle-layout.js";
+  sourceEnemyBaseCenter, sourceTrainerSpritePlacement } from "../src/source-battle-layout.js";
 
 const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
   category: "Physical" as const, accuracy: 100, pp: 35, priority: 0, effectChance: 0 };
@@ -74,6 +74,7 @@ describe("source encounter bridge", () => {
     expect(sourceBattleSpritePlacement("opponent", 96, 96, 89, "double", 1)).toMatchObject({ left: 304, top: 63 });
     expect(sourceTrainerSpritePlacement("player", 160, 220)).toEqual({ left: 48, top: 164, width: 160, height: 220 });
     expect(sourceTrainerSpritePlacement("opponent", 160, 160)).toEqual({ left: 304, top: 8, width: 160, height: 160 });
+    expect(sourceEnemyBaseCenter()).toEqual({ x: 384, y: 158 });
   });
 
   it("applies the source animated-sprite scales before grounding battlers", () => {
@@ -130,7 +131,7 @@ describe("source encounter bridge", () => {
     ]);
   });
 
-  it("preserves automatic replacement events for the visual sequencer", () => {
+  it("waits for the player's explicit replacement while keeping the switch event for presentation", () => {
     let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("first", "CHESPIN", 5, catalog));
     party = addPokemonToParty(party, createPersistentPokemon("second", "CHESPIN", 5, catalog));
     const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild");
@@ -138,7 +139,11 @@ describe("source encounter bridge", () => {
       player: { ...battle.teams.player, members: battle.teams.player.members.map((member, index) =>
         index === battle.teams.player.activeIndex ? { ...member, hp: 0 } : member) } } };
 
-    const replacement = resolveAutomaticReplacements(knockedOut);
+    const waiting = resolveSourceControlledReplacements(knockedOut);
+    expect(waiting.state.teams.player.activeIndex).toBe(0);
+    expect(waiting.events).toEqual([]);
+
+    const replacement = resolvePlayerReplacement(waiting.state, 1);
 
     expect(replacement.state.teams.player.activeIndex).toBe(1);
     expect(replacement.events).toEqual([expect.objectContaining({ type: "pokemonSwitched", side: "player",

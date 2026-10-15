@@ -42,7 +42,7 @@ export interface SourceBattleOverlayCallbacks {
   readonly onItem: (itemId: string, targetTeamIndex: number, local: boolean, activeSlot: number,
     targetMoveIndex?: number) => void;
   readonly onCapture: (ballId: string, local: boolean, activeSlot: number, target?: BattlePosition) => void;
-  readonly onReplacement: (teamIndex: number, activeSlot: number) => void;
+  readonly onReplacement: (teamIndex: number, activeSlot: number, local: boolean) => void;
   readonly onForfeit: () => void;
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
@@ -146,6 +146,11 @@ export class SourceBattleOverlay {
     const activeIndices = team.activeIndices ?? [team.activeIndex];
     const controllableSlots = activeIndices.flatMap((index, slot) => model.controllableMemberIds === null
       || model.controllableMemberIds.includes(team.members[index]!.id) ? [slot] : []);
+    const replacementSlots = model.state.format === "double"
+      ? (model.state.slotReplacements ?? []).filter((position) => position.side === "player")
+        .map((position) => position.slot).filter((slot) => controllableSlots.includes(slot))
+      : model.state.replacementRequired.includes("player") ? [0] : [];
+    if (replacementSlots.length > 0 && !replacementSlots.includes(this.activeSlot)) this.activeSlot = replacementSlots[0]!;
     if (!controllableSlots.includes(this.activeSlot) || model.submittedActiveSlots.includes(this.activeSlot)) {
       this.activeSlot = controllableSlots.find((slot) => !model.submittedActiveSlots.includes(slot)) ?? controllableSlots[0] ?? 0;
     }
@@ -165,13 +170,13 @@ export class SourceBattleOverlay {
       && model.submittedActiveSlots.includes(this.activeSlot);
     const blocked = submitted || model.escapeConfirmedByMe || model.animating
       || !model.local && model.networkSide === null;
-    const replacement = !model.local && model.networkSide !== null && (model.state.replacementRequired.includes("player")
-      || model.state.slotReplacements?.some((position) => position.side === "player" && position.slot === this.activeSlot) === true);
+    const replacement = (model.local || model.networkSide !== null) && replacementSlots.includes(this.activeSlot);
     if (replacement) {
       this.menu = "pokemon";
       if (sourceBattleReplacementSubmitted(model.state, model.networkSubmittedTurn,
         model.submittedActiveSlots, this.activeSlot, this.pendingReplacement)) {
-        actions.innerHTML = '<div class="source-battle-menu source-battle-result"><p>Remplaçant choisi</p><small>En attente de la confirmation du combat…</small></div>';
+        actions.innerHTML = `<div class="source-battle-menu source-battle-result"><p>Remplaçant choisi</p><small>${model.local
+          ? "Envoi du Pokémon…" : "En attente de la confirmation du combat…"}</small></div>`;
         return;
       }
       this.renderPokemon(actions, team, model, blocked, true);
@@ -302,7 +307,7 @@ export class SourceBattleOverlay {
       button.addEventListener("click", () => {
         if (model.state === null) return;
         this.pendingReplacement = { turn: model.state.turn, activeSlot: this.activeSlot };
-        this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot);
+        this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot, model.local);
       }));
   }
 

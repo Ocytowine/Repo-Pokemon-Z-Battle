@@ -232,12 +232,14 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   `prefers-reduced-motion` raccourcit les animations sans supprimer les messages.
 - Validation : rate, immunite, peu/tres efficace, critique, statut, soin, KO avec
   et sans reserve, victoire, defaite et fuite en solo/PvP/Coop.
-- Implementation du 2026-10-06 : une file pure derive les phases visuelles des
+- Implementation du 2026-10-06, corrigee le 2026-10-15 : une file pure derive les phases visuelles des
   `TeamBattleEvent` sans recalculer le combat. Elle applique impact, PV, messages
   de critique/efficacite, statuts, KO et remplacement dans cet ordre, pour le
   chemin local comme pour les snapshots autoritaires de la room. Les remplacements
-  automatiques locaux conservent maintenant leurs evenements au lieu de sauter
-  directement au nouveau Pokemon.
+  forces conservent leurs evenements au lieu de sauter directement au nouveau
+  Pokemon. Le joueur choisit explicitement son remplacant en solo comme dans la
+  room autoritaire ; seuls les combattants sans proprietaire, donc l'IA, sont
+  remplaces automatiquement.
 - Accessibilite : les animations suivent `prefers-reduced-motion`, mais les textes
   gardent un delai lisible et peuvent etre avances par clic, Entree ou Espace. La
   boite de combat est annoncee comme statut accessible. La transition d'entree

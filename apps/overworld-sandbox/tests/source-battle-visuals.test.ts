@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG,
   type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { sourceCaptureBallIndex, sourceExperienceHudSlot,
-  sourceHealthAnimationDuration } from "../src/source-battle-visuals.js";
+import { sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
+  sourceHealthAnimationDuration, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
 
 function battler(id: string): BattlerState {
   return { id, species: id, name: id, level: 5, types: ["NORMAL"], hp: 20,
@@ -26,6 +26,21 @@ describe("source capture ball", () => {
     expect(sourceCaptureBallIndex("QUICKBALL")).toBe(14);
     expect(sourceCaptureBallIndex("ULTRABALLCASERA")).toBe(27);
     expect(sourceCaptureBallIndex("UNKNOWN")).toBe(0);
+  });
+
+  it("uses the source HUD ball states and displays the Pokemon gender", () => {
+    expect(sourceBattleTeamBallPath(battler("ready"))).toBe("Graphics/Pictures/ballnormal.png");
+    expect(sourceBattleTeamBallPath({ ...battler("status"), majorStatus: { kind: "poison", counter: 0 } }))
+      .toBe("Graphics/Pictures/ballstatus.PNG");
+    expect(sourceBattleTeamBallPath({ ...battler("fainted"), hp: 0 })).toBe("Graphics/Pictures/ballfainted.png");
+    expect(sourceBattleGenderSymbol("male")).toBe("♂");
+    expect(sourceBattleGenderSymbol("female")).toBe("♀");
+    expect(sourceBattleGenderSymbol("genderless")).toBe("");
+  });
+
+  it("derives the wild caught marker only from the viewer's personal Pokedex", () => {
+    expect(sourceWildPokemonCaught("FENNEKIN", ["FENNEKIN", "SCATTERBUG"])).toBe(true);
+    expect(sourceWildPokemonCaught("BUNNELBY", ["FENNEKIN", "SCATTERBUG"])).toBe(false);
   });
 });
 

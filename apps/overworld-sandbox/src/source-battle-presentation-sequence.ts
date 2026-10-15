@@ -4,6 +4,9 @@ export interface SourceBattlePresentationOptions {
   readonly abilityName?: (internalName: string) => string;
 }
 
+export type SourceBattleStatusVisual = "burn" | "caduco" | "confusion" | "cured" | "flinch" | "frozen"
+  | "hemorrhage" | "paralysis" | "poison" | "sleep" | "stat-down" | "stat-up";
+
 export type SourceBattlePresentationStep =
   | { readonly kind: "action"; readonly side: BattleSide; readonly move: string;
       readonly message: string; readonly state: TeamBattleState }
@@ -11,7 +14,9 @@ export type SourceBattlePresentationStep =
       readonly state: TeamBattleState }
   | { readonly kind: "health"; readonly side: BattleSide; readonly from: number; readonly to: number;
       readonly message: string; readonly state: TeamBattleState }
-  | { readonly kind: "message" | "status"; readonly message: string; readonly state: TeamBattleState }
+  | { readonly kind: "message"; readonly message: string; readonly state: TeamBattleState }
+  | { readonly kind: "status"; readonly message: string; readonly state: TeamBattleState;
+      readonly side?: BattleSide; readonly visual?: SourceBattleStatusVisual }
   | { readonly kind: "faint"; readonly side: BattleSide; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "replacement"; readonly side: BattleSide; readonly message: string;
       readonly state: TeamBattleState }
@@ -89,8 +94,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
   options: SourceBattlePresentationOptions = {}): readonly SourceBattlePresentationStep[] {
   let state = before;
   const steps: SourceBattlePresentationStep[] = [];
-  const message = (value: string, kind: "message" | "status" = "message"): void => {
-    steps.push({ kind, message: value, state });
+  const message = (value: string, kind: "message" | "status" = "message",
+    visual?: { readonly side: BattleSide; readonly effect: SourceBattleStatusVisual }): void => {
+    if (kind === "status") {
+      steps.push({ kind, message: value, state,
+        ...(visual === undefined ? {} : { side: visual.side, visual: visual.effect }) });
+    } else {
+      steps.push({ kind, message: value, state });
+    }
   };
   const health = (side: BattleSide, hp: number, value: string): void => {
     const current = state.teams[side].members[state.teams[side].activeIndex]?.hp ?? hp;
@@ -146,15 +157,18 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       const label = event.effect === "reflect" ? "Reflet" : event.effect === "lucky-chant" ? "Air Veinard" : "Tourniquet";
       message(event.turns > 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
     } else if (event.type === "statusApplied") {
-      message(`${activeName(state, event.target)} subit ${STATUS_NAMES[event.status]}.`, "status");
+      message(`${activeName(state, event.target)} subit ${STATUS_NAMES[event.status]}.`, "status",
+        { side: event.target, effect: event.status });
     } else if (event.type === "statusApplicationFailed") {
       message(event.reason === "already-status"
         ? `${activeName(state, event.target)} a déjà un problème de statut.`
         : `${activeName(state, event.target)} est immunisé contre ${STATUS_NAMES[event.status]}.`, "status");
     } else if (event.type === "statusContinued") {
-      message(`${activeName(state, event.side)} est affecté par ${STATUS_NAMES[event.status]}.`, "status");
+      message(`${activeName(state, event.side)} est affecté par ${STATUS_NAMES[event.status]}.`, "status",
+        { side: event.side, effect: event.status });
     } else if (event.type === "statusCured") {
-      message(`${activeName(state, event.side)} n'est plus affecté par ${STATUS_NAMES[event.status]}.`, "status");
+      message(`${activeName(state, event.side)} n'est plus affecté par ${STATUS_NAMES[event.status]}.`, "status",
+        { side: event.side, effect: "cured" });
     } else if (event.type === "statusDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${STATUS_NAMES[event.status]} et perd ${event.amount} PV.`);
     } else if (event.type === "volatileApplied") {
@@ -171,7 +185,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                         : event.effect === "endure" ? `${name} se prépare à tenir le coup.`
                           : event.effect === "rage" ? `${name} entre en rage.`
                             : `${name} est pris au piège par ${event.move ?? "l'attaque"}.`;
-      message(text, "status");
+      message(text, "status", event.effect === "confusion" || event.effect === "flinch"
+        ? { side: event.target, effect: event.effect } : undefined);
     } else if (event.type === "volatileEnded") {
       const text = event.effect === "confusion" ? `${activeName(state, event.side)} n'est plus confus.`
         : event.effect === "disable" ? `${activeName(state, event.side)} peut de nouveau utiliser toutes ses capacités.`
@@ -223,7 +238,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
           : `Le talent ${ability} de ${pokemon} s'active !`;
       message(text, "status");
     } else if (event.type === "statStageChanged") {
-      message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ${event.delta > 0 ? "augmente" : "baisse"}.`, "status");
+      message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ${event.delta > 0 ? "augmente" : "baisse"}.`, "status",
+        { side: event.target, effect: event.delta > 0 ? "stat-up" : "stat-down" });
     } else if (event.type === "statStageChangeFailed") {
       message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ne peut plus changer.`, "status");
     } else if (event.type === "actionSkipped") {
@@ -236,7 +252,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
             : event.reason === "item-blocked" ? "est bloqué par son objet"
               : event.reason === "taunted" ? "est provoqué et ne peut pas utiliser cette capacité"
               : "est K.O.";
-      message(`${activeName(state, event.side)} ${reason}.`, "status");
+      const visual = event.reason === "sleep" || event.reason === "paralysis" || event.reason === "confusion"
+        || event.reason === "flinch" ? event.reason : null;
+      message(`${activeName(state, event.side)} ${reason}.`, "status",
+        visual === null ? undefined : { side: event.side, effect: visual });
     } else if (event.type === "fainted") {
       state = withActiveHp(state, event.side, 0);
       steps.push({ kind: "faint", side: event.side,

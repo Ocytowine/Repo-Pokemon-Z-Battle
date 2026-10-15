@@ -15,6 +15,7 @@ import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   isPokemonEvolutionItem, learnPendingPokemonMove, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
   recalculatePersistentPokemonStats,
   recalculatePlayerPokemonCollection, resolvePendingPokemonEvolution,
+  nicknameOwnedPokemon, placeCapturedPokemon,
   releaseStoredPokemon, reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
   usePokemonEvolutionItem, useRareCandy,
   teachPokemonMachineMove,
@@ -83,6 +84,7 @@ import { advanceSourceEggIncubation, completeSourceEggHatch, sourcePendingHatch 
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
 import { SourceProgressionView } from "./source-progression-view.js";
+import { SourceCaptureResolutionView } from "./source-capture-resolution-view.js";
 import { networkBattleEventsForViewer, networkBattleForViewer, networkBattleTrainerIds, networkDuelTrainerIds }
   from "./network-battle-presentation.js";
 import { loadInitialSourceWorld, loadSourceTransfer, loadSourceWorldAt,
@@ -124,6 +126,7 @@ import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
+const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
 const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
 
@@ -170,6 +173,7 @@ if (launchSourceEventState !== sourceEventState) {
 let sourceNewGameActive = !sourceAdventureSaveExists(localStorage);
 const sourceProgressionQueue: string[] = [];
 let activeSourceProgressionPokemonId: string | null = null;
+let sourceCaptureCompletionResolver: (() => void) | null = null;
 const sourceDialogues = new SourceDialogueController();
 const sourceNpcMotions = new SourceNpcMotionController();
 let pendingSourceNpcContact: SourceNpcEventContact | null = null;
@@ -1036,6 +1040,18 @@ const sourceProgressionView = new SourceProgressionView({
     maybeStartSourceProgression();
   },
 });
+const sourceCaptureResolutionView = new SourceCaptureResolutionView({
+  onNickname: nicknameSourceCapturedPokemon,
+  onPlacement: placeSourceCapturedPokemon,
+  onComplete: () => {
+    localStorage.removeItem(SOURCE_PENDING_CAPTURE_KEY);
+    importedNotice = "Capture rangée avec succès.";
+    const resolve = sourceCaptureCompletionResolver;
+    sourceCaptureCompletionResolver = null;
+    resolve?.();
+    renderImportedView();
+  },
+});
 const sourceEggHatchView = new SourceEggHatchView(completeCurrentSourceEggHatch, {
   onSceneAudioStart: () => sourcePresentation.pauseWorldAudio(),
   onSceneAudioEnd: () => sourcePresentation.resumeWorldAudio(),
@@ -1087,6 +1103,7 @@ const sourceBattleVisuals = new SourceBattleVisuals({
   onBattleAudioEnd: () => sourcePresentation.resumeAfterBattle(),
   abilityName: (internalName) => importedAssets?.battleCatalog.abilities
     .find((ability) => ability.internalName === internalName)?.name ?? internalName,
+  caughtSpecies: () => sourceEventState.pokedex.caughtSpecies,
 });
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
   console.warn(`[player-profile] ${error instanceof Error ? error.message : "profil indisponible"}`);
@@ -1114,6 +1131,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     sourceEventState = recordSourcePokedexSeen(sourceEventState, species);
     persistSourceEventState();
   },
+  onPokemonCaptured: queueSourceCaptureResolution,
   setNotice: (notice) => { importedNotice = notice; },
   battleReports: sourceBattleReports,
   render,
@@ -1196,7 +1214,10 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     else multiplayer.submitBattleAction({ kind: "capture", ballId,
       ...(target === undefined ? {} : { target }) }, activeSlot);
   },
-  onReplacement: (teamIndex, activeSlot) => { multiplayer.submitBattleReplacement(teamIndex, activeSlot); },
+  onReplacement: (teamIndex, activeSlot, local) => {
+    if (local) void sourceBattles.replacePokemon(teamIndex, activeSlot);
+    else multiplayer.submitBattleReplacement(teamIndex, activeSlot);
+  },
   onForfeit: () => { multiplayer.forfeitBattle(); },
   onLeave: () => { multiplayer.leaveBattle(); },
   onEscape: (local) => {
@@ -1304,6 +1325,7 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
           ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId), new Date().getHours());
     sourceEventState = result.state;
     persistSourceEventState();
+    if (result.applied && result.capturedPokemonId !== null) void queueSourceCaptureResolution(result.capturedPokemonId);
     if (result.applied) enqueueAllSourceProgressions();
     const reportExperiences = sharedBattleExperiencePresentations(previousParty, result.state.party,
       result.gains, assets.battleCatalog);
@@ -1317,8 +1339,6 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
         name: settlement.capturedPokemon?.battler.name
           ?? settlement.state.teams.opponent.members[settlement.state.teams.opponent.activeIndex]?.name
           ?? "Le Pokémon sauvage",
-        ...(settlement.capturedPokemon === undefined ? {} : {
-          destination: previousParty.members.length < 6 ? "team" as const : "ranch" as const }),
       } }),
     };
     if (result.applied) networkBattleOutcomes.set(settlement.battleId, reportOutcome);
@@ -1879,6 +1899,7 @@ function sourceSceneActivity(): SourceSceneActivity {
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
     transition: sourceTransitionInProgress || sourceProgressionView.open || sourceEggHatchView.open
+      || sourceCaptureResolutionView.open
       || sourceFishingView.open,
     sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
@@ -2855,8 +2876,87 @@ function enqueueAllSourceProgressions(): void {
   for (const pokemon of sourceEventState.party.members) enqueueSourceProgression(pokemon.id);
 }
 
+function queuedSourceCaptureId(): string | null {
+  const raw = localStorage.getItem(SOURCE_PENDING_CAPTURE_KEY);
+  if (raw === null) return null;
+  try {
+    const value = JSON.parse(raw) as { readonly schemaVersion?: unknown; readonly pokemonId?: unknown };
+    if (value.schemaVersion !== 1 || typeof value.pokemonId !== "string" || value.pokemonId.length === 0) {
+      localStorage.removeItem(SOURCE_PENDING_CAPTURE_KEY);
+      return null;
+    }
+    const exists = [...sourceEventState.party.members, ...sourceEventState.ranch.members]
+      .some((pokemon) => pokemon.id === value.pokemonId);
+    if (!exists) { localStorage.removeItem(SOURCE_PENDING_CAPTURE_KEY); return null; }
+    return value.pokemonId;
+  } catch {
+    localStorage.removeItem(SOURCE_PENDING_CAPTURE_KEY);
+    return null;
+  }
+}
+
+function queueSourceCaptureResolution(pokemonId: string): Promise<void> {
+  sourceEventState = reconcileSourcePokedex(sourceEventState);
+  persistSourceEventState();
+  localStorage.setItem(SOURCE_PENDING_CAPTURE_KEY, JSON.stringify({ schemaVersion: 1, pokemonId }));
+  renderImportedView();
+  return new Promise<void>((resolve) => { sourceCaptureCompletionResolver = resolve; });
+}
+
+function nicknameSourceCapturedPokemon(pokemonId: string, nickname: string | null): {
+  readonly ok: boolean; readonly message: string; readonly eventState: SourceEventState } {
+  try {
+    const result = nicknameOwnedPokemon(sourceEventState.party, sourceEventState.ranch, pokemonId, nickname);
+    sourceEventState = reconcileSourcePokedex({ ...sourceEventState, party: result.party, ranch: result.storage });
+    persistSourceEventState();
+    const pokemon = [...result.party.members, ...result.storage.members].find((entry) => entry.id === pokemonId)!;
+    const speciesName = importedAssets?.battleCatalog.pokemon.find((entry) => entry.internalName === pokemon.species)?.name
+      ?? pokemon.species;
+    return { ok: true, message: pokemon.nickname === null ? `${speciesName} conserve son nom.`
+      : `Il s'appelle maintenant ${pokemon.nickname}.`, eventState: sourceEventState };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Surnom impossible.",
+      eventState: sourceEventState };
+  }
+}
+
+function placeSourceCapturedPokemon(pokemonId: string, destination: "team" | "ranch",
+  exchangePartyPokemonId?: string): {
+  readonly ok: boolean; readonly message: string; readonly eventState: SourceEventState } {
+  try {
+    const result = placeCapturedPokemon(sourceEventState.party, sourceEventState.ranch, pokemonId,
+      destination, exchangePartyPokemonId);
+    sourceEventState = reconcileSourcePokedex({ ...sourceEventState, party: result.party, ranch: result.storage });
+    persistSourceEventState();
+    localStorage.removeItem(SOURCE_PENDING_CAPTURE_KEY);
+    enqueueAllSourceProgressions();
+    const pokemonName = result.pokemon.nickname ?? importedAssets?.battleCatalog.pokemon
+      .find((entry) => entry.internalName === result.pokemon.species)?.name ?? result.pokemon.species;
+    const message = destination === "ranch" ? `${pokemonName} rejoint le Ranch.`
+      : result.exchangedPokemon === null ? `${pokemonName} rejoint votre équipe.`
+        : `${pokemonName} rejoint votre équipe. À bientôt, ${result.exchangedPokemon.nickname
+          ?? importedAssets?.battleCatalog.pokemon.find((entry) => entry.internalName === result.exchangedPokemon?.species)?.name
+          ?? result.exchangedPokemon.species} ! Le Pokémon rejoint le Ranch.`;
+    return { ok: true, message, eventState: sourceEventState };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Rangement impossible.",
+      eventState: sourceEventState };
+  }
+}
+
+function maybeStartSourceCaptureResolution(): void {
+  if (sourceCaptureResolutionView.open || importedAssets === null) return;
+  const activity = sourceSceneActivity();
+  if (activity.battle || sourceTransitionInProgress || sourceEggHatchView.open || sourceProgressionView.open) return;
+  const pokemonId = queuedSourceCaptureId();
+  if (pokemonId === null) return;
+  sourceCaptureResolutionView.show({ pokemonId, eventState: sourceEventState,
+    catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+}
+
 function maybeStartSourceProgression(): void {
-  if (sourceProgressionView.open || sourceEggHatchView.open || importedAssets === null) return;
+  if (sourceProgressionView.open || sourceEggHatchView.open || sourceCaptureResolutionView.open
+    || queuedSourceCaptureId() !== null || importedAssets === null) return;
   const activity = sourceSceneActivity();
   if (activity.battle || activity.transition) return;
   while (sourceProgressionQueue.length > 0) {
@@ -3051,6 +3151,7 @@ function renderImportedView(): void {
   renderSourcePokemonSummary();
   publishCurrentSourceActors();
   publishCurrentSourceScene();
+  maybeStartSourceCaptureResolution();
   maybeStartSourceHatch();
   maybeStartSourceProgression();
 }
@@ -3970,7 +4071,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
   renderSourceMenu();
 }));
 const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-day-care-eggs", "#source-incubator", "#source-egg-hatch", "#source-pokemon-summary",
-  "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
+  "#source-new-game", "#source-progression", "#source-capture-resolution", "#player-duel-prompt", "#battle-join-prompt",
   "#source-compass", "#source-compass-toggle", "#source-fishing-shortcut", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;

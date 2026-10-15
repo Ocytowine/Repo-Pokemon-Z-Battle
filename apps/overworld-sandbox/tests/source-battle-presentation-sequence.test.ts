@@ -142,7 +142,22 @@ describe("source battle presentation sequence", () => {
       { type: "battleEnded", winner: "opponent" },
     ]);
     expect(sequence.map((step) => step.kind)).toEqual(["status", "health", "faint"]);
+    expect(sequence[0]).toMatchObject({ kind: "status", side: "player", visual: "poison" });
     expect(sequence[1]).toMatchObject({ to: 0, state: { teams: { player: { members: [{ hp: 0 }] } } } });
+  });
+
+  it("carries status and volatile visual cues without recalculating gameplay", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "statusApplied", source: "player", target: "opponent", status: "paralysis" },
+      { type: "volatileApplied", source: "opponent", target: "player", effect: "confusion", turns: 3 },
+      { type: "statStageChanged", source: "player", target: "player", stat: "attack", delta: 1, stage: 1 },
+    ]);
+    expect(sequence).toEqual([
+      expect.objectContaining({ kind: "status", side: "opponent", visual: "paralysis" }),
+      expect.objectContaining({ kind: "status", side: "player", visual: "confusion" }),
+      expect.objectContaining({ kind: "status", side: "player", visual: "stat-up" }),
+    ]);
   });
 
   it("presents authoritative PP and temporary stage item effects", () => {

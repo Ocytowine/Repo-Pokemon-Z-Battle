@@ -1,11 +1,11 @@
 import { activeBattlePositions, activeTeamIndices, chooseSourceBattleAction, closeSharedBattleSession,
   createSharedBattleLedger, createSharedBattleSession, recordSharedBattleTurn,
-  replaceFaintedDoublePokemon, resolveDoubleTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
+  resolveDoubleTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
   settleSharedBattleSession, type BattlePosition, type BattleSide, type DoubleBattleEvent,
   type PositionedTeamBattleAction, type SharedBattleLedger, type SharedBattleParticipation,
   type SharedBattleSession, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
+import { addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
   storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
   type PokemonZExperienceCalculation, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleContext, SourceBattleSettlementOutcome } from "@pokemon-z-battle/multiplayer-protocol";
@@ -13,7 +13,8 @@ import {
   attemptSourceEncounterEscape,
   createSourceEncounterBattle,
   createSourceTrainerBattle,
-  resolveAutomaticReplacements,
+  resolvePlayerReplacement,
+  resolveSourceControlledReplacements,
   resolveSourceEncounterAction,
   settleSourceEncounter,
   settleSourceTrainerBattle,
@@ -133,6 +134,8 @@ export interface SourceBattleCallbacks {
   readonly recordPokedexSeen?: (species: readonly string[]) => void;
   readonly render: () => void;
   readonly battleReports?: SourceBattleReportStore;
+  /** Owner-local presentation state; the captured Pokemon is already durable in the Ranch. */
+  readonly onPokemonCaptured?: (pokemonId: string) => Promise<void> | void;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
     readonly playerTeam: TeamBattleState["teams"]["player"];
     readonly opponentTeam: TeamBattleState["teams"]["opponent"] }) => boolean;
@@ -341,7 +344,7 @@ export class SourceBattleController {
         encounterCompletion?.(false);
       } else {
         await this.presentation.playTurn(before, result.turn.events);
-        const replacements = resolveAutomaticReplacements(result.turn.state);
+        const replacements = resolveSourceControlledReplacements(result.turn.state);
         if (replacements.events.length > 0) {
           await this.presentation.playTurn(result.turn.state, replacements.events);
         }
@@ -432,6 +435,30 @@ export class SourceBattleController {
     await this.submitTurnAction({ kind: "capture", ballId, ...(target === undefined ? {} : { target }) }, activeSlot);
   }
 
+  public async replacePokemon(teamIndex: number, activeSlot = 0): Promise<void> {
+    if (this.battle === null || this.resolving) return;
+    this.resolving = true;
+    this.callbacks.render();
+    try {
+      const before = this.battle;
+      const replacement = resolvePlayerReplacement(before, teamIndex, activeSlot);
+      await this.presentation.playTurn(before, replacement.events);
+      this.battle = replacement.state;
+      this.recordLocalTurn(before, replacement.state, replacement.events);
+      if (this.localSession !== null) {
+        this.callbacks.battleReports?.recordTurn({ battleId: this.localSession.battleId, kind: "replacement",
+          before, after: replacement.state, events: replacement.events, trace: [] });
+      }
+      this.callbacks.setNotice("Remplaçant envoyé au combat.");
+    } catch (error) {
+      this.callbacks.setNotice(error instanceof Error ? `Remplacement impossible : ${error.message}`
+        : "Remplacement impossible.");
+    } finally {
+      this.resolving = false;
+      this.callbacks.render();
+    }
+  }
+
   public get pendingDoubleSlots(): readonly number[] {
     return this.localDoubleActions.map((entry) => entry.actor.slot);
   }
@@ -503,24 +530,9 @@ export class SourceBattleController {
       }
       this.localDoubleActions = [];
       await this.presentation.playTurn(before, result.events);
-      let replacementState = result.state;
-      const replacementEvents: TeamBattleEvent[] = [];
-      if (result.state.format === "double") {
-        for (const position of [...(replacementState.slotReplacements ?? [])]) {
-          const team = replacementState.teams[position.side];
-          const active = activeTeamIndices(team);
-          const next = team.members.findIndex((member, index) => member.hp > 0 && !active.includes(index));
-          if (next < 0) continue;
-          const fromIndex = active[position.slot]!;
-          replacementEvents.push({ type: "pokemonSwitched", side: position.side, fromIndex, toIndex: next,
-            from: team.members[fromIndex]!.id, to: team.members[next]!.id, reason: "replacement" });
-          replacementState = replaceFaintedDoublePokemon(replacementState, position, next);
-        }
-      } else {
-        const replacements = resolveAutomaticReplacements(result.state);
-        replacementState = replacements.state;
-        replacementEvents.push(...replacements.events);
-      }
+      const replacements = resolveSourceControlledReplacements(result.state);
+      const replacementState = replacements.state;
+      const replacementEvents = replacements.events;
       if (replacementEvents.length > 0) await this.presentation.playTurn(result.state, replacementEvents);
       this.battle = replacementState;
       this.recordLocalTurn(before, replacementState, [...result.events, ...replacementEvents]);
@@ -550,15 +562,13 @@ export class SourceBattleController {
               shiny: target.appearance?.shiny ?? pokemon.metadata.shiny,
               gender: target.appearance?.gender ?? pokemon.metadata.gender } };
           const party = storeProjectedBattleTeam(eventState.party, before.teams.player);
-          const destination = party.members.length < 6 ? "team" as const : "ranch" as const;
-          const capturedState = destination === "team"
-            ? { ...eventState, party: addPokemonToParty(party, pokemon) }
-            : { ...eventState, party, ranch: addPokemonToStorage(eventState.ranch, pokemon) };
+          const capturedState = { ...eventState, party,
+            ranch: addPokemonToStorage(eventState.ranch, pokemon) };
           const nextState = completePendingEncounter(capturedState);
           const encounterCompletion = this.encounterCompletion;
           const battleId = this.localSession?.battleId;
           this.closeFinishedLocalSession(this.battle);
-          const outcome: SourceBattleOutcome = { captured: { name: target.name, destination },
+          const outcome: SourceBattleOutcome = { captured: { name: target.name },
             experienceNotAwardedReason: "capture" };
           await this.presentation.endBattle("player", outcome);
           this.callbacks.updateEventState(nextState);
@@ -568,7 +578,8 @@ export class SourceBattleController {
             this.callbacks.battleReports?.finish(battleId, this.battle, "captured");
           }
           this.clear();
-          this.callbacks.setNotice(`${target.name} capturé · envoyé ${destination === "team" ? "dans l'équipe" : "au Ranch"}.`);
+          this.callbacks.setNotice(`${target.name} capturé · choisissez son surnom et sa destination.`);
+          await this.callbacks.onPokemonCaptured?.(pokemon.id);
           encounterCompletion?.(true);
           return;
         }

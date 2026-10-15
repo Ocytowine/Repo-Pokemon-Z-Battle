@@ -48,7 +48,7 @@ describe("shared source battle settlement", () => {
     expect(applied.gains[0]).toMatchObject({ recipientMemberId: "host-mon", gained: 113 });
     expect(applied.state.party.members[0]?.metadata).toEqual({ ...pokemon.metadata, happiness: 60 });
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog))
-      .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0 });
+      .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null });
   });
 
   it("adds a captured Pokemon only to its owner and consumes the Ball idempotently", () => {
@@ -76,8 +76,9 @@ describe("shared source battle settlement", () => {
       origin: { method: "encounter" as const, mapId: 3, receivedAt: "2026-10-07T12:00:00.000Z", ball: "MASTERBALL" } };
     const applied = applySourceBattleSettlement(initial, settlement, "host", catalog, context);
     expect(applied.state.inventory).toEqual({});
-    expect(applied.state.party.members).toHaveLength(2);
-    expect(applied.state.party.members[1]).toMatchObject({ species: "PIKACHU", hp: 3,
+    expect(applied.state.party.members).toHaveLength(1);
+    expect(applied.state.ranch.members).toHaveLength(1);
+    expect(applied.state.ranch.members[0]).toMatchObject({ id: applied.capturedPokemonId, species: "PIKACHU", hp: 3,
       majorStatus: { kind: "sleep" }, metadata: { owner: { trainerId: 123 }, origin: { ball: "MASTERBALL" } } });
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog, context).applied).toBe(false);
   });

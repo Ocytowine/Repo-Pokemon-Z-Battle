@@ -2,6 +2,11 @@ import type { BattleSide } from "@pokemon-z-battle/battle-engine";
 
 export const SOURCE_BATTLE_VIEWPORT = { width: 512, height: 384 } as const;
 
+// Boite CSS de `enemybase*.png` dans le repere source. L'image est rendue avec
+// object-fit: contain, donc son centre reste celui de cette boite quelle que soit
+// la variante de decor chargee.
+const SOURCE_ENEMY_BASE_BOUNDS = { left: 248, top: 94, width: 272, height: 128 } as const;
+
 // Valeurs du jeu source (PokeBattle_SceneConstants + SpriteAutoAlign).
 const SINGLE_BATTLER_ORIGINS: Record<BattleSide, { readonly centerX: number; readonly groundY: number }> = {
   player: { centerX: 128, groundY: 320 }, // PLAYERBATTLER_Y (304) + BATTLE_PLAYER_OFFSET (16)
@@ -90,4 +95,11 @@ export function sourceBattleSpritePlacement(side: BattleSide, frameWidth: number
 export function sourceBattlePercent(value: number, axis: "x" | "y"): string {
   const extent = axis === "x" ? SOURCE_BATTLE_VIEWPORT.width : SOURCE_BATTLE_VIEWPORT.height;
   return `${(value / extent) * 100}%`;
+}
+
+export function sourceEnemyBaseCenter(): { readonly x: number; readonly y: number } {
+  return {
+    x: SOURCE_ENEMY_BASE_BOUNDS.left + SOURCE_ENEMY_BASE_BOUNDS.width / 2,
+    y: SOURCE_ENEMY_BASE_BOUNDS.top + SOURCE_ENEMY_BASE_BOUNDS.height / 2,
+  };
 }

@@ -1,4 +1,4 @@
-import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, createPersistentPokemon,
+import { addPokemonToStorage, applySharedBattleExperience, createPersistentPokemon,
   healPlayerParty, storeOwnedBattleResults, type PlayerCreationCatalog, type PokemonCreationContext,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
@@ -10,6 +10,8 @@ export interface AppliedSourceBattleSettlement {
   readonly applied: boolean;
   readonly gains: readonly SharedBattleExperienceGain[];
   readonly moneyDelta: number;
+  /** Personal capture staged in the Ranch until its owner completes the post-capture flow. */
+  readonly capturedPokemonId: string | null;
 }
 
 const SETTLEMENT_JOURNAL_LIMIT = 128;
@@ -22,13 +24,14 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
     throw new Error("Le règlement de combat appartient à un autre joueur.");
   }
   if (state.appliedBattleSettlementIds.includes(settlement.settlementId)) {
-    return { state, applied: false, gains: [], moneyDelta: 0 };
+    return { state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null };
   }
   let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId);
   const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
     evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
   let next = { ...state, party };
+  let capturedPokemonId: string | null = null;
   if (settlement.capturedPokemon !== undefined) {
     if (captureContext === undefined) throw new Error("Contexte personnel de capture absent.");
     const captured = settlement.capturedPokemon;
@@ -43,9 +46,8 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
         form: source.appearance?.form ?? pokemon.metadata.form,
         shiny: source.appearance?.shiny ?? pokemon.metadata.shiny,
         gender: source.appearance?.gender ?? pokemon.metadata.gender } };
-    next = next.party.members.length < 6
-      ? { ...next, party: addPokemonToParty(next.party, pokemon) }
-      : { ...next, ranch: addPokemonToStorage(next.ranch, pokemon) };
+    next = { ...next, ranch: addPokemonToStorage(next.ranch, pokemon) };
+    capturedPokemonId = pokemon.id;
   }
   const previousMoney = next.money;
   if (settlement.money.kind === "fixed") next = addSourceMoney(next, settlement.money.amount);
@@ -72,5 +74,6 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   const appliedBattleSettlementIds = [...next.appliedBattleSettlementIds, settlement.settlementId]
     .slice(-SETTLEMENT_JOURNAL_LIMIT);
   next = { ...next, inventory, appliedBattleSettlementIds };
-  return { state: next, applied: true, gains: experience.gains, moneyDelta: next.money - previousMoney };
+  return { state: next, applied: true, gains: experience.gains,
+    moneyDelta: next.money - previousMoney, capturedPokemonId };
 }
