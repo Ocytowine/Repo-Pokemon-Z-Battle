@@ -41,6 +41,33 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 }
 .source-compass-toggle img { width: 34px; height: 34px; object-fit: contain; image-rendering: pixelated; }
 .source-compass-toggle span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.source-fishing-shortcut {
+  position: absolute;
+  z-index: 7;
+  top: 10px;
+  right: 60px;
+  display: grid;
+  width: 42px;
+  height: 42px;
+  padding: 4px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid #f8de8faa;
+  border-radius: 50%;
+  background: linear-gradient(145deg, #fff7dfee, #e9b75ddd 49%, #694221ee 50%);
+  box-shadow: inset 0 0 0 2px #57331399, 0 3px 9px #00111f99;
+  cursor: pointer;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.source-fishing-shortcut[data-alone="true"] { right: 10px; }
+.source-fishing-shortcut[hidden] { display: none; }
+.source-fishing-shortcut:hover, .source-fishing-shortcut:focus-visible {
+  outline: none;
+  filter: brightness(1.12);
+  transform: translateY(-1px) scale(1.04);
+}
+.source-fishing-shortcut img { width: 33px; height: 33px; object-fit: contain; image-rendering: pixelated; }
+.source-fishing-shortcut span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .source-compass {
   position: absolute;
   z-index: 7;
@@ -352,6 +379,18 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 @keyframes source-transformation-overlay { from { opacity: .45; } to { opacity: .88; } }
 
 #source-egg-hatch { position: absolute; z-index: 41; inset: 0; }
+
+#source-fishing { position: absolute; z-index: 35; inset: 0; pointer-events: none; }
+.source-fishing-prompt { position: absolute; left: 5%; right: 5%; bottom: 4%; min-height: 62px;
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px 14px; padding: 12px 16px;
+  color: #f7fbff; background: linear-gradient(180deg, rgb(9 39 68 / 96%), rgb(4 22 42 / 98%));
+  border: 2px solid #8dd9ff; border-radius: 12px; box-shadow: 0 4px 18px rgb(0 0 0 / 45%); pointer-events: auto; }
+.source-fishing-prompt strong { font-size: clamp(16px, 3.8vw, 23px); }
+.source-fishing-prompt small { grid-column: 1; color: #c9eaff; }
+.source-fishing-prompt button { grid-column: 2; grid-row: 1 / span 2; min-width: 112px; min-height: 44px;
+  color: #082239; background: #a9e8ff; border: 0; border-radius: 22px; font-weight: 800; }
+.source-fishing-prompt[data-phase="bite"] { animation: source-fishing-bite 180ms ease-out 2; }
+@keyframes source-fishing-bite { 50% { transform: translateY(-4px); filter: brightness(1.3); } }
 .source-hatch-stage { position: relative; width: 100%; height: 100%; aspect-ratio: 4 / 3; overflow: hidden; color: #172230; background: #0b4168; }
 .source-hatch-visual { position: absolute; z-index: 3; top: 7%; right: 5%; bottom: 27%; left: 5%; display: grid; place-items: center; }
 .source-hatch-egg { position: relative; display: block; width: clamp(120px, 32%, 180px); aspect-ratio: 1; background: url("/__pokemon-z/source/Graphics/Battlers/egg.png") center/contain no-repeat; image-rendering: pixelated; transform-origin: 50% 90%; }

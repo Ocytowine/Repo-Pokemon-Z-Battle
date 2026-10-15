@@ -519,10 +519,18 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-FIELD-ENCOUNTERS-1 — Peche, Eclate-Roc et DexNav
 
-- Priorite/statut : `P1` / `A qualifier` apres capture.
+- Priorite/statut : `P1` / pêche et rencontres visibles errantes réalisées le 2026-10-15 ; Éclate-Roc et DexNav restent à qualifier.
 - Couvre les tables et conditions autres que la marche terrestre, puis le DexNav
   comme interface personnelle de consultation/selection des rencontres connues.
 - L'autorite du tirage suit le combat : adaptateur local en solo, room en Coop.
+- Les données extraites de Z 2.12 FR ne contiennent actuellement que les méthodes
+  `Land` et `OldRod`. `GoodRod` et `SuperRod` réutilisent donc la table d'espèces
+  `OldRod` avec leurs probabilités de morsure propres ; `Cave` reste acceptée par
+  le noyau sans produire de rencontre en l'absence de table. Les Pokémon visibles des grottes sont des événements mobiles qui
+  appellent `pbEncounter(EncounterTypes::Land)`, puis s'effacent jusqu'au prochain
+  chargement de la carte ; ils ne constituent pas une table `Cave` implicite.
+- Le raccourci tactile contextuel de pêche et la canne favorite personnelle sont
+  réalisés ; leur visibilité dépend de la case d'eau réellement regardée.
 
 ### SOLO-MOVE-SERVICES-1 — Apprentissage et Maître des capacites
 

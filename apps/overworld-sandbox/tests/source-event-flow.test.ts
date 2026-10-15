@@ -212,6 +212,19 @@ describe("source event choice and condition flow", () => {
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["add-pokemon", "set-follower", "request-encounter"]);
   });
 
+  it("ports visible roaming encounters from the current map table", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbEncounter(EncounterTypes::Land)" }),
+      command("erase-event", 0),
+    ]), [], createSourceEventState(), 136, 22);
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "request-random-encounter",
+        data: expect.objectContaining({ method: "Land", policy: "HOST_ONLY" }) }),
+      expect.objectContaining({ kind: "erase-event" }),
+    ]);
+  });
+
   it("ports every source Pokemon Center PC to the personal Ranch", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "pbPokeCenterPC" }),

@@ -1,5 +1,5 @@
-export { AVATAR_PALETTE_COLORS, loadRecoloredAvatarCanvas, recolorAvatarPixels,
-  type AvatarPaletteSelection } from "./avatar-palette.js";
+export { AVATAR_FISHING_EQUIPMENT_COLORS, AVATAR_PALETTE_COLORS, loadRecoloredAvatarCanvas, recolorAvatarPixels,
+  type AvatarPaletteSelection, type AvatarRecolorOptions } from "./avatar-palette.js";
 
 export interface LocalDirectoryHandle {
   readonly name: string;

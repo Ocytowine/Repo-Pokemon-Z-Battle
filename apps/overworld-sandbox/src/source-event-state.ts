@@ -29,12 +29,16 @@ export interface SourceEventState {
   /** Ordered personal hatch queue. Eggs remain opaque at one step until their blocking scene completes. */
   readonly pendingHatches: readonly string[];
   readonly pendingEncounter: SourceEncounter | null;
+  /** Personal Bag shortcut; omitted in legacy saves until the player chooses a rod. */
+  readonly preferredFishingRod?: SourceFishingRod;
   /** Compteur personnel des pas, restauré après reconnexion, pour les effets périodiques comme le bonheur. */
   readonly happinessSteps: number;
   readonly wildEncounterSteps: number;
   readonly wildEncounterRngState: number;
   readonly appliedBattleSettlementIds: readonly string[];
 }
+
+export type SourceFishingRod = "OLDROD" | "GOODROD" | "SUPERROD";
 
 export interface SourcePokedexHistory {
   readonly seenSpecies: readonly string[];
@@ -54,6 +58,8 @@ export const SOURCE_MAX_MONEY = 999_999;
 export interface SourceEncounter {
   readonly species: string;
   readonly level: number;
+  /** Migrated saves may omit it; new encounters preserve the field origin for capture rules and reports. */
+  readonly method?: "land" | "cave" | "fishing" | "scripted";
   readonly victorySwitches: Readonly<Record<string, boolean>>;
   readonly escapable: boolean;
 }
@@ -272,13 +278,14 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       if (typeof species !== "string" || !finiteInteger(level) || level < 1 || level > 100 || party.members.length === 0) {
         return { state, appliedCommands: 0, safe: false, reason: "rencontre impossible sans équipe valide" };
       }
-      pendingEncounter = { species, level, victorySwitches: {}, escapable: false };
+      pendingEncounter = { species, level, method: "scripted", victorySwitches: {}, escapable: false };
       encounterQueued = true;
     }
     appliedCommands += 1;
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
     pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter,
+    ...(state.preferredFishingRod === undefined ? {} : { preferredFishingRod: state.preferredFishingRod }),
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
     appliedBattleSettlementIds: state.appliedBattleSettlementIds };
@@ -394,12 +401,19 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && encounterValue.level >= 1 && encounterValue.level <= 100
       && (encounterValue.victorySwitches === undefined || booleanDictionary(encounterValue.victorySwitches) !== null)
       && (encounterValue.escapable === undefined || typeof encounterValue.escapable === "boolean")
+      && (encounterValue.method === undefined || ["land", "cave", "fishing", "scripted"].includes(String(encounterValue.method)))
       ? { species: encounterValue.species, level: encounterValue.level,
+        ...(encounterValue.method === undefined ? {} : {
+          method: encounterValue.method as NonNullable<SourceEncounter["method"]>,
+        }),
         victorySwitches: encounterValue.victorySwitches === undefined ? {} : booleanDictionary(encounterValue.victorySwitches)!,
         escapable: encounterValue.escapable === true } : undefined;
   const wildEncounterSteps = value.wildEncounterSteps === undefined ? 0 : value.wildEncounterSteps;
   const happinessSteps = value.happinessSteps === undefined ? 0 : value.happinessSteps;
   const wildEncounterRngState = value.wildEncounterRngState === undefined ? 0x9e37_79b9 : value.wildEncounterRngState;
+  const preferredFishingRod = value.preferredFishingRod === undefined ? undefined
+    : ["OLDROD", "GOODROD", "SUPERROD"].includes(String(value.preferredFishingRod))
+      ? value.preferredFishingRod as SourceFishingRod : null;
   const appliedBattleSettlementIds = value.appliedBattleSettlementIds === undefined ? []
     : Array.isArray(value.appliedBattleSettlementIds)
       && value.appliedBattleSettlementIds.length <= 128
@@ -429,11 +443,13 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || !finiteInteger(happinessSteps) || happinessSteps < 0 || happinessSteps >= 128
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
-    || appliedBattleSettlementIds === null || pendingHatches === null
+    || appliedBattleSettlementIds === null || pendingHatches === null || preferredFishingRod === null
     || pendingHatches.some((id) => !hatchableIds.includes(id)) || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
   return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
     pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
-    party, ranch, dayCare, incubator, pendingHatches, pendingEncounter, happinessSteps, wildEncounterSteps, wildEncounterRngState,
+    party, ranch, dayCare, incubator, pendingHatches, pendingEncounter,
+    ...(preferredFishingRod === undefined ? {} : { preferredFishingRod }),
+    happinessSteps, wildEncounterSteps, wildEncounterRngState,
     appliedBattleSettlementIds });
 }

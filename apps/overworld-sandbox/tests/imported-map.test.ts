@@ -14,11 +14,13 @@ function map(masks: readonly number[]): ImportedMap {
 
 describe("imported RPG Maker map", () => {
   it("keeps every encounter method for the source Compass while exposing Land separately", () => {
-    const encounter = parseImportedEncounter({ records: [{ mapId: 7, encounterRates: { land: 12 }, methods: [
+    const encounter = parseImportedEncounter({ records: [{ mapId: 7,
+      encounterRates: { land: 12, cave: 3, water: 4 }, methods: [
       { method: "Land", slots: [{ species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 }] },
       { method: "OldRod", slots: [{ species: "MAGIKARP", minimumLevel: 5, maximumLevel: 5, weight: 70 }] },
     ] }] }, 7);
-    expect(encounter).toMatchObject({ land: [{ species: "BIDOOF" }], methods: [
+    expect(encounter).toMatchObject({ rates: { land: 12, cave: 3, water: 4 },
+      land: [{ species: "BIDOOF" }], methods: [
       { method: "Land", slots: [{ species: "BIDOOF" }] },
       { method: "OldRod", slots: [{ species: "MAGIKARP" }] },
     ] });

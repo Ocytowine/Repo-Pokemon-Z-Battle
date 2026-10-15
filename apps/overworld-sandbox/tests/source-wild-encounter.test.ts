@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { RandomSource } from "@pokemon-z-battle/battle-engine";
-import { isGrassTerrain, rollLandEncounter, terrainTagAt } from "../src/source-wild-encounter.js";
+import { isGrassTerrain, planFishingAttempt, resolveSourceFishingRod, rollLandEncounter, rollStepEncounter,
+  sourceFishingEncounterMethod,
+  terrainTagAt } from "../src/source-wild-encounter.js";
 
 class ScriptedRandom implements RandomSource {
   #index = 0;
@@ -16,7 +18,7 @@ const map = { schemaVersion: "1.0.0", id: 7, name: "Route 1", width: 1, height: 
   layers: { lower: [3], middle: [2], upper: [1] }, collision: { masks: [15] }, transfers: [],
   source: { file: "Map007.rxdata", sha256: "test" } } as const;
 const tileset = { id: 1, tilesetName: "Field", autotileNames: [], priorities: [], terrainTags: [0, 15, 13, 2] } as const;
-const encounters = { mapId: 7, landRate: 12, land: [
+const encounters = { mapId: 7, rates: { land: 12, cave: 2, water: 2 }, landRate: 12, land: [
   { species: "BIDOOF", minimumLevel: 3, maximumLevel: 5, weight: 20 },
   { species: "FLETCHLING", minimumLevel: 3, maximumLevel: 5, weight: 80 },
 ], methods: [{ method: "Land", slots: [
@@ -38,5 +40,40 @@ describe("source wild encounters", () => {
     expect(rollLandEncounter(encounters, 2, 3, new ScriptedRandom([0, 20, 2]))).toEqual({
       steps: 0, encounter: { species: "FLETCHLING", level: 5 },
     });
+  });
+
+  it("uses Cave across the whole map but excludes ice like the source", () => {
+    const cave = { ...encounters, methods: [{ method: "Cave", slots: [
+      { species: "ZUBAT", minimumLevel: 6, maximumLevel: 6, weight: 100 },
+    ] }] } as const;
+    expect(rollStepEncounter(cave, 0, 3, new ScriptedRandom([0, 0, 0])))
+      .toEqual({ steps: 0, encounter: { species: "ZUBAT", level: 6 } });
+    expect(rollStepEncounter(cave, 12, 3, new ScriptedRandom([])))
+      .toEqual({ steps: 3, encounter: null });
+  });
+
+  it("plans rod timing, bite odds and the weighted encounter from the saved RNG", () => {
+    const fishing = { ...encounters, methods: [{ method: "OldRod", slots: [
+      { species: "MAGIKARP", minimumLevel: 4, maximumLevel: 6, weight: 100 },
+    ] }] } as const;
+    expect(planFishingAttempt(fishing, "OldRod", null, new ScriptedRandom([0, 0, 20, 0, 2])))
+      .toEqual({ waitMs: 1_000, bite: true, hookWindowMs: 1_000,
+        encounter: { species: "MAGIKARP", level: 6 } });
+  });
+
+  it("keeps an owned favorite and otherwise selects the strongest rod backed by the current map", () => {
+    const fishing = { ...encounters, methods: [{ method: "OldRod", slots: [
+      { species: "MAGIKARP", minimumLevel: 4, maximumLevel: 6, weight: 100 },
+    ] }] } as const;
+    const inventory = { OLDROD: 1, GOODROD: 1, SUPERROD: 1 };
+    expect(resolveSourceFishingRod("GOODROD", inventory, fishing)).toBe("GOODROD");
+    expect(resolveSourceFishingRod("OLDROD", inventory, fishing)).toBe("OLDROD");
+    expect(resolveSourceFishingRod(undefined, inventory, fishing)).toBe("SUPERROD");
+    expect(resolveSourceFishingRod("GOODROD", { OLDROD: 1 }, fishing)).toBe("OLDROD");
+    expect(resolveSourceFishingRod(undefined, {}, fishing)).toBeNull();
+    expect(sourceFishingEncounterMethod(fishing, "GOODROD")).toBe("OldRod");
+    expect(planFishingAttempt(fishing, "GoodRod", null,
+      new ScriptedRandom([0, 0, 20, 0, 2]), "OldRod")).toMatchObject({ bite: true,
+      encounter: { species: "MAGIKARP", level: 6 } });
   });
 });

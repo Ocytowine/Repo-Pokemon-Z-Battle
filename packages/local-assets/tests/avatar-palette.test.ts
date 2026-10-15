@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { recolorAvatarPixels } from "../src/index.js";
+import { AVATAR_FISHING_EQUIPMENT_COLORS, recolorAvatarPixels } from "../src/index.js";
 
 describe("avatar semantic palette", () => {
   it("recolors stable outfit colors while protecting pixels that vary with identity", () => {
@@ -25,5 +25,14 @@ describe("avatar semantic palette", () => {
     expect(result[4]).toBeGreaterThan(230);
     expect(result[4]! - result[0]!).toBeGreaterThan(80);
     expect(Math.max(result[0]!, result[1]!, result[2]!) - Math.min(result[0]!, result[1]!, result[2]!)).toBeLessThan(35);
+  });
+
+  it("protects the fishing equipment palette without disabling outfit recoloring", () => {
+    const base = new Uint8ClampedArray([56, 80, 152, 255, 22, 52, 93, 255]);
+    const result = recolorAvatarPixels(base, [new Uint8ClampedArray(base)],
+      { primary: "green", secondary: "purple", accent: "blue" },
+      { protectedColors: AVATAR_FISHING_EQUIPMENT_COLORS });
+    expect([...result.slice(0, 4)]).toEqual([...base.slice(0, 4)]);
+    expect([...result.slice(4, 7)]).not.toEqual([...base.slice(4, 7)]);
   });
 });

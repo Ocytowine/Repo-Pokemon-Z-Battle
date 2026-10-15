@@ -7,7 +7,7 @@ import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, reconcileSourcePokedex,
   recordSourcePokedexEvolution, recordSourcePokedexRelease, recordSourcePokedexSeen,
-  type SourceEventState } from "./source-event-state.js";
+  type SourceEventState, type SourceFishingRod } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
@@ -34,7 +34,9 @@ import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController, sharedBattleExperiencePresentations,
   type SourceBattleOutcome } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
-import { rollLandEncounter, terrainTagAt } from "./source-wild-encounter.js";
+import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, rollStepEncounter,
+  sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
+  type SourceEncounterMethod } from "./source-wild-encounter.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
@@ -75,6 +77,7 @@ import { SourceIncubatorView } from "./source-incubator-view.js";
 import { collectDayCareEggInIncubator, depositPartyEggInIncubator, withdrawIncubatorEgg,
   type SourceIncubatorFailure } from "./source-incubator.js";
 import { SourceEggHatchView } from "./source-egg-hatch-view.js";
+import { SourceFishingView } from "./source-fishing-view.js";
 import { advanceSourceEggIncubation, completeSourceEggHatch, sourcePendingHatch }
   from "./source-egg-incubation.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
@@ -97,14 +100,15 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
 import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceTestItemPocket, SOURCE_BAG_POCKETS,
-  sourceBagEntries } from "./source-bag.js";
+  sourceBagEntries, sourceItemIconFallbackUrl, sourceItemIconUrl } from "./source-bag.js";
 import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
   shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "./source-coop-policy.js";
-import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceMovementTestOverride,
+import { isSourceFacingFishableTerrain, isSourceSurfableTerrain, loadSourceMovementTestOverride,
+  persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
   sourceMovementUnlocks, sourceMovementVisualMode, sourceMovementVisualOffset, sourceMovementVisualPattern,
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
@@ -144,6 +148,7 @@ let resumeSourceMovementAfterNetworkAck = false;
 let importedWalkingPattern: 1 | 3 = 1;
 let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
 let sourceFieldMarks: SourceFieldMark[] = [];
+const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
@@ -397,7 +402,7 @@ function downloadSourceBattleReport(): void {
 
 function currentSourceWorldActors(narrativeState: SourceEventState = sourceEventState): readonly SourceWorldActorSnapshot[] {
   return importedAssets === null ? [] : sourceNpcMotions.worldActors(
-    importedAssets.events, importedAssets.map.id, narrativeState);
+    sourceMapEvents(), importedAssets.map.id, narrativeState);
 }
 
 function publishCurrentSourceActors(): void {
@@ -420,15 +425,31 @@ function checkSourceWildEncounter(): boolean {
   if (sourceEventState.pendingEncounter !== null) return resumePendingWildEncounter();
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
   const terrain = terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
-  const roll = rollLandEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng);
+  const roll = rollStepEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng);
   sourceEventState = { ...sourceEventState, wildEncounterSteps: roll.steps, wildEncounterRngState: rng.snapshot(),
-    pendingEncounter: roll.encounter === null ? null : { ...roll.encounter, victorySwitches: {}, escapable: true } };
+    pendingEncounter: roll.encounter === null ? null : { ...roll.encounter,
+      method: importedAssets.encounter?.methods.some((entry) => entry.method === "Cave") === true ? "cave" : "land",
+      victorySwitches: {}, escapable: true } };
   persistSourceEventState();
   if (roll.encounter === null) return false;
   const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === roll.encounter?.species);
   importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
   resumePendingWildEncounter();
   return true;
+}
+
+function startSourceRandomTableEncounter(method: SourceEncounterMethod,
+  onComplete: (won: boolean) => void): boolean {
+  if (importedAssets === null || sourceEventState.pendingEncounter !== null
+    || sourceEventState.party.members.length === 0) return false;
+  const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
+  const encounter = rollEncounterForMethod(importedAssets.encounter, method, rng);
+  sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot(),
+    pendingEncounter: encounter === null ? null : { ...encounter,
+      method: method === "Cave" ? "cave" : method.endsWith("Rod") ? "fishing" : "land",
+      victorySwitches: {}, escapable: true } };
+  persistSourceEventState();
+  return encounter !== null && sourceBattles.startPendingEncounter(onComplete);
 }
 
 function appendSourceFieldMarks(motion: SourceGridMotion, mode: SourceMovementMode, now: number): void {
@@ -521,7 +542,23 @@ function continueSourceMovement(): void {
 }
 
 function sourceMapEvents(): readonly ImportedMapAssets["events"][number][] {
-  return importedAssets === null ? [] : sourceNpcMotions.logicalEvents(importedAssets.events);
+  return importedAssets === null ? [] : sourceNpcMotions.logicalEvents(importedAssets.events)
+    .filter((event) => !erasedSourceEvents.has(`${importedAssets!.map.id}:${event.id}`));
+}
+
+function hiddenSourceEventIds(): ReadonlySet<number> {
+  if (importedAssets === null) return new Set();
+  const hidden = new Set([...erasedSourceEvents].filter((key) => key.startsWith(`${importedAssets!.map.id}:`))
+    .map((key) => Number(key.split(":")[1])));
+  if (!isNetworkGuest() || networkSourceWorld?.mapId !== importedAssets.map.id) return hidden;
+  const authoritativeActors = new Set(networkSourceWorld.actors.map((actor) => actor.eventId));
+  for (const event of importedAssets.events) {
+    const transientEncounter = event.pages.some((page) => page.commands.some((command) =>
+      command.kind === "ruby-script" && typeof command.data.source === "string"
+      && /^(?:Kernel\.)?pbEncounter\(EncounterTypes::/u.test(command.data.source.trim())));
+    if (transientEncounter && !authoritativeActors.has(event.id)) hidden.add(event.id);
+  }
+  return hidden;
 }
 
 function compileAndReportSourceScene(page: ImportedEventPage, label: string): SourceScenePlan {
@@ -975,6 +1012,8 @@ const sourceMenuView = new SourceMenuView(localStorage, {
     renderImportedView();
   },
   onOpenIncubator: openSourceIncubator,
+  onFish: requestSourceFishing,
+  onPreferredFishingRod: setPreferredSourceFishingRod,
   onDive: requestSourceDive,
   onFly: (destination) => { void requestSourceFlight(destination); },
   onPokemonLead: setSourcePartyLead,
@@ -1001,6 +1040,18 @@ const sourceEggHatchView = new SourceEggHatchView(completeCurrentSourceEggHatch,
   onSceneAudioStart: () => sourcePresentation.pauseWorldAudio(),
   onSceneAudioEnd: () => sourcePresentation.resumeWorldAudio(),
 });
+const sourceFishingView = new SourceFishingView({
+  onFinish: (message) => { importedNotice = message; renderImportedView(); },
+  onHook: (attempt) => {
+    if (attempt.encounter === null) return;
+    sourceEventState = { ...sourceEventState,
+      pendingEncounter: { ...attempt.encounter, method: "fishing", victorySwitches: {}, escapable: true } };
+    persistSourceEventState();
+    importedNotice = "Un Pokémon a mordu à l’hameçon !";
+    renderImportedView();
+    resumePendingWildEncounter();
+  },
+});
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
   (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem,
@@ -1025,6 +1076,10 @@ const sourceBattleReports = new SourceBattleReportStore();
 const sourceOverworldHud = new SourceOverworldHud(startPendingSourceEncounter, downloadSourceBattleReport);
 const sourceCompassView = new SourceCompassView(toggleSourceCompass, closeSourceCompass);
 sourceCompassView.bind();
+document.querySelector<HTMLButtonElement>("#source-fishing-shortcut")?.addEventListener("click", (event) => {
+  const rod = (event.currentTarget as HTMLButtonElement).dataset.sourceFishingRod;
+  if (rod === "OLDROD" || rod === "GOODROD" || rod === "SUPERROD") requestSourceFishing(rod);
+});
 const sourceBattleVisuals = new SourceBattleVisuals({
   musicVolume: sourceAudioPreferences.music / 100,
   effectsVolume: sourceAudioPreferences.effects / 100,
@@ -1081,6 +1136,7 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   beginItemPresentation: beginSequenceItemPresentation,
   startPendingEncounter: (onComplete) => sourceBattles.startPendingEncounter(onComplete),
+  startRandomEncounter: startSourceRandomTableEncounter,
   startTrainerBattle: (trainer, audio, onComplete) => sourceBattles.startTrainerBattle(trainer, audio, onComplete),
   getTrainerBattleFailure: () => sourceBattles.lastStartFailure,
   openShop: (sequence, stock) => {
@@ -1106,6 +1162,12 @@ sourceSequenceEffects = new SourceSequenceEffects({
   startMoveRoute: startSourceMoveRoute,
   presentTrainerNotice: presentSourceTrainerNotice,
   setMovementMode: applySourceSequenceMovementMode,
+  eraseEvent: (mapId, eventId) => {
+    erasedSourceEvents.add(`${mapId}:${eventId}`);
+    publishCurrentSourceActors();
+    publishCurrentSourceScene();
+    renderImportedView();
+  },
   present: presentSourceCommand,
   isActive: (sequence) => sourceSequences.isActive(sequence),
   resume: () => { void advanceSourceSequence(); },
@@ -1722,8 +1784,8 @@ function animateImportedMap(now: number): void {
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
   const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction);
-  const playerPattern = sourceMovementVisualPattern(localVisualMode, pose.pattern, now,
-    importedPlayerMotion !== null);
+  const playerPattern = sourceFishingView.open ? sourceFishingView.visualPattern(now)
+    : sourceMovementVisualPattern(localVisualMode, pose.pattern, now, importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
     const narrativeTargets: GridPoint[] = importedPlayerMotion === null
@@ -1783,7 +1845,7 @@ function animateImportedMap(now: number): void {
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
       + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
-    remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks);
+    remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds());
   if (importedPlayerMotion !== null && pose.complete) {
     const completedMotion = importedPlayerMotion;
     completeLocalSourceFieldStep(completedMotion, now);
@@ -1816,7 +1878,8 @@ function sourceSceneActivity(): SourceSceneActivity {
   return { dialogue: sourceDialogues.current !== null,
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
-    transition: sourceTransitionInProgress || sourceProgressionView.open || sourceEggHatchView.open,
+    transition: sourceTransitionInProgress || sourceProgressionView.open || sourceEggHatchView.open
+      || sourceFishingView.open,
     sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
@@ -1992,6 +2055,52 @@ function applySourceSequenceMovementMode(mode: SourceMovementMode): void {
   sourceMovementMode = mode;
   sourceMovementAction = mode === "mount" ? "climb" : "idle";
   publishCurrentSourceWorld();
+  renderImportedView();
+}
+
+function setPreferredSourceFishingRod(rod: SourceFishingRod): void {
+  if ((sourceEventState.inventory[rod] ?? 0) < 1) return;
+  sourceEventState = { ...sourceEventState, preferredFishingRod: rod };
+  persistSourceEventState();
+  importedNotice = `${importedAssets?.items.get(rod)?.name ?? rod} définie comme canne favorite.`;
+  renderImportedView();
+}
+
+function requestSourceFishing(rod: SourceFishingRod): void {
+  if (importedAssets === null || sourceFishingView.open) return;
+  if ((sourceEventState.inventory[rod] ?? 0) < 1) {
+    importedNotice = "Cette canne n’est plus dans votre Sac.";
+    renderImportedView();
+    return;
+  }
+  if (!isSourceFacingFishableTerrain(importedAssets.map, importedAssets.tileset, importedAvatar)) {
+    importedNotice = "Cette canne doit être utilisée face à un point d’eau.";
+    renderImportedView();
+    return;
+  }
+  if (sourceEventState.party.members.every((pokemon) => pokemon.hp <= 0 || pokemon.metadata.eggSteps > 0)) {
+    importedNotice = "Aucun Pokémon apte au combat n’est disponible.";
+    renderImportedView();
+    return;
+  }
+  if (!sourceFishingMethodAvailable(importedAssets.encounter, rod)) {
+    importedNotice = "Cette canne ne permet aucune rencontre dans cette zone.";
+    renderImportedView();
+    return;
+  }
+  const method = sourceFishingMethod(rod);
+  const encounterMethod = sourceFishingEncounterMethod(importedAssets.encounter, rod);
+  if (encounterMethod === null) return;
+  const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
+  const lead = sourceEventState.party.activeIndex === null ? null
+    : sourceEventState.party.members[sourceEventState.party.activeIndex] ?? null;
+  const attempt = planFishingAttempt(importedAssets.encounter, method, lead?.ability ?? null, rng, encounterMethod);
+  sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot() };
+  persistSourceEventState();
+  sourceScenes.closeMenu();
+  heldMovementKeys.clear();
+  importedNotice = `Pêche avec ${importedAssets.items.get(rod)?.name ?? rod}…`;
+  sourceFishingView.show(attempt);
   renderImportedView();
 }
 
@@ -2864,6 +2973,33 @@ function sourceCompassLocationName(assets: ImportedMapAssets): string {
   return [...new Set(names)].join(" · ") || region.name;
 }
 
+function renderSourceFishingShortcut(compassAvailable: boolean, interrupted: boolean): void {
+  const button = requiredAppElement<HTMLButtonElement>("source-fishing-shortcut");
+  const rod = importedAssets === null ? null : resolveSourceFishingRod(sourceEventState.preferredFishingRod,
+    sourceEventState.inventory, importedAssets.encounter);
+  const visible = viewedMapId === SOURCE_MAP_ID && importedAssets !== null && rod !== null && !interrupted
+    && isSourceFacingFishableTerrain(importedAssets.map, importedAssets.tileset, importedAvatar);
+  button.hidden = !visible;
+  button.dataset.alone = String(!compassAvailable);
+  if (!visible || importedAssets === null || rod === null) {
+    delete button.dataset.sourceFishingRod;
+    return;
+  }
+  button.dataset.sourceFishingRod = rod;
+  const item = importedAssets.items.get(rod);
+  const name = item?.name ?? rod;
+  button.title = `Pêcher avec ${name}`;
+  button.setAttribute("aria-label", `Pêcher avec ${name}`);
+  const image = button.querySelector<HTMLImageElement>("img");
+  if (image !== null && item !== undefined) {
+    const url = sourceItemIconUrl(item.id);
+    if (!image.src.endsWith(url)) {
+      image.src = url;
+      image.addEventListener("error", () => { image.src = sourceItemIconFallbackUrl(image.src); }, { once: true });
+    }
+  }
+}
+
 function renderImportedView(): void {
   const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
@@ -2898,6 +3034,8 @@ function renderImportedView(): void {
     catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
     caughtSpecies: sourceEventState.pokedex.caughtSpecies,
     locationName: sourceCompassLocationName(importedAssets) });
+  renderSourceFishingShortcut(compassUnlocked && !compassInterrupted,
+    compassInterrupted || activity.movement || sourceScenes.compassOpen);
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice, hudNotice: coopHudNotice,
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
@@ -3085,6 +3223,11 @@ function sourceDirectionNumber(direction: Direction): number {
 function activeSourcePlayerImage(): HTMLImageElement {
   if (importedAssets === null) throw new Error("Carte source absente.");
   if (sourcePickupPose) return sourcePlayerVisuals?.pickup ?? importedAssets.playerPickupImage;
+  if (sourceFishingView.open) {
+    const fishingName = sourceMovementMode === "surf" ? "boy_fishsurf_offset" : "boy_fish_offset";
+    return sourcePlayerImageFor(sourcePlayerVisuals, fishingName) ?? sourcePlayerVisuals?.overworld
+      ?? importedAssets.playerImage;
+  }
   if (sourcePlayerCharacterName === "player") {
     return sourcePlayerImageForMovement(sourcePlayerVisuals,
       sourceMovementVisualMode(sourceMovementMode, sourceMovementAction)) ?? importedAssets.playerImage;
@@ -3131,6 +3274,7 @@ function synchronizeSourceFollower(): void {
 }
 
 function activateSourceWorld(world: LoadedSourceWorld): void {
+  erasedSourceEvents.clear();
   importedAssets = world.assets;
   configureSourceItemIconAvailability(world.assets.availableItemIconIds);
   const reconciled = recalculatePlayerPokemonCollection(sourceEventState.party, sourceEventState.ranch,
@@ -3827,7 +3971,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
 }));
 const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-day-care-eggs", "#source-incubator", "#source-egg-hatch", "#source-pokemon-summary",
   "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
-  "#source-compass", "#source-compass-toggle", "#embedded-avatar-lab", "#source-load-error"].join(",");
+  "#source-compass", "#source-compass-toggle", "#source-fishing-shortcut", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const button = target?.closest<HTMLButtonElement>("button");

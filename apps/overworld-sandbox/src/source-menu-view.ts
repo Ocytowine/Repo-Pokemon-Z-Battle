@@ -3,7 +3,7 @@ import { SOURCE_BAG_PAGE_SIZE, SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagFa
   sourceBagPage, sourceBagPocketCounts, sourceBagSubfamily, sourceItemIconUrl,
   sourceItemIconFallbackUrl, sourcePocketIconUrl } from "./source-bag.js";
 import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
-import type { SourceEventState } from "./source-event-state.js";
+import type { SourceEventState, SourceFishingRod } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
 import type { SourceWorldSave } from "./source-world-save.js";
@@ -117,6 +117,8 @@ export interface SourceMenuViewCallbacks {
   readonly onOpenTestDayCare: () => void;
   readonly onAccelerateTestEggs: () => void;
   readonly onOpenIncubator: () => void;
+  readonly onFish: (rod: SourceFishingRod) => void;
+  readonly onPreferredFishingRod: (rod: SourceFishingRod) => void;
   readonly onDive: () => void;
   readonly onFly: (destination: SourceRegionDestination) => void;
   readonly onPokemonLead: (pokemonId: string) => void;
@@ -613,6 +615,18 @@ export class SourceMenuView {
       : model.assets.battleCatalog.moves.find((move) => move.internalName === machineMove)?.name;
     const selectedItemDisplayName = selectedEntry === null ? null
       : sourceItemDisplayName(selectedEntry.item, machineMoveName);
+    const selectedFishingRod = selectedEntry !== null
+      && ["OLDROD", "GOODROD", "SUPERROD"].includes(selectedEntry.item.internalName)
+      ? selectedEntry.item.internalName as SourceFishingRod : null;
+    const fishingActions = selectedFishingRod === null ? [] : [
+      { id: "specific:fishing" as const, label: "Pêcher", symbol: "≈", enabled: true,
+        hint: "Lancer la ligne face à l’eau" },
+      { id: "specific:fishing-favorite" as const,
+        label: model.eventState.preferredFishingRod === selectedFishingRod ? "Favorite" : "Raccourci",
+        symbol: "★", enabled: model.eventState.preferredFishingRod !== selectedFishingRod,
+        hint: model.eventState.preferredFishingRod === selectedFishingRod
+          ? "Canne déjà définie comme favorite" : "Utiliser cette canne avec le bouton de terrain" },
+    ];
     const actionWheel = selectedEntry === null || this.bagAction !== "wheel" ? ""
       : sourceActionWheelHtml({ label: `Actions pour ${selectedItemDisplayName}`,
         centerHtml: `<img src="${sourceItemIconUrl(selectedEntry.item.id)}" data-source-item-icon alt=""><strong>${escapeSourceHtml(selectedItemDisplayName!)}</strong>`,
@@ -620,7 +634,8 @@ export class SourceMenuView {
           machineCompatibilityAvailable: machineSpecies !== undefined,
           specificActions: selectedEntry.item.internalName === "INCUBADORA"
             ? [{ id: "specific:incubator", label: "Ouvrir", symbol: "◉", enabled: true,
-                hint: "Gérer les six emplacements" }] : [] }) });
+                hint: "Gérer les six emplacements" }]
+            : fishingActions }) });
     const targetPanel = selectedEntry === null || (this.bagAction !== "use" && this.bagAction !== "give") ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>${this.bagAction === "give" ? "DONNER À UN POKÉMON" : selectedTarget === null ? "CHOISIR UNE CIBLE" : "CHOISIR UNE CAPACITÉ"}</small><strong>${escapeSourceHtml(selectedTarget?.nickname ?? selectedTarget?.species ?? selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${model.eventState.party.members.length === 0
         ? "<p>Aucun Pokémon dans l'équipe.</p>" : `<div class="source-bag-party-targets">${this.bagAction === "give"
@@ -748,6 +763,13 @@ export class SourceMenuView {
           this.selectedBagPokemonId = null;
           this.renderBag(content, model);
         } else if (action === "specific:incubator") this.callbacks.onOpenIncubator();
+        else if (action === "specific:fishing" && this.selectedBagItemId !== null
+          && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
+          this.callbacks.onFish(this.selectedBagItemId as SourceFishingRod);
+        } else if (action === "specific:fishing-favorite" && this.selectedBagItemId !== null
+          && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
+          this.callbacks.onPreferredFishingRod(this.selectedBagItemId as SourceFishingRod);
+        }
       }));
     content.querySelector<HTMLButtonElement>("[data-source-party-item-confirm]")?.addEventListener("click", () => {
       if (this.selectedBagItemId === null) return;

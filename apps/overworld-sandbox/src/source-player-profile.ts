@@ -1,4 +1,4 @@
-import { loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
+import { AVATAR_FISHING_EQUIPMENT_COLORS, loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
 import type { PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 
 export type SourcePlayerVisualSelection = Pick<PlayerAvatarSelection, "avatarId" | "profile">;
@@ -36,8 +36,10 @@ async function imageFromCanvas(canvas: HTMLCanvasElement): Promise<HTMLImageElem
   const image = new Image(); image.src = canvas.toDataURL(); await image.decode(); return image;
 }
 
-async function recoloredImage(path: string, comparisonPaths: readonly string[], selection: SourcePlayerVisualSelection): Promise<HTMLImageElement> {
-  return imageFromCanvas(await loadRecoloredAvatarCanvas(sourceUrl(path), comparisonPaths.map(sourceUrl), selection.profile.colors));
+async function recoloredImage(path: string, comparisonPaths: readonly string[], selection: SourcePlayerVisualSelection,
+  fishingEquipment = false): Promise<HTMLImageElement> {
+  return imageFromCanvas(await loadRecoloredAvatarCanvas(sourceUrl(path), comparisonPaths.map(sourceUrl),
+    selection.profile.colors, fishingEquipment ? { protectedColors: AVATAR_FISHING_EQUIPMENT_COLORS } : {}));
 }
 
 async function catalog(): Promise<AvatarCatalog> {
@@ -53,10 +55,12 @@ export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelec
   const siblings = avatarCatalog.records.filter((record) => record.presentation === selected.presentation && record.id !== selected.id);
   const bySourceName = new Map<string, HTMLImageElement>();
   const loadedByPath = new Map<string, Promise<HTMLImageElement>>();
-  const load = (path: string, comparisons: readonly (string | null | undefined)[]): Promise<HTMLImageElement> => {
+  const load = (path: string, comparisons: readonly (string | null | undefined)[],
+    fishingEquipment = false): Promise<HTMLImageElement> => {
     let pending = loadedByPath.get(path);
     if (pending === undefined) {
-      pending = recoloredImage(path, comparisons.filter((candidate): candidate is string => typeof candidate === "string"), selection);
+      pending = recoloredImage(path, comparisons.filter((candidate): candidate is string => typeof candidate === "string"),
+        selection, fishingEquipment);
       loadedByPath.set(path, pending);
     }
     return pending;
@@ -64,7 +68,8 @@ export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelec
 
   for (const context of OVERWORLD_CONTEXTS) {
     const target = selected.assets[context].path; if (target === null) continue;
-    const image = await load(target, siblings.map((record) => record.assets[context].path));
+    const image = await load(target, siblings.map((record) => record.assets[context].path),
+      context === "fish" || context === "fishSurf");
     for (const record of avatarCatalog.records) {
       const alias = record.assets[context].path; if (alias !== null) bySourceName.set(sourceCharacterAssetName(alias), image);
     }

@@ -10,6 +10,14 @@ export interface AvatarPaletteSelection {
   readonly accent: string;
 }
 
+export interface AvatarRecolorOptions {
+  /** Exact source colors belonging to equipment rather than the customizable avatar. */
+  readonly protectedColors?: readonly string[];
+}
+
+/** Palette used only by the rod/line artwork in Z's fishing charsets. */
+export const AVATAR_FISHING_EQUIPMENT_COLORS = Object.freeze(["#385098", "#70a0e0", "#4078c0"]);
+
 type ColorRole = keyof AvatarPaletteSelection;
 interface Hsl { readonly hue: number; readonly saturation: number; readonly lightness: number }
 
@@ -63,11 +71,15 @@ const SOURCE_ANCHORS: Record<ColorRole, Hsl> = {
  * cheveux ou contour antialiase) et reste donc strictement protege.
  */
 export function recolorAvatarPixels(base: Uint8ClampedArray, identityVariants: readonly Uint8ClampedArray[],
-  palette: AvatarPaletteSelection): Uint8ClampedArray {
+  palette: AvatarPaletteSelection, options: AvatarRecolorOptions = {}): Uint8ClampedArray {
   if (identityVariants.some((variant) => variant.length !== base.length)) throw new Error("Masques d'avatar incompatibles.");
   const result = new Uint8ClampedArray(base);
+  const protectedColors = new Set((options.protectedColors ?? []).flatMap((value) => {
+    const color = rgb(value); return color === null ? [] : [`${color[0]},${color[1]},${color[2]}`];
+  }));
   for (let index = 0; index < base.length; index += 4) {
     if (base[index + 3] === 0) continue;
+    if (protectedColors.has(`${base[index]},${base[index + 1]},${base[index + 2]}`)) continue;
     const stable = identityVariants.length > 0 && identityVariants.every((variant) =>
       variant[index] === base[index] && variant[index + 1] === base[index + 1]
       && variant[index + 2] === base[index + 2] && variant[index + 3] === base[index + 3]);
@@ -93,7 +105,7 @@ async function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 export async function loadRecoloredAvatarCanvas(source: string, identityVariants: readonly string[],
-  palette: AvatarPaletteSelection): Promise<HTMLCanvasElement> {
+  palette: AvatarPaletteSelection, options: AvatarRecolorOptions = {}): Promise<HTMLCanvasElement> {
   const [loadedBase, ...variants] = await Promise.all([source, ...identityVariants].map(loadImage));
   const base = loadedBase!;
   const canvas = document.createElement("canvas"); canvas.width = base.naturalWidth; canvas.height = base.naturalHeight;
@@ -105,7 +117,7 @@ export async function loadRecoloredAvatarCanvas(source: string, identityVariants
   };
   const basePixels = pixels(base)!; const variantPixels = variants.map(pixels).filter((value): value is ImageData => value !== null);
   const output = context.createImageData(canvas.width, canvas.height);
-  output.data.set(recolorAvatarPixels(basePixels.data, variantPixels.map((value) => value.data), palette));
+  output.data.set(recolorAvatarPixels(basePixels.data, variantPixels.map((value) => value.data), palette, options));
   context.putImageData(output, 0, 0);
   return canvas;
 }

@@ -9,20 +9,23 @@ import { localizedDialogueText, type ImportedAvatar, type ImportedEventPage, typ
   type ImportedTransfer } from "./imported-map.js";
 import type { SourceSequenceCommandResult, SourceSequenceSession } from "./source-sequence-controller.js";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
+import type { SourceEncounterMethod } from "./source-wild-encounter.js";
 
 type SourceCommand = ImportedEventPage["commands"][number];
 
-export type SourceSequenceCommandFamily = "state" | "trainer-battle" | "shop" | "ranch" | "day-care" | "day-care-eggs" | "transfer"
-  | "movement" | "presentation";
+export type SourceSequenceCommandFamily = "state" | "random-encounter" | "trainer-battle" | "shop" | "ranch"
+  | "day-care" | "day-care-eggs" | "transfer" | "event" | "movement" | "presentation";
 
 export function sourceSequenceCommandFamily(command: SourceCommand): SourceSequenceCommandFamily {
   if (isSourceStateCommand(command.kind)) return "state";
+  if (command.kind === "request-random-encounter") return "random-encounter";
   if (command.kind === "request-trainer-battle") return "trainer-battle";
   if (command.kind === "open-shop") return "shop";
   if (command.kind === "open-ranch") return "ranch";
   if (command.kind === "open-day-care") return "day-care";
   if (command.kind === "open-day-care-eggs") return "day-care-eggs";
   if (command.kind === "transfer-player") return "transfer";
+  if (command.kind === "erase-event") return "event";
   if (command.kind === "move-route" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
     || command.kind === "set-movement-mode") return "movement";
   return "presentation";
@@ -37,6 +40,7 @@ export interface SourceSequenceEffectDependencies {
   readonly abort: (session: SourceSequenceSession, notice: string) => void;
   readonly beginItemPresentation: (session: SourceSequenceSession, gains: readonly SourceItemGain[]) => void;
   readonly startPendingEncounter: (onComplete: (won: boolean) => void) => boolean;
+  readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (won: boolean) => void) => boolean;
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
   readonly getTrainerBattleFailure?: () => string | null;
@@ -48,6 +52,7 @@ export interface SourceSequenceEffectDependencies {
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
   readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
   readonly setMovementMode: (mode: SourceMovementMode) => void;
+  readonly eraseEvent: (mapId: number, eventId: number) => void;
   readonly present: (command: SourceCommand, delay: (milliseconds: number) => Promise<void>) => Promise<boolean>;
   readonly isActive: (session: SourceSequenceSession) => boolean;
   readonly resume: () => void;
@@ -75,15 +80,31 @@ export class SourceSequenceEffects {
   public async execute(session: SourceSequenceSession, command: SourceCommand): Promise<SourceSequenceCommandResult> {
     switch (sourceSequenceCommandFamily(command)) {
       case "state": return this.applyState(session, command);
+      case "random-encounter": return this.startRandomEncounter(session, command);
       case "trainer-battle": return this.startTrainerBattle(session, command);
       case "shop": return this.openShop(session, command);
       case "ranch": return this.openRanch(session);
       case "day-care": return this.openDayCare(session);
       case "day-care-eggs": return this.openDayCareEggs(session);
       case "transfer": return this.transfer(session, command);
+      case "event": this.dependencies.eraseEvent(session.mapId, session.eventId); return "continue";
       case "movement": return this.move(session, command);
       case "presentation": return this.present(session, command);
     }
+  }
+
+  private startRandomEncounter(session: SourceSequenceSession, command: SourceCommand): SourceSequenceCommandResult {
+    const method = command.data.method;
+    if (!["Land", "Cave", "OldRod", "GoodRod", "SuperRod"].includes(String(method))) {
+      return this.abort(session, "Séquence interrompue : méthode de rencontre invalide.");
+    }
+    const started = this.dependencies.startRandomEncounter(method as SourceEncounterMethod, (won) => {
+      if (!this.dependencies.isActive(session)) return;
+      if (!won) session.cursor = session.plan.steps.length;
+      this.dependencies.resume();
+    });
+    return started ? "pause"
+      : this.abort(session, "Séquence interrompue : aucune rencontre n’est disponible ici.");
   }
 
   private applyState(session: SourceSequenceSession, command: SourceCommand): SourceSequenceCommandResult {

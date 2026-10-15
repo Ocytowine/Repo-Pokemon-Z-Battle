@@ -3281,6 +3281,59 @@ reprend à sa position précédente uniquement après la fermeture complète de 
 scène. Cette suspension reste une présentation personnelle : elle ne publie aucun
 son ni état dans la room Coop et n'interrompt pas la musique des autres joueurs.
 
+Rencontres de terrain du 2026-10-15 : la pêche est accessible depuis la roue de
+la Vieille Canne, de la Bonne Canne et de la Super Canne. Le noyau vérifie l'objet,
+la case d'eau regardée et un Pokémon apte, puis reproduit l'attente, les chances de
+morsure, le délai de réaction et les bonus Ventouse/Glue du script source. La pose
+de pêche source et une commande tactile « Remonter » sont rendues dans le canvas.
+Le RNG et une rencontre effectivement ferrée sont persistés dans le même état
+personnel que les rencontres terrestres ; le combat résultant emprunte ensuite le
+contrôleur commun et la room autoritaire en Coop. L'attente avant morsure reste une
+présentation personnelle transitoire et est annulée par un rechargement.
+
+L'audit de Z 2.12 FR trouve 136 tables `Land` et 73 tables `OldRod`, mais aucune
+table `Cave`, `GoodRod` ou `SuperRod`. Le moteur comprend ces méthodes sans en
+inventer les espèces : Bonne Canne et Super Canne réutilisent la seule table
+`OldRod` livrée par la carte, tout en conservant leurs chances de morsure supérieures
+issues de `pbFishing(2)` et `pbFishing(3)`. Le
+contexte `fishing` est conservé sur la rencontre pour les futurs bonus de capture,
+notamment la Scuba Ball ; ces modificateurs restent à raccorder.
+
+Les Pokémon qui errent visiblement dans les grottes sont, dans les données source,
+des événements mobiles `nubehumo` au contact du joueur. Le port générique de
+`pbEncounter(EncounterTypes::...)` tire maintenant la table demandée, suspend la
+séquence durant le combat puis exécute réellement `erase-event`. Leur disparition
+temporaire est incluse dans les acteurs autoritaires publiés par l'hôte, de sorte
+que l'invité ne conserve ni sprite ni collision fantôme ; recharger la carte les
+restaure comme dans RPG Maker. Aucun numéro de carte, d'événement ou d'espèce n'est
+câblé en dur. La pose de pêche d'un joueur distant n'est pas encore répliquée : la
+tentative et son message restent privés, tandis que le combat ferré est partagé.
+
+Raccourci de pêche du 2026-10-15 : le détecteur de terrain regarde exclusivement
+la case située devant le joueur et réutilise les tags d'eau de Surf, avec ajout de
+l'eau calme pêchable. Si une canne possédée est disponible, un bouton tactile avec
+son icône apparaît à côté de la Boussole ; il disparaît en tournant le dos à l'eau,
+pendant un déplacement ou lorsqu'une scène bloque les contrôles. La roue de chaque
+canne permet de la définir comme « Raccourci ». Ce choix est un état personnel
+persistant de `SourceEventState`, jamais projeté dans l'histoire Coop. Une ancienne
+sauvegarde choisit automatiquement la canne possédée la plus puissante ayant une
+table sur la carte, puis la plus puissante possédée en dernier recours. Solo, hôte
+et invité passent tous par `requestSourceFishing` et le même noyau de rencontre.
+Une favorite sans table propre ne condamne plus chaque tentative : les cannes
+supérieures exploitent la table `OldRod` locale. Si la carte ne possède même pas
+cette table de repli, l'absence de rencontre est annoncée avant l'animation plutôt
+que présentée comme une série de mauvais tirages. La planche de pêche est lue dans
+l'ordre source `3 → 2 → 1 → 0`, puis reste sur la pose 0 ; les profils masculin,
+féminin et leurs variantes continuent de passer par le catalogue recoloré commun.
+
+Protection de la canne du 2026-10-15 : la recoloration sémantique accepte désormais
+une palette d'équipement protégée. Les trois bleus propres aux planches de pêche,
+absents des charsets ordinaires du personnage, ne sont plus transformés dans les
+contextes `fish` et `fishSurf`. Peau et vêtements continuent d'utiliser les choix
+du profil, tandis que canne, fil et contours non recolorables conservent la palette
+source. Le même contrat est appliqué par l'overworld, l'écran de personnalisation
+intégré et l'Avatar Lab ; il ne crée aucun nouvel état persistant ou réseau.
+
 ## Commandes utiles
 
 ```powershell

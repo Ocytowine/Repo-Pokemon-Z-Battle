@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSourceEventState } from "../src/source-event-state.js";
 import { loadSourceMovementTestOverride, persistSourceMovementTestOverride,
-  sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
+  isSourceFacingFishableTerrain, sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
   sourceMovementVisualOffset, sourceMovementVisualPattern } from "../src/source-player-movement.js";
 
 describe("source player movement unlocks", () => {
@@ -32,5 +32,14 @@ describe("source player movement unlocks", () => {
     expect(sourceMovementVisualPattern("walk", 3, 750, true)).toBe(3);
     expect(sourceMovementDuration("mount", "step")).toBeGreaterThan(100);
     expect(sourceMovementDuration("mount", "step")).toBeLessThan(sourceMovementDuration("walk", "step"));
+  });
+
+  it("detects fishable water only on the tile faced by the player", () => {
+    const map = { id: 3, name: "Rive", width: 2, height: 1, tilesetId: 1,
+      layers: { lower: [1, 2], middle: [0, 0], upper: [0, 0] },
+      collision: { masks: [15, 15] }, transfers: [] };
+    const tileset = { id: 1, tilesetName: "Test", autotileNames: [], priorities: [], terrainTags: [0, 0, 6] };
+    expect(isSourceFacingFishableTerrain(map, tileset, { x: 0, y: 0, direction: "right" })).toBe(true);
+    expect(isSourceFacingFishableTerrain(map, tileset, { x: 0, y: 0, direction: "left" })).toBe(false);
   });
 });

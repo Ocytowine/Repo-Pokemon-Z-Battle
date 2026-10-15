@@ -26,6 +26,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "refill-poke-vial": capability("state", "executed", "recharge personnelle du Pokevial"),
   "add-pokemon": capability("state", "executed", "ajout a l'equipe"),
   "request-encounter": capability("state", "executed", "rencontre source"),
+  "request-random-encounter": capability("transition", "executed", "rencontre tirée dans la table de la carte"),
   "request-trainer-battle": capability("transition", "executed", "combat de Dresseur source"),
   "open-shop": capability("transition", "rendered", "boutique source"),
   "open-ranch": capability("transition", "rendered", "Ranch Pokémon personnel"),
@@ -57,7 +58,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "fade-music": capability("audiovisual", "rendered", "fondu musical"),
   "scroll-map": capability("audiovisual", "rendered", "defilement anime de camera"),
   "runtime-noop": capability("metadata", "absorbed", "commande source sans effet web"),
-  "erase-event": capability("metadata", "absorbed", "effacement temporaire de l'evenement courant"),
+  "erase-event": capability("metadata", "executed", "effacement temporaire de l'evenement courant"),
   end: capability("metadata", "absorbed", "fin de liste"),
 });
 

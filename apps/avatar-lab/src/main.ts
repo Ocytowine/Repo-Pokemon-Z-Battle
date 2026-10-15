@@ -1,5 +1,6 @@
 import { parsePlayerProfile, type PlayerProfile, type PlayerPronouns } from "@pokemon-z-battle/player-state";
-import { AVATAR_PALETTE_COLORS, loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
+import { AVATAR_FISHING_EQUIPMENT_COLORS, AVATAR_PALETTE_COLORS,
+  loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
 import { AVATAR_LAB_STORAGE_KEY, applyAvatarLabState, createAvatarLabState, loadActiveAvatarState, loadAvatarLabState,
   persistAvatarLabState,
 } from "./avatar-lab-state.js";
@@ -79,7 +80,9 @@ function identityVariantUrls(record: AvatarRecord, context: Context | "battleFro
 }
 async function recoloredCanvas(record: AvatarRecord, context: Context | "battleFront" | "battleBack"): Promise<HTMLCanvasElement | null> {
   const path = record.assets[context].path; if (path === null) return null;
-  return loadRecoloredAvatarCanvas(sourceUrl(path), identityVariantUrls(record, context), state.profile.colors);
+  return loadRecoloredAvatarCanvas(sourceUrl(path), identityVariantUrls(record, context), state.profile.colors,
+    context === "fish" || context === "fishSurf"
+      ? { protectedColors: AVATAR_FISHING_EQUIPMENT_COLORS } : {});
 }
 async function animateOverworld(record: AvatarRecord, contextName: Context): Promise<void> {
   const session = ++overworldAnimationSession; const context = ui.canvas.getContext("2d"); if (context === null) return;

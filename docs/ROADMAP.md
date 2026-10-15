@@ -2354,6 +2354,34 @@ type et tri se combinent automatiquement ; l'identifiant anglais n'est plus mont
 comme choix au joueur. La creation exige une carte selectionnee et conserve le
 contrat existant equipe puis Ranch, personnel en solo comme en Coop.
 
+Rencontres de terrain du 2026-10-15 : les cannes s'utilisent depuis leur roue
+d'objet face à l'eau. Attente, morsure, fenêtre tactile de réaction, bonus des
+talents Ventouse/Glue, pose source et tirage reproductible sont raccordés au même
+contrôleur de combat en solo et dans la room Coop. Les données Z 2.12 FR chargées
+ne fournissent que `OldRod` ; Bonne Canne et Super Canne restent donc volontairement
+adossées à cette table d'espèces, avec leurs probabilités de morsure propres, jusqu'à
+l'apparition éventuelle de tables source correspondantes.
+
+Les Pokémon errants visibles des grottes sont portés comme événements de carte,
+et non comme rencontres aléatoires inventées : le compilateur traduit génériquement
+`pbEncounter(EncounterTypes::...)`, le combat suspend la séquence, puis
+`erase-event` retire sprite, collision et acteur Coop jusqu'au rechargement de la
+carte. Éclate-Roc et le DexNav restent les prochains sous-lots du chantier
+`SOLO-FIELD-ENCOUNTERS-1`. La réplication de la pose de pêche distante et les bonus
+de Balls dépendant de la pêche restent deux dettes explicites.
+
+Finition ergonomique pêche : la case regardée est analysée avec le contrat de
+terrain partagé avec Surf. Face à une eau pêchable, un bouton tactile voisin de la
+Boussole sort directement la canne favorite choisie dans sa roue du Sac. La
+préférence est personnelle et persistante ; en migration, une canne compatible
+avec la table locale est choisie automatiquement sans modifier la sauvegarde.
+Bonne Canne et Super Canne réutilisent la table `OldRod` disponible dans la zone,
+sans inventer d'espèces, et conservent leur vitesse de morsure. La lecture de la
+planche de pêche respecte aussi l'ordre inversé employé par RPG Maker.
+La palette bleue spécifique de la canne est protégée du filtre de personnalisation
+dans l'overworld comme dans les deux aperçus d'avatar ; seuls le personnage et ses
+vêtements suivent les couleurs choisies.
+
 ### Phase 12 - Extensions Coop
 
 La capture invitee depend de la capture solo ; le loot delegue depend de la

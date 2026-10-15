@@ -150,7 +150,9 @@ export interface ImportedEncounterMethod {
   readonly slots: readonly ImportedEncounterSlot[];
 }
 export interface ImportedEncounterTable {
-  readonly mapId: number; readonly landRate: number; readonly land: readonly ImportedEncounterSlot[];
+  readonly mapId: number;
+  readonly rates: { readonly land: number; readonly cave: number; readonly water: number };
+  readonly landRate: number; readonly land: readonly ImportedEncounterSlot[];
   readonly methods: readonly ImportedEncounterMethod[];
 }
 
@@ -260,6 +262,7 @@ export function parseImportedEncounter(value: unknown, mapId: number): ImportedE
   const entry = value.records.find((candidate) => isRecord(candidate) && candidate.mapId === mapId);
   if (!isRecord(entry) || !isRecord(entry.encounterRates) || !Number.isInteger(entry.encounterRates.land)
     || !Array.isArray(entry.methods)) return null;
+  const encounterRates = entry.encounterRates;
   const methods = entry.methods.map((candidate) => {
     if (!isRecord(candidate) || typeof candidate.method !== "string" || !Array.isArray(candidate.slots)) {
       throw new Error("Une méthode de rencontre est invalide.");
@@ -275,7 +278,10 @@ export function parseImportedEncounter(value: unknown, mapId: number): ImportedE
     return { method: candidate.method, slots };
   });
   const land = methods.find((method) => method.method === "Land")?.slots ?? [];
-  return { mapId, landRate: entry.encounterRates.land as number, land, methods };
+  const rate = (name: "land" | "cave" | "water"): number => Number.isInteger(encounterRates[name])
+    ? encounterRates[name] as number : 0;
+  return { mapId, rates: { land: rate("land"), cave: rate("cave"), water: rate("water") },
+    landRate: rate("land"), land, methods };
 }
 
 export function parseImportedTrainers(value: unknown): readonly ImportedTrainer[] {
@@ -1029,7 +1035,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   playerImage: HTMLImageElement = assets.playerImage, playerOffsetY = 0,
   follower: ImportedFollowerRender | null = null,
   remotePlayers: readonly ImportedRemotePlayerRender[] = [], playerMode: SourceMovementMode = "walk",
-  playerAction: SourceMovementAction = "idle", fieldMarks: readonly SourceFieldMark[] = []): void {
+  playerAction: SourceMovementAction = "idle", fieldMarks: readonly SourceFieldMark[] = [],
+  hiddenEventIds: ReadonlySet<number> = new Set()): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -1052,7 +1059,7 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   }
   const drawnTransferEvents = new Set<number>();
   for (const transfer of map.transfers) {
-    if (drawnTransferEvents.has(transfer.eventId)) continue;
+    if (drawnTransferEvents.has(transfer.eventId) || hiddenEventIds.has(transfer.eventId)) continue;
     const event = assets.events.find((candidate) => candidate.id === transfer.eventId);
     const selection = event === undefined ? null : selectActiveEventPage(event, map.id, state);
     if (event === undefined || selection === null || selection.pageIndex !== transfer.pageIndex) continue;
@@ -1067,6 +1074,7 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     }
   }
   const eventEntries = assets.events.flatMap((event) => {
+    if (hiddenEventIds.has(event.id)) return [];
     const selection = selectActiveEventPage(event, map.id, state);
     if (selection === null) return [];
     const page = selection.page;

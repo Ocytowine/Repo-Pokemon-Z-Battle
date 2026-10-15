@@ -89,6 +89,9 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (match !== null) return command(source, "add-pokemon", { species: match[1], level: Number(match[2]), policy: "PERSONAL" });
   match = /^pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-encounter", { species: match[1], level: Number(match[2]), policy: "HOST_ONLY" });
+  match = /^(?:Kernel\.)?pbEncounter\(EncounterTypes::(Land|Cave|OldRod|GoodRod|SuperRod)\)$/u.exec(ruby);
+  if (match !== null) return command(source, "request-random-encounter",
+    { method: match[1], policy: "HOST_ONLY" });
   if (/^pbPokemonFollow\(-?\d+\)$/u.test(ruby)) return command(source, "set-follower", { policy: "SHARED" });
   match = /^(?:(?:Kernel\.)?pb(?:ItemBall|ReceiveItem)|\$PokemonBag\.pbStoreItem)\(\s*(?::|PBItems::)([A-Za-z][A-Za-z0-9_]*)(?:\s*,\s*(\d+))?\s*\)$/u.exec(ruby);
   if (match !== null) {

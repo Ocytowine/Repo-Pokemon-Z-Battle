@@ -86,6 +86,10 @@ describe("persistent source event state", () => {
         happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, followerEnabled: true }).followerEnabled).toBe(true);
+    expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {},
+      preferredFishingRod: "GOODROD" }).preferredFishingRod).toBe("GOODROD");
+    expect(() => parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {},
+      preferredFishingRod: "BROKENROD" })).toThrow("invalide");
     const legacyWithParty = { ...createSourceEventState(), followerEnabled: undefined, party: { schemaVersion: 1, activeIndex: 0,
       members: [{ id: "starter", species: "CHESPIN", nickname: null, level: 5, experience: 0,
         stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 }, hp: 20,

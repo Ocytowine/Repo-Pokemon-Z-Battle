@@ -2,7 +2,7 @@ import type { Direction } from "@pokemon-z-battle/overworld-engine";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceBadgeCount } from "./source-economy.js";
 import type { SourceEventState } from "./source-event-state.js";
-import type { ImportedMap, ImportedTileset } from "./imported-map.js";
+import type { ImportedAvatar, ImportedMap, ImportedTileset } from "./imported-map.js";
 import { terrainTagAt } from "./source-wild-encounter.js";
 
 export const SOURCE_MOVEMENT_TEST_KEY = "pokemon-z-battle.movement-test-unlocks.v1";
@@ -84,6 +84,11 @@ export function isSourceSurfableTerrain(tag: number): boolean {
     || tag === SOURCE_TERRAIN.reflectionLake;
 }
 
+/** PBTerrain.isWater? also accepts calm decorative water, even when it cannot be entered with Surf. */
+export function isSourceFishableTerrain(tag: number): boolean {
+  return tag === SOURCE_TERRAIN.stillWater || isSourceSurfableTerrain(tag);
+}
+
 export function sourceFacingPoint(x: number, y: number, direction: Direction): { readonly x: number; readonly y: number } {
   switch (direction) {
     case "up": return { x, y: y - 1 };
@@ -91,6 +96,12 @@ export function sourceFacingPoint(x: number, y: number, direction: Direction): {
     case "left": return { x: x - 1, y };
     case "right": return { x: x + 1, y };
   }
+}
+
+export function isSourceFacingFishableTerrain(map: ImportedMap, tileset: ImportedTileset,
+  avatar: Pick<ImportedAvatar, "x" | "y" | "direction">): boolean {
+  const facing = sourceFacingPoint(avatar.x, avatar.y, avatar.direction);
+  return isSourceFishableTerrain(sourceTerrainAt(map, tileset, facing.x, facing.y));
 }
 
 export function sourceMovementDuration(mode: SourceMovementMode, action: string): number {

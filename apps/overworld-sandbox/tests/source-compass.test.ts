@@ -10,7 +10,7 @@ const pokemon = (id: number, internalName: string, name: string) => ({ id, inter
 const catalog: PlayerDetailsCatalog = { pokemon: [pokemon(3, "THREE", "Trois"), pokemon(1, "ONE", "Un")],
   moves: [], abilities: [] } as unknown as PlayerDetailsCatalog;
 const assets = { schemaVersion: "1", records: [] };
-const encounter = { mapId: 7, landRate: 12, land: [], methods: [
+const encounter = { mapId: 7, rates: { land: 12, cave: 2, water: 2 }, landRate: 12, land: [], methods: [
   { method: "Land", slots: [
     { species: "THREE", minimumLevel: 2, maximumLevel: 3, weight: 20 },
     { species: "ONE", minimumLevel: 2, maximumLevel: 3, weight: 20 },

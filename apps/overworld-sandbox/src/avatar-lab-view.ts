@@ -3,7 +3,8 @@ import { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, loadSess
   PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   type PlayerAvatarSelection,
   type PlayerProfile } from "@pokemon-z-battle/player-state";
-import { AVATAR_PALETTE_COLORS, loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
+import { AVATAR_FISHING_EQUIPMENT_COLORS, AVATAR_PALETTE_COLORS,
+  loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
 
 export const AVATAR_LAB_MAP_ID = "avatar-lab";
 export const AVATAR_LAB_STORAGE_KEY = PLAYER_AVATAR_DRAFT_STORAGE_KEY;
@@ -146,7 +147,9 @@ export class AvatarLabView {
 
   private async recoloredCanvas(record: AvatarRecord, contextName: string): Promise<HTMLCanvasElement> {
     const path = record.assets[contextName]?.path; if (path === null || path === undefined) throw new Error("Asset d'avatar absent.");
-    return loadRecoloredAvatarCanvas(sourceUrl(path), this.identityVariantUrls(record, contextName), this.state.profile.colors);
+    return loadRecoloredAvatarCanvas(sourceUrl(path), this.identityVariantUrls(record, contextName), this.state.profile.colors,
+      contextName === "fish" || contextName === "fishSurf"
+        ? { protectedColors: AVATAR_FISHING_EQUIPMENT_COLORS } : {});
   }
 
   private async renderBattlePreview(record: AvatarRecord, contextName: "battleFront" | "battleBack",
