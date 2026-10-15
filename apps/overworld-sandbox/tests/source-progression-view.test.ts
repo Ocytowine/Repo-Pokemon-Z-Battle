@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import { sourceEvolutionBattler } from "../src/source-progression-view.js";
+import { sourceTransformationBackdropHtml } from "../src/source-transformation-stage.js";
 
 const assets: PokemonAssetsManifest = {
   schemaVersion: "test",
@@ -27,5 +28,23 @@ describe("source evolution presentation", () => {
 
   it("does not invent a sprite for an unknown species", () => {
     expect(sourceEvolutionBattler("MISSINGNO", assets)).toBeNull();
+  });
+
+  it("starts the six source lines at evenly staggered phases", () => {
+    const html = sourceTransformationBackdropHtml("evolution");
+    expect(html.match(/class="source-transformation-line"/g)).toHaveLength(6);
+    expect(html).toContain("--transformation-line-delay:0ms");
+    expect(html).toContain("--transformation-line-delay:-4000ms");
+  });
+
+  it("adds the source light layers only to the evolution scene", () => {
+    const evolution = sourceTransformationBackdropHtml("evolution");
+    const hatch = sourceTransformationBackdropHtml("hatch");
+    expect(evolution).toContain("source-transformation-start-light");
+    expect(evolution).toContain("source-transformation-core-light");
+    expect(evolution).toContain("source-transformation-end-light");
+    expect(evolution.match(/--transformation-ray-angle:/g)).toHaveLength(8);
+    expect(evolution.match(/--transformation-particle-x:/g)).toHaveLength(16);
+    expect(hatch).not.toContain("source-transformation-effects");
   });
 });

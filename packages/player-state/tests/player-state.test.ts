@@ -238,6 +238,7 @@ describe("persistent player party", () => {
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
     const pokemon = createPersistentPokemon("starter-1", "PIKACHU", 5, creationCatalog);
     expect(pokemon).toMatchObject({ id: "starter-1", species: "PIKACHU", level: 5, hp: 19, stats: { maxHp: 19 },
@@ -326,6 +327,7 @@ describe("persistent player party", () => {
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
     const living = { ...party.members[0]!, stats: { ...party.members[0]!.stats, maxHp: 100 }, hp: 1 };
     const reconciled = recalculatePersistentPokemonStats(living, creationCatalog);
@@ -338,6 +340,7 @@ describe("persistent player party", () => {
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "AlwaysFemale", happiness: 42,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
     const pokemon = createPersistentPokemon("gift-1", "PIKACHU", 5, creationCatalog, {
       owner: { trainerId: 0x1234_5678, name: "Ariane", pronouns: "feminine" },
@@ -358,6 +361,7 @@ describe("persistent player party", () => {
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Parabolic", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }, { level: 6, move: "TACKLE" }] }] };
     expect(experienceAtLevel(5, "Parabolic")).toBe(135);
     expect(experienceAtLevel(100, "Erratic")).toBe(600_000);
@@ -372,6 +376,7 @@ describe("persistent player party", () => {
     const pikachu = { ...catalog.pokemon[0]!,
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Parabolic", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }, { level: 6, move: "GROWL" }],
       evolutions: [{ species: "RAICHU", method: "Level", parameter: "6" }] };
     const raichu = { ...pikachu, internalName: "RAICHU", name: "Raichu", abilities: ["SURGE"],
@@ -421,6 +426,7 @@ describe("persistent player party", () => {
     const definition = { id: 25, internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"],
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }],
       evolutions: [{ species: "RAICHU", method: "Item", parameter: "THUNDERSTONEIMBUIDA" }] };
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [definition,
@@ -438,6 +444,7 @@ describe("persistent player party", () => {
     const definition = { id: 1, internalName: "PIKACHU", name: "Pikachu", types: ["ELECTRIC"],
       baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
       abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+      eggGroups: ["Field"],
       levelUpMoves: [{ level: 1, move: "TACKLE" }], evolutions: [
         { species: "DAYMON", method: "HappinessDay", parameter: null },
         { species: "KINGMON", method: "DayHoldItem", parameter: "KINGSROCK" },
@@ -456,6 +463,7 @@ describe("Pokemon Z shared battle experience", () => {
   const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
     baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
     abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent", happiness: 70,
+    eggGroups: ["Field"],
     levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
 
   it("reproduces the final repexp participant formula and switch ordering", () => {

@@ -3439,6 +3439,17 @@ dans `caughtSpecies`, et sa variante grisée si elle n'a encore jamais été cap
 Ce renseignement est calculé depuis le Pokédex local de chaque participant et ne
 fait donc entrer aucune donnée personnelle supplémentaire dans le snapshot Coop.
 
+Fidélité de l'évolution du 2026-10-15 : la cadence du décor est maintenant issue
+de `PokemonEvolutionScene`. Les six barres `EBS/line1.png` conservent en permanence
+un intervalle d'un sixième d'écran, avancent selon le rythme source de 2 px par
+image (cycle de 4,8 s sur 384 px), s'aplatissent au centre et pivotent au-dessus.
+Le double décalage CSS qui les agglutinait au démarrage a été supprimé. La scène
+rejoue également les couches lumineuses absentes du portage : `shine1` au départ,
+`shine3` au cœur, `shine4` à la conclusion, huit rayons et seize particules
+`shine2`. L'éclosion conserve le composant partagé mais utilise désormais son
+propre `line2.png`. Ces effets sont une présentation locale dérivée d'un état déjà
+résolu ; aucune nouvelle donnée persistante ou répliquée n'est introduite.
+
 ## Commandes utiles
 
 ```powershell
