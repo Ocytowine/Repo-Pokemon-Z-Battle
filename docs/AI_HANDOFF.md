@@ -3486,3 +3486,22 @@ sont attendues.
   une refonte monolithique ou des extractions sans besoin fonctionnel.
 - Apres une modification de progression, une ancienne sauvegarde locale peut masquer
   le nouveau declenchement. Rejouer la recette avec un etat vierge.
+
+## Audit automatique des dépendances de combat — 2026-10-15
+
+`prepare:local` produit désormais `battle-integration-report.json`. Le rapport
+croise automatiquement les 1 018 définitions de Pokémon et les 477 équipes de
+Dresseurs avec leurs capacités, codes de fonction, talents et correspondances
+`move2anim.dat`. Chaque dépendance conserve ses périmètres `pokemon:*` et
+`trainer:*`. Une entrée ciblée se contrôle avec
+`corepack pnpm audit:combat -- --scope pokemon:INTERNAL_NAME`; la commande retourne
+un code non nul si une mécanique, un talent ou une animation de ce périmètre manque.
+
+La liste manuelle de 18 capacités animées a été supprimée. L'extracteur développe
+maintenant toutes les animations des fonctions moteur supportées ou partielles,
+ainsi que toutes les séquences `Common:*`. Sur les données locales actuelles, 469
+animations sont préparées et les dix effets communs Sommeil, Poison, Brûlure,
+Paralysie, Gel, Confusion, hausses/baisses de statistiques, Caduco et Hémorragie
+sont disponibles. Le lecteur de combat les joue avant de revenir au fallback CSS.
+Les capacités supportées sans entrée source dans `move2anim.dat` restent signalées
+explicitement ; aucune animation n'est inventée.

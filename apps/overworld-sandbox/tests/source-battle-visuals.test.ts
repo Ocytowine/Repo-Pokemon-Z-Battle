@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG,
   type BattlerState } from "@pokemon-z-battle/battle-engine";
 import { sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
-  sourceHealthAnimationDuration, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
+  selectSourceCommonBattleAnimation, sourceHealthAnimationDuration,
+  sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
+import type { BattleAnimationsManifest } from "@pokemon-z-battle/local-assets";
 
 function battler(id: string): BattlerState {
   return { id, species: id, name: id, level: 5, types: ["NORMAL"], hp: 20,
@@ -17,6 +19,18 @@ describe("source battle health animation", () => {
     expect(sourceHealthAnimationDuration(100, 95, 100)).toBe(420);
     expect(sourceHealthAnimationDuration(100, 50, 100)).toBe(525);
     expect(sourceHealthAnimationDuration(100, 0, 100)).toBe(900);
+  });
+});
+
+describe("source common battle animations", () => {
+  it("selects a source status animation by its canonical Common name", () => {
+    const sleep = { index: 4, name: "Common:Sleep", graphicPath: "Graphics/Animations/status.png",
+      hue: 0, position: 4, frames: [], timings: [] };
+    const manifest = { schemaVersion: "1.0.0",
+      coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
+      mappings: [], animations: [sleep] } satisfies BattleAnimationsManifest;
+    expect(selectSourceCommonBattleAnimation(manifest, "Common:Sleep")).toBe(sleep);
+    expect(selectSourceCommonBattleAnimation(manifest, "Common:Unknown")).toBeNull();
   });
 });
 

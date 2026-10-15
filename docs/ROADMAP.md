@@ -2427,3 +2427,15 @@ existants et ne creent pas de logique de gameplay parallele.
 - RNG centralisee et reproductible ;
 - decisions structurantes documentees ;
 - fonctionnalite consideree terminee seulement avec tests et rapport de couverture.
+
+### Automatisation des lots Pokémon et Dresseurs — 2026-10-15
+
+- [x] calculer automatiquement capacités et talents requis par chaque espèce et
+  chaque équipe de Dresseur ;
+- [x] produire un rapport ciblable qui distingue mécanique absente, partielle,
+  animation non mappée et animation non importée ;
+- [x] remplacer la liste manuelle d'animations par la couverture des fonctions de
+  capacité déclarées supportées ou partielles ;
+- [x] importer et lire les animations communes de statut du jeu source ;
+- [ ] résorber progressivement les dettes signalées par périmètre au moment où les
+  nouvelles rencontres deviennent jouables, sans bloquer sur les zones futures.

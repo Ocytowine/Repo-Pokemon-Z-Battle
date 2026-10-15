@@ -4,14 +4,10 @@ import type { RubyExtendedValue, RubyMarshalValue, RubyObject } from "../ruby-ma
 import { readRubyMarshal } from "../ruby-marshal/reader.js";
 import { rubyText } from "../ruby-marshal/values.js";
 
-const SUPPORTED_MOVES = new Set([
-  "ABSORB", "BITE", "BUBBLE", "EMBER", "GROWL", "MORNINGSUN", "MUDSLAP", "POUND", "PSYWAVE", "QUICKATTACK",
-  "SCRATCH", "STRINGSHOT", "SWIFT", "TACKLE", "TAILWHIP", "THUNDERWAVE", "VINEWHIP", "WATERGUN",
-]);
-
 interface MoveRecord {
   readonly id: number;
   readonly internalName: string;
+  readonly functionCode: string;
 }
 
 interface MovesJson {
@@ -107,6 +103,7 @@ export function normalizeBattleAnimations(
   animationsValue: RubyMarshalValue,
   moveMapValue: RubyMarshalValue,
   moves: readonly MoveRecord[],
+  includedMoves: ReadonlySet<string> = new Set(moves.map((move) => move.internalName)),
 ): {
   readonly mappings: readonly { readonly moveId: number; readonly internalName: string; readonly player: number | null; readonly opponent: number | null }[];
   readonly animations: readonly NormalizedBattleAnimation[];
@@ -128,10 +125,17 @@ export function normalizeBattleAnimations(
   }));
   const selectedIndices = new Set<number>();
   for (const entry of mappings) {
-    if (!SUPPORTED_MOVES.has(entry.internalName)) continue;
+    if (!includedMoves.has(entry.internalName)) continue;
     if (entry.player !== null) selectedIndices.add(entry.player);
     if (entry.opponent !== null) selectedIndices.add(entry.opponent);
   }
+  // Common effects are not referenced by move2anim.dat. They include status,
+  // stat, weather and persistent battle effects and must stay data-driven.
+  sourceAnimations.forEach((value, index) => {
+    if (!isUserClass(value, "PBAnimation")) return;
+    const name = rubyText(value.ivars["@name"] ?? null);
+    if (name?.startsWith("Common:") === true) selectedIndices.add(index);
+  });
   const animations = [...selectedIndices].sort((left, right) => left - right).map((index) => {
     const animation = sourceAnimations[index];
     if (animation === undefined) throw new TypeError(`Animation source ${index} absente.`);
@@ -144,11 +148,22 @@ export async function extractBattleAnimations(sourceDirectory: string, outputDir
   readonly catalog: ReturnType<typeof normalizeBattleAnimations>;
   readonly sourceFiles: readonly string[];
 }> {
-  const moves = JSON.parse(await readFile(path.join(outputDirectory, "moves.json"), "utf8")) as MovesJson;
+  const [moves, support] = await Promise.all([
+    readFile(path.join(outputDirectory, "moves.json"), "utf8").then((value) => JSON.parse(value) as MovesJson),
+    readFile(path.join(outputDirectory, "engine-support-report.json"), "utf8").then((value) => JSON.parse(value) as {
+      readonly categories: { readonly moveFunctionCodes: readonly {
+        readonly key: string; readonly engineSupport: "not-implemented" | "partial" | "supported";
+      }[] };
+    }),
+  ]);
   const sourceFiles = ["Data/PkmnAnimations.rxdata", "Data/move2anim.dat"] as const;
   const [animations, moveMap] = await Promise.all([
     readFile(path.join(sourceDirectory, "Data", "PkmnAnimations.rxdata")).then(readRubyMarshal),
     readFile(path.join(sourceDirectory, "Data", "move2anim.dat")).then(readRubyMarshal),
   ]);
-  return { catalog: normalizeBattleAnimations(animations, moveMap, moves.records), sourceFiles };
+  const usableFunctionCodes = new Set(support.categories.moveFunctionCodes
+    .filter((entry) => entry.engineSupport !== "not-implemented").map((entry) => entry.key));
+  const includedMoves = new Set(moves.records.filter((move) => usableFunctionCodes.has(move.functionCode))
+    .map((move) => move.internalName));
+  return { catalog: normalizeBattleAnimations(animations, moveMap, moves.records, includedMoves), sourceFiles };
 }

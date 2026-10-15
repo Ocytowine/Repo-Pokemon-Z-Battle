@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { readFile } from "node:fs/promises";
 import { createInventory } from "./inventory/create-inventory.js";
 import { extractPbsData } from "./pbs/extract-pbs.js";
 import { extractRuntimeData } from "./runtime/extract-runtime.js";
@@ -23,6 +24,7 @@ Usage:
   pokemon-z-extractor extract-assets --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-maps --source <game-directory> --output <output-directory>
   pokemon-z-extractor prepare-local [--source <game-directory> --output <output-directory>]
+  pokemon-z-extractor audit-combat [--scope pokemon:INTERNAL_NAME|trainer:TYPE:NAME:VERSION]
   pokemon-z-extractor extract-events --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-hooks --source <game-directory> --output <output-directory>
 
@@ -71,11 +73,37 @@ async function main(): Promise<void> {
 
   if (command !== "inventory" && command !== "extract-pbs" && command !== "extract-runtime"
     && command !== "extract-assets" && command !== "extract-maps" && command !== "prepare-local"
-    && command !== "extract-events" && command !== "extract-hooks") {
+    && command !== "extract-events" && command !== "extract-hooks" && command !== "audit-combat") {
     throw new Error(`Commande inconnue : ${command}`);
   }
 
   const invocationDirectory = process.env.INIT_CWD ?? process.cwd();
+  if (command === "audit-combat") {
+    const auditArgs = args.filter((argument) => argument !== "--");
+    const scope = readOption(auditArgs, "--scope");
+    const accepted = scope === undefined ? new Set<string>() : new Set(["--scope", scope]);
+    const unknown = auditArgs.filter((argument) => !accepted.has(argument));
+    if (unknown.length > 0) throw new Error(`Argument inconnu : ${unknown[0]}`);
+    const paths = await readExistingLocalTestPaths(invocationDirectory);
+    const report = JSON.parse(await readFile(path.join(paths.outputDirectory,
+      "battle-integration-report.json"), "utf8")) as {
+      readonly summary: Record<string, number>;
+      readonly scopes: readonly { readonly kind: string; readonly id: string }[];
+      readonly issues: readonly { readonly kind: string; readonly key: string;
+        readonly support: string; readonly usedBy: readonly string[] }[];
+    };
+    const issues = scope === undefined ? report.issues : report.issues.filter((issue) => issue.usedBy.includes(scope));
+    if (scope !== undefined && !report.scopes.some((entry) => `${entry.kind}:${entry.id}` === scope)) {
+      throw new Error(`Périmètre de combat inconnu : ${scope}`);
+    }
+    process.stdout.write(`Combat audit${scope === undefined ? " global" : ` ${scope}`}: ${issues.length} issue(s)\n`);
+    for (const issue of issues.slice(0, 100)) {
+      process.stdout.write(`- ${issue.kind} · ${issue.key} · ${issue.support}\n`);
+    }
+    if (issues.length > 100) process.stdout.write(`- ... ${issues.length - 100} autre(s), voir battle-integration-report.json\n`);
+    if (scope !== undefined && issues.length > 0) process.exitCode = 2;
+    return;
+  }
   const options = command === "prepare-local" && args.length === 0
     ? await readExistingLocalTestPaths(invocationDirectory)
     : parsePathArguments(args);
@@ -91,6 +119,8 @@ async function main(): Promise<void> {
     process.stdout.write(`Local test data written to: ${result.outputDirectory}\n`);
     process.stdout.write(`Local configuration: ${result.configPath}\n`);
     process.stdout.write(`Local data manifest: ${result.manifestPath}\n`);
+    process.stdout.write(`Battle animations ready: ${result.battleAnimationCount}\n`);
+    process.stdout.write(`Battle integration audit: ${result.battleIntegrationIssues} issue(s) -> battle-integration-report.json\n`);
     return;
   }
   if (command === "extract-events") {
@@ -114,6 +144,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Maps: ${result.mapCount}\n`);
     process.stdout.write(`Localized texts: ${result.localizedTextCount}\n`);
     process.stdout.write(`Battle animations normalized: ${result.battleAnimationCount}\n`);
+    process.stdout.write(`Battle integration audit: ${result.battleIntegrationIssues} issue(s) -> battle-integration-report.json\n`);
     process.stdout.write(`Map animations normalized: ${result.mapAnimationCount}\n`);
     return;
   }

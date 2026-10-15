@@ -158,6 +158,11 @@ export function selectSourceBattleAnimation(manifest: BattleAnimationsManifest, 
   return animation === undefined ? null : { animation, explicitOpponent, reverse: side === "opponent" && !explicitOpponent };
 }
 
+export function selectSourceCommonBattleAnimation(manifest: BattleAnimationsManifest,
+  name: string): BattleAnimationRecord | null {
+  return manifest.animations.find((entry) => entry.name === name) ?? null;
+}
+
 export interface SourceBattleAudio {
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
@@ -1254,6 +1259,22 @@ export class SourceBattleVisuals {
     const selection = selectSourceBattleAnimation(sourceAnimations, side, move.internalName);
     if (selection === null) return false;
     const { animation, explicitOpponent, reverse } = selection;
+    return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse);
+  }
+
+  private async playCommonSourceAnimation(side: BattleSide, name: string): Promise<boolean> {
+    const manifests = await this.manifests();
+    const sourceAnimations = manifests.animations;
+    if (sourceAnimations === undefined) return false;
+    const animation = selectSourceCommonBattleAnimation(sourceAnimations, name);
+    return animation === null ? false
+      : this.playSourceAnimationRecord(side, animation, false, side === "opponent");
+  }
+
+  private async playSourceAnimationRecord(side: BattleSide, animation: BattleAnimationRecord,
+    explicitOpponent: boolean, reverse: boolean): Promise<boolean> {
+    const sourceAnimations = this.#manifests?.animations;
+    if (sourceAnimations === undefined) return false;
     const front = document.getElementById("source-move-effects");
     const back = document.getElementById("source-effects-back");
     if (front === null || back === null) return false;
@@ -1355,6 +1376,17 @@ export class SourceBattleVisuals {
 
   private async playStatusVisual(side: BattleSide, visual: SourceBattleStatusVisual,
     state: TeamBattleState): Promise<void> {
+    const commonName = visual === "sleep" ? "Common:Sleep"
+      : visual === "poison" ? "Common:Poison"
+        : visual === "burn" ? "Common:Burn"
+          : visual === "paralysis" ? "Common:Paralysis"
+            : visual === "frozen" ? "Common:Frozen"
+              : visual === "confusion" ? "Common:Confusion"
+                : visual === "stat-up" ? "Common:StatUp"
+                  : visual === "stat-down" ? "Common:StatDown"
+                    : visual === "caduco" ? "Common:Caduco"
+                      : visual === "hemorrhage" ? "Common:Hemorragia" : null;
+    if (commonName !== null && await this.playCommonSourceAnimation(side, commonName)) return;
     const team = state.teams[side];
     const active = team.activeIndices ?? [team.activeIndex];
     const slot = Math.max(0, active.indexOf(team.activeIndex));

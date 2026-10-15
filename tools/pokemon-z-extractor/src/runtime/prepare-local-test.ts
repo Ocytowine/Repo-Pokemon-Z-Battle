@@ -15,6 +15,8 @@ export interface LocalTestPreparationResult {
   readonly outputDirectory: string;
   readonly configPath: string;
   readonly manifestPath: string;
+  readonly battleAnimationCount: number;
+  readonly battleIntegrationIssues: number;
 }
 
 export interface LocalTestPaths {
@@ -100,7 +102,7 @@ export async function prepareLocalTest(
 ): Promise<LocalTestPreparationResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await extractPbsData(paths.source, paths.output);
-  await extractRuntimeData(paths.source, paths.output);
+  const runtime = await extractRuntimeData(paths.source, paths.output);
   await extractAssets(paths.source, paths.output);
   await extractWorldMaps(paths.source, paths.output);
   await extractEvents(paths.source, paths.output);
@@ -108,5 +110,7 @@ export async function prepareLocalTest(
   const manifestPath = await writeLocalDataManifest(paths.output);
   const configPath = await writeLocalTestConfiguration(invocationDirectory,
     { sourceDirectory: paths.source, outputDirectory: paths.output });
-  return { outputDirectory: paths.output, configPath, manifestPath };
+  return { outputDirectory: paths.output, configPath, manifestPath,
+    battleAnimationCount: runtime.battleAnimationCount,
+    battleIntegrationIssues: runtime.battleIntegrationIssues };
 }

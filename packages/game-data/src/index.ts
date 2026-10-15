@@ -8,6 +8,7 @@ export const LOCAL_DATA_REQUIRED_FILES = Object.freeze([
   "alchemy-recipes.json",
   "asset-manifest.json",
   "battle-animations.json",
+  "battle-integration-report.json",
   "encounters.json",
   "items.json",
   "localization.json",

@@ -35,6 +35,18 @@ const SUPPORTED_EVOLUTION_METHODS = new Set([
   "Silcoon",
 ]);
 
+export type EngineMechanicSupport = "not-implemented" | "partial" | "supported";
+
+export function moveFunctionEngineSupport(functionCode: string): EngineMechanicSupport {
+  return SUPPORTED_MOVE_FUNCTION_CODES.has(functionCode) ? "supported"
+    : PARTIAL_MOVE_FUNCTION_CODES.has(functionCode) ? "partial" : "not-implemented";
+}
+
+export function abilityEngineSupport(internalName: string): EngineMechanicSupport {
+  return SUPPORTED_ABILITIES.has(internalName) ? "supported"
+    : PARTIAL_ABILITIES.has(internalName) ? "partial" : "not-implemented";
+}
+
 function entries(
   keys: Iterable<string>,
   supportedKeys: ReadonlySet<string> = new Set(),

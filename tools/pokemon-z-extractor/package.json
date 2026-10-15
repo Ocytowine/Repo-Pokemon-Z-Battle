@@ -20,6 +20,7 @@
     "extract:assets": "tsx src/cli.ts extract-assets",
     "extract:maps": "tsx src/cli.ts extract-maps",
     "prepare:local": "tsx src/cli.ts prepare-local",
+    "audit:combat": "tsx src/cli.ts audit-combat",
     "extract:events": "tsx src/cli.ts extract-events",
     "extract:hooks": "tsx src/cli.ts extract-hooks",
     "inventory": "tsx src/cli.ts inventory",

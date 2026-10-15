@@ -42,6 +42,25 @@ persistant. Si une partie du raccord est volontairement differee, preparer le
 contrat de donnees et signaler clairement la dette dans `docs/AI_HANDOFF.md` et la
 roadmap avant de declarer le lot termine.
 
+## Regle d'integration des Pokemon et Dresseurs
+
+Toute nouvelle espece jouable, rencontre sauvage ou equipe de Dresseur doit etre
+controlee par le pipeline de dependances de combat. Ne pas maintenir de liste
+manuelle d'animations par capacite.
+
+- relancer `corepack pnpm prepare:local` apres l'ajout au perimetre ;
+- consulter `.pokemon-z/data/battle-integration-report.json` ou lancer
+  `corepack pnpm audit:combat -- --scope pokemon:INTERNAL_NAME` (pour un Dresseur :
+  `trainer:TYPE:NOM:VERSION`) ;
+- porter dans le noyau commun les fonctions de capacite et talents signales avant
+  de declarer l'entree terminee ;
+- une fonction supportee ou partielle rend automatiquement eligibles les
+  animations joueur/adversaire de toutes les capacites correspondantes ;
+- les animations `Common:*` de statut sont extraites automatiquement ; une
+  correspondance absente de `move2anim.dat` doit rester signalee et utiliser le
+  fallback, jamais une animation inventee ;
+- conserver le meme noyau et le meme audit en solo, hote et invite Coop.
+
 Pour les evenements source, classifier la sequence par effets et audience, jamais
 par numero de carte ou d'evenement :
 

@@ -28,7 +28,7 @@ describe("battle animation normalization", () => {
     };
     const player: RubyMarshalValue[] = [];
     player[303] = 4;
-    const result = normalizeBattleAnimations(root, [player, []], [{ id: 303, internalName: "TACKLE" }]);
+    const result = normalizeBattleAnimations(root, [player, []], [{ id: 303, internalName: "TACKLE", functionCode: "000" }]);
     expect(result.mappings).toEqual([{ moveId: 303, internalName: "TACKLE", player: 4, opponent: null }]);
     expect(result.animations[0]).toMatchObject({
       index: 4, name: "Move:TACKLE", graphicPath: "Graphics/Animations/sheet.png",
@@ -36,12 +36,25 @@ describe("battle animation normalization", () => {
     });
   });
 
-  it("indexes unsupported moves without expanding their frame data", () => {
+  it("can index a move excluded by the engine audit without expanding its frame data", () => {
     const root: RubyExtendedValue = { kind: "user-class", moduleName: "PBAnimations", value: [], ivars: { "@array": [] } };
     const player: RubyMarshalValue[] = [];
     player[99] = 7;
-    const result = normalizeBattleAnimations(root, [player, []], [{ id: 99, internalName: "FUTURE_MOVE" }]);
+    const result = normalizeBattleAnimations(root, [player, []],
+      [{ id: 99, internalName: "FUTURE_MOVE", functionCode: "999" }], new Set());
     expect(result.mappings[0]?.player).toBe(7);
     expect(result.animations).toEqual([]);
+  });
+
+  it("always expands common battle effects outside move2anim", () => {
+    const common = animation("IGNORED");
+    common.ivars["@name"] = string("Common:Sleep");
+    const root: RubyExtendedValue = {
+      kind: "user-class", moduleName: "PBAnimations", value: [],
+      ivars: { "@array": [common] },
+    };
+    const result = normalizeBattleAnimations(root, [[], []], [], new Set());
+    expect(result.animations).toHaveLength(1);
+    expect(result.animations[0]?.name).toBe("Common:Sleep");
   });
 });

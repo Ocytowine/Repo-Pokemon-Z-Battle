@@ -14,6 +14,7 @@ import { extractMapBattleMetadata } from "./extract-map-metadata.js";
 import { extractMapAnimations } from "./extract-map-animations.js";
 import { extractAlchemyRecipes } from "./extract-alchemy-recipes.js";
 import { extractRegionMaps } from "./extract-region-map.js";
+import { createBattleIntegrationAudit } from "./battle-integration-audit.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -30,6 +31,7 @@ export interface RuntimeExtractionResult {
   readonly localizedTextCount: number;
   readonly battleAnimationCount: number;
   readonly mapAnimationCount: number;
+  readonly battleIntegrationIssues: number;
   readonly files: readonly string[];
 }
 
@@ -90,6 +92,9 @@ export async function extractRuntimeData(
     extractRegionMaps(paths.source),
   ]);
   const alchemyRecipes = await extractAlchemyRecipes(paths.output, scripts);
+  const battleIntegrationAudit = await createBattleIntegrationAudit(paths.output, battleAnimations.catalog) as {
+    readonly summary: { readonly issues: number };
+  };
   const mapIds = new Set(maps.map((entry) => entry.id));
   const missingEncounterMaps = encounters.records
     .filter((entry) => !mapIds.has(entry.mapId))
@@ -134,6 +139,7 @@ export async function extractRuntimeData(
       encounterMapNameDifferences: encounterMapNameDifferences.length,
       normalizedBattleAnimations: battleAnimations.catalog.animations.length,
       normalizedMapAnimations: mapAnimations.animations.length,
+      battleIntegrationIssues: battleIntegrationAudit.summary.issues,
     },
     tableProbe,
     missingEncounterMaps,
@@ -153,6 +159,7 @@ export async function extractRuntimeData(
       mappings: battleAnimations.catalog.mappings,
       animations: battleAnimations.catalog.animations,
     }),
+    writeJsonAtomically(paths.output, "battle-integration-report.json", battleIntegrationAudit),
     writeJsonAtomically(paths.output, "map-animations.json", {
       schemaVersion: "1.0.0",
       coordinateSystem: { cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
@@ -167,6 +174,7 @@ export async function extractRuntimeData(
     localizedTextCount: localization.report.summary.entries,
     battleAnimationCount: battleAnimations.catalog.animations.length,
     mapAnimationCount: mapAnimations.animations.length,
+    battleIntegrationIssues: battleIntegrationAudit.summary.issues,
     files,
   };
 }
