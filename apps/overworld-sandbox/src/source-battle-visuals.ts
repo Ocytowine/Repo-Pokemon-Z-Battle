@@ -65,7 +65,7 @@ async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCan
     }
   }
   const animation = startSourcePokemonSpriteAnimation({ canvas, image, frameWidth, frameHeight,
-    frameCount, profile: "battle", frameDurationMs: 115 });
+    frameCount, profile: "battle" });
   return { element: canvas, frameWidth, frameHeight, visibleBottom,
     stop: () => animation.stop() };
 }

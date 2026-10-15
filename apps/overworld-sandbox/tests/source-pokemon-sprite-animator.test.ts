@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { sourcePokemonSpriteFrameState } from "../src/source-pokemon-sprite-animator.js";
+import { SOURCE_POKEMON_SPRITE_FRAME_MS,
+  sourcePokemonSpriteFrameState } from "../src/source-pokemon-sprite-animator.js";
 
 describe("source Pokemon sprite animator", () => {
-  it("advances opaque source frames at a slightly faster cadence", () => {
-    expect(sourcePokemonSpriteFrameState(124, 4).frame).toBe(0);
-    expect(sourcePokemonSpriteFrameState(125, 4).frame).toBe(1);
-    expect(sourcePokemonSpriteFrameState(500, 4).frame).toBe(0);
+  it("matches Pokemon Z's 15 source frames per second cadence", () => {
+    expect(SOURCE_POKEMON_SPRITE_FRAME_MS).toBeCloseTo(66.67, 2);
+    expect(sourcePokemonSpriteFrameState(66, 4).frame).toBe(0);
+    expect(sourcePokemonSpriteFrameState(67, 4).frame).toBe(1);
+    expect(sourcePokemonSpriteFrameState(SOURCE_POKEMON_SPRITE_FRAME_MS * 4, 4).frame).toBe(0);
   });
 
   it("adds a subtle ground-anchored motion even to a single-frame battler", () => {

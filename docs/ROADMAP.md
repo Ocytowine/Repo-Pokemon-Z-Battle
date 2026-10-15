@@ -2068,6 +2068,9 @@ entre poses a été retiré après validation, car il faisait clignoter le pixel
 Le lecteur respecte la réduction de mouvement et ne produit aucun nouvel asset. Cette
 présentation est reconstruite localement en solo, chez l'hôte et chez l'invité ;
 elle n'ajoute ni état persistant ni trafic Coop.
+La cadence n'est plus une approximation propre au portage : elle reproduit les
+15 poses par seconde de `BitmapWrapperEX` dans Pokémon Z, dérivées de ses 60 Hz et
+de son changement de pose toutes les quatre mises à jour.
 
 Premier lot vertical de combat du 2026-10-09 : Jean puis les trois variantes de
 Melia sur le parcours suivant ont ete pris comme frontiere, sans logique liee a

@@ -17,8 +17,13 @@ export interface SourcePokemonSpriteAnimationOptions {
   readonly frameDurationMs?: number;
 }
 
+// Pokémon Z runs BitmapWrapperEX at 60 Hz and advances its normal-speed
+// battlers every 2 * frameSkip(2) updates: 4 / 60 s, or 15 source frames/s.
+export const SOURCE_POKEMON_SPRITE_FRAME_MS = 1000 / 15;
+
 export function sourcePokemonSpriteFrameState(elapsedMs: number, frameCount: number,
-  frameDurationMs = 125, profile: "idle" | "battle" = "idle"): SourcePokemonSpriteFrameState {
+  frameDurationMs = SOURCE_POKEMON_SPRITE_FRAME_MS,
+  profile: "idle" | "battle" = "idle"): SourcePokemonSpriteFrameState {
   const count = Math.max(1, Math.floor(frameCount));
   const duration = Math.max(60, frameDurationMs);
   const framePosition = Math.max(0, elapsedMs) / duration;

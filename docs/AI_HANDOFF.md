@@ -3561,8 +3561,10 @@ pieds. Après validation visuelle, le fondu entre poses a été retiré : il fai
 clignoter le pixel art. Chaque pose opaque est maintenant préparée hors écran puis
 copiée en une opération, tandis que le mouvement continu passe par le compositeur
 du navigateur. Le lissage bitmap reste désactivé et `prefers-reduced-motion` fige
-proprement la première frame. La cadence est de 125 ms hors combat et 115 ms en
-combat.
+proprement la première frame. La cadence reprend désormais celle du
+`BitmapWrapperEX` source : avec `Graphics.frame_rate = 60`, vitesse normale à deux
+frames internes et `frameSkip = 2`, une pose avance toutes les 4 mises à jour, soit
+15 poses par seconde (environ 66,7 ms), dans les menus comme en combat.
 
 Le même noyau équipe désormais les résumés Équipe/Ranch/Combat, la fiche Pokédex,
 la Pension, les battlers actifs du combat, la résolution post-capture, l'évolution
