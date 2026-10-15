@@ -14,6 +14,17 @@ const page = (commands: readonly Command[]): ImportedEventPage => ({ condition,
     through: false, alwaysOnTop: false, trigger: 0 }, commands });
 
 describe("source event choice and condition flow", () => {
+  it("collapses the source daycare dialogue tree into the personal Pension service", () => {
+    const result = resolveEventFlow(page([
+      command("condition", 0, { kind: "ruby-script", script: "Kernel.pbDayCareDeposited==0" }),
+      command("ruby-script", 1, { source: "pbDayCareDeposit(pbGet(1))" }),
+      command("condition-end", 0),
+    ]), [], createSourceEventState(), 48, 5);
+    expect(result).toMatchObject({ complete: true, pendingChoice: null, blockedReason: null });
+    expect(result.page.commands).toEqual([expect.objectContaining({ kind: "open-day-care",
+      data: { policy: "PERSONAL" } })]);
+  });
+
   it("ports source traversal scripts and lets the isolated test override satisfy movement-item branches", () => {
     const eventPage = page([
       command("condition", 0, { kind: "ruby-script",

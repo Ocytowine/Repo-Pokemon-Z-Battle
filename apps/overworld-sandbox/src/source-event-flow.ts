@@ -1,7 +1,7 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
-  portSourceRubyCondition } from "./source-script-ports.js";
+  portSourceRubyCondition, isSourceDayCareServicePage } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 import { portSourcePokeVialCommand } from "./source-poke-vial.js";
@@ -108,6 +108,13 @@ function matchingIndex(commands: readonly EventCommand[], start: number, end: nu
 
 export function resolveEventFlow(page: ImportedEventPage, selections: readonly number[], state: SourceEventState,
   mapId: number, eventId: number, context?: EventFlowContext): EventFlowResult {
+  if (isSourceDayCareServicePage(page)) {
+    const source = page.commands.find((command) => command.kind === "ruby-script" || command.kind === "condition")
+      ?? page.commands[0];
+    if (source !== undefined) return { page: { ...page, commands: [{ ...source, kind: "open-day-care", text: null,
+      indent: 0, data: { policy: "PERSONAL" } }] }, pendingChoice: null, complete: true,
+      blockedReason: null, consumedChoices: 0 };
+  }
   const output: EventCommand[] = [];
   let selectionCursor = 0;
   let pendingChoice: PendingEventChoice | null = null;

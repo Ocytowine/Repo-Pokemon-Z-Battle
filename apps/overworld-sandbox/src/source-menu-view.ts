@@ -10,7 +10,7 @@ import type { SourceWorldSave } from "./source-world-save.js";
 import type { PlayerConnectionState, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
-import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
+import { createSourcePokemonCollection, sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
 import { isPokemonPartyItemUsableInField, pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
@@ -25,6 +25,10 @@ import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
 import { sourceRegionForMap, sourceRegionImageUrl, sourceVisibleRegionPoints,
   type SourceRegionDestination, type SourceRegionPoint } from "./source-region-map.js";
 import { sourcePokeVialStatus } from "./source-poke-vial.js";
+import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
+import { createSourceDevPokemonEntries, filterSourceDevPokemonEntries, SOURCE_DEV_POKEMON_PAGE_SIZE,
+  sourceDevPokemonGenderOptions, sourceDevPokemonTypes, type SourceDevPokemonGender,
+  type SourceDevPokemonSort } from "./source-dev-pokemon-picker.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -108,7 +112,8 @@ export interface SourceMenuViewCallbacks {
   readonly onGrantTestItems: (pocket: number, itemId: string | null, quantity: number) => void;
   readonly onResetTestItemPocket: (pocket: number) => void;
   readonly onDevLevelCap: (levelCap: number | null) => void;
-  readonly onGrantTestPokemon: (species: string, level: number) => void;
+  readonly onGrantTestPokemon: (species: string, level: number, gender: SourceDevPokemonGender) => void;
+  readonly onOpenTestDayCare: () => void;
   readonly onDive: () => void;
   readonly onFly: (destination: SourceRegionDestination) => void;
   readonly onPokemonLead: (pokemonId: string) => void;
@@ -175,7 +180,14 @@ export class SourceMenuView {
   private bagNotice: string | null = null;
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
-  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" = "movement";
+  private selectedDevPokemonId: string | null = null;
+  private devPokemonQuery = "";
+  private devPokemonType: string | null = null;
+  private devPokemonSort: SourceDevPokemonSort = "number";
+  private devPokemonPage = 0;
+  private devPokemonLevel = 5;
+  private devPokemonGender: SourceDevPokemonGender = "auto";
+  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" = "movement";
   private selectedAlchemyRecipeId: string | null = null;
   private alchemyQuantity = 1;
   private alchemyNotice: string | null = null;
@@ -883,6 +895,54 @@ export class SourceMenuView {
     });
   }
 
+  private renderDevPokemonPicker(content: HTMLElement, model: SourceMenuViewModel): void {
+    const results = content.querySelector<HTMLElement>("#source-dev-pokemon-results");
+    if (results === null) return;
+    const entries = createSourceDevPokemonEntries(model.assets.battleCatalog, model.assets.pokemonAssets);
+    if (this.selectedDevPokemonId !== null
+      && !entries.some((entry) => entry.species === this.selectedDevPokemonId)) this.selectedDevPokemonId = null;
+    const filtered = filterSourceDevPokemonEntries(entries,
+      { query: this.devPokemonQuery, type: this.devPokemonType, sort: this.devPokemonSort });
+    const pages = Math.max(1, Math.ceil(filtered.length / SOURCE_DEV_POKEMON_PAGE_SIZE));
+    this.devPokemonPage = Math.max(0, Math.min(this.devPokemonPage, pages - 1));
+    const visible = filtered.slice(this.devPokemonPage * SOURCE_DEV_POKEMON_PAGE_SIZE,
+      (this.devPokemonPage + 1) * SOURCE_DEV_POKEMON_PAGE_SIZE);
+    const selected = entries.find((entry) => entry.species === this.selectedDevPokemonId) ?? null;
+    const gender = content.querySelector<HTMLSelectElement>("#source-dev-pokemon-gender");
+    if (gender !== null) {
+      const options = selected === null ? [] : sourceDevPokemonGenderOptions(selected.genderRate);
+      if (!options.some((option) => option.value === this.devPokemonGender)) {
+        this.devPokemonGender = options[0]?.value ?? "auto";
+      }
+      gender.innerHTML = options.length === 0
+        ? '<option value="auto">Choisissez une espèce</option>'
+        : options.map((option) => `<option value="${option.value}"${option.value === this.devPokemonGender ? " selected" : ""}>${escapeSourceHtml(option.label)}</option>`).join("");
+      gender.disabled = selected === null || options.length === 1;
+    }
+    const typeBadges = (types: readonly string[]): string => types.map((type) =>
+      `<span title="${escapeSourceHtml(sourcePokemonTypeLabel(type))}"><img src="${escapeSourceHtml(pokemonTypeIconUrl(type))}" alt="">${escapeSourceHtml(sourcePokemonTypeLabel(type))}</span>`).join("");
+    const cards = visible.map((entry) => `<button type="button" class="source-dev-pokemon-card${entry.species === this.selectedDevPokemonId ? " selected" : ""}" data-dev-pokemon-species="${escapeSourceHtml(entry.species)}" aria-pressed="${entry.species === this.selectedDevPokemonId}">
+      <span class="source-dev-pokemon-icon" style="background-image:url('${escapeSourceHtml(entry.iconUrl)}')" aria-hidden="true"></span>
+      <span><small>N°${String(entry.number).padStart(4, "0")}</small><strong>${escapeSourceHtml(entry.name)}</strong><span class="source-dev-pokemon-types">${typeBadges(entry.types)}</span></span></button>`).join("");
+    results.innerHTML = `<div class="source-dev-pokemon-result-head"><strong>${filtered.length.toLocaleString("fr-FR")} résultat${filtered.length > 1 ? "s" : ""}</strong><small>${selected === null ? "Choisissez une espèce" : `Sélection : ${escapeSourceHtml(selected.name)}`}</small></div>
+      <div class="source-dev-pokemon-grid">${cards || '<div class="source-dev-pokemon-empty"><strong>Aucun Pokémon trouvé</strong><small>Modifiez le nom ou le type recherché.</small></div>'}</div>
+      <div class="source-dev-pokemon-pages"><button type="button" data-dev-pokemon-page="previous"${this.devPokemonPage === 0 ? " disabled" : ""} aria-label="Page précédente">‹</button><span>Page ${this.devPokemonPage + 1} / ${pages}</span><button type="button" data-dev-pokemon-page="next"${this.devPokemonPage >= pages - 1 ? " disabled" : ""} aria-label="Page suivante">›</button></div>`;
+    results.querySelectorAll<HTMLButtonElement>("[data-dev-pokemon-species]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this.selectedDevPokemonId = button.dataset.devPokemonSpecies ?? null;
+        this.renderDevPokemonPicker(content, model);
+      });
+    });
+    results.querySelectorAll<HTMLButtonElement>("[data-dev-pokemon-page]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this.devPokemonPage += button.dataset.devPokemonPage === "next" ? 1 : -1;
+        this.renderDevPokemonPicker(content, model);
+      });
+    });
+    const grant = content.querySelector<HTMLButtonElement>("#source-dev-grant-pokemon");
+    if (grant !== null) grant.disabled = selected === null;
+  }
+
   private renderDevTools(content: HTMLElement, model: SourceMenuViewModel): void {
     const movement = model.movement;
     const capabilities = (["sprint", "mount", "climb", "surf", "dive", "waterfall", "fly"] as const)
@@ -900,15 +960,17 @@ export class SourceMenuView {
       `<option value="${quantity}"${quantity === 99 ? " selected" : ""}>${quantity}</option>`).join("");
     const levelCaps = [17, 27, 36, 42, 50, 56, 70, 75, 80, 85, 94, 100].map((level) =>
       `<option value="${level}"${model.dev.levelCapOverride === level ? " selected" : ""}>Niveau ${level}</option>`).join("");
-    const pokemon = [...model.assets.battleCatalog.pokemon].sort((left, right) => left.name.localeCompare(right.name, "fr"));
-    const pokemonOptions = pokemon.map((entry) => `<option value="${escapeSourceHtml(entry.internalName)}">${escapeSourceHtml(entry.name)}</option>`).join("");
+    const devPokemonEntries = createSourceDevPokemonEntries(model.assets.battleCatalog, model.assets.pokemonAssets);
+    const pokemonTypes = sourceDevPokemonTypes(devPokemonEntries).map((type) =>
+      `<option value="${escapeSourceHtml(type)}"${type === this.devPokemonType ? " selected" : ""}>${escapeSourceHtml(sourcePokemonTypeLabel(type))}</option>`).join("");
     const pokemonLevels = Array.from({ length: 100 }, (_, index) => index + 1).map((level) =>
-      `<option value="${level}"${level === 5 ? " selected" : ""}>Niveau ${level}</option>`).join("");
+      `<option value="${level}"${level === this.devPokemonLevel ? " selected" : ""}>Niveau ${level}</option>`).join("");
     content.innerHTML = `<div class="source-menu-title"><div><small>OUTILS LOCAUX</small><h3>Test dev</h3></div><span>PERSONNEL</span></div><div class="source-dev-tools">
       <details data-dev-section="movement"${this.openDevSection === "movement" ? " open" : ""}><summary>Déplacements <small>${escapeSourceHtml(movement.mode.toUpperCase())}</small></summary><div class="source-dev-section"><div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div><ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf : interaction face à l'eau. Corniches, glace, cascades et parois restent pilotées par le terrain source.</p></div></details>
       <details data-dev-section="unlocks"${this.openDevSection === "unlocks" ? " open" : ""}><summary>Déblocages <small>Cap effectif ${model.dev.effectiveLevelCap}</small></summary><div class="source-dev-section"><label class="source-movement-test"><span><strong>Tous les déplacements</strong><small>Ignore localement leurs prérequis sans modifier badges, objets ou histoire.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label><label class="source-dev-field"><span>Cap de niveau</span><select id="source-dev-level-cap"><option value=""${model.dev.levelCapOverride === null ? " selected" : ""}>Progression normale · ${model.dev.storyLevelCap}</option>${levelCaps}</select><small>Le cap simulé sert aux Bonbons Rares et aux combats ouverts par ce navigateur.</small></label></div></details>
       <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items">Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
-      <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form"><label><span>Espèce</span><input id="source-dev-pokemon" list="source-dev-pokemon-list" value="NINCADA" autocomplete="off"><datalist id="source-dev-pokemon-list">${pokemonOptions}</datalist></label><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon</button><small>Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch. Exemple évolution : NINCADA niveau 19.</small></div></details>
+      <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form source-dev-pokemon-picker"><div class="source-dev-pokemon-filters"><label class="source-dev-pokemon-search"><span>Rechercher</span><input id="source-dev-pokemon-query" type="search" value="${escapeSourceHtml(this.devPokemonQuery)}" placeholder="Nom français, numéro…" autocomplete="off"></label><label><span>Type</span><select id="source-dev-pokemon-type"><option value="">Tous les types</option>${pokemonTypes}</select></label><label><span>Classement</span><select id="source-dev-pokemon-sort"><option value="number"${this.devPokemonSort === "number" ? " selected" : ""}>Numéro du Pokédex</option><option value="name"${this.devPokemonSort === "name" ? " selected" : ""}>Nom alphabétique</option></select></label><button type="button" id="source-dev-pokemon-reset">Réinitialiser</button></div><div id="source-dev-pokemon-results" aria-live="polite"></div><div class="source-dev-pokemon-grant"><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><label><span>Genre</span><select id="source-dev-pokemon-gender" disabled><option value="auto">Choisissez une espèce</option></select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon sélectionné</button></div><small>Le genre proposé respecte l'espèce. Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch.</small></div></details>
+      <details data-dev-section="services"${this.openDevSection === "services" ? " open" : ""}><summary>Services Pokémon <small>Interfaces en développement</small></summary><div class="source-dev-section"><button type="button" id="source-dev-open-day-care">Ouvrir la Pension Pokémon</button><small>Accès de test personnel. Les mêmes données seront utilisées par le PNJ de la Pension.</small></div></details>
       </div>`;
     content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((details) => {
       details.addEventListener("toggle", () => {
@@ -943,11 +1005,47 @@ export class SourceMenuView {
     content.querySelector<HTMLButtonElement>("#source-dev-reset-pocket")?.addEventListener("click", () => {
       if (window.confirm("Vider tous les objets de cette catégorie ?")) this.callbacks.onResetTestItemPocket(this.selectedDevPocket);
     });
-    content.querySelector<HTMLButtonElement>("#source-dev-grant-pokemon")?.addEventListener("click", () => {
-      const species = content.querySelector<HTMLInputElement>("#source-dev-pokemon")?.value.trim() ?? "";
-      const level = Number(content.querySelector<HTMLSelectElement>("#source-dev-pokemon-level")?.value ?? 5);
-      this.callbacks.onGrantTestPokemon(species, level);
+    const pokemonQuery = content.querySelector<HTMLInputElement>("#source-dev-pokemon-query");
+    pokemonQuery?.addEventListener("input", () => {
+      this.devPokemonQuery = pokemonQuery.value;
+      this.devPokemonPage = 0;
+      this.renderDevPokemonPicker(content, model);
     });
+    content.querySelector<HTMLSelectElement>("#source-dev-pokemon-type")?.addEventListener("change", (event) => {
+      this.devPokemonType = (event.currentTarget as HTMLSelectElement).value || null;
+      this.devPokemonPage = 0;
+      this.renderDevPokemonPicker(content, model);
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-pokemon-sort")?.addEventListener("change", (event) => {
+      this.devPokemonSort = (event.currentTarget as HTMLSelectElement).value === "name" ? "name" : "number";
+      this.devPokemonPage = 0;
+      this.renderDevPokemonPicker(content, model);
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-pokemon-reset")?.addEventListener("click", () => {
+      this.devPokemonQuery = "";
+      this.devPokemonType = null;
+      this.devPokemonSort = "number";
+      this.devPokemonPage = 0;
+      if (pokemonQuery !== null) pokemonQuery.value = "";
+      const type = content.querySelector<HTMLSelectElement>("#source-dev-pokemon-type");
+      const sort = content.querySelector<HTMLSelectElement>("#source-dev-pokemon-sort");
+      if (type !== null) type.value = "";
+      if (sort !== null) sort.value = "number";
+      this.renderDevPokemonPicker(content, model);
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-pokemon-level")?.addEventListener("change", (event) => {
+      this.devPokemonLevel = Number((event.currentTarget as HTMLSelectElement).value);
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-pokemon-gender")?.addEventListener("change", (event) => {
+      this.devPokemonGender = (event.currentTarget as HTMLSelectElement).value as SourceDevPokemonGender;
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-grant-pokemon")?.addEventListener("click", () => {
+      if (this.selectedDevPokemonId !== null) this.callbacks.onGrantTestPokemon(this.selectedDevPokemonId,
+        this.devPokemonLevel, this.devPokemonGender);
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-open-day-care")?.addEventListener("click",
+      this.callbacks.onOpenTestDayCare);
+    this.renderDevPokemonPicker(content, model);
   }
 
   private renderCoop(content: HTMLElement, coop: SourceMenuCoopModel): void {

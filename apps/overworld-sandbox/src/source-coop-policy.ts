@@ -2,7 +2,7 @@ import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
 import type { SourceStorySnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import { portSourceRubyCommand } from "./source-script-ports.js";
+import { isSourceDayCareServicePage, portSourceRubyCommand } from "./source-script-ports.js";
 import { sourceVariablesWithPersonalPokeVial } from "./source-poke-vial.js";
 
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
@@ -69,6 +69,7 @@ export function sourceStateWithLocalStory(local: SourceEventState, applied: Sour
  * narratives restent sous l'autorite de l'hote.
  */
 export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEventAccess {
+  if (isSourceDayCareServicePage(page)) return "personal";
   const commands = page.commands.map((command) => portSourceRubyCommand(command) ?? command);
   const forbiddenPersonalEffects = new Set([
     "add-pokemon", "request-encounter", "request-trainer-battle", "set-pokedex-enabled", "set-follower",
@@ -76,7 +77,7 @@ export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEven
   if (commands.some((command) => forbiddenPersonalEffects.has(command.kind))) return "blocked";
   if (commands.some((command) => command.kind === "transfer-player")) return "transfer";
   if (commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all"
-    || command.kind === "open-shop" || command.kind === "open-ranch")) return "personal";
+    || command.kind === "open-shop" || command.kind === "open-ranch" || command.kind === "open-day-care")) return "personal";
   return "blocked";
 }
 

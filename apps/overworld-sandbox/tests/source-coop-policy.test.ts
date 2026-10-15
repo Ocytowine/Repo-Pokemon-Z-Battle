@@ -45,6 +45,10 @@ describe("guest source event policy", () => {
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbPokeCenterPC" } },
     ] })).toBe("personal");
     expect(guestSourceEventAccess({ ...ranch, commands: [
+      { kind: "condition", text: null, indent: 0,
+        data: { kind: "ruby-script", script: "Kernel.pbDayCareDeposited==0" } },
+    ] })).toBe("personal");
+    expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0,
         data: { source: "Kernel.pbReceiveItem(PBItems::POLVOBRILLANTE)" } },
     ] })).toBe("blocked");

@@ -1838,6 +1838,25 @@ recharge explicite via `refill-poke-vial`. Les compteurs ne sont pas inclus dans
 la projection narrative Coop ; hôte et invité utilisent et rechargent chacun leur
 propre Pokévial sans intention réseau.
 
+Premier incrément Pension du 2026-10-15 : le noyau personnel persistant porte
+deux emplacements, le niveau au dépôt, la progression exacte de 1 EXP par pas et
+le tarif source `(niveaux gagnés + 1) × 100 ₽`. Dépôt, retrait et échange avec un
+membre de l'équipe sont atomiques ; le dernier Pokémon apte ne peut pas être
+déposé et le Pokémon confié est soigné comme dans Z. Les capacités rencontrées
+pendant la garde utilisent la file d'apprentissage persistante existante afin de
+ne pas effacer silencieusement un choix du joueur. L'interface responsive de
+service affiche les deux places, l'équipe, le coût et une analyse d'évolution ;
+elle est accessible par les événements source identifiés par leur famille
+`pbDayCare*`, ainsi que depuis Test dev pour les validations anticipées.
+
+Autorité : état exclusivement personnel en solo, chez l'hôte et chez l'invité ;
+les pas de chacun ne progressent que sa propre Pension et aucune donnée privée
+n'est répliquée à la room. La sauvegarde et la reconnexion restaurent les deux
+pensionnaires. Le schéma réserve déjà le cycle d'Œuf et son état prêt. Restent au
+lot suivant : tirage déterministe de compatibilité tous les 256 pas, héritage
+source complet, collecte vers l'Incubateur à six places et validation visuelle
+sur téléphone.
+
 Premier increment Pokedex du 2026-10-12 : l'onglet du menu est débloqué par le
 switch narratif source déjà porté et affiche le catalogue extrait dans une grille
 paginée. Recherche par nom/numéro, deux types cumulables, tri et filtres de statut
@@ -2259,6 +2278,12 @@ l'equipe ou au Ranch. Ces fonctions evitent de modifier artificiellement les
 switches d'histoire pour tester apprentissages et evolutions. Les preferences de
 deblocage sont locales ; les objets et Pokemon crees restent des donnees
 personnelles persistantes, y compris pour chaque participant Coop.
+
+Amelioration du 2026-10-15 : le don de Pokemon utilise desormais les noms francais
+extraits de `Data/french.dat` et une grille paginee. Recherche sans accent, numero,
+type et tri se combinent automatiquement ; l'identifiant anglais n'est plus montre
+comme choix au joueur. La creation exige une carte selectionnee et conserve le
+contrat existant equipe puis Ranch, personnel en solo comme en Coop.
 
 ### Phase 12 - Extensions Coop
 

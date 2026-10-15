@@ -29,6 +29,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "request-trainer-battle": capability("transition", "executed", "combat de Dresseur source"),
   "open-shop": capability("transition", "rendered", "boutique source"),
   "open-ranch": capability("transition", "rendered", "Ranch Pokémon personnel"),
+  "open-day-care": capability("transition", "rendered", "Pension Pokémon personnelle"),
   "set-pokedex-enabled": capability("state", "executed", "acces au Pokedex persistant"),
   "set-follower": capability("state", "executed", "activation persistante du Pokémon suiveur"),
   "move-route": capability("movement", "rendered", "route animee"),

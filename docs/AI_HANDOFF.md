@@ -2453,6 +2453,17 @@ Ranch selon la place disponible. Le cap de niveau peut suivre l'histoire ou etre
 simule jusqu'a 100 ; cette preference et le deblocage des mouvements restent dans
 le stockage local de developpement et ne changent aucun switch narratif.
 
+Revision ergonomique du 2026-10-15 : le selecteur de don n'expose plus le nom
+interne anglais dans un `datalist`. `parseBattleCatalog` fournit les noms issus de
+`Data/french.dat` pour les 1 018 especes extraites ; l'identifiant interne reste
+seulement la cle transmise au noyau de creation. L'ecran affiche une grille paginee
+de 12 cartes avec icone, numero, nom francais et types. La recherche instantanee
+accepte nom francais sans accent, numero et identifiant interne de secours ; elle
+se combine avec le type et le tri par numero ou nom. Aucun bouton Appliquer n'est
+requis, une selection explicite est obligatoire avant le don, et les cibles tactiles
+restent utilisables sur mobile. Ce changement demeure un outil personnel : il ne
+modifie ni l'autorite narrative ni l'etat partage Coop.
+
 Les objets et Pokemon donnes modifient en revanche la sauvegarde personnelle du
 navigateur, comme l'indique l'interface. En Coop, hote et invite possedent leurs
 propres outils et collections ; le cap simule de l'initiateur est inscrit dans le
@@ -3108,6 +3119,62 @@ charges dans sa sauvegarde personnelle, l'invité peut recharger son propre vial
 au Centre, et aucun clic, soin ni compteur n'est envoyé à la room ou présenté à
 l'autre participant. Le comportement solo, la migration, la consommation, la
 recharge, le port de commande et l'isolation narrative sont couverts par tests.
+
+Pension, premier jalon du 2026-10-15 : `source-day-care.ts` est le noyau métier
+partagé par tous les contextes. Son état versionné vit dans `SourceEventState`
+avec deux places, niveau initial, futur compteur d'Œuf et drapeau d'Œuf prêt. Une
+ancienne sauvegarde migre vers une Pension vide ; les identifiants Pokémon sont
+validés sans doublon avec l'Équipe et le Ranch. Chaque pas local attribue 1 EXP
+aux pensionnaires via `grantPokemonExperience`. Le dépôt gratuit soigne le
+Pokémon, le retrait facture `(gain de niveaux + 1) × 100 ₽`, et l'échange remplace
+un membre de l'équipe dans une transaction unique. Le dernier Pokémon conscient
+non-Œuf ne peut pas être déposé.
+
+`SourceDayCareView` emploie le nouveau cadre responsive générique
+`source-pokemon-facility-view.ts` : équipe, deux slots, roue Déposer/Analyser/
+Récupérer/Échanger, prix et diagnostic d'évolution/capacités. Les pages contenant
+la famille source `pbDayCare*` deviennent la commande auditée `open-day-care`,
+sans dépendre d'un numéro de carte ou d'événement. Elles sont classées service
+personnel pour qu'un invité Coop ouvre et modifie uniquement sa Pension. Test dev
+offre aussi « Ouvrir la Pension Pokémon ». La compatibilité de couple est
+informatrice ; la génération d'Œuf et l'Incubateur à six places restent le lot
+suivant. Le schéma les anticipe afin d'éviter une migration supplémentaire.
+Après validation visuelle, le cadre de Pension a été réaligné sur la structure
+réelle du Ranch : mêmes classes de workspace, en-tête compact, barre
+Équipe/Stockage, colonne de six places et cartes Pokémon. Seuls le thème, les deux
+emplacements et les informations métier varient. Le genre est explicitement mis
+en évidence par `♂`, `♀` ou `◇` dans l'équipe, chaque pensionnaire et l'analyse.
+Le thème propre à la Pension utilise `Graphics/Pension.png`, une séparation
+diagonale rose/bleu commune au fond, à l'en-tête et à la barre de sections, ainsi
+que deux halos lumineux animés lentement. La structure et les dimensions restent
+celles du Ranch ; le fond peut être remplacé sous le même nom sans modifier le
+code.
+
+Correction visuelle et interactive Pension du 2026-10-15 : cliquer sur une place
+vide arme désormais explicitement cette place, met l'équipe en mode sélection et
+le clic suivant sur un membre effectue le dépôt. Le parcours inverse (membre puis
+place, ou roue d'action) reste disponible. Les cartes de l'équipe et des
+pensionnaires n'appliquent plus de fond opaque dans cette vue. Chaque pensionnaire
+affiche nom, niveau et genre avec le battler frontal animé utilisé par le résumé,
+y compris ses variantes de forme, de genre et chromatique. `Pension.png` est
+visible sous le workspace ; le voile rose/bleu est un dégradé large et animé qui
+se déplace le long de la diagonale, sans rupture centrale franche. La préférence
+de réduction des animations fige proprement le fond et les sprites.
+Les opérations payantes ne sont jamais appliquées au premier clic : Récupérer
+ouvre une confirmation avec pensionnaire, prix et solde restant ; Échanger attend
+le choix du membre de l'équipe puis présente les deux Pokémon avec le même détail
+financier. Annuler ferme la confirmation sans mutation ni écriture de sauvegarde.
+
+Outils de test du 2026-10-15 : le sélecteur « Donner un Pokémon » est désormais
+contraint par la largeur réelle de la colonne du menu. Filtres, cartes, pagination
+et formulaire restent dans le cadre sur petit écran, avec deux cartes par ligne
+tant que l'espace le permet puis une seule sur téléphone étroit. Le formulaire
+permet aussi de choisir le genre avant création. Les choix sont dérivés du taux
+de l'espèce : aléatoire/mâle/femelle pour une espèce mixte, ou valeur unique et
+verrouillée pour une espèce exclusivement mâle, exclusivement femelle ou sans
+genre. La valeur est écrite dans `PersistentPokemon.metadata.gender` et suit donc
+le même état personnel persistant que le Pokémon dans l'Équipe, le Ranch et la
+Pension ; aucun état Coop partagé supplémentaire n'est créé.
 
 ## Commandes utiles
 

@@ -15,6 +15,7 @@ export interface SourcePokemonCardOptions {
   readonly highlightTraining?: boolean;
   readonly heldItemName?: string | null;
   readonly compact?: boolean;
+  readonly showGender?: boolean;
 }
 
 function pokemonIconCycleDuration(entry: SourcePokemonCollectionEntry): number | null {
@@ -68,6 +69,11 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
   const heldItem = entry.pokemon.heldItem === null ? ""
     : `<span class="source-pokemon-held-item" title="Objet tenu : ${escapeHtml(options.heldItemName ?? entry.pokemon.heldItem)}"><i aria-hidden="true">◆</i><b>${escapeHtml(options.heldItemName ?? entry.pokemon.heldItem)}</b></span>`;
   const statusLabel = pokemonStatusLabel(entry);
+  const gender = options.showGender !== true ? "" : entry.pokemon.metadata.gender === "male"
+    ? '<span class="source-pokemon-gender" data-gender="male" title="Mâle">♂</span>'
+    : entry.pokemon.metadata.gender === "female"
+      ? '<span class="source-pokemon-gender" data-gender="female" title="Femelle">♀</span>'
+      : '<span class="source-pokemon-gender" data-gender="genderless" title="Sans genre">◇</span>';
   const status = statusLabel === null ? ""
     : `<span class="source-pokemon-card-status">${escapeHtml(statusLabel)}</span>`;
   const vitals = options.compact === true && entry.location === "ranch" ? ""
@@ -80,7 +86,7 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
       ? `<b>IV ${sourcePokemonStarText(entry.ivStars)} · EV ${sourcePokemonStarText(entry.evStars)}</b>` : ""}</span>`;
   return `<${element}${attributes} class="source-pokemon-card${selected}${active}${compact}">
     ${sourcePokemonIconHtml(entry)}
-    <span class="source-pokemon-card-copy">${collectionContext}<strong>${escapeHtml(entry.displayName)} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span>${heldItem}${status}${vitals}</span>
+    <span class="source-pokemon-card-copy">${collectionContext}<strong>${escapeHtml(entry.displayName)} ${gender} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span>${heldItem}${status}${vitals}</span>
     <span class="source-pokemon-moves" aria-label="Capacités de ${escapeHtml(entry.displayName)}">${moves}</span>${metrics}
   </${element}>`;
 }

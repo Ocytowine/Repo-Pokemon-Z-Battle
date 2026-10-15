@@ -110,6 +110,14 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   return null;
 }
 
+export function isSourceDayCareServicePage(page: ImportedEventPage): boolean {
+  return page.commands.some((entry) => {
+    const value = entry.kind === "ruby-script" ? entry.data.source
+      : entry.kind === "condition" && entry.data.kind === "ruby-script" ? entry.data.script : null;
+    return typeof value === "string" && /(?:pbEggGenerated|pbDayCare)/u.test(value);
+  });
+}
+
 export function portSourceRubyCondition(source: EventCommand): EventCommand | null {
   if (source.kind !== "condition" || source.data.kind !== "ruby-script" || typeof source.data.script !== "string") return null;
   const match = /^pbTrainerBattle\(PBTrainers::([A-Z][A-Z0-9_]*),\s*"((?:\\.|[^"\\])*)",\s*_I\("((?:\\.|[^"\\])*)"\),\s*(true|false),\s*(\d+),\s*(true|false)(?:,\s*[^)]*)?\)$/u

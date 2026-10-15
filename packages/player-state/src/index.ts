@@ -162,7 +162,7 @@ export interface PlayerBattleCatalog {
 }
 
 export interface PlayerCreationCatalog extends PlayerBattleCatalog {
-  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness">
+  readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness" | "eggGroups">
     & { readonly id?: number; readonly captureRate?: number; readonly weight?: number;
       readonly evolutions?: PokemonDefinition["evolutions"];
       readonly hiddenAbilities?: PokemonDefinition["hiddenAbilities"] })[];

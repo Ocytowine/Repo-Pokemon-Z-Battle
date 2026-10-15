@@ -618,6 +618,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
       || !Number.isInteger(entry.captureRate) || (entry.captureRate as number) < 1 || (entry.captureRate as number) > 255
       || typeof entry.genderRate !== "string" || !Number.isInteger(entry.happiness)
       || (entry.happiness as number) < 0 || (entry.happiness as number) > 255
+      || !Array.isArray(entry.eggGroups) || !entry.eggGroups.every((group) => typeof group === "string")
       || typeof entry.kind !== "string" || typeof entry.pokedexEntry !== "string" || !isRecord(entry.effortPoints)
       || !Array.isArray(entry.hiddenAbilities) || !entry.hiddenAbilities.every((ability) => typeof ability === "string")
       || !Array.isArray(entry.formNames) || !entry.formNames.every((form) => typeof form === "string")
@@ -652,7 +653,7 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
         specialAttack: stat("specialAttack"), specialDefense: stat("specialDefense") },
       abilities: entry.abilities as string[], levelUpMoves, evolutions, growthRate: entry.growthRate,
       baseExperience: entry.baseExperience as number, captureRate: entry.captureRate as number,
-      genderRate: entry.genderRate, happiness: entry.happiness as number,
+      genderRate: entry.genderRate, happiness: entry.happiness as number, eggGroups: entry.eggGroups as string[],
       kind: pokemonKinds.get(entry.id as number) ?? entry.kind,
       pokedexEntry: pokedexEntries.get(entry.id as number) ?? entry.pokedexEntry,
       effortPoints: { hp: effort("hp"), attack: effort("attack"), defense: effort("defense"), speed: effort("speed"),

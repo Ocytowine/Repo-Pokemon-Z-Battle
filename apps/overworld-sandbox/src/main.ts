@@ -66,6 +66,9 @@ import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 import { SourceRanchView } from "./source-ranch-view.js";
+import { SourceDayCareView } from "./source-day-care-view.js";
+import { advanceSourceDayCare, depositSourceDayCarePokemon, exchangeSourceDayCarePokemon,
+  withdrawSourceDayCarePokemon, type SourceDayCareFailure } from "./source-day-care.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
 import { SourceProgressionView } from "./source-progression-view.js";
@@ -100,6 +103,7 @@ import { isSourceSurfableTerrain, loadSourceMovementTestOverride, persistSourceM
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
 import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
 import { sourceStoryVariables, useSourcePokeVial } from "./source-poke-vial.js";
+import { resolveSourceDevPokemonGender, type SourceDevPokemonGender } from "./source-dev-pokemon-picker.js";
 import { craftSourceAlchemyRecipe, sourceAlchemyUnlockLevel } from "./source-alchemy.js";
 import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
@@ -177,6 +181,8 @@ let sourceSequenceChoicePrompt: SourceSequenceSession | null = null;
 interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly stock: readonly SourceShopItem[]; notice: string | null }
 let sourceShop: SourceShopSession | null = null;
 let sourceRanchSequence: SourceSequenceSession | null = null;
+let sourceDayCareSequence: SourceSequenceSession | null = null;
+let sourceDayCareDevOpen = false;
 let sourcePokemonSummarySession: { readonly context: SourcePokemonSummaryContext; pokemonId: string } | null = null;
 let sourcePokemonSummaryCry: HTMLAudioElement | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
@@ -441,6 +447,8 @@ function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: nu
       party: applySourceWalkingHappiness(sourceEventState.party, importedAssets.map.id, () => rng.nextInt(2) === 0),
       wildEncounterRngState: rng.snapshot() };
   } else sourceEventState = { ...sourceEventState, happinessSteps };
+  sourceEventState = { ...sourceEventState,
+    dayCare: advanceSourceDayCare(sourceEventState.dayCare, 1, importedAssets.battleCatalog) };
   persistSourceEventState();
 }
 
@@ -938,6 +946,12 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onResetTestItemPocket: resetSourceDevItemPocket,
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
+  onOpenTestDayCare: () => {
+    sourceScenes.closeMenu();
+    sourceDayCareDevOpen = true;
+    heldMovementKeys.clear();
+    renderImportedView();
+  },
   onDive: requestSourceDive,
   onFly: (destination) => { void requestSourceFlight(destination); },
   onPokemonLead: setSourcePartyLead,
@@ -964,6 +978,8 @@ const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: c
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
   (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem,
   releaseSourceRanchPokemon);
+const sourceDayCareView = new SourceDayCareView(closeSourceDayCare, depositSourceDayCare,
+  withdrawSourceDayCare, exchangeSourceDayCare);
 const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   onClose: closeSourcePokemonSummary,
   onPokemonChanged: (pokemonId, cryPath) => {
@@ -1042,6 +1058,11 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   openRanch: (sequence) => {
     sourceRanchSequence = sequence;
+    heldMovementKeys.clear();
+    renderImportedView();
+  },
+  openDayCare: (sequence) => {
+    sourceDayCareSequence = sequence;
     heldMovementKeys.clear();
     renderImportedView();
   },
@@ -2018,6 +2039,68 @@ function renderSourceRanch(): void {
     inventory: sourceEventState.inventory, items: importedAssets.items });
 }
 
+function closeSourceDayCare(): void {
+  const sequence = sourceDayCareSequence;
+  if (sequence === null && !sourceDayCareDevOpen) return;
+  sourceDayCareSequence = null;
+  sourceDayCareDevOpen = false;
+  importedNotice = "Pension Pokémon fermée.";
+  renderImportedView();
+  if (sequence !== null && sourceSequences.isActive(sequence)) void advanceSourceSequence();
+}
+
+function renderSourceDayCare(): void {
+  if (importedAssets === null) return;
+  sourceDayCareView.render({ open: sourceDayCareSequence !== null || sourceDayCareDevOpen, party: sourceEventState.party,
+    dayCare: sourceEventState.dayCare, money: sourceEventState.money,
+    catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+}
+
+function sourceDayCareFailureMessage(reason: SourceDayCareFailure): string {
+  if (reason === "last-able-pokemon") return "Vous devez garder au moins un Pokémon apte au combat.";
+  if (reason === "party-full") return "Votre équipe est complète. Utilisez Échanger pour libérer une place.";
+  if (reason === "insufficient-money") return "Vous n'avez pas assez d'argent pour ce retrait.";
+  if (reason === "slot-occupied") return "Cette place est déjà occupée.";
+  if (reason === "slot-empty") return "Cette place est vide.";
+  return "Cette opération de Pension n'est plus disponible.";
+}
+
+function applySourceDayCareResult(result: ReturnType<typeof depositSourceDayCarePokemon>, success: string): void {
+  if (!result.ok) importedNotice = sourceDayCareFailureMessage(result.reason);
+  else {
+    sourceEventState = { ...sourceEventState, party: result.party, dayCare: result.dayCare, money: result.money };
+    persistSourceEventState();
+    importedNotice = success;
+  }
+  renderImportedView();
+}
+
+function depositSourceDayCare(pokemonId: string, slot: 0 | 1): void {
+  const pokemon = sourceEventState.party.members.find((candidate) => candidate.id === pokemonId);
+  const name = pokemon?.nickname ?? importedAssets?.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === pokemon?.species)?.name ?? "Le Pokémon";
+  applySourceDayCareResult(depositSourceDayCarePokemon(sourceEventState.dayCare, sourceEventState.party,
+    pokemonId, slot, sourceEventState.money), `${name} est confié à la Pension.`);
+}
+
+function withdrawSourceDayCare(slot: 0 | 1): void {
+  const stored = sourceEventState.dayCare.slots[slot];
+  const name = stored?.pokemon.nickname ?? importedAssets?.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === stored?.pokemon.species)?.name ?? "Le Pokémon";
+  applySourceDayCareResult(withdrawSourceDayCarePokemon(sourceEventState.dayCare, sourceEventState.party,
+    slot, sourceEventState.money), `${name} rejoint votre équipe.`);
+  enqueueAllSourceProgressions();
+}
+
+function exchangeSourceDayCare(slot: 0 | 1, pokemonId: string): void {
+  const stored = sourceEventState.dayCare.slots[slot];
+  const name = stored?.pokemon.nickname ?? importedAssets?.battleCatalog.pokemon
+    .find((candidate) => candidate.internalName === stored?.pokemon.species)?.name ?? "Le Pokémon";
+  applySourceDayCareResult(exchangeSourceDayCarePokemon(sourceEventState.dayCare, sourceEventState.party,
+    slot, pokemonId, sourceEventState.money), `${name} rejoint votre équipe ; son remplaçant est confié à la Pension.`);
+  enqueueAllSourceProgressions();
+}
+
 function openSourcePokemonSummary(context: SourcePokemonSummaryContext, pokemonId: string): void {
   if (importedAssets === null) return;
   const collection = createSourcePokemonCollection(sourceEventState.party, sourceEventState.ranch,
@@ -2577,6 +2660,7 @@ function renderImportedView(): void {
   renderSourceMenu();
   renderSourceShop();
   renderSourceRanch();
+  renderSourceDayCare();
   renderSourcePokemonSummary();
   publishCurrentSourceActors();
   publishCurrentSourceScene();
@@ -3011,14 +3095,14 @@ function setSourceDevLevelCap(levelCap: number | null): void {
   renderImportedView();
 }
 
-function grantSourceDevPokemon(speciesInput: string, level: number): void {
+function grantSourceDevPokemon(speciesInput: string, level: number, gender: SourceDevPokemonGender): void {
   if (importedAssets === null || !Number.isSafeInteger(level) || level < 1 || level > 100) return;
   const normalized = speciesInput.trim();
   const definition = importedAssets.battleCatalog.pokemon.find((candidate) =>
     candidate.internalName.toLocaleLowerCase("fr") === normalized.toLocaleLowerCase("fr")
       || candidate.name.localeCompare(normalized, "fr", { sensitivity: "base" }) === 0);
   if (definition === undefined) {
-    importedNotice = "Espèce inconnue : choisissez une entrée proposée par la liste.";
+    importedNotice = "Espèce inconnue : choisissez une carte dans le sélecteur Pokémon.";
     renderImportedView();
     return;
   }
@@ -3027,8 +3111,11 @@ function grantSourceDevPokemon(speciesInput: string, level: number): void {
       name: activePlayerSelection.profile.displayName, pronouns: activePlayerSelection.profile.pronouns },
     origin: { method: "gift", mapId: importedAssets.map.id, receivedAt: new Date().toISOString(), ball: "POKEBALL" },
   };
-  const pokemon = createPersistentPokemon(crypto.randomUUID(), definition.internalName, level,
+  const createdPokemon = createPersistentPokemon(crypto.randomUUID(), definition.internalName, level,
     importedAssets.battleCatalog, context);
+  const pokemon = { ...createdPokemon, metadata: { ...createdPokemon.metadata,
+    gender: resolveSourceDevPokemonGender(definition.genderRate, gender,
+      createdPokemon.metadata.gender ?? "genderless") } };
   const joinsParty = sourceEventState.party.members.length < 6;
   sourceEventState = joinsParty
     ? { ...sourceEventState, party: addPokemonToParty(sourceEventState.party, pokemon) }
@@ -3423,6 +3510,7 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
     if (sourceScenes.compassOpen) { event.preventDefault(); closeSourceCompass(); return; }
     if (sourcePokemonSummarySession !== null) { event.preventDefault(); closeSourcePokemonSummary(); return; }
+    if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { event.preventDefault(); closeSourceDayCare(); return; }
     if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
     if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
@@ -3451,7 +3539,7 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
     event.preventDefault(); toggleSourceMenu(); return;
   }
-  if (sourceScenes.menuOpen || sourceShop !== null || sourceRanchSequence !== null) { event.preventDefault(); return; }
+  if (sourceScenes.menuOpen || sourceShop !== null || sourceRanchSequence !== null || sourceDayCareSequence !== null || sourceDayCareDevOpen) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }
@@ -3484,7 +3572,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();
 }));
-const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-pokemon-summary",
+const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-pokemon-summary",
   "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
   "#source-compass", "#source-compass-toggle", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {

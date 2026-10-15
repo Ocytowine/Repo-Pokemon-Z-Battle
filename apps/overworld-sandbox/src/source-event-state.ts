@@ -5,6 +5,7 @@ import { addPokemonToParty, addPokemonToStorage, createEmptyPlayerParty, createE
 import { isSourceStarterSelectionPage } from "./source-script-ports.js";
 import { isKnownSourceCommand, isSourceStateCommand } from "./source-command-registry.js";
 import { reconcileSourcePokeVial, refillSourcePokeVial, type SourcePokeVialState } from "./source-poke-vial.js";
+import { createEmptySourceDayCare, parseSourceDayCare, type SourceDayCareState } from "./source-day-care.js";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -20,6 +21,8 @@ export interface SourceEventState {
   readonly checkpoint: SourceCheckpoint | null;
   readonly party: PlayerPartyState;
   readonly ranch: PlayerPokemonStorageState;
+  /** Personnel state: never replicated as host narrative state in Coop. */
+  readonly dayCare: SourceDayCareState;
   readonly pendingEncounter: SourceEncounter | null;
   /** Compteur personnel des pas, restauré après reconnexion, pour les effets périodiques comme le bonheur. */
   readonly happinessSteps: number;
@@ -73,6 +76,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, pokeVial: Object.freeze({ current: 0, maximum: 0 }), followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
+  dayCare: Object.freeze(createEmptySourceDayCare()),
   pendingEncounter: null,
   happinessSteps: 0,
   wildEncounterSteps: 0,
@@ -81,7 +85,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), pendingEncounter: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), pendingEncounter: null,
     happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] };
 }
 
@@ -184,7 +188,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, pendingEncounter,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
         appliedBattleSettlementIds: state.appliedBattleSettlementIds });
@@ -240,7 +244,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       party = healPlayerParty(party);
     } else if (command.kind === "refill-poke-vial") {
       const refilled = refillSourcePokeVial({ ...state, switches, variables, selfSwitches, inventory, money,
-        runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, pendingEncounter });
+        runningShoes, pokedexEnabled, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, pendingEncounter });
       variables = { ...refilled.variables };
     } else if (command.kind === "add-pokemon") {
       const species = command.data.species;
@@ -267,7 +271,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     appliedCommands += 1;
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
-    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, pendingEncounter,
+    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, pendingEncounter,
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
     appliedBattleSettlementIds: state.appliedBattleSettlementIds };
@@ -353,13 +357,16 @@ export function parseSourceEventState(value: unknown): SourceEventState {
         direction: checkpointValue.direction as SourceCheckpoint["direction"] } : undefined;
   let party: PlayerPartyState;
   let ranch: PlayerPokemonStorageState;
+  let dayCare: SourceDayCareState;
   try {
     party = value.party === undefined ? createEmptyPlayerParty() : parsePlayerParty(value.party);
     ranch = value.ranch === undefined ? createEmptyPlayerPokemonStorage() : parsePlayerPokemonStorage(value.ranch);
+    dayCare = value.dayCare === undefined ? createEmptySourceDayCare() : parseSourceDayCare(value.dayCare);
   } catch {
     throw new Error("Collection Pokémon persistante invalide.");
   }
-  const collectionIds = [...party.members, ...ranch.members].map((pokemon) => pokemon.id);
+  const collectionIds = [...party.members, ...ranch.members,
+    ...dayCare.slots.flatMap((slot) => slot === null ? [] : [slot.pokemon])].map((pokemon) => pokemon.id);
   if (new Set(collectionIds).size !== collectionIds.length) throw new Error("Collection Pokémon dupliquée.");
   const followerEnabled = followerValue === undefined ? party.members.length > 0 : followerValue;
   const encounterValue = value.pendingEncounter;
@@ -381,7 +388,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && new Set(value.appliedBattleSettlementIds).size === value.appliedBattleSettlementIds.length
       ? [...value.appliedBattleSettlementIds] as string[] : null;
   const pokedexValue = value.pokedex;
-  const currentSpecies = [...party.members, ...ranch.members].map((pokemon) => pokemon.species);
+  const currentSpecies = [...party.members, ...ranch.members,
+    ...dayCare.slots.flatMap((slot) => slot === null ? [] : [slot.pokemon])].map((pokemon) => pokemon.species);
   const parsedSeen = pokedexValue === undefined ? [] : isRecord(pokedexValue)
     ? speciesList(pokedexValue.seenSpecies) : null;
   const parsedCaught = pokedexValue === undefined ? [] : isRecord(pokedexValue)
@@ -405,6 +413,6 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
   return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
     pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
-    party, ranch, pendingEncounter, happinessSteps, wildEncounterSteps, wildEncounterRngState,
+    party, ranch, dayCare, pendingEncounter, happinessSteps, wildEncounterSteps, wildEncounterRngState,
     appliedBattleSettlementIds });
 }
