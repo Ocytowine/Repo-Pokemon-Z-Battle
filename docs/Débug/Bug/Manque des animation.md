@@ -1,5 +1,5 @@
 Titre : Manque des animations lors d'attaque
-Description : Certaine attaques n'ont pas d'animation lors de leur utilisation, ce qui peut rendre le combat moins immersif et moins compréhensible pour le joueur.
+Description : Certaine attaques n'ont pas d'animation lors de leur utilisation, ce qui peut rendre le combat moins immersif et moins compréhensible pour le joueur.Il manque les animation des confusion, paralysie, sommeil...
 Étapes pour reproduire :
 1. Lancer un combat contre un Pokémon sauvage.
 2. Utiliser une attaque qui devrait avoir une animation.
