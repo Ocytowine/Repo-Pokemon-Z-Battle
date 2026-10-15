@@ -21,18 +21,19 @@ const future = (id: SourcePokemonActionId, label: string, symbol: string): Sourc
 /** Contextual action contract shared by team, Ranch and future battle selections. */
 export function sourcePokemonActions(context: SourcePokemonActionContext, entry: SourcePokemonCollectionEntry,
   options: SourcePokemonActionOptions): readonly SourcePokemonAction[] {
-  const details: SourcePokemonAction = { id: "details", label: "Détails", symbol: "i", enabled: true,
-    hint: "Ouvrir le résumé" };
+  const egg = entry.pokemon.metadata.eggSteps > 0;
+  const details: SourcePokemonAction = { id: "details", label: "Détails", symbol: "i", enabled: !egg,
+    hint: egg ? "Contenu inconnu avant l’éclosion" : "Ouvrir le résumé" };
   const canOpenHeldItemManager = context !== "battle";
   const item: SourcePokemonAction = { id: "give-item",
     label: entry.pokemon.heldItem === null ? "Donner objet" : "Gérer objet", symbol: "◇",
-    enabled: canOpenHeldItemManager,
-    hint: !canOpenHeldItemManager ? "Indisponible pendant le combat"
+    enabled: canOpenHeldItemManager && !egg,
+    hint: egg ? "Indisponible pour un Œuf" : !canOpenHeldItemManager ? "Indisponible pendant le combat"
       : options.heldItemManagementAvailable === true ? "Choisir un objet tenu"
         : "Ouvrir le Sac · aucun objet compatible actuellement" };
   const alreadyLead = entry.teamIndex === 0 && entry.pokemon.id === options.activePokemonId;
-  const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !alreadyLead,
-    hint: alreadyLead ? "Déjà en tête" : "Premier de l'équipe" };
+  const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !egg && !alreadyLead,
+    hint: egg ? "Un Œuf ne peut pas combattre" : alreadyLead ? "Déjà en tête" : "Premier de l'équipe" };
   if (context === "battle") return [details, future("switch", "Envoyer", "⇄"), item];
   if (context === "team") return [details, makeLead, item];
   if (entry.location === "team") {

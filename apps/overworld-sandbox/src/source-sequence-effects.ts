@@ -12,7 +12,7 @@ import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol"
 
 type SourceCommand = ImportedEventPage["commands"][number];
 
-export type SourceSequenceCommandFamily = "state" | "trainer-battle" | "shop" | "ranch" | "day-care" | "transfer"
+export type SourceSequenceCommandFamily = "state" | "trainer-battle" | "shop" | "ranch" | "day-care" | "day-care-eggs" | "transfer"
   | "movement" | "presentation";
 
 export function sourceSequenceCommandFamily(command: SourceCommand): SourceSequenceCommandFamily {
@@ -21,6 +21,7 @@ export function sourceSequenceCommandFamily(command: SourceCommand): SourceSeque
   if (command.kind === "open-shop") return "shop";
   if (command.kind === "open-ranch") return "ranch";
   if (command.kind === "open-day-care") return "day-care";
+  if (command.kind === "open-day-care-eggs") return "day-care-eggs";
   if (command.kind === "transfer-player") return "transfer";
   if (command.kind === "move-route" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
     || command.kind === "set-movement-mode") return "movement";
@@ -42,6 +43,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openShop: (session: SourceSequenceSession, stock: readonly SourceShopItem[]) => void;
   readonly openRanch: (session: SourceSequenceSession) => void;
   readonly openDayCare: (session: SourceSequenceSession) => void;
+  readonly openDayCareEggs: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
   readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
@@ -77,6 +79,7 @@ export class SourceSequenceEffects {
       case "shop": return this.openShop(session, command);
       case "ranch": return this.openRanch(session);
       case "day-care": return this.openDayCare(session);
+      case "day-care-eggs": return this.openDayCareEggs(session);
       case "transfer": return this.transfer(session, command);
       case "movement": return this.move(session, command);
       case "presentation": return this.present(session, command);
@@ -164,6 +167,11 @@ export class SourceSequenceEffects {
 
   private openDayCare(session: SourceSequenceSession): SourceSequenceCommandResult {
     this.dependencies.openDayCare(session);
+    return "pause";
+  }
+
+  private openDayCareEggs(session: SourceSequenceSession): SourceSequenceCommandResult {
+    this.dependencies.openDayCareEggs(session);
     return "pause";
   }
 

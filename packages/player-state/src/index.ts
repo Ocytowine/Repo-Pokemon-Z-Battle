@@ -165,7 +165,11 @@ export interface PlayerCreationCatalog extends PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types" | "baseStats" | "abilities" | "levelUpMoves" | "growthRate" | "baseExperience" | "genderRate" | "happiness" | "eggGroups">
     & { readonly id?: number; readonly captureRate?: number; readonly weight?: number;
       readonly evolutions?: PokemonDefinition["evolutions"];
-      readonly hiddenAbilities?: PokemonDefinition["hiddenAbilities"] })[];
+      readonly hiddenAbilities?: PokemonDefinition["hiddenAbilities"];
+      /** Required by breeding; optional only for older/minimal test catalogs. */
+      readonly eggMoves?: PokemonDefinition["eggMoves"];
+      /** Required by incubation; optional only for older/minimal test catalogs. */
+      readonly stepsToHatch?: PokemonDefinition["stepsToHatch"] })[];
 }
 
 /** Runtime catalog required by the detailed Pokemon summary; battle-only callers may keep the smaller contracts above. */

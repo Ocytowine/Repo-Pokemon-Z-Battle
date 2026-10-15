@@ -16,6 +16,8 @@ export function mountOverworldApp(): HTMLCanvasElement {
           <section id="source-shop" class="source-shop" hidden aria-label="Boutique Pokémon"></section>
           <section id="source-ranch" class="source-ranch" hidden aria-label="Ranch Pokémon"></section>
           <section id="source-day-care" class="source-ranch source-day-care" hidden aria-label="Pension Pokémon"></section>
+          <section id="source-day-care-eggs" class="source-day-care-eggs" hidden aria-label="Gardien des Œufs"></section>
+          <section id="source-incubator" class="source-incubator" hidden aria-label="Incubateur Pokémon"></section>
           <section id="source-pokemon-summary" class="source-pokemon-summary" hidden aria-label="Résumé Pokémon"></section>
           <section id="player-duel-prompt" class="player-duel-prompt" hidden aria-label="Défi entre joueurs"></section>
           <section id="battle-join-prompt" class="battle-join-prompt" hidden aria-label="Rejoindre le combat"></section>

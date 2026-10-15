@@ -109,6 +109,11 @@ export function createSourcePokemonCollection(party: PlayerPartyState, ranch: Pl
     teamIndex: number | null): SourcePokemonCollectionEntry | null => {
     const definition = definitions.get(pokemon.species);
     if (definition === undefined) return null;
+    if (pokemon.metadata.eggSteps > 0) {
+      return { pokemon, location, teamIndex, number: 0, speciesName: "Œuf Pokémon", displayName: "Œuf",
+        types: [], currentPower: 0, potentialPower: 0, ivAverage: 0, evAverage: 0, ivStars: 1, evStars: 1,
+        iconUrl: "/__pokemon-z/source/Graphics/Icons/iconEgg.png", moves: [] };
+    }
     const number = definition.id ?? 0;
     const record = assets?.records.find((candidate) => candidate.id === number);
     const icon = record === undefined ? null : resolvePokemonAsset(record, { kind: "icon", form: pokemon.metadata.form,

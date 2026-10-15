@@ -111,10 +111,20 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
 }
 
 export function isSourceDayCareServicePage(page: ImportedEventPage): boolean {
+  if (isSourceDayCareEggServicePage(page)) return false;
   return page.commands.some((entry) => {
     const value = entry.kind === "ruby-script" ? entry.data.source
       : entry.kind === "condition" && entry.data.kind === "ruby-script" ? entry.data.script : null;
     return typeof value === "string" && /(?:pbEggGenerated|pbDayCare)/u.test(value);
+  });
+}
+
+/** The caretaker is identified by the actual egg hand-off, not by a map or event id. */
+export function isSourceDayCareEggServicePage(page: ImportedEventPage): boolean {
+  return page.commands.some((entry) => {
+    const value = entry.kind === "ruby-script" ? entry.data.source
+      : entry.kind === "condition" && entry.data.kind === "ruby-script" ? entry.data.script : null;
+    return typeof value === "string" && /\bpbDayCareGenerateEgg\b/u.test(value);
   });
 }
 

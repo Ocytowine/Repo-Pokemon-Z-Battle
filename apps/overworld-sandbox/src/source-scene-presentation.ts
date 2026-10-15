@@ -342,11 +342,21 @@ export class SourceScenePresentation {
   }
 
   public pauseForBattle(): void {
+    this.pauseWorldAudio();
+  }
+
+  public resumeAfterBattle(): void {
+    this.resumeWorldAudio();
+  }
+
+  /** Suspend la musique et l'ambiance de carte pendant une scène plein écran personnelle. */
+  public pauseWorldAudio(): void {
     this.music?.audio.pause();
     this.backgroundSound?.audio.pause();
   }
 
-  public resumeAfterBattle(): void {
+  /** Reprend la musique et l'ambiance de carte là où elles avaient été suspendues. */
+  public resumeWorldAudio(): void {
     for (const managed of [this.music, this.backgroundSound]) {
       if (managed !== null) void managed.audio.play().catch(() => { /* Le prochain geste utilisateur pourra reprendre l'audio. */ });
     }

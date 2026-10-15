@@ -42,6 +42,16 @@ describe("shared Pokemon collection presentation", () => {
     expect(sourcePokemonIconUrl(6)).toBe("/__pokemon-z/source/Graphics/Icons/icon006.png");
   });
 
+  it("keeps an unhatched egg species, types, moves and potential hidden", () => {
+    const hidden = pokemon("egg", "CHARIZARD", 1, 10);
+    const egg = { ...hidden, metadata: { ...hidden.metadata, eggSteps: 2_805 } };
+    const entry = createSourcePokemonCollection({ ...createEmptyPlayerParty(), activeIndex: 0, members: [egg] },
+      createEmptyPlayerPokemonStorage(), catalog)[0]!;
+    expect(entry).toMatchObject({ number: 0, speciesName: "Œuf Pokémon", displayName: "Œuf",
+      types: [], moves: [], currentPower: 0, potentialPower: 0,
+      iconUrl: "/__pokemon-z/source/Graphics/Icons/iconEgg.png" });
+  });
+
   it("combines name, dual-type and six-tier potential filters before sorting", () => {
     const ranch = { ...createEmptyPlayerPokemonStorage(), members: [
       pokemon("a", "BULBASAUR", 5, 10), pokemon("b", "CHARMANDER", 12, 30), pokemon("c", "CHARIZARD", 36, 80),

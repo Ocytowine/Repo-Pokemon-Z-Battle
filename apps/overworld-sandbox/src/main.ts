@@ -67,8 +67,16 @@ import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { SourceDayCareView } from "./source-day-care-view.js";
-import { advanceSourceDayCare, depositSourceDayCarePokemon, exchangeSourceDayCarePokemon,
-  withdrawSourceDayCarePokemon, type SourceDayCareFailure } from "./source-day-care.js";
+import { SourceDayCareEggView } from "./source-day-care-egg-view.js";
+import { advanceSourceDayCare, collectSourceDayCareEgg, depositSourceDayCarePokemon,
+  discardSourceDayCareEgg, exchangeSourceDayCarePokemon, withdrawSourceDayCarePokemon,
+  type SourceDayCareFailure } from "./source-day-care.js";
+import { SourceIncubatorView } from "./source-incubator-view.js";
+import { collectDayCareEggInIncubator, depositPartyEggInIncubator, withdrawIncubatorEgg,
+  type SourceIncubatorFailure } from "./source-incubator.js";
+import { SourceEggHatchView } from "./source-egg-hatch-view.js";
+import { advanceSourceEggIncubation, completeSourceEggHatch, sourcePendingHatch }
+  from "./source-egg-incubation.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { SourcePokemonSummaryView, type SourcePokemonSummaryContext } from "./source-pokemon-summary.js";
 import { SourceProgressionView } from "./source-progression-view.js";
@@ -112,6 +120,7 @@ import "./style.css";
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
+const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
 
 function normalizedSourceAudio(settings: SourceAudioSettings): {
@@ -182,7 +191,9 @@ interface SourceShopSession { readonly sequence: SourceSequenceSession; readonly
 let sourceShop: SourceShopSession | null = null;
 let sourceRanchSequence: SourceSequenceSession | null = null;
 let sourceDayCareSequence: SourceSequenceSession | null = null;
+let sourceDayCareEggSequence: SourceSequenceSession | null = null;
 let sourceDayCareDevOpen = false;
+let sourceIncubatorOpen = false;
 let sourcePokemonSummarySession: { readonly context: SourcePokemonSummaryContext; pokemonId: string } | null = null;
 let sourcePokemonSummaryCry: HTMLAudioElement | null = null;
 let pendingSourceMapEntryAutorun: number | null = null;
@@ -448,8 +459,16 @@ function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: nu
       wildEncounterRngState: rng.snapshot() };
   } else sourceEventState = { ...sourceEventState, happinessSteps };
   sourceEventState = { ...sourceEventState,
-    dayCare: advanceSourceDayCare(sourceEventState.dayCare, 1, importedAssets.battleCatalog) };
+    dayCare: advanceSourceDayCare(sourceEventState.dayCare, 1, importedAssets.battleCatalog, {
+      inventory: sourceEventState.inventory,
+      creationContext: activePokemonCreationContext(importedAssets.map.id),
+    }) };
+  const incubation = advanceSourceEggIncubation(sourceEventState.party, sourceEventState.incubator,
+    sourceEventState.pendingHatches);
+  sourceEventState = { ...sourceEventState, party: incubation.party, incubator: incubation.incubator,
+    pendingHatches: incubation.pendingHatches };
   persistSourceEventState();
+  queueMicrotask(maybeStartSourceHatch);
 }
 
 function finishImportedStep(): void {
@@ -934,6 +953,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
     sourcePresentation.setAudioMix(normalizedSourceAudio(settings));
     sourceBattleVisuals.setAudioVolumes(settings.music / 100, settings.effects / 100);
     sourceProgressionView.setAudioVolumes(settings.music / 100, settings.effects / 100);
+    sourceEggHatchView.setAudioVolumes(settings.music / 100, settings.effects / 100);
     if (sourcePokemonSummaryCry !== null) sourcePokemonSummaryCry.volume = settings.effects / 100 * 0.8;
   },
   onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
@@ -946,12 +966,15 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onResetTestItemPocket: resetSourceDevItemPocket,
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
+  onTeleportToTestDayCare: () => { void requestSourceDevTeleport(SOURCE_DAY_CARE_DEV_DESTINATION); },
+  onAccelerateTestEggs: accelerateSourceDevEggs,
   onOpenTestDayCare: () => {
     sourceScenes.closeMenu();
     sourceDayCareDevOpen = true;
     heldMovementKeys.clear();
     renderImportedView();
   },
+  onOpenIncubator: openSourceIncubator,
   onDive: requestSourceDive,
   onFly: (destination) => { void requestSourceFlight(destination); },
   onPokemonLead: setSourcePartyLead,
@@ -974,12 +997,20 @@ const sourceProgressionView = new SourceProgressionView({
     maybeStartSourceProgression();
   },
 });
+const sourceEggHatchView = new SourceEggHatchView(completeCurrentSourceEggHatch, {
+  onSceneAudioStart: () => sourcePresentation.pauseWorldAudio(),
+  onSceneAudioEnd: () => sourcePresentation.resumeWorldAudio(),
+});
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
   (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem,
   releaseSourceRanchPokemon);
 const sourceDayCareView = new SourceDayCareView(closeSourceDayCare, depositSourceDayCare,
   withdrawSourceDayCare, exchangeSourceDayCare);
+const sourceDayCareEggView = new SourceDayCareEggView(closeSourceDayCareEggs,
+  collectPendingSourceDayCareEgg, collectPendingSourceDayCareEggInIncubator, discardPendingSourceDayCareEgg);
+const sourceIncubatorView = new SourceIncubatorView(closeSourceIncubator,
+  depositSourceIncubatorEgg, withdrawSourceIncubatorEgg);
 const sourcePokemonSummaryView = new SourcePokemonSummaryView({
   onClose: closeSourcePokemonSummary,
   onPokemonChanged: (pokemonId, cryPath) => {
@@ -1063,6 +1094,11 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   openDayCare: (sequence) => {
     sourceDayCareSequence = sequence;
+    heldMovementKeys.clear();
+    renderImportedView();
+  },
+  openDayCareEggs: (sequence) => {
+    sourceDayCareEggSequence = sequence;
     heldMovementKeys.clear();
     renderImportedView();
   },
@@ -1780,7 +1816,8 @@ function sourceSceneActivity(): SourceSceneActivity {
   return { dialogue: sourceDialogues.current !== null,
     battle: sourceBattles.active || (multiplayer.current?.snapshot?.battle ?? null) !== null
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
-    transition: sourceTransitionInProgress || sourceProgressionView.open, sequence: sourceSequences.current !== null,
+    transition: sourceTransitionInProgress || sourceProgressionView.open || sourceEggHatchView.open,
+    sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
 
@@ -1873,6 +1910,42 @@ function requestSourceDive(): void {
     importedNotice = "La plongée n'est pas possible à cet endroit.";
     renderImportedView();
   }
+}
+
+async function requestSourceDevTeleport(destination: {
+  readonly mapId: number;
+  readonly x: number;
+  readonly y: number;
+  readonly direction: number;
+}): Promise<void> {
+  if (importedAssets === null || sourceTransitionInProgress) return;
+  sourceScenes.closeMenu();
+  heldMovementKeys.clear();
+  await followSourceTransfer({ eventId: 0, pageIndex: 0,
+    eventX: importedAvatar.x, eventY: importedAvatar.y,
+    targetMapId: destination.mapId, targetX: destination.x,
+    targetY: destination.y, direction: destination.direction });
+}
+
+function accelerateSourceDevEggs(): void {
+  const shorten = (pokemon: SourceEventState["party"]["members"][number] | null) => pokemon === null
+    || pokemon.metadata.eggSteps <= 0 || pokemon.metadata.eggSteps <= 5 ? pokemon
+      : { ...pokemon, metadata: { ...pokemon.metadata, eggSteps: 5 } };
+  const members = sourceEventState.party.members.map(shorten)
+    .filter((pokemon): pokemon is NonNullable<typeof pokemon> => pokemon !== null);
+  const slots = sourceEventState.incubator.slots.map(shorten);
+  const changed = members.some((pokemon, index) => pokemon !== sourceEventState.party.members[index])
+    || slots.some((pokemon, index) => pokemon !== sourceEventState.incubator.slots[index]);
+  if (changed) {
+    sourceEventState = { ...sourceEventState, party: { ...sourceEventState.party, members },
+      incubator: { ...sourceEventState.incubator,
+        slots: [slots[0] ?? null, slots[1] ?? null, slots[2] ?? null,
+          slots[3] ?? null, slots[4] ?? null, slots[5] ?? null] } };
+    persistSourceEventState();
+  }
+  importedNotice = changed ? "Les Œufs personnels écloront après cinq pas au maximum."
+    : "Aucun Œuf personnel à accélérer.";
+  renderImportedView();
 }
 
 async function requestSourceFlight(destination: SourceRegionDestination): Promise<void> {
@@ -2056,12 +2129,186 @@ function renderSourceDayCare(): void {
     catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
 }
 
+function closeSourceDayCareEggs(): void {
+  const sequence = sourceDayCareEggSequence;
+  if (sequence === null) return;
+  sourceDayCareEggSequence = null;
+  importedNotice = sourceEventState.dayCare.eggReady
+    ? "Vous laissez l’Œuf à la Pension." : "Le gardien n’a pas encore trouvé d’Œuf.";
+  renderImportedView();
+  if (sourceSequences.isActive(sequence)) void advanceSourceSequence();
+}
+
+function finishSourceDayCareEggService(notice: string): void {
+  const sequence = sourceDayCareEggSequence;
+  sourceDayCareEggSequence = null;
+  importedNotice = notice;
+  renderImportedView();
+  if (sequence !== null && sourceSequences.isActive(sequence)) void advanceSourceSequence();
+}
+
+function collectPendingSourceDayCareEgg(): void {
+  const result = collectSourceDayCareEgg(sourceEventState.dayCare, sourceEventState.party, sourceEventState.money);
+  if (!result.ok) {
+    importedNotice = sourceDayCareFailureMessage(result.reason);
+    renderImportedView();
+    return;
+  }
+  sourceEventState = { ...sourceEventState, party: result.party, dayCare: result.dayCare };
+  persistSourceEventState();
+  finishSourceDayCareEggService("Vous recevez l’Œuf de la Pension.");
+}
+
+function discardPendingSourceDayCareEgg(): void {
+  const dayCare = discardSourceDayCareEgg(sourceEventState.dayCare);
+  if (dayCare === null) {
+    importedNotice = "Aucun Œuf n’attend à la Pension.";
+    renderImportedView();
+    return;
+  }
+  sourceEventState = { ...sourceEventState, dayCare };
+  persistSourceEventState();
+  finishSourceDayCareEggService("L’Œuf a été confié à quelqu’un d’autre.");
+}
+
+function renderSourceDayCareEggs(): void {
+  if (importedAssets === null) return;
+  sourceDayCareEggView.render({ open: sourceDayCareEggSequence !== null, party: sourceEventState.party,
+    dayCare: sourceEventState.dayCare, catalog: importedAssets.battleCatalog,
+    incubatorUnlocked: (sourceEventState.inventory.INCUBADORA ?? 0) > 0 || sourceEventState.switches["129"] === true,
+    incubatorHasSpace: sourceEventState.incubator.slots.some((egg) => egg === null) });
+}
+
+function sourceIncubatorFailureMessage(reason: SourceIncubatorFailure): string {
+  if (reason === "party-full") return "Votre équipe est complète.";
+  if (reason === "incubator-full") return "L’Incubateur n’a plus de place.";
+  if (reason === "not-an-egg") return "Seuls les Œufs peuvent être placés dans l’Incubateur.";
+  if (reason === "egg-not-ready") return "Aucun Œuf n’attend à la Pension.";
+  if (reason === "slot-occupied") return "Cet emplacement est déjà occupé.";
+  if (reason === "slot-empty") return "Cet emplacement est vide.";
+  return "Ce transfert d’Œuf n’est plus disponible.";
+}
+
+function openSourceIncubator(): void {
+  if ((sourceEventState.inventory.INCUBADORA ?? 0) <= 0 && sourceEventState.switches["129"] !== true) {
+    importedNotice = "Vous ne possédez pas encore l’Incubateur.";
+    renderImportedView();
+    return;
+  }
+  sourceScenes.closeMenu();
+  sourceIncubatorOpen = true;
+  heldMovementKeys.clear();
+  renderImportedView();
+}
+
+function closeSourceIncubator(): void {
+  if (!sourceIncubatorOpen) return;
+  sourceIncubatorOpen = false;
+  importedNotice = "Incubateur fermé.";
+  renderImportedView();
+}
+
+function renderSourceIncubator(): void {
+  sourceIncubatorView.render({ open: sourceIncubatorOpen, party: sourceEventState.party,
+    incubator: sourceEventState.incubator });
+}
+
+function depositSourceIncubatorEgg(pokemonId: string, slot: number): void {
+  if (sourceEventState.pendingHatches.includes(pokemonId)) {
+    importedNotice = "Cet Œuf est sur le point d’éclore.";
+    renderImportedView();
+    return;
+  }
+  const result = depositPartyEggInIncubator(sourceEventState.incubator, sourceEventState.party,
+    sourceEventState.ranch, pokemonId, slot);
+  if (!result.ok) importedNotice = sourceIncubatorFailureMessage(result.reason);
+  else {
+    sourceEventState = { ...sourceEventState, party: result.party, ranch: result.ranch,
+      incubator: result.incubator };
+    persistSourceEventState();
+    importedNotice = "L’Œuf est placé dans l’Incubateur.";
+  }
+  renderImportedView();
+}
+
+function withdrawSourceIncubatorEgg(slot: number, destination: "party" | "ranch"): void {
+  const selectedEgg = sourceEventState.incubator.slots[slot];
+  if (selectedEgg !== undefined && selectedEgg !== null
+    && sourceEventState.pendingHatches.includes(selectedEgg.id)) {
+    importedNotice = "Cet Œuf est sur le point d’éclore.";
+    renderImportedView();
+    return;
+  }
+  const result = withdrawIncubatorEgg(sourceEventState.incubator, sourceEventState.party,
+    sourceEventState.ranch, slot, destination);
+  if (!result.ok) importedNotice = sourceIncubatorFailureMessage(result.reason);
+  else {
+    sourceEventState = { ...sourceEventState, party: result.party, ranch: result.ranch,
+      incubator: result.incubator };
+    persistSourceEventState();
+    importedNotice = destination === "party" ? "L’Œuf rejoint votre équipe." : "L’Œuf est envoyé au Ranch.";
+  }
+  renderImportedView();
+}
+
+function collectPendingSourceDayCareEggInIncubator(): void {
+  const result = collectDayCareEggInIncubator(sourceEventState.dayCare, sourceEventState.incubator);
+  if (!result.ok) {
+    importedNotice = sourceIncubatorFailureMessage(result.reason);
+    renderImportedView();
+    return;
+  }
+  sourceEventState = { ...sourceEventState, dayCare: result.dayCare, incubator: result.incubator };
+  persistSourceEventState();
+  finishSourceDayCareEggService("L’Œuf est placé dans votre Incubateur.");
+}
+
+function completeCurrentSourceEggHatch(pokemonId: string, destination: "party" | "ranch",
+  nickname: string | null): { readonly ok: boolean; readonly message: string } {
+  if (importedAssets === null) return { ok: false, message: "Le monde source n’est pas chargé." };
+  const result = completeSourceEggHatch(sourceEventState.party, sourceEventState.ranch,
+    sourceEventState.incubator, sourceEventState.pendingHatches, pokemonId, destination,
+    importedAssets.map.id, new Date().toISOString(), nickname);
+  if (!result.ok) {
+    const message = result.reason === "party-full" ? "Votre équipe est complète."
+      : "Cet Œuf n’est plus disponible pour l’éclosion.";
+    return { ok: false, message };
+  }
+  sourceEventState = reconcileSourcePokedex({ ...sourceEventState, party: result.party,
+    ranch: result.ranch, incubator: result.incubator, pendingHatches: result.pendingHatches });
+  persistSourceEventState();
+  const definition = importedAssets.battleCatalog.pokemon
+    .find((pokemon) => pokemon.internalName === result.pokemon.species);
+  importedNotice = `${result.pokemon.nickname ?? definition?.name ?? result.pokemon.species} est sorti de l’Œuf !`;
+  queueMicrotask(() => { renderImportedView(); maybeStartSourceHatch(); });
+  return { ok: true, message: importedNotice };
+}
+
+function maybeStartSourceHatch(): void {
+  if (sourceEggHatchView.open || importedAssets === null || sourceEventState.pendingHatches.length === 0) return;
+  const activity = sourceSceneActivity();
+  if (activity.battle || activity.transition || activity.dialogue || activity.sequence || activity.movement
+    || sourceScenes.menuOpen || sourceScenes.compassOpen || sourceShop !== null || sourceRanchSequence !== null
+    || sourceDayCareSequence !== null || sourceDayCareEggSequence !== null || sourceDayCareDevOpen
+    || sourceIncubatorOpen || sourcePokemonSummarySession !== null || sourceNewGameActive) return;
+  const candidate = sourcePendingHatch(sourceEventState.party, sourceEventState.incubator,
+    sourceEventState.pendingHatches);
+  if (candidate === null) return;
+  heldMovementKeys.clear();
+  sourceEggHatchView.show({ candidate, catalog: importedAssets.battleCatalog,
+    assets: importedAssets.pokemonAssets, partyHasSpace: sourceEventState.party.members.length < 6,
+    musicVolume: sourceAudioPreferences.music / 100, effectsVolume: sourceAudioPreferences.effects / 100 });
+}
+
 function sourceDayCareFailureMessage(reason: SourceDayCareFailure): string {
   if (reason === "last-able-pokemon") return "Vous devez garder au moins un Pokémon apte au combat.";
   if (reason === "party-full") return "Votre équipe est complète. Utilisez Échanger pour libérer une place.";
   if (reason === "insufficient-money") return "Vous n'avez pas assez d'argent pour ce retrait.";
   if (reason === "slot-occupied") return "Cette place est déjà occupée.";
   if (reason === "slot-empty") return "Cette place est vide.";
+  if (reason === "egg-not-ready") return "Aucun Œuf n'attend à la Pension.";
+  if (reason === "egg-pending") return "Récupérez ou refusez d'abord l’Œuf auprès du gardien.";
+  if (reason === "egg-not-allowed") return "Un Œuf ne peut pas être confié à la Pension.";
   return "Cette opération de Pension n'est plus disponible.";
 }
 
@@ -2106,7 +2353,7 @@ function openSourcePokemonSummary(context: SourcePokemonSummaryContext, pokemonI
   const collection = createSourcePokemonCollection(sourceEventState.party, sourceEventState.ranch,
     importedAssets.battleCatalog, importedAssets.pokemonAssets);
   const permitted = context === "ranch" ? collection : collection.filter((entry) => entry.location === "team");
-  if (!permitted.some((entry) => entry.pokemon.id === pokemonId)) return;
+  if (!permitted.some((entry) => entry.pokemon.id === pokemonId && entry.pokemon.metadata.eggSteps <= 0)) return;
   sourcePokemonSummarySession = { context, pokemonId };
   heldMovementKeys.clear();
   renderImportedView();
@@ -2500,7 +2747,7 @@ function enqueueAllSourceProgressions(): void {
 }
 
 function maybeStartSourceProgression(): void {
-  if (sourceProgressionView.open || importedAssets === null) return;
+  if (sourceProgressionView.open || sourceEggHatchView.open || importedAssets === null) return;
   const activity = sourceSceneActivity();
   if (activity.battle || activity.transition) return;
   while (sourceProgressionQueue.length > 0) {
@@ -2661,9 +2908,12 @@ function renderImportedView(): void {
   renderSourceShop();
   renderSourceRanch();
   renderSourceDayCare();
+  renderSourceDayCareEggs();
+  renderSourceIncubator();
   renderSourcePokemonSummary();
   publishCurrentSourceActors();
   publishCurrentSourceScene();
+  maybeStartSourceHatch();
   maybeStartSourceProgression();
 }
 
@@ -3510,6 +3760,8 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "Escape") {
     if (sourceScenes.compassOpen) { event.preventDefault(); closeSourceCompass(); return; }
     if (sourcePokemonSummarySession !== null) { event.preventDefault(); closeSourcePokemonSummary(); return; }
+    if (sourceIncubatorOpen) { event.preventDefault(); closeSourceIncubator(); return; }
+    if (sourceDayCareEggSequence !== null) { event.preventDefault(); closeSourceDayCareEggs(); return; }
     if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { event.preventDefault(); closeSourceDayCare(); return; }
     if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
     if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
@@ -3539,7 +3791,8 @@ window.addEventListener("keydown", (event) => {
   if (event.code === "KeyM" && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
     event.preventDefault(); toggleSourceMenu(); return;
   }
-  if (sourceScenes.menuOpen || sourceShop !== null || sourceRanchSequence !== null || sourceDayCareSequence !== null || sourceDayCareDevOpen) { event.preventDefault(); return; }
+  if (sourceScenes.menuOpen || sourceShop !== null || sourceRanchSequence !== null || sourceDayCareSequence !== null
+    || sourceDayCareEggSequence !== null || sourceDayCareDevOpen || sourceIncubatorOpen) { event.preventDefault(); return; }
   if (/^Digit[1-9]$/u.test(event.code) && sourceDialogues.current?.choosing === true) {
     event.preventDefault(); chooseSourceOption(Number(event.code.slice(5)) - 1); return;
   }
@@ -3572,7 +3825,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
   sourceScenes.selectMenuTab(tab);
   renderSourceMenu();
 }));
-const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-pokemon-summary",
+const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-day-care-eggs", "#source-incubator", "#source-egg-hatch", "#source-pokemon-summary",
   "#source-new-game", "#source-progression", "#player-duel-prompt", "#battle-join-prompt",
   "#source-compass", "#source-compass-toggle", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {

@@ -505,13 +505,13 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-PENSION-1 — Pension
 
-- Priorite/statut : `P2` / `A qualifier`.
+- Priorite/statut : `P2` / socle et reproduction lots 1-3/6 réalisés.
 - Donnees a verifier : depots, progression par pas, cout, reproduction, oeufs et
   scripts particuliers du fangame.
 
 ### SOLO-EGGS-1 — Oeufs et Incubateur
 
-- Priorite/statut : `P2` / `A qualifier`, lie a la Pension.
+- Priorite/statut : `P2` / lots 1-6/6 implémentés, validation visuelle manuelle restante.
 - Z possede un Incubateur personnel de six emplacements distinct de l'equipe.
 - Couvre : depot/retrait atomique, pas d'eclosion, capacite disponible, restauration
   et presentation. Les oeufs et leur progression restent `PLAYER_STATE` ; seuls

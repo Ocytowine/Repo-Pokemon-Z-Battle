@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-13.
+Derniere mise a jour : 2026-10-15.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -3175,6 +3175,111 @@ verrouillée pour une espèce exclusivement mâle, exclusivement femelle ou sans
 genre. La valeur est écrite dans `PersistentPokemon.metadata.gender` et suit donc
 le même état personnel persistant que le Pokémon dans l'Équipe, le Ranch et la
 Pension ; aucun état Coop partagé supplémentaire n'est créé.
+
+Reproduction Pension, lot 1/6 du 2026-10-15 : `source-day-care.ts` est maintenant
+l'unique noyau de compatibilité et de génération. Il reproduit le score 0 à 3 de
+`pbDayCareGetCompat`, les probabilités `[0,20,50,70]` ou `[0,40,80,88]` avec le
+Charme Ovale, et le cycle de 256 pas. Le RNG personnel est persisté dans le schéma
+Pension 2 ; lorsqu'un tirage réussit, le Pokémon-Œuf complet est créé et conservé
+dans `pendingEgg`. Recharger la partie ne peut donc pas relancer ses propriétés.
+Les sauvegardes Pension 1 migrent sans perdre leurs deux pensionnaires.
+
+La génération porte les bébés/encens, Métamorph, Phione, les couples Nidoran et
+Muciole/Lumivole, les trois formes héritées du Ruby, les capacités initiales,
+naturelles et Œuf, Électacle, IV et objets Pouvoir/Nœud Destin, Pierre Stase,
+talent, Ball maternelle, Charme Chroma et Pokérus. `PlayerCreationCatalog` expose
+désormais `eggMoves` et `stepsToHatch` depuis les données déjà extraites. La
+langue d'origine n'étant pas persistée, les cinq relances Masuda ne sont pas
+inventées ; l'absence d'état Pokémon obscur reste la seconde limite connue.
+
+Contrat solo/Coop : autorité locale du propriétaire, état `PLAYER_STATE`,
+persistance dans `SourceEventState`, aucune intention ni réplication room et
+audience privée. Les pas de l'hôte comme ceux de l'invité appellent le même noyau
+sur leur propre sauvegarde.
+
+Reproduction Pension, lot 2/6 du 2026-10-15 : le compilateur distingue maintenant
+le gardien des Œufs par la présence fonctionnelle de `pbDayCareGenerateEgg`, sans
+numéro de carte ou d'événement, puis émet `open-day-care-eggs`. Cette commande est
+enregistrée, auditée et classée `PERSONAL`. Son écran privé présente l'état du
+couple ou un Œuf dont l'espèce reste cachée, avec quatre issues préparées : équipe,
+Incubateur (désactivé jusqu'au lot 3), laisser en attente et refus définitif avec
+double confirmation. La récupération et le refus utilisent le noyau partagé
+`source-day-care.ts`; une équipe pleine échoue sans mutation et le Pokédex ignore
+les Pokémon dont `eggSteps` est positif.
+
+Tant qu'un Œuf est prêt, retrait et échange d'un parent sont bloqués dans le noyau
+et signalés dans l'UI de Pension. Autorité locale du propriétaire, persistance
+`SourceEventState`, audience privée et aucune réplication room : le même chemin
+fonctionne en solo, hôte et invité, y compris après rechargement/reconnexion. Le
+prochain lot est l'Incubateur personnel à six places et son accès par l'objet.
+
+Reproduction Pension, lot 3/6 du 2026-10-15 : `source-incubator.ts` porte le
+schéma personnel de six cases et les transactions atomiques avec l'équipe, le
+Ranch et `dayCare.pendingEgg`. L'ancien script source a été relu : l'accès vient
+de l'objet `INCUBADORA` (ou du switch source 129), l'écran comporte six cases en
+3 × 2, affiche `eggSteps` et quatre textes aux seuils 10 200, 2 550 et 1 275.
+`SourceIncubatorView` reproduit ce contrat dans le canvas responsive, avec
+confirmations avant chaque transfert. Le gardien des Œufs active désormais sa
+destination Incubateur lorsqu'une case est libre.
+
+Les Œufs présents dans l'équipe ou le Ranch utilisent l'icône `iconEgg`, le nom
+générique « Œuf » et ne publient ni espèce, type, capacités, potentiel, résumé ni
+entrée Pokédex. Autorité locale du propriétaire, persistance `SourceEventState`,
+audience privée, aucune intention réseau : solo, hôte, invité et reconnexion
+emploient exactement le même noyau. Le lot 4 doit décrémenter les pas des Œufs de
+l'équipe et de l'Incubateur, appliquer Corps Ardent/Armumagma puis mettre en file
+les éclosions sans ouvrir plusieurs scènes simultanément.
+
+Outil de test Pension du 2026-10-15 : `Test dev > Services Pokémon` propose
+désormais « TP devant la Pension ». Il emprunte le transfert générique du monde
+vers la Route 5, Map056 en 30,15, soit la destination exacte de la porte source.
+Il ne modifie aucun switch, événement ou état narratif. En Coop, l'hôte publie
+normalement son changement de carte et l'invité conserve le comportement
+d'excursion personnelle déjà porté par `followSourceTransfer`.
+
+Reproduction Pension, lots 4-6/6 du 2026-10-15 : `source-egg-incubation.ts`
+décrémente les Œufs de l'équipe et de l'Incubateur à chaque pas local terminé,
+avec le second point source fourni par Corps Ardent ou Armumagma. Ranch et Œuf
+non récupéré ne progressent pas. `SourceEventState.pendingHatches` est une file
+personnelle persistante : un compteur arrivé à terme reste opaque à 1 jusqu'à sa
+scène, reprend après rechargement et ne concurrence ni combat, dialogue,
+transfert, menu ou autre progression. Plusieurs Œufs sont traités dans l'ordre.
+
+`SourceEggHatchView` porte la scène dans le canvas : message initial, sprite
+`Battlers/egg`, cinq cadres `eggCracks`, secousses et sons, musique `evolv`, flash,
+sprite animé révélé, cri, `EvolutionSuccess`, surnom facultatif puis destination
+Équipe/Ranch pour un Œuf issu de l'Incubateur. La transaction finale passe
+`eggSteps` à zéro, restaure les PV, fixe le bonheur à 120, écrit carte/date
+d'éclosion et réconcilie le Pokédex. Le sprite source `iconEgg` remplace l'œuf CSS
+du gardien et accélère selon les quatre seuils de l'Incubateur.
+`Test dev > Services Pokémon > Ramener les Œufs à 5 pas` permet de valider cette
+séquence sans parcourir plusieurs milliers de cases ; cet outil personnel ne
+touche ni les switches ni la progression narrative.
+
+Le bug documenté `Débug/Bug/Ecran d'évolution.md` venait d'une hypothèse erronée :
+`evolutionbg.gif` ne possède qu'une image. Le script actif de Z anime les couches
+EBS. `source-transformation-stage.ts` fournit maintenant ces couches à l'évolution
+et à l'éclosion (`evobg`/`hatchbg`, `overlay`, six lignes mobiles), avec le même
+contrat responsive et `prefers-reduced-motion`. Autorité `PLAYER_STATE`, audience
+privée, persistance locale : hôte et invité font progresser uniquement leurs
+propres Œufs ; aucun contenu privé n'est envoyé à la room. Validation manuelle
+encore requise pour le cadrage, la cadence et les sons sur téléphone.
+
+Correctif visuel d'éclosion du 2026-10-15 : l'animation `iconEgg` n'utilise plus
+un décalage fixe de 48 px ; elle passe de `left` à `right` et reste donc correcte
+dans l'Incubateur comme dans la vignette agrandie du gardien. Les cinq cadres de
+`eggCracks` sont maintenant enfants du sprite `Battlers/egg` : ils partagent son
+ancrage, sa taille et ses secousses. Les quatre `ballshake` suivent l'attente et
+la cadence du script source avant `recall` et le flash. Le Pokémon révélé est
+affiché à environ un tiers de sa taille précédente, et son animation d'apparition
+est limitée à la phase `revealed` ; les écrans de surnom et de destination ne la
+relancent plus.
+
+Correctif audio d'éclosion du 2026-10-15 : l'ouverture de la scène suspend la BGM
+et le BGS de la carte avant de lancer la musique d'éclosion. L'ambiance du monde
+reprend à sa position précédente uniquement après la fermeture complète de la
+scène. Cette suspension reste une présentation personnelle : elle ne publie aucun
+son ni état dans la room Coop et n'interrompt pas la musique des autres joueurs.
 
 ## Commandes utiles
 

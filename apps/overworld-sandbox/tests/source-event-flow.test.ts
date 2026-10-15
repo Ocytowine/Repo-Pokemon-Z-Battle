@@ -25,6 +25,17 @@ describe("source event choice and condition flow", () => {
       data: { policy: "PERSONAL" } })]);
   });
 
+  it("routes the source egg caretaker separately from Pension management", () => {
+    const result = resolveEventFlow(page([
+      command("condition", 0, { kind: "ruby-script", script: "pbEggGenerated?" }),
+      command("ruby-script", 1, { source: "pbDayCareGenerateEgg" }),
+      command("condition-end", 0),
+    ]), [], createSourceEventState(), 24, 34);
+    expect(result).toMatchObject({ complete: true, pendingChoice: null, blockedReason: null });
+    expect(result.page.commands).toEqual([expect.objectContaining({ kind: "open-day-care-eggs",
+      data: { policy: "PERSONAL" } })]);
+  });
+
   it("ports source traversal scripts and lets the isolated test override satisfy movement-item branches", () => {
     const eventPage = page([
       command("condition", 0, { kind: "ruby-script",

@@ -5,7 +5,7 @@ import { createSourcePokemonCollection, type SourcePokemonCollectionEntry } from
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
 import { sourcePokemonFacilityShellHtml } from "./source-pokemon-facility-view.js";
-import { sourceDayCareWithdrawalFee, type SourceDayCareState } from "./source-day-care.js";
+import { sourceDayCareCompatibility, sourceDayCareWithdrawalFee, type SourceDayCareState } from "./source-day-care.js";
 
 export interface SourceDayCareViewModel {
   readonly open: boolean;
@@ -52,21 +52,12 @@ function compatibility(entries: readonly SourcePokemonCollectionEntry[], catalog
   if (entries.length < 2) return "Déposez deux Pokémon pour analyser leur entente.";
   const [first, second] = entries;
   if (first === undefined || second === undefined) return "Analyse indisponible.";
-  const a = catalog.pokemon.find((pokemon) => pokemon.internalName === first.pokemon.species);
-  const b = catalog.pokemon.find((pokemon) => pokemon.internalName === second.pokemon.species);
-  if (a === undefined || b === undefined) return "Analyse indisponible.";
-  const undiscovered = (groups: readonly string[]) => groups.some((group) => /undiscovered/i.test(group));
-  const dittoA = a.eggGroups.some((group) => /ditto/i.test(group));
-  const dittoB = b.eggGroups.some((group) => /ditto/i.test(group));
-  const gendersFit = (first.pokemon.metadata.gender === "male" && second.pokemon.metadata.gender === "female")
-    || (first.pokemon.metadata.gender === "female" && second.pokemon.metadata.gender === "male")
-    || dittoA !== dittoB;
-  const groupFits = a.eggGroups.some((group) => b.eggGroups.includes(group)) || dittoA || dittoB;
-  if (undiscovered(a.eggGroups) || undiscovered(b.eggGroups) || !gendersFit || !groupFits) {
-    return "Ces Pokémon préfèrent jouer avec d’autres Pokémon.";
-  }
-  if (first.pokemon.species === second.pokemon.species) return "Ils s’entendent très bien. Un Œuf sera probablement trouvé rapidement.";
-  return "Ils semblent bien s’entendre. Ils pourront produire un Œuf.";
+  const result = sourceDayCareCompatibility({ slots: [
+    { pokemon: first.pokemon, depositedLevel: first.pokemon.level },
+    { pokemon: second.pokemon, depositedLevel: second.pokemon.level },
+  ] }, catalog);
+  return ["Ces Pokémon préfèrent jouer avec d’autres Pokémon.", "Ils ne semblent pas beaucoup s’apprécier.",
+    "Ils ont l’air de bien s’entendre.", "Ils ont l’air de très bien s’entendre."][result.score]!;
 }
 
 export class SourceDayCareView {
@@ -122,7 +113,7 @@ export class SourceDayCareView {
         </button></article>`;
     }).join("");
     const content = `<div class="source-day-care-storage-body"><div class="source-day-care-slots">${slotHtml}</div>
-      <article class="source-day-care-compatibility"><span>♡</span><div><small>ANALYSE DU COUPLE</small><strong>${compatibility(stored, model.catalog)}</strong></div></article></div>`;
+      <article class="source-day-care-compatibility"><span>${model.dayCare.eggReady ? "!" : "♡"}</span><div><small>${model.dayCare.eggReady ? "ŒUF EN ATTENTE" : "ANALYSE DU COUPLE"}</small><strong>${model.dayCare.eggReady ? "Le gardien des Œufs souhaite vous parler avant toute modification du couple." : compatibility(stored, model.catalog)}</strong></div></article></div>`;
     let overlay = "";
     const selected = this.selected;
     const selectedEntry = selected?.location === "team" ? team.find((entry) => entry.pokemon.id === selected.pokemonId) ?? null
@@ -132,9 +123,9 @@ export class SourceDayCareView {
         ? model.dayCare.slots.flatMap((slot, index) => slot === null ? [{ id: `deposit:${index}`, label: `Déposer place ${index + 1}`, symbol: "↓", enabled: model.party.members.length > 1, hint: "Dépôt gratuit" }] : [])
         : [{ id: "analyse", label: "Analyser", symbol: "i", enabled: true, hint: "Progression et évolution" },
           { id: "withdraw", label: "Récupérer", symbol: "↑", enabled: model.party.members.length < 6
-            && selected?.location === "day-care" && model.money >= sourceDayCareWithdrawalFee(model.dayCare.slots[selected.slot]!), hint: model.party.members.length >= 6 ? "Équipe complète" : "Payer le retrait" },
+            && !model.dayCare.eggReady && selected?.location === "day-care" && model.money >= sourceDayCareWithdrawalFee(model.dayCare.slots[selected.slot]!), hint: model.dayCare.eggReady ? "Traitez d’abord l’Œuf" : model.party.members.length >= 6 ? "Équipe complète" : "Payer le retrait" },
           { id: "exchange", label: "Échanger", symbol: "⇄", enabled: model.party.members.length > 0
-            && selected?.location === "day-care" && model.money >= sourceDayCareWithdrawalFee(model.dayCare.slots[selected.slot]!), hint: "Choisir un membre de l’équipe" }];
+            && !model.dayCare.eggReady && selected?.location === "day-care" && model.money >= sourceDayCareWithdrawalFee(model.dayCare.slots[selected.slot]!), hint: model.dayCare.eggReady ? "Traitez d’abord l’Œuf" : "Choisir un membre de l’équipe" }];
       overlay = sourceActionWheelHtml({ label: `Pension · ${selectedEntry.displayName}`, actions,
         centerHtml: `${sourcePokemonIconHtml(selectedEntry)}<strong>${selectedEntry.displayName}</strong>` });
     }

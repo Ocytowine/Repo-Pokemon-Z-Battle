@@ -2,6 +2,7 @@ import { resolvePokemonAsset, type PokemonAssetsManifest } from "@pokemon-z-batt
 import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
+import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
 
 interface ProgressionActionResult {
   readonly ok: boolean;
@@ -228,7 +229,7 @@ export class SourceProgressionView {
       : phase === "success" || phase === "cancelled"
         ? '<button type="button" data-evolution-finish>Continuer</button>' : "";
     this.root.hidden = false;
-    this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-evolution-panel"><div class="source-evolution-stage" data-evolution-phase="${phase}">${spriteMarkup}${phase === "animating" && cancellable ? "<button type=\"button\" class=\"source-evolution-cancel\" data-progression-cancel-evolution>Annuler</button>" : ""}<div class="source-evolution-message"><p>${escapeSourceHtml(message).replace("\n", "<br>")}</p>${action}<small data-progression-notice></small></div></div></section></div>`;
+    this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-evolution-panel"><div class="source-evolution-stage" data-evolution-phase="${phase}">${sourceTransformationBackdropHtml("evolution")}${spriteMarkup}${phase === "animating" && cancellable ? "<button type=\"button\" class=\"source-evolution-cancel\" data-progression-cancel-evolution>Annuler</button>" : ""}<div class="source-evolution-message"><p>${escapeSourceHtml(message).replace("\n", "<br>")}</p>${action}<small data-progression-notice></small></div></div></section></div>`;
     this.root.querySelector<HTMLButtonElement>("[data-evolution-start]")?.addEventListener("click", () =>
       this.startEvolutionAnimation());
     this.root.querySelector<HTMLButtonElement>("[data-evolution-finish]")?.addEventListener("click", () =>

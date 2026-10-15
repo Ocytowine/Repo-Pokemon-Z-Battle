@@ -13,7 +13,9 @@ function page(condition: ImportedEventPage["condition"], commands: ImportedEvent
 const unconditional = { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null } as const;
 const emptyParty = { schemaVersion: 1 as const, activeIndex: null, members: [] } as const;
 const emptyRanch = { schemaVersion: 1 as const, members: [] } as const;
-const emptyDayCare = { schemaVersion: 1 as const, slots: [null, null] as const, eggCycleSteps: 0, eggReady: false } as const;
+const emptyDayCare = { schemaVersion: 2 as const, slots: [null, null] as const, eggCycleSteps: 0, eggReady: false,
+  pendingEgg: null, rngState: 0x7f4a_7c15 } as const;
+const emptyIncubator = { schemaVersion: 1 as const, slots: [null, null, null, null, null, null] as const };
 
 describe("persistent source event state", () => {
   it("selects the last page whose switch, variable and scoped self-switch conditions are met", () => {
@@ -63,9 +65,9 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 7 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, pendingEncounter: null,
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
       happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, pendingEncounter: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
       happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
   });
 
@@ -80,7 +82,7 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, pendingEncounter: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
         happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, followerEnabled: true }).followerEnabled).toBe(true);
@@ -92,6 +94,12 @@ describe("persistent source event state", () => {
     expect(parseSourceEventState(legacyWithParty).followerEnabled).toBe(true);
     expect(parseSourceEventState(legacyWithParty).pokedex).toMatchObject({
       seenSpecies: ["CHESPIN"], caughtSpecies: ["CHESPIN"], evolvedSpecies: [], releasedSpecies: [],
+    });
+    const eggBase = parseSourceEventState(legacyWithParty).party.members[0]!;
+    const stateWithEgg = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
+      members: [{ ...eggBase, metadata: { ...eggBase.metadata, eggSteps: 1_000 } }] } };
+    expect(parseSourceEventState(stateWithEgg).pokedex).toEqual({
+      seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [],
     });
     expect(() => parseSourceEventState({ switches: { 2: "yes" }, variables: {}, selfSwitches: {} })).toThrow("invalide");
   });

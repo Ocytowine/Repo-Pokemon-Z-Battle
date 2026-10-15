@@ -49,6 +49,9 @@ describe("guest source event policy", () => {
         data: { kind: "ruby-script", script: "Kernel.pbDayCareDeposited==0" } },
     ] })).toBe("personal");
     expect(guestSourceEventAccess({ ...ranch, commands: [
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbDayCareGenerateEgg" } },
+    ] })).toBe("personal");
+    expect(guestSourceEventAccess({ ...ranch, commands: [
       { kind: "ruby-script", text: null, indent: 0,
         data: { source: "Kernel.pbReceiveItem(PBItems::POLVOBRILLANTE)" } },
     ] })).toBe("blocked");

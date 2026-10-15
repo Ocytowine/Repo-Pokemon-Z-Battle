@@ -1852,10 +1852,79 @@ elle est accessible par les événements source identifiés par leur famille
 Autorité : état exclusivement personnel en solo, chez l'hôte et chez l'invité ;
 les pas de chacun ne progressent que sa propre Pension et aucune donnée privée
 n'est répliquée à la room. La sauvegarde et la reconnexion restaurent les deux
-pensionnaires. Le schéma réserve déjà le cycle d'Œuf et son état prêt. Restent au
-lot suivant : tirage déterministe de compatibilité tous les 256 pas, héritage
-source complet, collecte vers l'Incubateur à six places et validation visuelle
-sur téléphone.
+pensionnaires.
+
+Reproduction, lot 1/6 du 2026-10-15 : le même noyau personnel calcule désormais
+les quatre degrés de compatibilité de Z puis effectue un tirage tous les 256 pas,
+avec les probabilités normales ou celles du Charme Ovale. Son RNG est sauvegardé ;
+un succès crée immédiatement un Œuf caché et immuable, de sorte qu'un rechargement
+ne relance ni espèce, ni IV, ni nature, ni caractère chromatique. Le schéma
+Pension passe à la version 2 et migre les deux pensionnaires du schéma 1.
+
+La génération couvre les lignées de bébé et leurs encens, les couples avec
+Métamorph, les espèces spéciales du script, capacités initiales/naturelles/Œuf,
+Électacle, trois IV ou cinq avec Nœud Destin, objets Pouvoir, Pierre Stase,
+talents normaux/cachés, formes héritées prévues par Z, Ball maternelle, Charme
+Chroma et Pokérus. Les capacités Œuf et le nombre de pas sont maintenant exposés
+dans le catalogue runtime. La méthode Masuda reste explicitement suspendue : la
+langue du Dresseur d'origine n'existe pas encore dans le modèle persistant ;
+l'état Pokémon obscur n'est pas davantage représenté.
+
+Reproduction, lot 2/6 du 2026-10-15 : les pages source qui exécutent réellement
+`pbDayCareGenerateEgg` sont désormais distinguées génériquement de la gestion
+`pbDayCare*` et deviennent la commande auditée `open-day-care-eggs`. Le gardien
+présente en français l'état du couple ou l'Œuf caché, puis permet de le recevoir
+dans l'équipe, de le laisser en attente ou de le refuser après une seconde
+confirmation. Une équipe pleine ne consomme jamais l'Œuf. Retrait et échange des
+parents sont bloqués tant que l'Œuf prêt n'a pas été traité, ce qui supprime toute
+perte silencieuse. La remise est atomique, persistante et ne révèle pas l'espèce
+au Pokédex avant l'éclosion. L'action Incubateur est déjà visible dans le contrat
+mais reste honnêtement indisponible jusqu'au lot 3/6.
+
+Comme la Pension, ce service est `PLAYER_STATE` et `PERSONAL` : hôte et invité
+consultent et modifient uniquement leur propre sauvegarde, sans intention room ni
+projection chez l'autre joueur. Restent aux lots suivants l'Incubateur à six
+places, les pas d'éclosion, la scène d'éclosion et la validation visuelle sur
+téléphone.
+
+Reproduction, lot 3/6 du 2026-10-15 : l'Incubateur source est porté comme un
+état personnel distinct de six emplacements, restauré avec la sauvegarde. L'objet
+important `INCUBADORA` ouvre depuis le Sac une interface responsive 3 × 2 inspirée
+du script `201-74253698-incubadora.rb`. Chaque case affiche l'icône Œuf animée,
+les pas restants et l'un des quatre messages source de proximité d'éclosion.
+
+Les transferts confirmés équipe → Incubateur, Incubateur → équipe et Incubateur
+→ Ranch sont atomiques et refusent doublon, cible occupée, Pokémon éclos ou équipe
+pleine sans mutation partielle. Le gardien peut maintenant remettre directement
+l'Œuf de Pension dans le premier emplacement libre si l'objet a été obtenu ; un
+Incubateur plein conserve l'Œuf chez le gardien. Les cartes Équipe/Ranch masquent
+espèce, types, capacités, statistiques potentielles et résumé d'un Œuf non éclos.
+L'état demeure `PLAYER_STATE`, privé pour l'hôte comme pour l'invité, sans message
+room. Le lot 4/6 portera la décrémentation des pas, Corps Ardent/Armumagma et le
+déclenchement sûr de l'éclosion.
+
+Reproduction, lots 4-6/6 implémentés le 2026-10-15 : chaque pas local décrémente
+les Œufs de l'équipe et de l'Incubateur, jamais ceux du Ranch ni l'Œuf encore chez
+le gardien. Corps Ardent ou Armumagma double une seule fois la progression. Une
+file `pendingHatches` personnelle et persistante maintient l'Œuf opaque à un pas
+jusqu'à ce que la scène bloquante puisse commencer ; plusieurs éclosions sont
+présentées séquentiellement après les combats, dialogues et transferts.
+
+La scène utilise l'Œuf et les cinq fissures source, les secousses et sons
+`ballshake`/`recall`, la musique `evolv`, le cri, le jingle `EvolutionSuccess`,
+la révélation du sprite animé et le choix facultatif d'un surnom. Un Œuf de
+l'équipe éclot en place ; un Œuf de l'Incubateur rejoint ensuite l'équipe ou le
+Ranch. La finalisation persiste bonheur 120, date/carte d'éclosion et Pokédex.
+Le sprite réel `iconEgg` remplace l'œuf CSS du gardien et sa cadence augmente à
+l'approche de l'éclosion.
+
+Le décor animé est partagé avec l'évolution par
+`source-transformation-stage.ts`. L'ancien `evolutionbg.gif` est statique dans
+les données : le moteur reproduit maintenant les couches EBS actives (`evobg` ou
+`hatchbg`, `overlay`, lignes mobiles), avec réduction de mouvement accessible.
+Autorité et persistance restent celles du propriétaire ; aucune donnée d'Œuf ni
+scène privée n'est répliquée à la room. Restent une validation manuelle du
+cadrage, des sons et des temporisations sur téléphone et plusieurs espèces.
 
 Premier increment Pokedex du 2026-10-12 : l'onglet du menu est débloqué par le
 switch narratif source déjà porté et affiche le catalogue extrait dans une grille
