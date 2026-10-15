@@ -5,6 +5,8 @@ import { escapeSourceHtml } from "./source-menu-view.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
 import { sourceEvolutionBattler } from "./source-progression-view.js";
+import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 export interface SourceCaptureResolutionResult {
   readonly ok: boolean;
@@ -41,8 +43,7 @@ function spriteHtml(model: SourceCaptureResolutionModel): string {
     female: pokemon.metadata.gender === "female",
   });
   if (sprite === null) return "";
-  const cycle = Math.max(110, sprite.frameCount * 110);
-  return `<span class="source-capture-result-sprite" style="--evolution-sheet:url('${sprite.url}');--evolution-frames:${sprite.frameCount};--evolution-frame-steps:${Math.max(1, sprite.frameCount - 1)};--evolution-frame-ratio:${sprite.frameWidth} / ${sprite.frameHeight};--evolution-cycle:${cycle}ms"><span class="source-evolution-battler-frame${sprite.frameCount > 1 ? " animated" : ""}"></span></span>`;
+  return `<span class="source-capture-result-sprite" style="--evolution-frame-ratio:${sprite.frameWidth} / ${sprite.frameHeight}"><canvas class="source-evolution-battler-frame" data-pokemon-sprite-animation data-src="${escapeSourceHtml(sprite.url)}" data-frame-width="${sprite.frameWidth}" data-frame-height="${sprite.frameHeight}" data-frame-count="${sprite.frameCount}" width="${sprite.frameWidth}" height="${sprite.frameHeight}"></canvas></span>`;
 }
 
 export class SourceCaptureResolutionView {
@@ -51,6 +52,7 @@ export class SourceCaptureResolutionView {
   private stage: CaptureStage = "nickname";
   private selectedExchangeId: string | null = null;
   private notice = "";
+  private spriteAnimations: readonly SourcePokemonSpriteAnimation[] = [];
 
   public constructor(private readonly callbacks: SourceCaptureResolutionCallbacks) {
     this.root = document.createElement("div");
@@ -84,6 +86,8 @@ export class SourceCaptureResolutionView {
   }
 
   private render(): void {
+    this.spriteAnimations.forEach((animation) => animation.stop());
+    this.spriteAnimations = [];
     const model = this.model;
     if (model === null) { this.root.hidden = true; this.root.innerHTML = ""; return; }
     const pokemon = capturePokemon(model);
@@ -113,6 +117,7 @@ export class SourceCaptureResolutionView {
     }
     this.root.innerHTML = `<div class="source-capture-resolution-backdrop"><section class="source-capture-resolution-panel" role="dialog" aria-modal="true" aria-label="Pokémon capturé"><header><small>NOUVELLE CAPTURE</small><h2>${escapeSourceHtml(displayName)}</h2><span>N.${pokemon.level}</span></header><div class="source-capture-resolution-content"><div class="source-capture-result-visual">${sprite}<span>${escapeSourceHtml(definition.name)}</span></div><div class="source-capture-result-actions">${body}<small class="source-capture-result-notice">${escapeSourceHtml(this.notice)}</small></div></div></section></div>`;
     this.root.hidden = false;
+    this.spriteAnimations = startSourcePokemonSpriteAnimations(this.root, "idle");
 
     this.root.querySelector<HTMLFormElement>(".source-capture-name-form")?.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -162,6 +167,8 @@ export class SourceCaptureResolutionView {
       this.render();
     });
     this.root.querySelector<HTMLButtonElement>("[data-capture-complete]")?.addEventListener("click", () => {
+      this.spriteAnimations.forEach((animation) => animation.stop());
+      this.spriteAnimations = [];
       this.model = null;
       this.root.hidden = true;
       this.root.innerHTML = "";

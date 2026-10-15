@@ -11,6 +11,7 @@ import { buildSourceBattlePresentationSequence } from "./source-battle-presentat
 import type { SourceBattleStatusVisual } from "./source-battle-presentation-sequence.js";
 import { selectSourceBattleTransition, SOURCE_TRANSITION_FRAME_MS, sourceTrainerBandFrames,
   sourceWildOutdoorFrames } from "./source-battle-transition.js";
+import { startSourcePokemonSpriteAnimation } from "./source-pokemon-sprite-animator.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -50,13 +51,7 @@ async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCan
   canvas.height = frameHeight;
   canvas.setAttribute("aria-label", asset.path);
   const context = canvas.getContext("2d");
-  let frame = 0;
-  const draw = (): void => {
-    context?.clearRect(0, 0, frameWidth, frameHeight);
-    context?.drawImage(image, frame * frameWidth, 0, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
-    frame = (frame + 1) % frameCount;
-  };
-  draw();
+  context?.drawImage(image, 0, 0, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
   let visibleBottom = frameHeight - 1;
   if (context !== null) {
     const pixels = context.getImageData(0, 0, frameWidth, frameHeight).data;
@@ -69,9 +64,10 @@ async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCan
       }
     }
   }
-  const timer = frameCount > 1 ? window.setInterval(draw, 110) : null;
+  const animation = startSourcePokemonSpriteAnimation({ canvas, image, frameWidth, frameHeight,
+    frameCount, profile: "battle", frameDurationMs: 115 });
   return { element: canvas, frameWidth, frameHeight, visibleBottom,
-    stop: () => { if (timer !== null) window.clearInterval(timer); } };
+    stop: () => animation.stop() };
 }
 
 function delay(milliseconds: number): Promise<void> {

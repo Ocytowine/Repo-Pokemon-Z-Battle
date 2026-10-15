@@ -3551,3 +3551,23 @@ la mise à l'échelle globale du canvas et empêche carte ou liste de passer sou
 boutons Précédent/Suivant.
 Chaque cellule rouge porte en plus un libellé fixe des cartes qui partagent cette
 coordonnée ; seul le marqueur pulse, pas son texte.
+
+## Fluidité des grands sprites Pokémon — 2026-10-15
+
+`source-pokemon-sprite-animator.ts` est le lecteur commun des grands battlers. Il
+conserve les planches source sans créer de frame supplémentaire, utilise
+`requestAnimationFrame` et ajoute une respiration très légère ancrée sous les
+pieds. Après validation visuelle, le fondu entre poses a été retiré : il faisait
+clignoter le pixel art. Chaque pose opaque est maintenant préparée hors écran puis
+copiée en une opération, tandis que le mouvement continu passe par le compositeur
+du navigateur. Le lissage bitmap reste désactivé et `prefers-reduced-motion` fige
+proprement la première frame. La cadence est de 125 ms hors combat et 115 ms en
+combat.
+
+Le même noyau équipe désormais les résumés Équipe/Ranch/Combat, la fiche Pokédex,
+la Pension, les battlers actifs du combat, la résolution post-capture, l'évolution
+et l'éclosion. Les animations de combat et de transformation continuent d'agir sur
+les conteneurs externes, sans entrer en conflit avec le lecteur interne. Autorité :
+présentation locale ; domaine : visuel dérivé des assets et de l'apparence du
+Pokémon ; persistance : aucune ; réplication : aucune donnée supplémentaire, hôte
+et invité reconstruisant le même rendu depuis leur état de combat.

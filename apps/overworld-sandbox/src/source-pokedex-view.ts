@@ -7,6 +7,8 @@ import { SOURCE_POKEMON_POWER_TIERS, sourcePokemonIconUrl, sourcePokemonPowerTie
   sourcePokemonTypeLabel, type SourcePokemonPowerTier } from "./source-pokemon-collection.js";
 import { sourceRegionImageUrl, sourceSpeciesHabitatCoordinates, sourceSpeciesHabitatLocations,
   type SourceRegionMapCatalog } from "./source-region-map.js";
+import { startSourcePokemonSpriteAnimation, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 const PAGE_SIZE = 12;
 export type PokedexStatus = "all" | "unseen" | "seen" | "caught" | "current" | "team" | "ranch" | "evolved" | "released";
@@ -280,8 +282,7 @@ export class SourcePokedexView {
   private filters: SourcePokedexFilters = { query: "", firstType: null, secondType: null, status: "all",
     potentialTier: "all", sort: "number" };
   private page = 0; private selectedSpecies: string | null = null;
-  private spriteAnimationFrame: number | null = null;
-  private spriteAnimationGeneration = 0;
+  private spriteAnimation: SourcePokemonSpriteAnimation | null = null;
   private detailPage: "information" | "habitat" = "information";
 
   public render(root: HTMLElement, model: SourcePokedexViewModel): void {
@@ -345,36 +346,16 @@ export class SourcePokedexView {
   }
 
   private stopSpriteAnimation(): void {
-    this.spriteAnimationGeneration += 1;
-    if (this.spriteAnimationFrame !== null) cancelAnimationFrame(this.spriteAnimationFrame);
-    this.spriteAnimationFrame = null;
+    this.spriteAnimation?.stop();
+    this.spriteAnimation = null;
   }
 
   private startSpriteAnimation(root: HTMLElement, entry: SourcePokedexEntry): void {
     const canvas = root.querySelector<HTMLCanvasElement>("[data-pokedex-summary-sprite]");
     if (canvas === null || entry.battlerUrl === null || entry.battlerFrameWidth === null
       || entry.battlerFrameHeight === null) return;
-    const context = canvas.getContext("2d");
-    if (context === null) return;
-    const generation = this.spriteAnimationGeneration;
-    const image = new Image();
-    image.onload = () => {
-      if (generation !== this.spriteAnimationGeneration) return;
-      let frame = 0; let previous = performance.now();
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const draw = (time: number): void => {
-        if (generation !== this.spriteAnimationGeneration) return;
-        if (time - previous >= 120 && !reducedMotion) {
-          frame = (frame + 1) % entry.battlerFrameCount; previous = time;
-        }
-        context.clearRect(0, 0, entry.battlerFrameWidth!, entry.battlerFrameHeight!);
-        context.drawImage(image, frame * entry.battlerFrameWidth!, 0,
-          entry.battlerFrameWidth!, entry.battlerFrameHeight!, 0, 0,
-          entry.battlerFrameWidth!, entry.battlerFrameHeight!);
-        if (entry.battlerFrameCount > 1 && !reducedMotion) this.spriteAnimationFrame = requestAnimationFrame(draw);
-      };
-      draw(previous);
-    };
-    image.src = entry.battlerUrl;
+    this.spriteAnimation = startSourcePokemonSpriteAnimation({ canvas, image: entry.battlerUrl,
+      frameWidth: entry.battlerFrameWidth, frameHeight: entry.battlerFrameHeight,
+      frameCount: entry.battlerFrameCount, profile: "idle" });
   }
 }

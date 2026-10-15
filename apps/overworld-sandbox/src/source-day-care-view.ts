@@ -6,6 +6,8 @@ import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-c
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
 import { sourcePokemonFacilityShellHtml } from "./source-pokemon-facility-view.js";
 import { sourceDayCareCompatibility, sourceDayCareWithdrawalFee, type SourceDayCareState } from "./source-day-care.js";
+import { startSourcePokemonSpriteAnimation, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 export interface SourceDayCareViewModel {
   readonly open: boolean;
@@ -67,8 +69,7 @@ export class SourceDayCareView {
   private exchangeSlot: 0 | 1 | null = null;
   private confirmation: Confirmation | null = null;
   private wasOpen = false;
-  private battlerAnimationGeneration = 0;
-  private readonly battlerAnimationFrames = new Set<number>();
+  private readonly battlerAnimations = new Set<SourcePokemonSpriteAnimation>();
 
   public constructor(private readonly onClose: () => void,
     private readonly onDeposit: (pokemonId: string, slot: 0 | 1) => void,
@@ -216,42 +217,22 @@ export class SourceDayCareView {
   }
 
   private stopBattlerAnimations(): void {
-    this.battlerAnimationGeneration += 1;
-    this.battlerAnimationFrames.forEach((frame) => cancelAnimationFrame(frame));
-    this.battlerAnimationFrames.clear();
+    this.battlerAnimations.forEach((animation) => animation.stop());
+    this.battlerAnimations.clear();
   }
 
   private startBattlerAnimations(root: HTMLElement): void {
     this.stopBattlerAnimations();
-    const generation = this.battlerAnimationGeneration;
-    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     root.querySelectorAll<HTMLCanvasElement>("[data-day-care-battler]").forEach((canvas) => {
-      const context = canvas.getContext("2d");
       const source = canvas.dataset.src;
       const frameWidth = Number(canvas.dataset.frameWidth);
       const frameHeight = Number(canvas.dataset.frameHeight);
       const frameCount = Number(canvas.dataset.frameCount);
-      if (context === null || source === undefined || !Number.isSafeInteger(frameWidth)
+      if (source === undefined || !Number.isSafeInteger(frameWidth)
         || !Number.isSafeInteger(frameHeight) || !Number.isSafeInteger(frameCount) || frameCount < 1) return;
-      const image = new Image();
-      image.onload = () => {
-        if (generation !== this.battlerAnimationGeneration) return;
-        let frame = 0; let previous = performance.now();
-        const draw = (time: number) => {
-          if (generation !== this.battlerAnimationGeneration) return;
-          if (!reducedMotion && time - previous >= 120) { frame = (frame + 1) % frameCount; previous = time; }
-          context.clearRect(0, 0, frameWidth, frameHeight);
-          context.drawImage(image, frame * frameWidth, 0, frameWidth, frameHeight, 0, 0, frameWidth, frameHeight);
-          if (frameCount > 1 && !reducedMotion) {
-            const animationFrame = requestAnimationFrame((nextTime) => {
-              this.battlerAnimationFrames.delete(animationFrame); draw(nextTime);
-            });
-            this.battlerAnimationFrames.add(animationFrame);
-          }
-        };
-        draw(previous);
-      };
-      image.src = source;
+      const animation = startSourcePokemonSpriteAnimation({ canvas, image: source,
+        frameWidth, frameHeight, frameCount, profile: "idle" });
+      this.battlerAnimations.add(animation);
     });
   }
 }

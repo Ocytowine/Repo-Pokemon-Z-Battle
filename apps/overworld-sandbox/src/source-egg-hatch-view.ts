@@ -3,6 +3,8 @@ import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import type { SourcePendingHatch } from "./source-egg-incubation.js";
 import { sourceEvolutionBattler } from "./source-progression-view.js";
 import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
+import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 export interface SourceEggHatchViewModel {
   readonly candidate: SourcePendingHatch;
@@ -34,8 +36,7 @@ function pokemonSprite(model: SourceEggHatchViewModel): string {
   const sprite = sourceEvolutionBattler(pokemon.species, model.assets, { form: pokemon.metadata.form,
     shiny: pokemon.metadata.shiny, female: pokemon.metadata.gender === "female" });
   if (sprite === null) return "";
-  const cycle = Math.max(110, sprite.frameCount * 110);
-  return `<span class="source-hatch-pokemon" style="--hatch-sheet:url('${sprite.url}');--hatch-frames:${sprite.frameCount};--hatch-frame-steps:${Math.max(1, sprite.frameCount - 1)};--hatch-ratio:${sprite.frameWidth} / ${sprite.frameHeight};--hatch-cycle:${cycle}ms"><i class="${sprite.frameCount > 1 ? "animated" : ""}"></i></span>`;
+  return `<span class="source-hatch-pokemon" style="--hatch-ratio:${sprite.frameWidth} / ${sprite.frameHeight}"><canvas data-pokemon-sprite-animation data-src="${sprite.url}" data-frame-width="${sprite.frameWidth}" data-frame-height="${sprite.frameHeight}" data-frame-count="${sprite.frameCount}" width="${sprite.frameWidth}" height="${sprite.frameHeight}"></canvas></span>`;
 }
 
 export class SourceEggHatchView {
@@ -47,6 +48,7 @@ export class SourceEggHatchView {
   private music: HTMLAudioElement | null = null;
   private nickname: string | null = null;
   private notice = "";
+  private spriteAnimations: readonly SourcePokemonSpriteAnimation[] = [];
 
   public constructor(private readonly onComplete: (pokemonId: string, destination: "party" | "ranch",
     nickname: string | null) => SourceEggHatchCompletion,
@@ -134,6 +136,7 @@ export class SourceEggHatchView {
     if (this.model === null) return;
     const result = this.onComplete(this.model.candidate.pokemon.id, destination, this.nickname);
     if (!result.ok) { this.notice = result.message; this.render(); return; }
+    this.stopSpriteAnimations();
     this.stopAudio();
     this.model = null;
     this.phase = null;
@@ -144,6 +147,7 @@ export class SourceEggHatchView {
 
   private render(): void {
     if (this.model === null || this.phase === null) return;
+    this.stopSpriteAnimations();
     const model = this.model;
     const definition = model.catalog.pokemon.find((pokemon) => pokemon.internalName === model.candidate.pokemon.species);
     const name = definition?.name ?? model.candidate.pokemon.species;
@@ -160,6 +164,7 @@ export class SourceEggHatchView {
     else message = `<p>Où envoyer ${this.nickname ?? name} ?</p><div><button type="button" data-hatch-destination="party"${model.partyHasSpace ? "" : " disabled"}>Équipe</button><button type="button" data-hatch-destination="ranch">Ranch</button></div>`;
     this.root.hidden = false;
     this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-hatch-stage" data-hatch-phase="${this.phase}">${background}<div class="source-hatch-visual">${visual}</div><div class="source-evolution-message source-hatch-message">${message}<small>${this.notice}</small></div></section></div>`;
+    this.spriteAnimations = startSourcePokemonSpriteAnimations(this.root, "idle");
     this.root.querySelector<HTMLButtonElement>("[data-hatch-start]")?.addEventListener("click", () => this.beginHatching());
     this.root.querySelector<HTMLButtonElement>("[data-hatch-next]")?.addEventListener("click", () => { this.phase = "nickname"; this.render(); });
     this.root.querySelectorAll<HTMLButtonElement>("[data-hatch-nickname]").forEach((button) => button.addEventListener("click", () => {
@@ -176,5 +181,10 @@ export class SourceEggHatchView {
       const destination = button.dataset.hatchDestination;
       if (destination === "party" || destination === "ranch") this.complete(destination);
     }));
+  }
+
+  private stopSpriteAnimations(): void {
+    this.spriteAnimations.forEach((animation) => animation.stop());
+    this.spriteAnimations = [];
   }
 }

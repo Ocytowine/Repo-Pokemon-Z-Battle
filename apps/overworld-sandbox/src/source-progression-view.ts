@@ -3,6 +3,8 @@ import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
 import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
+import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 interface ProgressionActionResult {
   readonly ok: boolean;
@@ -70,8 +72,7 @@ export function sourceEvolutionBattler(species: string, assets: PokemonAssetsMan
 
 function battlerMarkup(sprite: SourceEvolutionBattler | null, className: string, label: string): string {
   if (sprite === null) return "";
-  const cycle = Math.max(110, sprite.frameCount * 110);
-  return `<span class="source-evolution-sprite ${className}" role="img" aria-label="${escapeSourceHtml(label)}" style="--evolution-sheet:url('${sprite.url}');--evolution-frames:${sprite.frameCount};--evolution-frame-steps:${Math.max(1, sprite.frameCount - 1)};--evolution-frame-ratio:${sprite.frameWidth} / ${sprite.frameHeight};--evolution-cycle:${cycle}ms"><span class="source-evolution-battler-frame${sprite.frameCount > 1 ? " animated" : ""}"></span></span>`;
+  return `<span class="source-evolution-sprite ${className}" role="img" aria-label="${escapeSourceHtml(label)}" style="--evolution-frame-ratio:${sprite.frameWidth} / ${sprite.frameHeight}"><canvas class="source-evolution-battler-frame" data-pokemon-sprite-animation data-src="${escapeSourceHtml(sprite.url)}" data-frame-width="${sprite.frameWidth}" data-frame-height="${sprite.frameHeight}" data-frame-count="${sprite.frameCount}" width="${sprite.frameWidth}" height="${sprite.frameHeight}"></canvas></span>`;
 }
 
 function cryUrl(species: string, assets: PokemonAssetsManifest): string | null {
@@ -92,6 +93,7 @@ export class SourceProgressionView {
   private evolutionPhase: "intro" | "animating" | "success" | "cancelled" | null = null;
   private evolutionPresentation: SourceEvolutionPresentation | null = null;
   private resolvedEvolution: SourceResolvedEvolution | null = null;
+  private spriteAnimations: readonly SourcePokemonSpriteAnimation[] = [];
 
   public constructor(private readonly callbacks: SourceProgressionViewCallbacks) {
     this.root = document.createElement("div");
@@ -136,6 +138,7 @@ export class SourceProgressionView {
   }
 
   private close(): void {
+    this.stopSpriteAnimations();
     if (this.evolutionTimer !== null) clearTimeout(this.evolutionTimer);
     this.evolutionMusic?.pause();
     this.evolutionTimer = null;
@@ -200,6 +203,7 @@ export class SourceProgressionView {
   private renderEvolution(pokemonId: string, pokemonName: string, previousSpecies: string, nextSpecies: string,
     cancellable: boolean): void {
     if (this.model === null) return;
+    this.stopSpriteAnimations();
     const target = this.model.catalog.pokemon.find((candidate) => candidate.internalName === nextSpecies);
     const targetName = target?.name ?? nextSpecies;
     const pokemon = this.model.eventState.party.members.find((candidate) => candidate.id === pokemonId);
@@ -230,6 +234,7 @@ export class SourceProgressionView {
         ? '<button type="button" data-evolution-finish>Continuer</button>' : "";
     this.root.hidden = false;
     this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-evolution-panel"><div class="source-evolution-stage" data-evolution-phase="${phase}">${sourceTransformationBackdropHtml("evolution")}${spriteMarkup}${phase === "animating" && cancellable ? "<button type=\"button\" class=\"source-evolution-cancel\" data-progression-cancel-evolution>Annuler</button>" : ""}<div class="source-evolution-message"><p>${escapeSourceHtml(message).replace("\n", "<br>")}</p>${action}<small data-progression-notice></small></div></div></section></div>`;
+    this.spriteAnimations = startSourcePokemonSpriteAnimations(this.root, "idle");
     this.root.querySelector<HTMLButtonElement>("[data-evolution-start]")?.addEventListener("click", () =>
       this.startEvolutionAnimation());
     this.root.querySelector<HTMLButtonElement>("[data-evolution-finish]")?.addEventListener("click", () =>
@@ -249,6 +254,11 @@ export class SourceProgressionView {
         this.evolutionPhase = "cancelled";
         this.renderEvolution(pokemonId, pokemonName, previousSpecies, nextSpecies, cancellable);
       });
+  }
+
+  private stopSpriteAnimations(): void {
+    this.spriteAnimations.forEach((animation) => animation.stop());
+    this.spriteAnimations = [];
   }
 
   private startEvolutionAnimation(): void {

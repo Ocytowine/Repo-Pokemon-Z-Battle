@@ -5,6 +5,8 @@ import { resolvePokemonAsset, type PokemonAssetsManifest, type PokemonSummaryAss
   from "@pokemon-z-battle/local-assets";
 import type { SourcePokemonCollectionEntry } from "./source-pokemon-collection.js";
 import { sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
+import { startSourcePokemonSpriteAnimation, type SourcePokemonSpriteAnimation }
+  from "./source-pokemon-sprite-animator.js";
 
 export type SourcePokemonSummaryContext = "team" | "ranch" | "battle";
 export type SourcePokemonSummaryPage = "identity" | "history" | "stats" | "moves" | "ribbons";
@@ -336,8 +338,7 @@ export class SourcePokemonSummaryView {
   private lastPokemonId: string | null = null;
   private selectedMoveIndex = 0;
   private movingMoveIndex: number | null = null;
-  private spriteAnimationFrame: number | null = null;
-  private spriteAnimationGeneration = 0;
+  private spriteAnimation: SourcePokemonSpriteAnimation | null = null;
 
   public constructor(private readonly callbacks: SourcePokemonSummaryCallbacks) {}
 
@@ -432,34 +433,16 @@ export class SourcePokemonSummaryView {
   }
 
   private stopSpriteAnimation(): void {
-    this.spriteAnimationGeneration += 1;
-    if (this.spriteAnimationFrame !== null) cancelAnimationFrame(this.spriteAnimationFrame);
-    this.spriteAnimationFrame = null;
+    this.spriteAnimation?.stop();
+    this.spriteAnimation = null;
   }
 
   private startSpriteAnimation(root: HTMLElement, model: SourcePokemonSummaryModel): void {
     const canvas = root.querySelector<HTMLCanvasElement>("[data-summary-sprite]");
     const animation = model.spriteAnimation;
     if (canvas === null || animation === null || model.spriteUrl === null) return;
-    const context = canvas.getContext("2d");
-    if (context === null) return;
-    const generation = this.spriteAnimationGeneration;
-    const image = new Image();
-    image.onload = () => {
-      if (generation !== this.spriteAnimationGeneration) return;
-      let frame = 0;
-      let previous = performance.now();
-      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const draw = (time: number) => {
-        if (generation !== this.spriteAnimationGeneration) return;
-        if (time - previous >= 120 && !reducedMotion) { frame = (frame + 1) % animation.frameCount; previous = time; }
-        context.clearRect(0, 0, animation.frameWidth, animation.frameHeight);
-        context.drawImage(image, frame * animation.frameWidth, 0, animation.frameWidth, animation.frameHeight,
-          0, 0, animation.frameWidth, animation.frameHeight);
-        if (animation.frameCount > 1 && !reducedMotion) this.spriteAnimationFrame = requestAnimationFrame(draw);
-      };
-      draw(previous);
-    };
-    image.src = model.spriteUrl;
+    this.spriteAnimation = startSourcePokemonSpriteAnimation({ canvas, image: model.spriteUrl,
+      frameWidth: animation.frameWidth, frameHeight: animation.frameHeight,
+      frameCount: animation.frameCount, profile: "idle" });
   }
 }

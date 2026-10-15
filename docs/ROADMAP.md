@@ -2059,6 +2059,16 @@ visibles sur la Carte et `regionalMapIds` est persisté/restauré par la room. L
 déblocage de Vol devra encore ajouter les destinations visitées personnelles ; le
 bypass actuel n'altère ni progression ni sauvegarde narrative.
 
+Finition des grands sprites du 2026-10-15 : un lecteur canvas commun anime les
+battlers des résumés Équipe/Ranch/Combat, du Pokédex, de la Pension, des combats,
+de la résolution post-capture, de l'évolution et de l'éclosion. Il réutilise les
+frames source opaques, précompose chaque pose avant son affichage et ajoute une
+respiration ancrée au sol via le compositeur du navigateur. Le fondu expérimental
+entre poses a été retiré après validation, car il faisait clignoter le pixel art.
+Le lecteur respecte la réduction de mouvement et ne produit aucun nouvel asset. Cette
+présentation est reconstruite localement en solo, chez l'hôte et chez l'invité ;
+elle n'ajoute ni état persistant ni trafic Coop.
+
 Premier lot vertical de combat du 2026-10-09 : Jean puis les trois variantes de
 Melia sur le parcours suivant ont ete pris comme frontiere, sans logique liee a
 leur carte ou leur nom. La fonction `030` d'Agilite ajoute deux crans de Vitesse

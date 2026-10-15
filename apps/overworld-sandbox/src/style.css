@@ -430,7 +430,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 @keyframes source-hatch-flash { 0%,74% { opacity: 0; } 88% { opacity: 1; } 100% { opacity: 0; } }
 .source-hatch-pokemon { display: block; width: clamp(42px, 12%, 64px); aspect-ratio: var(--hatch-ratio,1); image-rendering: pixelated; }
 .source-hatch-stage[data-hatch-phase="revealed"] .source-hatch-pokemon { animation: source-hatch-reveal 700ms ease-out both; }
-.source-hatch-pokemon>i { display: block; width: 100%; height: 100%; background: var(--hatch-sheet) 0 50%/calc(var(--hatch-frames,1) * 100%) 100% no-repeat; }
+.source-hatch-pokemon>:is(i,canvas) { display: block; width: 100%; height: 100%; background: var(--hatch-sheet) 0 50%/calc(var(--hatch-frames,1) * 100%) 100% no-repeat; }
 .source-hatch-pokemon>i.animated { animation: source-hatch-pokemon-frames var(--hatch-cycle,1s) steps(var(--hatch-frame-steps,1),end) infinite; }
 @keyframes source-hatch-pokemon-frames { to { background-position: 100% 50%; } }
 @keyframes source-hatch-reveal { from { opacity: 0; scale: .55; filter: brightness(5); } to { opacity: 1; scale: 1; filter: none; } }
