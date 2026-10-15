@@ -3353,6 +3353,16 @@ la reconnexion ; son audience est limitée aux participants et observateurs du
 combat. Validation manuelle encore attendue pour le rendu exact de la Ball, les
 trois symboles d'équipe et un K.O. avec plusieurs réserves.
 
+Seconde passe remplacement du 2026-10-15 : le sélecteur forcé se ferme désormais
+explicitement après la réponse autoritaire, car un remplacement ne change pas le
+numéro de tour et l'ancien reset fondé sur ce numéro laissait le menu affiché. Un
+combat de Dresseur impose toujours le choix d'une réserve consciente. Une rencontre
+sauvage ajoute `Fuite` au même écran ; si elle est choisie pendant un remplacement,
+la sortie est garantie afin de ne pas faire attaquer un emplacement K.O. Le noyau
+`battle-engine` porte cette règle pour le solo et la room Cloudflare. En Coop, le
+vote de fuite existant reste requis pour chaque participant avant son règlement
+autoritaire. Aucun état persistant supplémentaire n'est créé.
+
 Deuxième passe des fiches Débug du 2026-10-15 : l'animation de capture complète
 était déjà fonctionnelle et sa fiche est refermée. Le Dresseur adverse réapparaît
 maintenant avant son dialogue de fin ; le visuel vient du jeu source en solo et du
@@ -3516,3 +3526,28 @@ Paralysie, Gel, Confusion, hausses/baisses de statistiques, Caduco et Hémorragi
 sont disponibles. Le lecteur de combat les joue avant de revenir au fallback CSS.
 Les capacités supportées sans entrée source dans `move2anim.dat` restent signalées
 explicitement ; aucune animation n'est inventée.
+
+## Complétion du Pokédex — 2026-10-15
+
+La fiche Pokédex ne jette plus les méthodes d'évolution extraites. Chaque cible
+conserve `method` et `parameter`, puis présente une condition française résolue
+avec les catalogues de Pokémon, capacités et objets : niveau, pierre, bonheur,
+jour/nuit, sexe, capacité connue, compagnon requis, objet tenu, comparaisons
+Attaque/Défense et embranchements particuliers sont couverts. Une méthode future
+inconnue reste visible avec son paramètre au lieu d'être masquée.
+
+Le catalogue régional retient aussi les noms de `map-infos.json`. Le volet Zones
+de capture déduit ses lieux depuis les mêmes rencontres que ses cellules,
+déduplique les noms, les ancre aux zones rouges et masque uniquement la colonne de
+sprite sur ce volet. Il s'agit d'une projection locale en lecture
+seule : autorité catalogue extrait, domaine personnel visuel, aucune persistance,
+aucun message Coop et même calcul pour le joueur solo, l'hôte et l'invité.
+La finition de densité garde la fiche Pokédex sans défilement : champs, statistiques
+et évolutions utilisent des espacements spécifiques plus compacts. La carte
+d'habitat reste en ratio 3:2 mais n'emploie plus une taille fixe ni de bandeau bas :
+elle remplit toute la hauteur disponible. Le corps du volet est borné avant la
+navigation ; cette composition tient compte de
+la mise à l'échelle globale du canvas et empêche carte ou liste de passer sous les
+boutons Précédent/Suivant.
+Chaque cellule rouge porte en plus un libellé fixe des cartes qui partagent cette
+coordonnée ; seul le marqueur pulse, pas son texte.

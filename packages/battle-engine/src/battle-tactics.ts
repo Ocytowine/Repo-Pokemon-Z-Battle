@@ -66,9 +66,13 @@ export type BattleEscapeResult = { readonly escaped: true }
 
 export function canEscapeSourceBattle(state: TeamBattleState, attempts: number, rng: RandomSource): boolean {
   if (!Number.isSafeInteger(attempts) || attempts < 0) throw new Error("Nombre de tentatives de fuite invalide.");
-  if (state.status !== "active" || state.replacementRequired.length > 0) {
+  if (state.status !== "active") {
     throw new Error("La fuite n'est pas disponible dans cet état de combat.");
   }
+  // Une rencontre sauvage ne doit jamais choisir automatiquement le prochain
+  // Pokémon du joueur. Depuis l'écran de remplacement, Fuite est une sortie
+  // garantie : aucun adversaire ne peut attaquer un emplacement déjà K.O.
+  if (state.replacementRequired.length > 0 || (state.slotReplacements?.length ?? 0) > 0) return true;
   const battlers = activeBattlers(state);
   const rate = battlers.player.stats.speed > battlers.opponent.stats.speed ? 256
     : (Math.floor((battlers.player.stats.speed * 128) / Math.max(1, battlers.opponent.stats.speed))

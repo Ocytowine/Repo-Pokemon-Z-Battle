@@ -29,7 +29,14 @@ export interface SourceRegionDefinition {
 export interface SourceRegionMapCatalog {
   readonly regions: readonly SourceRegionDefinition[];
   readonly mapPositions: ReadonlyMap<number, SourceRegionCoordinate>;
+  readonly mapNames: ReadonlyMap<number, string>;
   readonly habitatMaps: ReadonlyMap<string, readonly number[]>;
+}
+
+export interface SourceSpeciesHabitatLocation {
+  readonly mapId: number;
+  readonly name: string;
+  readonly coordinate: SourceRegionCoordinate | null;
 }
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -94,6 +101,7 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
     throw new Error("Les metadonnees de carte sont invalides.");
   }
   const mapPositions = new Map<number, SourceRegionCoordinate>();
+  const mapNames = new Map<number, string>();
   for (const entry of metadataValue.records) {
     if (!record(entry) || !Number.isSafeInteger(entry.mapId) || entry.mapPosition === null) continue;
     if (!record(entry.mapPosition) || !nonNegativeInteger(entry.mapPosition.region)
@@ -106,8 +114,12 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
       throw new Error("Le catalogue hierarchique des cartes est invalide.");
     }
     const parents = new Map<number, number>();
+    const sourceNames = new Map<number, string>();
     for (const entry of mapInfosValue.records) if (record(entry) && Number.isSafeInteger(entry.id)
-      && Number.isSafeInteger(entry.parentId)) parents.set(entry.id as number, entry.parentId as number);
+      && Number.isSafeInteger(entry.parentId)) {
+      parents.set(entry.id as number, entry.parentId as number);
+      if (typeof entry.name === "string" && entry.name.trim() !== "") sourceNames.set(entry.id as number, entry.name.trim());
+    }
     const inheritedPosition = (mapId: number): SourceRegionCoordinate | null => {
       const visited = new Set<number>();
       let candidate = mapId;
@@ -122,6 +134,11 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
     for (const mapId of parents.keys()) {
       const position = inheritedPosition(mapId);
       if (position !== null) mapPositions.set(mapId, position);
+      const name = sourceNames.get(mapId);
+      if (name === undefined) continue;
+      const parentName = sourceNames.get(parents.get(mapId) ?? 0);
+      mapNames.set(mapId, parentName === undefined || parentName.toLocaleLowerCase("fr-FR") === name.toLocaleLowerCase("fr-FR")
+        ? name : `${name} · ${parentName}`);
     }
   }
 
@@ -131,6 +148,8 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
   const habitatMaps = new Map<string, number[]>();
   for (const encounter of encountersValue.records) {
     if (!record(encounter) || !Number.isSafeInteger(encounter.mapId) || !Array.isArray(encounter.methods)) continue;
+    if (!mapNames.has(encounter.mapId as number) && typeof encounter.mapName === "string"
+      && encounter.mapName.trim() !== "") mapNames.set(encounter.mapId as number, encounter.mapName.trim());
     const species = new Set<string>();
     for (const method of encounter.methods) {
       if (!record(method) || !Array.isArray(method.slots)) continue;
@@ -138,7 +157,7 @@ export function parseSourceRegionMap(regionValue: unknown, metadataValue: unknow
     }
     for (const id of species) habitatMaps.set(id, [...habitatMaps.get(id) ?? [], encounter.mapId as number]);
   }
-  return { regions, mapPositions, habitatMaps };
+  return { regions, mapPositions, mapNames, habitatMaps };
 }
 
 export function sourceRegionForMap(catalog: SourceRegionMapCatalog, mapId: number): SourceRegionDefinition | null {
@@ -159,6 +178,17 @@ export function sourceSpeciesHabitatCoordinates(catalog: SourceRegionMapCatalog,
     if (position !== undefined) result.set(`${position.region}:${position.x}:${position.y}`, position);
   }
   return [...result.values()];
+}
+
+export function sourceSpeciesHabitatLocations(catalog: SourceRegionMapCatalog,
+  species: string): readonly SourceSpeciesHabitatLocation[] {
+  const result = new Map<string, SourceSpeciesHabitatLocation>();
+  for (const mapId of catalog.habitatMaps.get(species) ?? []) {
+    const name = catalog.mapNames.get(mapId) ?? `Carte ${String(mapId).padStart(3, "0")}`;
+    const key = name.toLocaleLowerCase("fr-FR");
+    if (!result.has(key)) result.set(key, { mapId, name, coordinate: catalog.mapPositions.get(mapId) ?? null });
+  }
+  return [...result.values()].sort((left, right) => left.name.localeCompare(right.name, "fr") || left.mapId - right.mapId);
 }
 
 export function sourceRegionImageUrl(filename: string): string {

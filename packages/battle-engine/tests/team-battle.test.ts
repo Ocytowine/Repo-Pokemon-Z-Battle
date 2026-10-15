@@ -60,6 +60,19 @@ describe("team battles", () => {
     expect(attemptSourceBattleEscape(state, 0, new ScriptedRandom([]))).toEqual({ escaped: true });
   });
 
+  it("allows a guaranteed wild escape instead of auto-selecting a fainted player's reserve", () => {
+    const base = createTeamBattleState({
+      player: [pokemon("fainted", "player"), pokemon("reserve", "player")],
+      opponent: [pokemon("wild", "opponent")],
+    });
+    const waiting = { ...base, replacementRequired: ["player" as const], teams: { ...base.teams,
+      player: { ...base.teams.player, members: base.teams.player.members.map((member, index) =>
+        index === base.teams.player.activeIndex ? { ...member, hp: 0 } : member) } } };
+
+    expect(attemptSourceBattleEscape(waiting, 0, new ScriptedRandom([]))).toEqual({ escaped: true });
+    expect(waiting.teams.player.activeIndex).toBe(0);
+  });
+
   it("accepts teams from one to six members and owns an immutable copy", () => {
     const source = Array.from({ length: MAX_TEAM_SIZE }, (_, index) => pokemon(`player-${index}`, "player"));
     const state = createTeamBattleState({ player: source, opponent: [pokemon("opponent-0", "opponent")] });

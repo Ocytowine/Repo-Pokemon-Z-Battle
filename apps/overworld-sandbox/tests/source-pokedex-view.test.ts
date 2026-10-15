@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { filterSourcePokedexEntries, type SourcePokedexEntry, type SourcePokedexFilters }
+import { filterSourcePokedexEntries, sourcePokedexEvolutionCondition,
+  type SourcePokedexEntry, type SourcePokedexFilters }
   from "../src/source-pokedex-view.js";
 
 const entry = (values: Pick<SourcePokedexEntry, "species" | "number" | "name" | "types" | "seen" | "caught"
@@ -47,5 +48,28 @@ describe("source Pokedex filters", () => {
   it("filters by the same potential tiers as the ranch", () => {
     expect(filterSourcePokedexEntries(entries, filters({ potentialTier: "moderate" }))
       .map((candidate) => candidate.species)).toEqual(["BRAIXEN"]);
+  });
+});
+
+describe("source Pokedex evolution conditions", () => {
+  const pokemonNames = new Map([["REMORAID", "Rémoraid"]]);
+  const itemNames = new Map([["THUNDERSTONE", "Pierre Foudre"], ["KINGSROCK", "Roche Royale"]]);
+  const moveNames = new Map([["ROLLOUT", "Roulade"]]);
+
+  it("translates level, item and happiness methods", () => {
+    expect(sourcePokedexEvolutionCondition("Level", "18", pokemonNames, itemNames, moveNames)).toBe("Niveau 18");
+    expect(sourcePokedexEvolutionCondition("Item", "THUNDERSTONE", pokemonNames, itemNames, moveNames))
+      .toBe("Utiliser Pierre Foudre");
+    expect(sourcePokedexEvolutionCondition("HappinessNight", null, pokemonNames, itemNames, moveNames))
+      .toBe("Bonheur élevé · de nuit");
+  });
+
+  it("translates party, move and held-item requirements", () => {
+    expect(sourcePokedexEvolutionCondition("HasMove", "ROLLOUT", pokemonNames, itemNames, moveNames))
+      .toBe("Gagner un niveau en connaissant Roulade");
+    expect(sourcePokedexEvolutionCondition("HasInParty", "REMORAID", pokemonNames, itemNames, moveNames))
+      .toBe("Gagner un niveau avec Rémoraid dans l’équipe");
+    expect(sourcePokedexEvolutionCondition("DayHoldItem", "KINGSROCK", pokemonNames, itemNames, moveNames))
+      .toBe("Gagner un niveau de jour en tenant Roche Royale");
   });
 });

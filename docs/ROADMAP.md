@@ -2042,7 +2042,12 @@ tirage des rencontres.
 
 Le même noyau projette toutes les méthodes de `encounters.json` sur la carte. La
 page `Zones de capture` des fiches Pokédex affiche les cellules d'habitat réelles,
-dédupliquées par région et coordonnées, sans table propre à une espèce. Autorité :
+dédupliquées par région et coordonnées, sans table propre à une espèce. Depuis le
+2026-10-15, ce volet retire sa colonne de sprite pour agrandir la carte et ancre
+les vrais noms de lieux directement aux zones provenant de la hiérarchie des cartes. La
+fiche générale conserve maintenant la méthode et le paramètre de chaque évolution
+et les présente en français au lieu de réduire l'évolution à sa seule espèce cible.
+Autorité :
 catalogue extrait en lecture seule et position du joueur concerné ; domaine :
 présentation personnelle ; persistance : aucune donnée supplémentaire, car carte
 et habitats sont déterministes ; audience : joueur local uniquement. En Coop,

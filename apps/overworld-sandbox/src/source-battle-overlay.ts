@@ -75,6 +75,11 @@ export function sourceBattleReplacementSubmitted(state: TeamBattleState, submitt
     || submittedTurn === state.turn && submittedActiveSlots.includes(activeSlot);
 }
 
+export function sourceBattleReplacementMenuShouldClose(replacementSlots: readonly number[],
+  pending: { readonly turn: number; readonly activeSlot: number } | null): boolean {
+  return replacementSlots.length === 0 && pending !== null;
+}
+
 export class SourceBattleOverlay {
   private menu: BattleMenu = "root";
   private renderedTurn: number | null = null;
@@ -173,6 +178,10 @@ export class SourceBattleOverlay {
     const replacement = (model.local || model.networkSide !== null) && replacementSlots.includes(this.activeSlot);
     if (replacement) {
       this.menu = "pokemon";
+      if (model.local && !model.animating && this.pendingReplacement?.activeSlot === this.activeSlot) {
+        // Une validation locale refusée doit rendre le choix cliquable à nouveau.
+        this.pendingReplacement = null;
+      }
       if (sourceBattleReplacementSubmitted(model.state, model.networkSubmittedTurn,
         model.submittedActiveSlots, this.activeSlot, this.pendingReplacement)) {
         actions.innerHTML = `<div class="source-battle-menu source-battle-result"><p>Remplaçant choisi</p><small>${model.local
@@ -182,7 +191,12 @@ export class SourceBattleOverlay {
       this.renderPokemon(actions, team, model, blocked, true);
       return;
     }
-    if (this.pendingReplacement?.activeSlot === this.activeSlot) this.pendingReplacement = null;
+    if (sourceBattleReplacementMenuShouldClose(replacementSlots, this.pendingReplacement)) {
+      // Un remplacement forcé conserve le même numéro de tour. Il faut donc
+      // fermer explicitement le sous-menu après la confirmation du moteur.
+      this.pendingReplacement = null;
+      this.menu = "root";
+    }
     if (this.menu === "moves") this.renderMoves(actions, active, model, blocked);
     else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
@@ -294,7 +308,13 @@ export class SourceBattleOverlay {
         || model.controllableMemberIds !== null && !model.controllableMemberIds.includes(member.id);
       return `<article class="source-battle-team-row${active ? " active" : ""}"><div><strong>${escapeSourceHtml(member.name)}</strong><small>N.${member.level}${active ? " · AU COMBAT" : member.hp <= 0 ? " · K.O." : ""}</small></div><span class="source-battle-team-hp"><i><b style="width:${hpPercent(member.hp, member.stats.maxHp)}%"></b></i><em>${member.hp}/${member.stats.maxHp} PV</em></span><nav><button data-battle-details="${escapeSourceHtml(member.id)}"${disabled(model.animating)}>Détails</button><button data-${replacement ? "encounter-replacement" : "encounter-switch"}="${index}"${disabled(cannotSwitch)}>${replacement ? "Envoyer" : "Changer"}</button></nav></article>`;
     }).join("");
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-team"><header>${replacement ? "" : '<button data-battle-back aria-label="Retour">‹</button>'}<div><small>POKÉMON</small><strong>${replacement ? "Choisissez un remplaçant" : "Équipe et détails"}</strong></div></header><div class="source-battle-team-list">${rows}</div></div>`;
+    const escape = replacement && model.escapable && !model.duel
+      ? `<footer class="source-battle-replacement-exit"><button id="escape-source-replacement" class="escape"${disabled(blocked)}><span>Fuite</span><small>${model.escapeConfirmedByMe
+        ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+        : model.escapeConfirmationRequired > 1
+          ? `Quitter la rencontre · accord ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
+          : "Quitter la rencontre sauvage"}</small></button></footer>` : "";
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-team"><header>${replacement ? "" : '<button data-battle-back aria-label="Retour">‹</button>'}<div><small>POKÉMON</small><strong>${replacement ? "Choisissez un remplaçant" : "Équipe et détails"}</strong></div></header><div class="source-battle-team-list">${rows}</div>${escape}</div>`;
     if (!replacement) this.bindBack(actions, model);
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-details]").forEach((button) =>
       button.addEventListener("click", () => this.callbacks.onDetails(button.dataset.battleDetails!)));
@@ -309,6 +329,9 @@ export class SourceBattleOverlay {
         this.pendingReplacement = { turn: model.state.turn, activeSlot: this.activeSlot };
         this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot, model.local);
       }));
+    actions.querySelector<HTMLButtonElement>("#escape-source-replacement")?.addEventListener("click", () => {
+      this.callbacks.onEscape(model.local);
+    });
   }
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {

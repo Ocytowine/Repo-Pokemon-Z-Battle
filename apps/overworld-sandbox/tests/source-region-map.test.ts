@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseSourceRegionMap, sourceRegionForMap, sourceSpeciesHabitatCoordinates }
+import { parseSourceRegionMap, sourceRegionForMap, sourceSpeciesHabitatCoordinates,
+  sourceSpeciesHabitatLocations }
   from "../src/source-region-map.js";
 
 const regions = { regions: [{ id: 0, name: "Kalos", filename: "mapRegion0.png", points: [
@@ -14,7 +15,9 @@ const encounters = { records: [
   { mapId: 10, methods: [{ method: "Cave", slots: [{ species: "ZUBAT" }] }] },
 ] };
 const mapInfos = { records: [
-  { id: 9, parentId: 0 }, { id: 10, parentId: 9 }, { id: 14, parentId: 0 },
+  { id: 9, parentId: 0, name: "Bourg Canvas" },
+  { id: 10, parentId: 9, name: "Centre Pokémon" },
+  { id: 14, parentId: 0, name: "Route 2" },
 ] };
 const localization = { categories: {
   regionNames: [{ key: "0", value: "Kalos" }],
@@ -35,6 +38,15 @@ describe("source regional map", () => {
       .toEqual([{ region: 0, x: 19, y: 13 }]);
     expect(sourceSpeciesHabitatCoordinates(catalog, "ZUBAT"))
       .toEqual([{ region: 0, x: 18, y: 13 }]);
+  });
+
+  it("exposes the source location names used by the Pokedex habitat list", () => {
+    const catalog = parseSourceRegionMap(regions, metadata, encounters, mapInfos);
+    expect(sourceSpeciesHabitatLocations(catalog, "FENNEKIN"))
+      .toEqual([{ mapId: 14, name: "Route 2", coordinate: { region: 0, x: 19, y: 13 } }]);
+    expect(sourceSpeciesHabitatLocations(catalog, "ZUBAT"))
+      .toEqual([{ mapId: 10, name: "Centre Pokémon · Bourg Canvas",
+        coordinate: { region: 0, x: 18, y: 13 } }]);
   });
 
   it("uses the French localization catalog for regional names and descriptions", () => {

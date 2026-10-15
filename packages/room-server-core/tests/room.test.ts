@@ -1129,6 +1129,33 @@ describe("authoritative battle room", () => {
       teams: { opponent: { activeIndex: 1 } } });
   });
 
+  it("waits for the player's replacement and accepts escape from that choice in a wild battle", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(4), worldWithSource);
+    room.connect("alice");
+    const initial = createTeamBattleState({
+      player: [{ ...battler("player"), hp: 1 }, { ...battler("player"), id: "player-reserve" }],
+      opponent: [battler("opponent")],
+    });
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "wild-replace-open",
+      context: sourceBattleContext("alice"), playerTeam: initial.teams.player,
+      opponentTeam: initial.teams.opponent });
+    const battleId = room.snapshot().battle!.id;
+
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "wild-replace-turn",
+      battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+
+    expect(room.snapshot().battle?.state).toMatchObject({ replacementRequired: ["player"],
+      teams: { player: { activeIndex: 0, members: [{ hp: 0 }, { id: "player-reserve", hp: 100 }] } } });
+    const turn = room.snapshot().battle!.state.turn;
+    const escaped = room.receive("alice", { type: "attemptBattleEscape", version: 15,
+      requestId: "wild-replace-escape", battleId, turn });
+    expect(escaped.map((entry) => entry.message.type)).toEqual([
+      "ack", "battleSettlement", "battleEscaped", "snapshot",
+    ]);
+    expect(room.snapshot().battle).toMatchObject({ escaped: true,
+      state: { teams: { player: { activeIndex: 0 } } } });
+  });
+
   it("restores a pending SYNCED interaction before the second participant", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(4), syncedWorld);
     room.connect("alice");

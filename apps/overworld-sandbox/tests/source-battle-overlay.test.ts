@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { sourceBattleReplacementSubmitted } from "../src/source-battle-overlay.js";
+import { sourceBattleReplacementMenuShouldClose,
+  sourceBattleReplacementSubmitted } from "../src/source-battle-overlay.js";
 
 function battler(id: string): BattlerState {
   return { id, species: id, name: id, level: 5, types: ["NORMAL"], hp: 20,
@@ -19,5 +20,12 @@ describe("source battle overlay", () => {
     expect(sourceBattleReplacementSubmitted(state, state.turn, [1], 0)).toBe(false);
     expect(sourceBattleReplacementSubmitted(state, null, [], 0,
       { turn: state.turn, activeSlot: 0 })).toBe(true);
+  });
+
+  it("closes the Pokemon submenu once a same-turn forced replacement is resolved", () => {
+    const pending = { turn: 2, activeSlot: 0 };
+    expect(sourceBattleReplacementMenuShouldClose([0], pending)).toBe(false);
+    expect(sourceBattleReplacementMenuShouldClose([], pending)).toBe(true);
+    expect(sourceBattleReplacementMenuShouldClose([], null)).toBe(false);
   });
 });

@@ -934,7 +934,7 @@ export class AuthoritativeBattleRoom {
       return [this.error(player.playerId, message.requestId, "UNAUTHORIZED",
         "Seuls les Dresseurs engages peuvent confirmer la fuite.")];
     }
-    if (this.#battleJoinProposal !== null || state.replacementRequired.length > 0) {
+    if (this.#battleJoinProposal !== null) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
         "La fuite attend la fin de la décision de combat en cours.")];
     }

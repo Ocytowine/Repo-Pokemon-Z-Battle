@@ -253,7 +253,8 @@ export class SourceMenuView {
     if (model.tab === "team") this.renderTeam(content, model);
     else if (model.tab === "pokedex") this.pokedexView.render(content, { history: model.eventState.pokedex,
       party: model.eventState.party, ranch: model.eventState.ranch,
-      catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets, regionMap: model.assets.regionMap });
+      catalog: model.assets.battleCatalog, assets: model.assets.pokemonAssets, regionMap: model.assets.regionMap,
+      itemNames: model.assets.itemNames });
     else if (model.tab === "bag") this.renderBag(content, model);
     else if (model.tab === "map") this.renderRegionMap(content, model);
     else if (model.tab === "alchemy") this.renderAlchemy(content, model);
