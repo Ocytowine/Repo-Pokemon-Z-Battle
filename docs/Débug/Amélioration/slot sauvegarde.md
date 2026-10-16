@@ -1,0 +1,3 @@
+il serai bien d'avoir 3 slot de sauvegarde : 
+2 qui s'effecturait manuellement, ce qui permettrai de recommencer une partie sans avoir à suprimé la partie en cours (si on souhaite recommencer un game pour faire une coop par exemple)
+la 3 eme slot serait l'enregistrement automatique, il faut ajouter un systeme d'enregistrement auto permettant d'éviter de sauvegarder tout le temps manuellement ( il suffit de jouer longtemps, sans penser a sauvegarder, de fermer le jeu et on perd pas mal d'heures de jeu)
