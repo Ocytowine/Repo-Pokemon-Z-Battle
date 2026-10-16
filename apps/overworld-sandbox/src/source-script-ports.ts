@@ -51,6 +51,12 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
     if (stock.length > 0) return command(source, "open-shop", { stock, policy: "PERSONAL" });
   }
   if (/^\$GameSpeed\s*=\s*0$/u.test(ruby)) return command(source, "runtime-noop", { policy: "PRESENTATION" });
+  if (/^\$Trainer\.outfit\s*=\s*\d+$/u.test(ruby)) {
+    // Z changes a numeric source costume after some interactions. The web port
+    // owns appearance through the persistent avatar profile, so the assignment
+    // must not overwrite that personal choice or block the surrounding scene.
+    return command(source, "runtime-noop", { policy: "AVATAR_PROFILE_PRESENTATION" });
+  }
   if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });
   }
@@ -89,9 +95,16 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (match !== null) return command(source, "add-pokemon", { species: match[1], level: Number(match[2]), policy: "PERSONAL" });
   match = /^pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-encounter", { species: match[1], level: Number(match[2]), policy: "HOST_ONLY" });
-  match = /^(?:Kernel\.)?pbEncounter\(EncounterTypes::(Land|Cave|OldRod|GoodRod|SuperRod)\)$/u.exec(ruby);
+  match = /^(?:Kernel\.)?pbEncounter\(EncounterTypes::(Land|Cave|RockSmash|OldRod|GoodRod|SuperRod)\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-random-encounter",
     { method: match[1], policy: "HOST_ONLY" });
+  if (/^(?:Kernel\.)?pbRockSmashRandomEncounter$/u.test(ruby)) {
+    return command(source, "request-random-encounter",
+      { method: "RockSmash", chancePercent: 25, optional: true, policy: "HOST_ONLY" });
+  }
+  if (/^(?:Kernel\.)?pbEraseThisEvent$/u.test(ruby)) {
+    return command(source, "erase-event", { policy: "SHARED" });
+  }
   if (/^pbPokemonFollow\(-?\d+\)$/u.test(ruby)) return command(source, "set-follower", { policy: "SHARED" });
   match = /^(?:(?:Kernel\.)?pb(?:ItemBall|ReceiveItem)|\$PokemonBag\.pbStoreItem)\(\s*(?::|PBItems::)([A-Za-z][A-Za-z0-9_]*)(?:\s*,\s*(\d+))?\s*\)$/u.exec(ruby);
   if (match !== null) {

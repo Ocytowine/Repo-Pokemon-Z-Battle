@@ -11,7 +11,7 @@ export interface WildEncounterRoll {
   readonly encounter: { readonly species: string; readonly level: number } | null;
 }
 
-export type SourceEncounterMethod = "Land" | "Cave" | "OldRod" | "GoodRod" | "SuperRod";
+export type SourceEncounterMethod = "Land" | "Cave" | "RockSmash" | "OldRod" | "GoodRod" | "SuperRod";
 
 export const SOURCE_FISHING_RODS: readonly SourceFishingRod[] = ["SUPERROD", "GOODROD", "OLDROD"];
 

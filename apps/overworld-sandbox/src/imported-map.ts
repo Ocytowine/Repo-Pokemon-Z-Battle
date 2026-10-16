@@ -12,6 +12,7 @@ import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualSta
   type SourceFieldMark } from "./source-field-effects.js";
 import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-region-map.js";
 import { sourceTruthEventOpacity } from "./source-truth-lens.js";
+import { expandSourceCommonEvents, type SourceCommonEvent, type SourceEventCommand } from "./source-common-events.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -483,7 +484,28 @@ export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap
   return lines;
 }
 
-function parseMapEvents(value: unknown): ImportedMapEvent[] {
+function parseEventCommands(value: unknown): readonly SourceEventCommand[] {
+  if (!Array.isArray(value)) throw new Error("Une liste de commandes d'evenement est invalide.");
+  return value.map((command) => {
+    if (!isRecord(command) || typeof command.kind !== "string" || !Number.isInteger(command.indent)
+      || !isRecord(command.data)) throw new Error("Une commande d'evenement est invalide.");
+    return { kind: command.kind, text: typeof command.data.text === "string" ? command.data.text : null,
+      indent: command.indent as number, data: { ...command.data } };
+  });
+}
+
+function parseSourceCommonEvents(value: unknown): ReadonlyMap<number, SourceCommonEvent> {
+  if (!isRecord(value) || !Array.isArray(value.records)) throw new Error("Le catalogue d'evenements communs est invalide.");
+  const events = value.records.map((entry): SourceCommonEvent => {
+    if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.name !== "string") {
+      throw new Error("Un evenement commun est invalide.");
+    }
+    return { id: entry.id as number, name: entry.name, commands: parseEventCommands(entry.commands) };
+  });
+  return new Map(events.map((event) => [event.id, event]));
+}
+
+function parseMapEvents(value: unknown, commonEvents: ReadonlyMap<number, SourceCommonEvent> = new Map()): ImportedMapEvent[] {
   if (!isRecord(value) || !Array.isArray(value.events)) throw new Error("Le fichier d'evenements de la carte est invalide.");
   return value.events.map((entry) => {
     if (!isRecord(entry) || !Number.isInteger(entry.id) || typeof entry.name !== "string"
@@ -518,16 +540,11 @@ function parseMapEvents(value: unknown): ImportedMapEvent[] {
           walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
           directionFix: page.settings.directionFix, through: page.settings.through,
           alwaysOnTop: page.settings.alwaysOnTop, trigger: page.settings.trigger as number },
-        commands: page.commands.map((command) => {
-          if (!isRecord(command) || typeof command.kind !== "string" || !Number.isInteger(command.indent) || !isRecord(command.data)) {
-            throw new Error("Une commande d'evenement est invalide.");
-          }
-          return { kind: command.kind, text: typeof command.data.text === "string" ? command.data.text : null,
-            indent: command.indent as number, data: { ...command.data } };
-        }),
+        commands: parseEventCommands(page.commands),
       };
     });
-    return { id: entry.id as number, name: entry.name, x: entry.x as number, y: entry.y as number, pages };
+    return { id: entry.id as number, name: entry.name, x: entry.x as number, y: entry.y as number,
+      pages: pages.map((page) => expandSourceCommonEvents(page, commonEvents)) };
   });
 }
 
@@ -540,6 +557,11 @@ export function parseMapTranslations(value: unknown, mapId: number): ReadonlyMap
     if (!isRecord(entry) || typeof entry.key !== "string" || typeof entry.value !== "string" || typeof entry.context !== "string") {
       throw new Error("Une traduction de dialogue est invalide.");
     }
+    if (entry.context === "0") translations.set(dialogueKey(entry.key), entry.value);
+  }
+  for (const entry of value.categories.mapDialogues) {
+    if (!isRecord(entry) || typeof entry.key !== "string" || typeof entry.value !== "string"
+      || typeof entry.context !== "string") continue;
     if (entry.context === String(mapId)) translations.set(dialogueKey(entry.key), entry.value);
   }
   return translations;
@@ -775,10 +797,11 @@ function parsePokemonOverworldPaths(value: unknown): ReadonlyMap<string, string>
 export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets> {
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
-  await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`]);
-  const [mapValue, tilesetValue, eventValue, localizationValue, itemsValue, alchemyValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
+  await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`, "common-events.json"]);
+  const [mapValue, tilesetValue, eventValue, commonEventsValue, localizationValue, itemsValue, alchemyValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
     movesValue, abilitiesValue, encountersValue, battleMetadataValue, regionMapValue, mapInfosValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
+    fetchJson("/__pokemon-z/data/common-events.json"),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/alchemy-recipes.json"),
     fetchJson("/__pokemon-z/data/machines.json"),
@@ -793,7 +816,8 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   ]);
   const map = parseImportedMap(mapValue);
   const tilesets = parseTilesets(tilesetValue);
-  const events = parseMapEvents(eventValue);
+  const commonEvents = parseSourceCommonEvents(commonEventsValue);
+  const events = parseMapEvents(eventValue, commonEvents);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
   const items = parseImportedItems(itemsValue, localizationValue);
   const alchemy = parseSourceAlchemyCatalog(alchemyValue);

@@ -40,7 +40,8 @@ export interface SourceSequenceEffectDependencies {
   readonly abort: (session: SourceSequenceSession, notice: string) => void;
   readonly beginItemPresentation: (session: SourceSequenceSession, gains: readonly SourceItemGain[]) => void;
   readonly startPendingEncounter: (onComplete: (won: boolean) => void) => boolean;
-  readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (won: boolean) => void) => boolean;
+  readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (won: boolean) => void,
+    chancePercent?: number) => boolean;
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
   readonly getTrainerBattleFailure?: () => string | null;
@@ -95,14 +96,19 @@ export class SourceSequenceEffects {
 
   private startRandomEncounter(session: SourceSequenceSession, command: SourceCommand): SourceSequenceCommandResult {
     const method = command.data.method;
-    if (!["Land", "Cave", "OldRod", "GoodRod", "SuperRod"].includes(String(method))) {
+    if (!["Land", "Cave", "RockSmash", "OldRod", "GoodRod", "SuperRod"].includes(String(method))) {
       return this.abort(session, "Séquence interrompue : méthode de rencontre invalide.");
+    }
+    const chancePercent = command.data.chancePercent === undefined ? 100 : command.data.chancePercent;
+    if (!Number.isInteger(chancePercent) || (chancePercent as number) < 0 || (chancePercent as number) > 100) {
+      return this.abort(session, "Séquence interrompue : probabilité de rencontre invalide.");
     }
     const started = this.dependencies.startRandomEncounter(method as SourceEncounterMethod, (won) => {
       if (!this.dependencies.isActive(session)) return;
       if (!won) session.cursor = session.plan.steps.length;
       this.dependencies.resume();
-    });
+    }, chancePercent as number);
+    if (!started && command.data.optional === true) return "continue";
     return started ? "pause"
       : this.abort(session, "Séquence interrompue : aucune rencontre n’est disponible ici.");
   }

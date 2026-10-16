@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
+  localizedDialogueText,
   parseImportedEncounter, parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
   selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
@@ -142,6 +143,7 @@ describe("imported RPG Maker map", () => {
 
   it("reassembles split source lines before applying the French translation", () => {
     const translations = parseMapTranslations({ categories: { mapDialogues: [
+      { key: "Sí", value: "Oui", context: "0" },
       { key: "Hola mundo.", value: "<b>Bonjour</b> le monde.", context: "3" },
       { key: "Hola mundo.", value: "Mauvaise carte", context: "4" },
     ] } }, 3);
@@ -154,6 +156,7 @@ describe("imported RPG Maker map", () => {
         { kind: "text-continuation", text: "mundo.", indent: 0, data: { text: "mundo." } }],
     }] };
     expect(dialogueLines(event.pages[0]!, translations)).toEqual(["Bonjour le monde."]);
+    expect(localizedDialogueText("Sí", translations)).toBe("Oui");
   });
 
   it("interpolates the active player name after applying the French translation", () => {
