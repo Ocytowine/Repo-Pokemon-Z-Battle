@@ -1,0 +1,1 @@
+Concernant les pages d'alchimie à collecter dans l'overworld, j'aimerai que tu vérifie qu'elle soit bien placé. et notament j'aimerai un petit popup qui pourrait indiquer laquelle des recettes est débloquée à chaque fois qu'une page est trouvée.

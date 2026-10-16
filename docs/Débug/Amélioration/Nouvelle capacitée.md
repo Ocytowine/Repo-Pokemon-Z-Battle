@@ -1,0 +1,1 @@
+Quand un pokemon veut apprendre une nouvelle capacité, il doit pouvoir voir les détails de celle ci sur l'écran directement (celui ou il y'a marqué "Feunnec tente d'apprendre flameche..."). Et l'écran qui permet de choisir quelle capacité remplacer doit aussi afficher les détails de chaque capacité déja apprise en plus de la nouvelle capacité à apprendre.
