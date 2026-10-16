@@ -15,6 +15,8 @@ export interface SourceMovementIntent {
   readonly direction: Direction;
   readonly mode?: SourceMovementMode;
   readonly waterfall?: boolean;
+  /** Effet personnel éphémère évalué par ce noyau ; la room fournit son état autoritaire. */
+  readonly truthVision?: boolean;
 }
 
 export interface SourceMovementResult {
@@ -40,6 +42,12 @@ export interface SourceWorldActorSnapshot extends GridPoint {
   readonly action: SourceWorldActorAction;
 }
 
+export interface SourceTruthEventSnapshot {
+  readonly eventId: number;
+  readonly mode: "hide" | "show";
+  readonly points: readonly GridPoint[];
+}
+
 export interface SourceStorySnapshot {
   readonly switches: Readonly<Record<string, boolean>>;
   readonly variables: Readonly<Record<string, number>>;
@@ -57,6 +65,8 @@ export interface SourceWorldHostState {
   readonly blockedPoints: readonly GridPoint[];
   /** Positions logiques des PNJ visibles. La room les utilise pour les collisions. */
   readonly actors?: readonly SourceWorldActorSnapshot[];
+  /** Obstacles conditionnels du Miroir de la Vérité, évalués par joueur. */
+  readonly truthEvents?: readonly SourceTruthEventSnapshot[];
   readonly host: SourceAvatarSnapshot;
   readonly follower: SourceFollowerSnapshot | null;
   readonly story: SourceStorySnapshot;
@@ -82,6 +92,7 @@ const MAX_MAP_DIMENSION = 512;
 const MAX_MAP_CELLS = 262_144;
 const MAX_BLOCKED_POINTS = 8_192;
 const MAX_SOURCE_ACTORS = 4_096;
+const MAX_SOURCE_TRUTH_EVENTS = 4_096;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -174,6 +185,25 @@ export function parseSourceWorldActors(value: unknown, width: number,
   return actors;
 }
 
+function parseTruthEvents(value: unknown, width: number, height: number): readonly SourceTruthEventSnapshot[] {
+  if (!Array.isArray(value) || value.length > MAX_SOURCE_TRUTH_EVENTS) {
+    throw new Error("Événements du Miroir de la Vérité invalides.");
+  }
+  const events = value.map((entry) => {
+    if (!isRecord(entry) || !exactKeys(entry, ["eventId", "mode", "points"])
+      || !integer(entry.eventId, 1, 999_999) || entry.mode !== "hide" && entry.mode !== "show"
+      || !Array.isArray(entry.points) || entry.points.length < 1 || entry.points.length > 256) {
+      throw new Error("Événement du Miroir de la Vérité invalide.");
+    }
+    return { eventId: entry.eventId, mode: entry.mode,
+      points: entry.points.map((point) => parsePoint(point, width, height)) } as SourceTruthEventSnapshot;
+  });
+  if (new Set(events.map((event) => event.eventId)).size !== events.length) {
+    throw new Error("Identifiants du Miroir de la Vérité dupliqués.");
+  }
+  return events;
+}
+
 function parseBooleanRecord(value: unknown): Readonly<Record<string, boolean>> {
   if (!isRecord(value) || Object.keys(value).length > 16_384
     || Object.entries(value).some(([key, entry]) => !/^\d+(?::\d+:[A-D])?$/u.test(key) || typeof entry !== "boolean")) {
@@ -201,7 +231,7 @@ function parseStory(value: unknown): SourceStorySnapshot {
 export function parseSourceWorldHostState(value: unknown): SourceWorldHostState {
   if (!isRecord(value) || !["mapId", "width", "height", "passages", "blockedPoints", "host", "story"]
     .every((key) => key in value) || Object.keys(value).some((key) => ![
-      "mapId", "width", "height", "passages", "terrain", "blockedPoints", "actors", "host", "follower", "story",
+      "mapId", "width", "height", "passages", "terrain", "blockedPoints", "actors", "truthEvents", "host", "follower", "story",
     ].includes(key))
     || !integer(value.mapId, 1, 999_999) || !integer(value.width, 1, MAX_MAP_DIMENSION)
     || !integer(value.height, 1, MAX_MAP_DIMENSION)) throw new Error("Monde source invalide.");
@@ -223,6 +253,9 @@ export function parseSourceWorldHostState(value: unknown): SourceWorldHostState 
     ...(value.actors === undefined ? {} : {
       actors: parseSourceWorldActors(value.actors, value.width as number, value.height as number),
     }),
+    ...(value.truthEvents === undefined ? {} : {
+      truthEvents: parseTruthEvents(value.truthEvents, value.width as number, value.height as number),
+    }),
     host: parseAvatar(value.host, value.width, value.height),
     follower: parseFollower(value.follower, value.width, value.height), story: parseStory(value.story) };
 }
@@ -231,7 +264,9 @@ export function sourceWorldSnapshot(hostState: SourceWorldHostState,
   opponent?: SourceAvatarSnapshot): SourceWorldSnapshot {
   return { mapId: hostState.mapId, width: hostState.width, height: hostState.height,
     passages: hostState.passages, ...(hostState.terrain === undefined ? {} : { terrain: hostState.terrain }),
-    blockedPoints: hostState.blockedPoints, actors: hostState.actors ?? [], actorRevision: 0, story: hostState.story,
+    blockedPoints: hostState.blockedPoints, actors: hostState.actors ?? [],
+    ...(hostState.truthEvents === undefined ? {} : { truthEvents: hostState.truthEvents }),
+    actorRevision: 0, story: hostState.story,
     avatars: { player: hostState.host, opponent: opponent ?? hostState.host },
     followers: hostState.follower === null ? {} : { player: hostState.follower },
     presence: { player: "shared", opponent: "shared" },
@@ -281,7 +316,7 @@ function jumpLandingAllows(world: Pick<SourceWorldHostState, "width" | "height" 
 
 /** Noyau autoritaire partagé par le solo, l'hôte et l'invité. */
 export function resolveSourceMovement(world: Pick<SourceWorldHostState,
-  "width" | "height" | "passages" | "terrain" | "blockedPoints">,
+  "width" | "height" | "passages" | "terrain" | "blockedPoints" | "truthEvents">,
 avatar: SourceAvatarSnapshot, intent: SourceMovementIntent, occupied: readonly GridPoint[] = []): SourceMovementResult {
   const delta = SOURCE_DELTAS[intent.direction];
   const adjacent = { x: avatar.x + delta.x, y: avatar.y + delta.y };
@@ -290,8 +325,14 @@ avatar: SourceAvatarSnapshot, intent: SourceMovementIntent, occupied: readonly G
   const currentTerrain = terrainAt(world, avatar.x, avatar.y);
   const adjacentTerrain = adjacent.x < 0 || adjacent.y < 0 || adjacent.x >= world.width || adjacent.y >= world.height
     ? 0 : terrainAt(world, adjacent.x, adjacent.y);
+  const truthBlocked = (point: GridPoint): boolean => (world.truthEvents ?? []).some((event) => {
+    if (!occupiedAt(event.points, point.x, point.y)) return false;
+    const inRange = intent.truthVision === true
+      && event.points.some((candidate) => Math.hypot(candidate.x - avatar.x, candidate.y - avatar.y) <= 3);
+    return event.mode === "hide" ? !inRange : inRange;
+  });
   const blocked = (point: GridPoint): boolean => occupiedAt(world.blockedPoints, point.x, point.y)
-    || occupiedAt(occupied, point.x, point.y);
+    || truthBlocked(point) || occupiedAt(occupied, point.x, point.y);
 
   if (adjacentTerrain === 1 && currentMode !== "surf" && currentMode !== "dive") {
     const landing = { x: adjacent.x + delta.x, y: adjacent.y + delta.y };

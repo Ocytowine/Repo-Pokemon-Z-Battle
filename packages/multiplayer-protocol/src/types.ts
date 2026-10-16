@@ -103,6 +103,7 @@ export type ClientMessage =
       readonly avatar: SourceAvatarSnapshot | null; readonly mapId?: number })
   | (RequestedMessage & { readonly type: "setSourceFollower"; readonly species: string | null;
       readonly appearance?: SourceFollowerSnapshot["appearance"] })
+  | (RequestedMessage & { readonly type: "activateSourceFieldEffect"; readonly effect: "truth-lens" })
   | (RequestedMessage & { readonly type: "setSourceScene"; readonly scene: SourceSceneSnapshot })
   | (RequestedMessage & { readonly type: "emitSourceSound"; readonly mapId: number;
       readonly name: string; readonly volume: number; readonly pitch: number })

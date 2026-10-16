@@ -5,6 +5,7 @@ import { selectActiveEventPage, type SourceEventState } from "./source-event-sta
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { executeSourceMoveRouteStep, type SourceRouteActor } from "./source-move-route.js";
 import type { SourceSceneActorSnapshot, SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
+import { parseSourceTruthEventTag } from "./source-truth-lens.js";
 
 interface NpcRuntime {
   x: number;
@@ -256,6 +257,7 @@ export class SourceNpcMotionController {
   public worldActors(events: readonly ImportedMapEvent[], mapId: number,
     state: SourceEventState): readonly SourceWorldActorSnapshot[] {
     return events.flatMap((event) => {
+      if (parseSourceTruthEventTag(event.name) !== null) return [];
       const runtime = this.runtimes.get(event.id);
       const selection = selectActiveEventPage(event, mapId, state);
       if (runtime === undefined || selection === null) return [];

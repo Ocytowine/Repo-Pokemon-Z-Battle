@@ -283,6 +283,31 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().sourceWorld).toEqual(room.snapshot().sourceWorld);
   });
 
+  it("autorise le passage HIDE seulement pendant les dix secondes validées par la room", () => {
+    let now = 1_000;
+    const truthWorld = { ...sourceWorld, blockedPoints: [], truthEvents: [
+      { eventId: 70, mode: "hide" as const, points: [{ x: 2, y: 1 }] },
+    ] };
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1),
+      { ...world, sourceWorld: truthWorld }, undefined, () => now);
+    room.connect("alice");
+    room.receive("alice", { type: "moveAvatar", version: 15, requestId: "truth-blocked",
+      direction: "right", sequence: 1 });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 1, y: 1 });
+    room.receive("alice", { type: "activateSourceFieldEffect", version: 15,
+      requestId: "truth-activate", effect: "truth-lens" });
+    room.receive("alice", { type: "moveAvatar", version: 15, requestId: "truth-pass",
+      direction: "right", sequence: 2 });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 2, y: 1 });
+
+    now += 10_001;
+    room.receive("alice", { type: "moveAvatar", version: 15, requestId: "truth-leave",
+      direction: "left", sequence: 3 });
+    room.receive("alice", { type: "moveAvatar", version: 15, requestId: "truth-expired",
+      direction: "right", sequence: 4 });
+    expect(room.snapshot().sourceWorld?.avatars.player).toMatchObject({ x: 1, y: 1 });
+  });
+
   it("migrates a room persisted before regional map ids and survives the next host transfer", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");

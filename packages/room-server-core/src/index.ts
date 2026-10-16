@@ -121,10 +121,12 @@ function sourceActorObstacles(world: Pick<SourceWorldHostState, "actors">): read
   return (world.actors ?? []).filter((actor) => actor.blocking);
 }
 
-function sourcePointBlocked(world: Pick<SourceWorldHostState, "blockedPoints" | "actors">,
+function sourcePointBlocked(world: Pick<SourceWorldHostState, "blockedPoints" | "actors" | "truthEvents">,
   point: { readonly x: number; readonly y: number }): boolean {
   return world.blockedPoints.some((blocked) => blocked.x === point.x && blocked.y === point.y)
-    || sourceActorObstacles(world).some((actor) => actor.x === point.x && actor.y === point.y);
+    || sourceActorObstacles(world).some((actor) => actor.x === point.x && actor.y === point.y)
+    || (world.truthEvents ?? []).some((event) => event.mode === "hide"
+      && event.points.some((candidate) => candidate.x === point.x && candidate.y === point.y));
 }
 
 export class AuthoritativeBattleRoom {
@@ -161,6 +163,7 @@ export class AuthoritativeBattleRoom {
   readonly #acknowledgedBattleSettlements = new Map<string, string>();
   readonly #battleInventories = new Map<string, SourceBattleInventory>();
   readonly #battleConsumedItems = new Map<string, SourceBattleInventory>();
+  readonly #sourceTruthLensUntil = new Map<BattleSide, number>();
   #battleJoinInventory: readonly [string, SourceBattleInventory] | null = null;
   readonly #now: () => number;
 
@@ -262,6 +265,7 @@ export class AuthoritativeBattleRoom {
       const current = this.#sourceWorldState;
       const hostState: SourceWorldHostState = { mapId: current.mapId, width: current.width, height: current.height,
         passages: current.passages, blockedPoints: current.blockedPoints, actors: current.actors,
+        ...(current.truthEvents === undefined ? {} : { truthEvents: current.truthEvents }),
         host: current.avatars.player,
         follower: current.followers.player ?? null, story: current.story };
       this.#sourceWorldState = { ...current,
@@ -442,6 +446,9 @@ export class AuthoritativeBattleRoom {
     }
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "emitSourceSound") return this.emitSourceSound(player, message);
+    if (message.type === "activateSourceFieldEffect") {
+      return this.activateSourceFieldEffect(player, message.requestId, message.effect);
+    }
     if (message.type === "openSourceBattle") return this.openSourceBattle(player, message);
     if (message.type === "ackBattleSettlement") {
       return this.ackBattleSettlement(player, message.requestId, message.settlementId);
@@ -479,6 +486,17 @@ export class AuthoritativeBattleRoom {
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
       { audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } },
     ];
+  }
+
+  private activateSourceFieldEffect(player: RoomPlayer, requestId: string,
+    effect: "truth-lens"): readonly RoomDispatch[] {
+    if (effect !== "truth-lens" || this.#sourceWorldState === null
+      || this.#sourceWorldState.presence[player.side] !== "shared") {
+      return [this.error(player.playerId, requestId, "INVALID_PHASE",
+        "Cet effet de terrain n'est pas disponible dans l'état actuel.")];
+    }
+    this.#sourceTruthLensUntil.set(player.side, this.#now() + 10_000);
+    return [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) }];
   }
 
   private setSourceWorld(player: RoomPlayer, requestId: string, world: SourceWorldHostState,
@@ -1046,7 +1064,8 @@ export class AuthoritativeBattleRoom {
       ? world.followers[otherSide] : undefined;
     const resolution = resolveSourceMovement(world, avatar, { direction: message.direction,
       ...(message.mode === undefined ? {} : { mode: message.mode }),
-      ...(message.waterfall === undefined ? {} : { waterfall: message.waterfall }) },
+      ...(message.waterfall === undefined ? {} : { waterfall: message.waterfall }),
+      truthVision: (this.#sourceTruthLensUntil.get(player.side) ?? 0) > this.#now() },
     [...sourceActorObstacles(world), ...(other === undefined ? [] : [other]),
       ...(otherFollower === undefined ? [] : [otherFollower])]);
     const next: SourceAvatarSnapshot = resolution.avatar;
@@ -1084,6 +1103,7 @@ export class AuthoritativeBattleRoom {
   }
 
   private markPlayerDisconnected(player: RoomPlayer, departed: boolean): void {
+    this.#sourceTruthLensUntil.delete(player.side);
     player.connected = false;
     player.disconnectedAt = departed ? null : this.#now();
     player.departed = departed;

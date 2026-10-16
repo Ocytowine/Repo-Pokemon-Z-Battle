@@ -1,5 +1,5 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints,
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, eventFootprint,
   clearImportedMapCaches, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage,
   localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent,
   type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
@@ -119,6 +119,11 @@ import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-loc
 import { sourceStoryVariables, useSourcePokeVial } from "./source-poke-vial.js";
 import { resolveSourceDevPokemonGender, type SourceDevPokemonGender } from "./source-dev-pokemon-picker.js";
 import { craftSourceAlchemyRecipe, sourceAlchemyUnlockLevel } from "./source-alchemy.js";
+import { parseSourceTruthEventTag, SOURCE_TRUTH_LENS_DURATION_MS, SOURCE_TRUTH_LENS_ITEM,
+  sourceTruthEventInteractive, sourceTruthEventSnapshots } from "./source-truth-lens.js";
+import { loadSourceFieldShortcuts, persistSourceFieldShortcuts, sourceFieldShortcutPresentation,
+  toggleSourceFieldShortcut,
+  type SourceFieldShortcutId } from "./source-field-shortcuts.js";
 import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
   type SourceFieldMark } from "./source-field-effects.js";
@@ -151,6 +156,7 @@ let resumeSourceMovementAfterNetworkAck = false;
 let importedWalkingPattern: 1 | 3 = 1;
 let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
 let sourceFieldMarks: SourceFieldMark[] = [];
+let sourceTruthLensActiveUntil = Number.NEGATIVE_INFINITY;
 const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
@@ -161,6 +167,7 @@ let sourceSceneAuditNotice: string | null = null;
 let sourceParallelAuditNotice: string | null = null;
 let importedAnimationFrame: number | null = null;
 let sourceEventState = loadSourceEventState();
+let sourceFieldShortcuts: readonly SourceFieldShortcutId[];
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 const launchSourceEventState = sourceEventStateForLaunch(sourceEventState, sourceWorldSave,
@@ -170,6 +177,8 @@ if (launchSourceEventState !== sourceEventState) {
   sourceEventState = launchSourceEventState;
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
 }
+sourceFieldShortcuts = loadSourceFieldShortcuts(localStorage,
+  sourceEventState.preferredFishingRod !== undefined);
 let sourceNewGameActive = !sourceAdventureSaveExists(localStorage);
 const sourceProgressionQueue: string[] = [];
 let activeSourceProgressionPokemonId: string | null = null;
@@ -301,8 +310,9 @@ function sourceWorldHostState(narrativeState: SourceEventState = sourceEventStat
     passages: map.collision.masks.map((mask) => Math.max(0, Math.min(15, mask)).toString(16)).join(""),
     terrain: Array.from({ length: map.width * map.height }, (_, index) => sourceTerrainAt(map,
       importedAssets!.tileset, index % map.width, Math.floor(index / map.width)).toString(36)).join(""),
-    blockedPoints: blockingNarrativeEventPoints(sourceMapEvents(), map.id, narrativeState),
+    blockedPoints: blockingNarrativeEventPoints(sourceNonTruthEvents(), map.id, narrativeState),
     actors: currentSourceWorldActors(narrativeState),
+    truthEvents: sourceTruthEventSnapshots(sourceMapEvents(), eventFootprint),
     host: { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
     follower: !sourceEventState.followerEnabled || member === null || followerPosition === null ? null
       : { ...followerPosition, species: member.species,
@@ -500,7 +510,7 @@ function finishImportedStep(): void {
   if (importedAssets === null) return;
   const sharedGuest = guestUsesSharedSourceWorld();
   if (isNetworkGuest()) {
-    const sharedEvent = activeEventAt(sourceMapEvents(), importedAvatar.x, importedAvatar.y,
+    const sharedEvent = activeEventAt(sourceInteractiveMapEvents(), importedAvatar.x, importedAvatar.y,
       importedAssets.map.id, sourceInteractionState());
     const directTransfer = sharedEvent === null ? null : guestDirectSourceTransfer(sharedEvent);
     if (directTransfer !== null) {
@@ -518,7 +528,7 @@ function finishImportedStep(): void {
     continueSourceMovement();
     return;
   }
-  const entered = activeEventAt(sourceMapEvents(), importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
+  const entered = activeEventAt(sourceInteractiveMapEvents(), importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
   if (entered !== null && (entered.page.settings.trigger === 1 || entered.page.settings.trigger === 2)) {
     beginSourceSequence(entered, `Événement de contact ${entered.event.id} · ${entered.event.name}`);
     return;
@@ -548,6 +558,24 @@ function continueSourceMovement(): void {
 function sourceMapEvents(): readonly ImportedMapAssets["events"][number][] {
   return importedAssets === null ? [] : sourceNpcMotions.logicalEvents(importedAssets.events)
     .filter((event) => !erasedSourceEvents.has(`${importedAssets!.map.id}:${event.id}`));
+}
+
+function sourceTruthVisionActive(now = performance.now()): boolean {
+  return now < sourceTruthLensActiveUntil;
+}
+
+function renderSourceTruthLensEffect(now = performance.now()): void {
+  const effect = requiredAppElement<HTMLDivElement>("source-truth-lens-effect");
+  effect.hidden = viewedMapId !== SOURCE_MAP_ID || !sourceTruthVisionActive(now);
+}
+
+function sourceNonTruthEvents(): readonly ImportedMapAssets["events"][number][] {
+  return sourceMapEvents().filter((event) => parseSourceTruthEventTag(event.name) === null);
+}
+
+function sourceInteractiveMapEvents(): readonly ImportedMapAssets["events"][number][] {
+  const active = sourceTruthVisionActive();
+  return sourceMapEvents().filter((event) => sourceTruthEventInteractive(event, importedAvatar, active));
 }
 
 function hiddenSourceEventIds(): ReadonlySet<number> {
@@ -1016,6 +1044,8 @@ const sourceMenuView = new SourceMenuView(localStorage, {
     renderImportedView();
   },
   onOpenIncubator: openSourceIncubator,
+  onUseTruthLens: activateSourceTruthLens,
+  onFieldShortcut: setSourceFieldShortcut,
   onFish: requestSourceFishing,
   onPreferredFishingRod: setPreferredSourceFishingRod,
   onDive: requestSourceDive,
@@ -1095,6 +1125,11 @@ sourceCompassView.bind();
 document.querySelector<HTMLButtonElement>("#source-fishing-shortcut")?.addEventListener("click", (event) => {
   const rod = (event.currentTarget as HTMLButtonElement).dataset.sourceFishingRod;
   if (rod === "OLDROD" || rod === "GOODROD" || rod === "SUPERROD") requestSourceFishing(rod);
+});
+document.querySelector<HTMLButtonElement>("#source-truth-lens-shortcut")
+  ?.addEventListener("click", activateSourceTruthLens);
+document.querySelector<HTMLButtonElement>("#source-mount-shortcut")?.addEventListener("click", () => {
+  selectSourceMovementMode(sourceMovementMode === "mount" ? "walk" : "mount");
 });
 const sourceBattleVisuals = new SourceBattleVisuals({
   musicVolume: sourceAudioPreferences.music / 100,
@@ -1800,6 +1835,7 @@ function animateImportedMap(now: number): void {
     importedAnimationFrame = null;
     return;
   }
+  renderSourceTruthLensEffect(now);
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
@@ -1865,7 +1901,8 @@ function animateImportedMap(now: number): void {
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
       + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
-    remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds());
+    remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds(),
+    { active: sourceTruthVisionActive(now), player: pose });
   if (importedPlayerMotion !== null && pose.complete) {
     const completedMotion = importedPlayerMotion;
     completeLocalSourceFieldStep(completedMotion, now);
@@ -2082,8 +2119,23 @@ function applySourceSequenceMovementMode(mode: SourceMovementMode): void {
 function setPreferredSourceFishingRod(rod: SourceFishingRod): void {
   if ((sourceEventState.inventory[rod] ?? 0) < 1) return;
   sourceEventState = { ...sourceEventState, preferredFishingRod: rod };
+  sourceFieldShortcuts = persistSourceFieldShortcuts(localStorage,
+    toggleSourceFieldShortcut(sourceFieldShortcuts, "fishing", true));
   persistSourceEventState();
   importedNotice = `${importedAssets?.items.get(rod)?.name ?? rod} définie comme canne favorite.`;
+  renderImportedView();
+}
+
+function setSourceFieldShortcut(id: SourceFieldShortcutId, selected: boolean): void {
+  sourceFieldShortcuts = persistSourceFieldShortcuts(localStorage,
+    toggleSourceFieldShortcut(sourceFieldShortcuts, id, selected));
+  const labels: Readonly<Record<SourceFieldShortcutId, string>> = {
+    compass: "Boussole", "truth-lens": "Miroir de la Vérité", fishing: "Pêche", mount: "Chevroum",
+  };
+  if (!selected && id === "compass") sourceScenes.closeCompass();
+  importedNotice = selected
+    ? `${labels[id]} ajouté aux raccourcis de terrain.`
+    : `${labels[id]} retiré des raccourcis de terrain.`;
   renderImportedView();
 }
 
@@ -2134,6 +2186,7 @@ function renderSourceMenu(): void {
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
     personalProgressSaveOnly: multiplayer.active && isNetworkGuest(),
     alchemyUnlockLevel: sourceAlchemyUnlockLevel(assets.alchemy, renderedState.variables),
+    fieldShortcuts: sourceFieldShortcuts,
     profileBodyModel: activePlayerSelection.profile.bodyModel,
     movement: sourceMovementMenuModel(),
     dev: { storyLevelCap: pokemonZLevelCap(sourceEventState.switches),
@@ -3073,15 +3126,18 @@ function sourceCompassLocationName(assets: ImportedMapAssets): string {
   return [...new Set(names)].join(" · ") || region.name;
 }
 
-function renderSourceFishingShortcut(compassAvailable: boolean, interrupted: boolean): void {
+function renderSourceFishingShortcut(interrupted: boolean): void {
   const button = requiredAppElement<HTMLButtonElement>("source-fishing-shortcut");
   const rod = importedAssets === null ? null : resolveSourceFishingRod(sourceEventState.preferredFishingRod,
     sourceEventState.inventory, importedAssets.encounter);
-  const visible = viewedMapId === SOURCE_MAP_ID && importedAssets !== null && rod !== null && !interrupted
+  const contextAvailable = viewedMapId === SOURCE_MAP_ID && importedAssets !== null && rod !== null
     && isSourceFacingFishableTerrain(importedAssets.map, importedAssets.tileset, importedAvatar);
-  button.hidden = !visible;
-  button.dataset.alone = String(!compassAvailable);
-  if (!visible || importedAssets === null || rod === null) {
+  const presentation = sourceFieldShortcutPresentation("fishing", {
+    selected: sourceFieldShortcuts.includes("fishing"), unlocked: rod !== null, contextAvailable,
+    blocked: interrupted });
+  button.hidden = !presentation.visible;
+  button.disabled = !presentation.enabled;
+  if (!presentation.visible || importedAssets === null || rod === null) {
     delete button.dataset.sourceFishingRod;
     return;
   }
@@ -3100,10 +3156,68 @@ function renderSourceFishingShortcut(compassAvailable: boolean, interrupted: boo
   }
 }
 
+function renderSourceActionShortcuts(blocked: boolean): void {
+  const truth = requiredAppElement<HTMLButtonElement>("source-truth-lens-shortcut");
+  const truthItem = importedAssets?.items.get(SOURCE_TRUTH_LENS_ITEM);
+  const truthPresentation = sourceFieldShortcutPresentation("truth-lens", {
+    selected: sourceFieldShortcuts.includes("truth-lens"),
+    unlocked: (sourceEventState.inventory[SOURCE_TRUTH_LENS_ITEM] ?? 0) > 0,
+    contextAvailable: true, blocked });
+  truth.hidden = !truthPresentation.visible;
+  truth.classList.toggle("active", truthPresentation.visible && sourceTruthVisionActive());
+  truth.disabled = !truthPresentation.enabled || sourceTruthVisionActive();
+  truth.title = sourceTruthVisionActive() ? "Miroir de la Vérité actif"
+    : "Utiliser le Miroir de la Vérité";
+  const truthImage = truth.querySelector<HTMLImageElement>("img");
+  if (truthImage !== null && truthItem !== undefined) truthImage.src = sourceItemIconUrl(truthItem.id);
+
+  const mount = requiredAppElement<HTMLButtonElement>("source-mount-shortcut");
+  const movement = sourceMovementMenuModel();
+  const mountPresentation = sourceFieldShortcutPresentation("mount", {
+    selected: sourceFieldShortcuts.includes("mount"), unlocked: movement.unlocks.mount,
+    contextAvailable: true, blocked });
+  const canToggleMount = sourceMovementMode === "mount"
+    || sourceMapAllowsMount() && sourceMovementMode !== "surf" && sourceMovementMode !== "dive";
+  mount.hidden = !mountPresentation.visible;
+  mount.disabled = !mountPresentation.enabled || !canToggleMount;
+  mount.classList.toggle("active", sourceMovementMode === "mount");
+  mount.title = sourceMovementMode === "mount" ? "Descendre de Chevroum"
+    : canToggleMount ? "Monter sur Chevroum" : "Chevroum n'est pas disponible ici";
+}
+
+function activateSourceTruthLens(): void {
+  if ((sourceEventState.inventory[SOURCE_TRUTH_LENS_ITEM] ?? 0) < 1) {
+    importedNotice = "Vous ne possédez pas le Miroir de la Vérité.";
+    renderImportedView();
+    return;
+  }
+  if (sourceTruthVisionActive()) {
+    importedNotice = "Le Miroir de la Vérité est déjà actif.";
+    sourceScenes.closeMenu();
+    renderImportedView();
+    return;
+  }
+  sourceTruthLensActiveUntil = performance.now() + SOURCE_TRUTH_LENS_DURATION_MS;
+  const activationEnd = sourceTruthLensActiveUntil;
+  multiplayer.activateSourceFieldEffect("truth-lens");
+  sourceScenes.closeMenu();
+  heldMovementKeys.clear();
+  sourcePresentation.playFieldSound("shiny");
+  window.setTimeout(() => {
+    if (sourceTruthVisionActive()) sourcePresentation.playFieldSound("Saint6", 80);
+  }, 180);
+  window.setTimeout(() => {
+    if (sourceTruthLensActiveUntil === activationEnd) renderImportedView();
+  }, SOURCE_TRUTH_LENS_DURATION_MS + 20);
+  importedNotice = "Le Miroir de la Vérité révèle les alentours pendant 10 secondes.";
+  renderImportedView();
+}
+
 function renderImportedView(): void {
   const sourceBattle = sourceBattles.current;
   if (importedAssets === null) return;
   if (importedAnimationFrame === null) importedAnimationFrame = requestAnimationFrame(animateImportedMap);
+  renderSourceTruthLensEffect();
   const network = multiplayer.current;
   const networkSnapshot = network?.snapshot ?? null;
   const duelChallenge = networkSnapshot?.duelChallenge ?? null;
@@ -3128,14 +3242,16 @@ function renderImportedView(): void {
   const compassUnlocked = (sourceEventState.inventory.DEXNAV ?? 0) > 0;
   const compassInterrupted = activity.dialogue || activity.battle || activity.transition || activity.sequence
     || sourceScenes.menuOpen;
-  if (sourceScenes.compassOpen && (!compassUnlocked || compassInterrupted)) sourceScenes.closeCompass();
-  sourceCompassView.render({ available: compassUnlocked && !compassInterrupted,
+  const compassShortcutAvailable = sourceFieldShortcuts.includes("compass") && compassUnlocked;
+  if (sourceScenes.compassOpen && (!compassShortcutAvailable || compassInterrupted)) sourceScenes.closeCompass();
+  sourceCompassView.render({ available: compassShortcutAvailable && !compassInterrupted,
     open: sourceScenes.compassOpen, encounter: importedAssets.encounter,
     catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
     caughtSpecies: sourceEventState.pokedex.caughtSpecies,
     locationName: sourceCompassLocationName(importedAssets) });
-  renderSourceFishingShortcut(compassUnlocked && !compassInterrupted,
-    compassInterrupted || activity.movement || sourceScenes.compassOpen);
+  const persistentShortcutBlocked = compassInterrupted || sourceScenes.compassOpen;
+  renderSourceFishingShortcut(persistentShortcutBlocked || activity.movement);
+  renderSourceActionShortcuts(persistentShortcutBlocked);
   sourceOverworldHud.render({ assets: importedAssets, avatar: importedAvatar, eventState: sourceEventState,
     battleActive: sourceBattle !== null, sequenceStatus, notice: importedNotice, hudNotice: coopHudNotice,
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
@@ -3744,7 +3860,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
     if (sourceMovementAction === "ice-slide" || sourceMovementAction === "waterfall") direction = importedAvatar.direction;
     const networkSide = multiplayer.active && !guestSourceExcursion ? multiplayer.current?.ticket.side ?? null : null;
-    const events = sourceMapEvents();
+    const events = sourceInteractiveMapEvents();
     const facingAvatar = { ...importedAvatar, direction };
     const eventAhead = playerTouchEventInDirection(events, importedAvatar, direction, importedAssets.map.id,
       sourceInteractionState());
@@ -3767,6 +3883,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
     const waterfall = sourceMovementMode === "surf" && unlocks.waterfall
       && facingTerrain === SOURCE_TERRAIN.waterfall && (direction === "up" || direction === "down");
+    const truthVision = sourceTruthVisionActive();
     if (networkSide !== null && !multiplayer.sendMovement(networkSide, direction,
       { mode: requestedMode, waterfall })) return;
     const remoteSide: AvatarId | null = networkSide === null ? null
@@ -3775,7 +3892,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     const remote = !remoteConnected || remoteSide === null ? undefined : networkSourceWorld?.avatars[remoteSide];
     const remoteFollower = !remoteConnected || remoteSide === null
       ? undefined : networkSourceWorld?.followers?.[remoteSide];
-    const occupied = [...blockingDefaultEventPoints(events, importedAssets.map.id, renderedSourceEventState()),
+    const occupied = [...blockingDefaultEventPoints(sourceNonTruthEvents(), importedAssets.map.id, renderedSourceEventState()),
       ...(remote === undefined ? [] : [remote]), ...(remoteFollower === undefined ? [] : [remoteFollower])];
     const world = networkSide === null
       ? sourceWorldHostState(isNetworkGuest() ? sourceInteractionState() : sourceEventState)
@@ -3783,7 +3900,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     if (world === null) return;
     const resolution = resolveSourceMovement(world,
       { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
-      { direction, mode: requestedMode, waterfall }, occupied);
+      { direction, mode: requestedMode, waterfall, truthVision }, occupied);
     const next = resolution.avatar;
     importedAvatar = next;
     sourceMovementMode = next.mode ?? sourceMovementMode;
@@ -3827,7 +3944,7 @@ function interact(playerId: AvatarId): void {
     }
     if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
-    const target = eventInInteractionRange(sourceMapEvents(), importedAvatar, importedAssets.map,
+    const target = eventInInteractionRange(sourceInteractiveMapEvents(), importedAvatar, importedAssets.map,
       importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
     if (target === null && trySourceTraversalInteraction()) return;
     const joinableBattle = multiplayer.current?.joinableBattle;
@@ -4072,7 +4189,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((
 }));
 const SOURCE_SOUND_MENU_SELECTOR = ["#source-menu", "#source-shop", "#source-ranch", "#source-day-care", "#source-day-care-eggs", "#source-incubator", "#source-egg-hatch", "#source-pokemon-summary",
   "#source-new-game", "#source-progression", "#source-capture-resolution", "#player-duel-prompt", "#battle-join-prompt",
-  "#source-compass", "#source-compass-toggle", "#source-fishing-shortcut", "#embedded-avatar-lab", "#source-load-error"].join(",");
+  "#source-compass", "#source-field-shortcuts", "#embedded-avatar-lab", "#source-load-error"].join(",");
 document.addEventListener("click", (event) => {
   const target = event.target instanceof Element ? event.target : null;
   const button = target?.closest<HTMLButtonElement>("button");

@@ -11,6 +11,7 @@ import type { SourceMovementAction, SourceMovementMode } from "@pokemon-z-battle
 import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
   type SourceFieldMark } from "./source-field-effects.js";
 import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-region-map.js";
+import { sourceTruthEventOpacity } from "./source-truth-lens.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -1036,7 +1037,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   follower: ImportedFollowerRender | null = null,
   remotePlayers: readonly ImportedRemotePlayerRender[] = [], playerMode: SourceMovementMode = "walk",
   playerAction: SourceMovementAction = "idle", fieldMarks: readonly SourceFieldMark[] = [],
-  hiddenEventIds: ReadonlySet<number> = new Set()): void {
+  hiddenEventIds: ReadonlySet<number> = new Set(),
+  truthView: { readonly active: boolean; readonly player: GridPoint } = { active: false, player: avatar }): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -1089,14 +1091,22 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     const eventY = pose?.y ?? event.y;
     const destinationX = eventX * 32 - cameraX;
     const destinationY = eventY * 32 - cameraY;
-    if (page.graphic.tileId > 0) drawTile(context, assets, page.graphic.tileId, destinationX, destinationY, frame);
+    const opacity = sourceTruthEventOpacity(event, truthView.player, truthView.active,
+      pose?.opacity ?? page.graphic.opacity);
+    if (opacity <= 0) return;
+    if (page.graphic.tileId > 0) {
+      context.save();
+      context.globalAlpha = opacity / 255;
+      drawTile(context, assets, page.graphic.tileId, destinationX, destinationY, frame);
+      context.restore();
+    }
     else {
       const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
       if (image !== undefined) {
         const field = sourceFieldVisualState(map, assets.tileset, Math.round(eventX), Math.round(eventY), "walk",
           false, page.settings.alwaysOnTop);
         drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
-          pose?.pattern ?? eventGraphicPattern(page, now), pose?.opacity ?? page.graphic.opacity,
+          pose?.pattern ?? eventGraphicPattern(page, now), opacity,
           eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name) && field.shadow,
           0, field.bushDepth, field.reflection && sourceEventHasReflection(event.name), now);
       }

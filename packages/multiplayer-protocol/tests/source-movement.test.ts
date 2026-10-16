@@ -53,4 +53,20 @@ describe("shared source movement resolver", () => {
     expect(resolveSourceMovement(world(), { x: 1, y: 1, direction: "down" }, { direction: "right" },
       [{ x: 2, y: 1 }]).moved).toBe(false);
   });
+
+  it("évalue les obstacles du Miroir de la Vérité pour chaque intention de joueur", () => {
+    const hidden = { ...world(), truthEvents: [{ eventId: 7, mode: "hide" as const,
+      points: [{ x: 2, y: 1 }] }] };
+    expect(resolveSourceMovement(hidden, { x: 1, y: 1, direction: "right" },
+      { direction: "right" }).moved).toBe(false);
+    expect(resolveSourceMovement(hidden, { x: 1, y: 1, direction: "right" },
+      { direction: "right", truthVision: true }).moved).toBe(true);
+
+    const shown = { ...world(), truthEvents: [{ eventId: 8, mode: "show" as const,
+      points: [{ x: 2, y: 1 }] }] };
+    expect(resolveSourceMovement(shown, { x: 1, y: 1, direction: "right" },
+      { direction: "right" }).moved).toBe(true);
+    expect(resolveSourceMovement(shown, { x: 1, y: 1, direction: "right" },
+      { direction: "right", truthVision: true }).moved).toBe(false);
+  });
 });

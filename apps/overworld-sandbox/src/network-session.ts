@@ -276,6 +276,18 @@ export class OverworldNetworkSession {
       requestId: crypto.randomUUID(), species, ...(appearance === undefined ? {} : { appearance }) }));
   }
 
+  public activateSourceFieldEffect(effect: "truth-lens"): boolean {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    const shared = session?.snapshot?.sourceWorld !== null && session?.snapshot?.sourceWorld !== undefined
+      && session.snapshot.sourceWorld.presence[session.ticket.side] === "shared";
+    if (session === null || !shared || socket === null || socket === undefined
+      || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify({ type: "activateSourceFieldEffect", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), effect }));
+    return true;
+  }
+
   public challengePlayer(team: BattleTeam): void {
     this.sendRequest({ type: "challengePlayer", team });
   }

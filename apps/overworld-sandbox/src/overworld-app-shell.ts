@@ -68,5 +68,31 @@ export function mountOverworldApp(): HTMLCanvasElement {
         <section id="engine-panel" class="panel"><div class="log-heading"><div><p class="eyebrow">Moteur</p><h2>Événements</h2></div><span id="tick">0,0</span></div><div id="progress" class="progress"></div><div id="events" class="events">Chargement du monde…</div></section>
       </aside>
     </main>`;
+  const shortcutBar = document.createElement("nav");
+  shortcutBar.id = "source-field-shortcuts";
+  shortcutBar.className = "source-field-shortcuts";
+  shortcutBar.setAttribute("aria-label", "Raccourcis de terrain");
+  const compassShortcut = requiredAppElement<HTMLButtonElement>("source-compass-toggle");
+  const truthShortcut = document.createElement("button");
+  truthShortcut.id = "source-truth-lens-shortcut";
+  truthShortcut.className = "source-field-shortcut source-truth-lens-shortcut";
+  truthShortcut.type = "button";
+  truthShortcut.hidden = true;
+  truthShortcut.innerHTML = '<img alt=""><span>Miroir de la Vérité</span>';
+  const fishingShortcut = requiredAppElement<HTMLButtonElement>("source-fishing-shortcut");
+  const mountShortcut = document.createElement("button");
+  mountShortcut.id = "source-mount-shortcut";
+  mountShortcut.className = "source-field-shortcut source-mount-shortcut";
+  mountShortcut.type = "button";
+  mountShortcut.hidden = true;
+  mountShortcut.innerHTML = '<img src="/__pokemon-z/source/Graphics/Icons/icon673.png" alt=""><span>Chevroum</span>';
+  shortcutBar.append(compassShortcut, truthShortcut, fishingShortcut, mountShortcut);
+  requiredAppElement("world-stage").append(shortcutBar);
+  const truthLensEffect = document.createElement("div");
+  truthLensEffect.id = "source-truth-lens-effect";
+  truthLensEffect.className = "source-truth-lens-effect";
+  truthLensEffect.hidden = true;
+  truthLensEffect.setAttribute("aria-hidden", "true");
+  requiredAppElement("world-stage").append(truthLensEffect);
   return requiredAppElement<HTMLCanvasElement>("world");
 }

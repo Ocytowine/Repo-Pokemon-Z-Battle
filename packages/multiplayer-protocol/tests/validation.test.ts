@@ -289,6 +289,14 @@ describe("multiplayer protocol", () => {
       .toThrow("setProfile mal formé");
   });
 
+  it("valide uniquement l'activation connue d'un effet de terrain", () => {
+    const message: ClientMessage = { type: "activateSourceFieldEffect", version: 15,
+      requestId: "truth-1", effect: "truth-lens" };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message, effect: "inconnu" })))
+      .toThrow("activateSourceFieldEffect mal formé");
+  });
+
   it("validates a compact source-world topology and rejects computed avatars", () => {
     const world = { mapId: 3, width: 2, height: 2, passages: "ffff", blockedPoints: [{ x: 1, y: 1 }],
       host: { x: 0, y: 0, direction: "down" },
@@ -306,6 +314,9 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage(JSON.stringify({ ...message, world: { ...world, avatars: {} } })))
       .toThrow("setSourceWorld mal formé");
     expect(() => parseSourceWorldHostState({ ...world, passages: "fff" })).toThrow("Passages");
+    expect(parseSourceWorldHostState({ ...world, truthEvents: [
+      { eventId: 9, mode: "hide", points: [{ x: 1, y: 0 }] },
+    ] })).toMatchObject({ truthEvents: [{ eventId: 9, mode: "hide" }] });
   });
 
   it("validates bounded source actors and rejects duplicate or client-computed fields", () => {

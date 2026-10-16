@@ -5,6 +5,7 @@ export { parseSourceWorldActors, parseSourceWorldHostState, resolveSourceMovemen
   type SourceFollowerSnapshot, type SourceMovementAction, type SourceMovementIntent, type SourceMovementMode,
   type SourceMovementResult, type SourcePlayerPresence, type SourceStorySnapshot,
   type SourceWorldActorAction, type SourceWorldActorSnapshot,
+  type SourceTruthEventSnapshot,
   type SourceWorldHostState, type SourceWorldSnapshot } from "./source-world.js";
 export { parseSourceSceneSnapshot, type SourceSceneActorSnapshot, type SourceSceneDialogueSnapshot,
   type SourceScenePresentationCue, type SourceSceneSnapshot } from "./source-scene.js";

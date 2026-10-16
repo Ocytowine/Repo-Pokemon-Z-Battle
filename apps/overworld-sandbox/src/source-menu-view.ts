@@ -10,6 +10,7 @@ import type { SourceWorldSave } from "./source-world-save.js";
 import type { PlayerConnectionState, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
+import type { SourceFieldShortcutId } from "./source-field-shortcuts.js";
 import { createSourcePokemonCollection, sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
@@ -69,6 +70,7 @@ export interface SourceMenuViewModel {
   readonly movement: SourceMenuMovementModel;
   readonly dev: SourceMenuDevModel;
   readonly alchemyUnlockLevel: number;
+  readonly fieldShortcuts: readonly SourceFieldShortcutId[];
   /** Morphologie strictement locale, utilisée uniquement pour les variantes visuelles du menu source. */
   readonly profileBodyModel: string;
 }
@@ -117,6 +119,8 @@ export interface SourceMenuViewCallbacks {
   readonly onOpenTestDayCare: () => void;
   readonly onAccelerateTestEggs: () => void;
   readonly onOpenIncubator: () => void;
+  readonly onUseTruthLens: () => void;
+  readonly onFieldShortcut: (id: SourceFieldShortcutId, selected: boolean) => void;
   readonly onFish: (rod: SourceFishingRod) => void;
   readonly onPreferredFishingRod: (rod: SourceFishingRod) => void;
   readonly onDive: () => void;
@@ -261,7 +265,7 @@ export class SourceMenuView {
     else if (model.tab === "movement") this.renderDevTools(content, model);
     else if (model.tab === "save") this.renderSave(content, model);
     else if (model.tab === "coop") this.renderCoop(content, model.coop);
-    else this.renderOptions(content);
+    else this.renderOptions(content, model);
   }
 
   private renderRegionMap(content: HTMLElement, model: SourceMenuViewModel): void {
@@ -623,10 +627,12 @@ export class SourceMenuView {
       { id: "specific:fishing" as const, label: "Pêcher", symbol: "≈", enabled: true,
         hint: "Lancer la ligne face à l’eau" },
       { id: "specific:fishing-favorite" as const,
-        label: model.eventState.preferredFishingRod === selectedFishingRod ? "Favorite" : "Raccourci",
-        symbol: "★", enabled: model.eventState.preferredFishingRod !== selectedFishingRod,
+        label: model.eventState.preferredFishingRod === selectedFishingRod
+          && model.fieldShortcuts.includes("fishing") ? "Retirer" : "Raccourci",
+        symbol: "★", enabled: true,
         hint: model.eventState.preferredFishingRod === selectedFishingRod
-          ? "Canne déjà définie comme favorite" : "Utiliser cette canne avec le bouton de terrain" },
+          && model.fieldShortcuts.includes("fishing")
+          ? "Retirer le bouton de pêche du terrain" : "Utiliser cette canne avec le bouton de terrain" },
     ];
     const actionWheel = selectedEntry === null || this.bagAction !== "wheel" ? ""
       : sourceActionWheelHtml({ label: `Actions pour ${selectedItemDisplayName}`,
@@ -636,6 +642,14 @@ export class SourceMenuView {
           specificActions: selectedEntry.item.internalName === "INCUBADORA"
             ? [{ id: "specific:incubator", label: "Ouvrir", symbol: "◉", enabled: true,
                 hint: "Gérer les six emplacements" }]
+            : selectedEntry.item.internalName === "LENSOFTRUTH"
+              ? [{ id: "specific:truth-lens", label: "Observer", symbol: "◉", enabled: true,
+                  hint: "Révéler la vérité autour de vous pendant 10 secondes" },
+                { id: "specific:truth-lens-shortcut",
+                  label: model.fieldShortcuts.includes("truth-lens") ? "Retirer" : "Raccourci",
+                  symbol: "★", enabled: true,
+                  hint: model.fieldShortcuts.includes("truth-lens")
+                    ? "Retirer le Miroir des raccourcis" : "Afficher le Miroir après la Boussole" }]
             : fishingActions }) });
     const targetPanel = selectedEntry === null || (this.bagAction !== "use" && this.bagAction !== "give") ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>${this.bagAction === "give" ? "DONNER À UN POKÉMON" : selectedTarget === null ? "CHOISIR UNE CIBLE" : "CHOISIR UNE CAPACITÉ"}</small><strong>${escapeSourceHtml(selectedTarget?.nickname ?? selectedTarget?.species ?? selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${model.eventState.party.members.length === 0
@@ -764,12 +778,18 @@ export class SourceMenuView {
           this.selectedBagPokemonId = null;
           this.renderBag(content, model);
         } else if (action === "specific:incubator") this.callbacks.onOpenIncubator();
+        else if (action === "specific:truth-lens") this.callbacks.onUseTruthLens();
+        else if (action === "specific:truth-lens-shortcut") {
+          this.callbacks.onFieldShortcut("truth-lens", !model.fieldShortcuts.includes("truth-lens"));
+        }
         else if (action === "specific:fishing" && this.selectedBagItemId !== null
           && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
           this.callbacks.onFish(this.selectedBagItemId as SourceFishingRod);
         } else if (action === "specific:fishing-favorite" && this.selectedBagItemId !== null
           && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
-          this.callbacks.onPreferredFishingRod(this.selectedBagItemId as SourceFishingRod);
+          if (model.eventState.preferredFishingRod === this.selectedBagItemId
+            && model.fieldShortcuts.includes("fishing")) this.callbacks.onFieldShortcut("fishing", false);
+          else this.callbacks.onPreferredFishingRod(this.selectedBagItemId as SourceFishingRod);
         }
       }));
     content.querySelector<HTMLButtonElement>("[data-source-party-item-confirm]")?.addEventListener("click", () => {
@@ -904,14 +924,36 @@ export class SourceMenuView {
     content.querySelector<HTMLButtonElement>("#delete-source-world")?.addEventListener("click", this.callbacks.onDeleteSave);
   }
 
-  private renderOptions(content: HTMLElement): void {
+  private renderOptions(content: HTMLElement, model: SourceMenuViewModel): void {
     const settings = sourceAudioSettings(this.storage);
     const control = (channel: SourceAudioChannel, title: string, description: string, value: number): string =>
       `<label><span><strong>${title}</strong><small>${description}</small></span><output data-audio-output="${channel}">${value}%</output><input data-audio-channel="${channel}" type="range" min="0" max="100" value="${value}"></label>`;
+    const shortcut = (id: SourceFieldShortcutId, title: string, description: string, iconUrl: string,
+      available: boolean): string => {
+      const selected = model.fieldShortcuts.includes(id);
+      return `<button type="button" class="source-shortcut-option${selected ? " selected" : ""}" data-source-field-shortcut="${id}" aria-pressed="${selected}"${available || selected ? "" : " disabled"}><img src="${iconUrl}" alt=""><span><strong>${title}</strong><small>${available ? description : "Fonction non débloquée"}</small></span><b>${selected ? "ACTIF" : "AJOUTER"}</b></button>`;
+    };
+    const truthItem = model.assets.items.get("LENSOFTRUTH");
+    const rod = model.eventState.preferredFishingRod
+      ?? (["SUPERROD", "GOODROD", "OLDROD"] as const).find((id) => (model.eventState.inventory[id] ?? 0) > 0);
+    const rodItem = rod === undefined ? undefined : model.assets.items.get(rod);
+    const shortcuts = [
+      shortcut("compass", "Boussole", "Afficher les Pokémon de la zone.",
+        "/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/radar.png",
+        (model.eventState.inventory.DEXNAV ?? 0) > 0),
+      shortcut("truth-lens", "Miroir de la Vérité", "Révéler les éléments cachés pendant 10 secondes.",
+        sourceItemIconUrl(truthItem?.id ?? 0),
+        (model.eventState.inventory.LENSOFTRUTH ?? 0) > 0),
+      shortcut("fishing", "Pêche", "Utiliser la canne favorite face à l’eau.",
+        sourceItemIconUrl(rodItem?.id ?? 0), rod !== undefined),
+      shortcut("mount", "Chevroum", "Basculer rapidement entre la marche et la monture.",
+        "/__pokemon-z/source/Graphics/Icons/icon673.png", model.movement.unlocks.mount),
+    ].join("");
     content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list">
       ${control("music", "Musiques", "Musiques de carte, de combat et jingles.", settings.music)}
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
       ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}
+      <article class="source-shortcut-options"><strong>Raccourcis de terrain</strong><small>Les boutons choisis apparaissent en haut à droite du canvas, après la Boussole.</small><div>${shortcuts}</div></article>
       <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
     content.querySelectorAll<HTMLInputElement>("[data-audio-channel]").forEach((input) => {
       input.addEventListener("input", () => {
@@ -920,6 +962,12 @@ export class SourceMenuView {
         const output = content.querySelector<HTMLOutputElement>(`[data-audio-output="${channel}"]`);
         if (output !== null) output.value = `${value}%`;
         this.callbacks.onAudioSettingsChange(sourceAudioSettings(this.storage));
+      });
+    });
+    content.querySelectorAll<HTMLButtonElement>("[data-source-field-shortcut]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const id = button.dataset.sourceFieldShortcut as SourceFieldShortcutId;
+        this.callbacks.onFieldShortcut(id, button.getAttribute("aria-pressed") !== "true");
       });
     });
   }

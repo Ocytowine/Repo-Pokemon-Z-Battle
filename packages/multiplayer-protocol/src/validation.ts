@@ -305,6 +305,12 @@ export function parseClientMessage(payload: string): ClientMessage {
         return invalid("setSourceFollower mal formé");
       }
       return value as unknown as ClientMessage;
+    case "activateSourceFieldEffect":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "effect"])
+        || !isIdentifier(value.requestId) || value.effect !== "truth-lens") {
+        return invalid("activateSourceFieldEffect mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "challengePlayer":
       if (!hasExactKeys(value, ["type", "version", "requestId", "team"]) || !isIdentifier(value.requestId)
         || !isBattleTeam(value.team)) return invalid("challengePlayer mal forme");

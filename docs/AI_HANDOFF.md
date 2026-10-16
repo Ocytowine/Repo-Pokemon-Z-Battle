@@ -3573,3 +3573,50 @@ les conteneurs externes, sans entrer en conflit avec le lecteur interne. Autorit
 présentation locale ; domaine : visuel dérivé des assets et de l'apparence du
 Pokémon ; persistance : aucune ; réplication : aucune donnée supplémentaire, hôte
 et invité reconstruisant le même rendu depuis leur état de combat.
+
+## Miroir de la Vérité — 2026-10-16
+
+Le Miroir de la Vérité de Pokémon Z est raccordé depuis le Sac sous son nom
+français. L'action `Observer` n'utilise pas l'objet et active pendant dix secondes
+une vision personnelle de trois cases, conforme au script source. Les événements
+portant `#EOT HIDE [opacité]` deviennent invisibles et traversables à proximité ;
+les événements `#EOT SHOW [opacité]` deviennent visibles, interactifs et bloquants.
+Le parseur est générique et ne dépend d'aucun numéro de carte ou d'événement.
+
+Architecture Coop : l'inventaire reste privé et le joueur émet seulement
+l'intention `activateSourceFieldEffect: truth-lens`. La room démarre sa propre
+fenêtre autoritaire de dix secondes puis applique les obstacles `truthEvents` au
+joueur concerné dans le résolveur commun de mouvement. Cette fenêtre éphémère
+n'entre jamais dans l'état persisté et est supprimée à la déconnexion ; une
+reconnexion exige donc une nouvelle activation. Le contenu révélé et l'effet
+visuel restent locaux. Les séquences narratives révélées conservent la politique
+existante : l'hôte en garde l'autorité sur le monde partagé, tandis que les
+services personnels restent réservés au joueur concerné.
+
+Fichiers principaux : `source-truth-lens.ts`, `imported-map.ts`,
+`source-world.ts`, `network-session.ts` et `room-server-core/src/index.ts`.
+Les fixtures couvrent les balises, la portée euclidienne, les modes HIDE/SHOW,
+la validation du protocole et l'expiration autoritaire simulée.
+
+## Raccourcis de terrain — 2026-10-16
+
+Les anciens boutons isolés de Boussole et de Pêche appartiennent maintenant à une
+barre générique en haut à droite du canvas. Son ordre stable est Boussole, Miroir
+de la Vérité, Pêche puis Chevroum. Le Miroir peut être ajouté ou retiré depuis sa
+roue d'objet ; la canne choisie depuis le Sac devient simultanément favorite et
+raccourci. Les quatre fonctions se configurent aussi dans Options sur une rangée
+compacte compatible avec la hauteur Android.
+
+La préférence est locale, versionnée sous
+`pokemon-z-battle.field-shortcuts.v1` et ne contient que les identifiants des
+boutons. Elle ne réplique ni inventaire ni progression. Une ancienne sauvegarde
+conserve la Boussole par défaut et migre automatiquement sa canne favorite vers le
+nouveau raccourci. Chaque bouton appelle le noyau existant : la Pêche vérifie la
+case regardée, Chevroum les déblocages et la carte, et le Miroir l'activation
+autoritaire Coop. Une fonction non possédée ou non débloquée peut rester choisie
+mais n'est jamais exposée sur le terrain avant de devenir utilisable.
+
+La Pêche reste un raccourci contextuel : son bouton n'apparaît que face à une
+zone pêchable et hors mouvement. Le Miroir et Chevroum sont des raccourcis
+persistants : ils restent visibles et utilisables pendant la marche ; une scène
+qui interdit leur activation les désactive temporairement sans retirer leur bouton.
