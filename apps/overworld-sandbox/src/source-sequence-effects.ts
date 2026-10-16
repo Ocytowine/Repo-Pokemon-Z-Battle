@@ -14,7 +14,7 @@ import type { SourceEncounterMethod } from "./source-wild-encounter.js";
 type SourceCommand = ImportedEventPage["commands"][number];
 
 export type SourceSequenceCommandFamily = "state" | "random-encounter" | "trainer-battle" | "shop" | "ranch"
-  | "day-care" | "day-care-eggs" | "transfer" | "event" | "movement" | "presentation";
+  | "day-care" | "day-care-eggs" | "mining" | "transfer" | "event" | "movement" | "presentation";
 
 export function sourceSequenceCommandFamily(command: SourceCommand): SourceSequenceCommandFamily {
   if (isSourceStateCommand(command.kind)) return "state";
@@ -24,6 +24,7 @@ export function sourceSequenceCommandFamily(command: SourceCommand): SourceSeque
   if (command.kind === "open-ranch") return "ranch";
   if (command.kind === "open-day-care") return "day-care";
   if (command.kind === "open-day-care-eggs") return "day-care-eggs";
+  if (command.kind === "open-mining") return "mining";
   if (command.kind === "transfer-player") return "transfer";
   if (command.kind === "erase-event") return "event";
   if (command.kind === "move-route" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
@@ -49,6 +50,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openRanch: (session: SourceSequenceSession) => void;
   readonly openDayCare: (session: SourceSequenceSession) => void;
   readonly openDayCareEggs: (session: SourceSequenceSession) => void;
+  readonly openMining: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
   readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
@@ -87,6 +89,7 @@ export class SourceSequenceEffects {
       case "ranch": return this.openRanch(session);
       case "day-care": return this.openDayCare(session);
       case "day-care-eggs": return this.openDayCareEggs(session);
+      case "mining": return this.openMining(session);
       case "transfer": return this.transfer(session, command);
       case "event": this.dependencies.eraseEvent(session.mapId, session.eventId); return "continue";
       case "movement": return this.move(session, command);
@@ -199,6 +202,11 @@ export class SourceSequenceEffects {
 
   private openDayCareEggs(session: SourceSequenceSession): SourceSequenceCommandResult {
     this.dependencies.openDayCareEggs(session);
+    return "pause";
+  }
+
+  private openMining(session: SourceSequenceSession): SourceSequenceCommandResult {
+    this.dependencies.openMining(session);
     return "pause";
   }
 

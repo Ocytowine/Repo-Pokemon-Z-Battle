@@ -11,6 +11,11 @@ export interface WildEncounterRoll {
   readonly encounter: { readonly species: string; readonly level: number } | null;
 }
 
+export interface SourceEncounterTypeBias {
+  readonly type: string;
+  readonly speciesTypes: (species: string) => readonly string[];
+}
+
 export type SourceEncounterMethod = "Land" | "Cave" | "RockSmash" | "OldRod" | "GoodRod" | "SuperRod";
 
 export const SOURCE_FISHING_RODS: readonly SourceFishingRod[] = ["SUPERROD", "GOODROD", "OLDROD"];
@@ -71,8 +76,13 @@ export function isGrassTerrain(tag: number): boolean {
 }
 
 export function rollEncounterForMethod(table: ImportedEncounterTable | null, method: SourceEncounterMethod,
-  rng: RandomSource): WildEncounterRoll["encounter"] {
-  const slots = table?.methods.find((candidate) => candidate.method === method)?.slots ?? [];
+  rng: RandomSource, typeBias?: SourceEncounterTypeBias): WildEncounterRoll["encounter"] {
+  const baseSlots = table?.methods.find((candidate) => candidate.method === method)?.slots ?? [];
+  // The source nests every type amulet under its 50% lead-effect roll. If the
+  // current table has no matching species, it deliberately keeps the normal table.
+  const biasedSlots = typeBias !== undefined && baseSlots.length > 0 && rng.nextInt(2) === 0
+    ? baseSlots.filter((slot) => typeBias.speciesTypes(slot.species).includes(typeBias.type)) : [];
+  const slots = biasedSlots.length > 0 ? biasedSlots : baseSlots;
   if (slots.length === 0) return null;
   const totalWeight = slots.reduce((total, slot) => total + slot.weight, 0);
   let choice = rng.nextInt(totalWeight);
@@ -87,7 +97,7 @@ export function rollEncounterForMethod(table: ImportedEncounterTable | null, met
 }
 
 export function rollStepEncounter(table: ImportedEncounterTable | null, terrainTag: number,
-  previousSteps: number, rng: RandomSource): WildEncounterRoll {
+  previousSteps: number, rng: RandomSource, typeBias?: SourceEncounterTypeBias): WildEncounterRoll {
   const cave = table?.methods.some((method) => method.method === "Cave") === true;
   if (cave && terrainTag === 12) return { steps: previousSteps, encounter: null };
   const method: SourceEncounterMethod | null = cave ? "Cave" : isGrassTerrain(terrainTag) ? "Land" : null;
@@ -97,7 +107,7 @@ export function rollStepEncounter(table: ImportedEncounterTable | null, terrainT
   if (slots.length === 0 || density <= 0) return { steps: previousSteps, encounter: null };
   const steps = previousSteps + 1;
   if (steps <= 3 || rng.nextInt(180 * 16) >= density * 16) return { steps, encounter: null };
-  return { steps: 0, encounter: rollEncounterForMethod(table, method, rng) };
+  return { steps: 0, encounter: rollEncounterForMethod(table, method, rng, typeBias) };
 }
 
 export function rollLandEncounter(table: ImportedEncounterTable | null, terrainTag: number, previousSteps: number,
@@ -108,7 +118,8 @@ export function rollLandEncounter(table: ImportedEncounterTable | null, terrainT
 export function planFishingAttempt(table: ImportedEncounterTable | null,
   method: Extract<SourceEncounterMethod, "OldRod" | "GoodRod" | "SuperRod">,
   leadAbility: string | null, rng: RandomSource,
-  encounterMethod: Extract<SourceEncounterMethod, "OldRod" | "GoodRod" | "SuperRod"> = method): SourceFishingAttempt {
+  encounterMethod: Extract<SourceEncounterMethod, "OldRod" | "GoodRod" | "SuperRod"> = method,
+  typeBias?: SourceEncounterTypeBias): SourceFishingAttempt {
   const speedup = leadAbility === "STICKYHOLD" || leadAbility === "SUCTIONCUPS";
   const firstWait = 2 + rng.nextInt(10);
   const waitUnits = speedup ? Math.min(firstWait, 2 + rng.nextInt(10)) : firstWait;
@@ -120,5 +131,5 @@ export function planFishingAttempt(table: ImportedEncounterTable | null,
   if (!bite) return { waitMs: waitUnits * 500, bite: false, hookWindowMs: 0, encounter: null };
   const hookWindowMs = (20 + rng.nextInt(21)) * 25;
   return { waitMs: waitUnits * 500, bite: true, hookWindowMs,
-    encounter: rollEncounterForMethod(table, encounterMethod, rng) };
+    encounter: rollEncounterForMethod(table, encounterMethod, rng, typeBias) };
 }

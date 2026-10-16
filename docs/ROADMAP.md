@@ -1015,6 +1015,18 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Miroir de la Vérité, la Pêche et Chevroum ;
 - [x] porter les rochers Éclate-Roc propres à Z : événement commun de fabrication,
   Poudre Explosive, disparition persistante ou temporaire et rencontre optionnelle ;
+- [x] porter les arbustes Coupe propres à Z : fabrication contextuelle de la
+  Hachuela Endeble, son et animation 19, récompenses, casse et disparition Coop ;
+- [x] porter les 18 amulettes de type : usage depuis le Sac, effet personnel de
+  500 pas, filtre source à 50 %, persistance et tables marche/grotte/pêche/Éclate-Roc ;
+- [x] porter les objets d’Illysée : chaîne Regadera Mágica, Talisman de Malvo
+  sensible à la position et mutation du monde réservée à l’hôte en Coop ;
+- [x] porter le prédicat de l’énigme Zarbi ETERNO à partir des formes ordonnées de
+  l’équipe persistante ;
+- [x] porter le minijeu de fouilles déclenché par Marteau + Ciseau : plateau 13 × 10,
+  burin/marteau, métal, fissures, trésors source, sons, récompenses personnelles,
+  commande `pbMiningGame` auditée et raccourci Test dev ;
+- [ ] porter les interfaces Guide des personnages et PokéObjectif ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur

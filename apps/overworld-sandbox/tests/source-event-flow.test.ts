@@ -227,6 +227,127 @@ describe("source event choice and condition flow", () => {
     ]);
   });
 
+  it("resolves Pokemon Z Cut from inline alchemy through obstacle rewards and axe breakage", () => {
+    const common: SourceCommonEvent = { id: 59, name: "TenerCorte", commands: [
+      command("condition", 0, { kind: "variable", operands: [926, 0, 12, 1] }),
+      command("condition", 1, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(PBItems::MADERA)>0" }),
+      command("condition", 2, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(PBItems::VIRUTASFERREAS)>0" }),
+      command("show-choices", 3, { choices: ["Oui", "Non"], cancelType: 2 }),
+      command("choice-branch", 3, { choiceIndex: 0, text: "Oui" }),
+      command("ruby-script", 4, { source: "$PokemonBag.pbDeleteItem(:MADERA,1)" }),
+      command("ruby-script", 4, { source: "$PokemonBag.pbDeleteItem(:VIRUTASFERREAS,1)" }),
+      command("ruby-script", 4, { source: "Kernel.pbItemBall(PBItems::HACHAENDEBLE)" }),
+      command("choice-branch", 3, { choiceIndex: 1, text: "Non" }),
+      command("choice-end", 3), command("condition-end", 2), command("condition-end", 1),
+      command("condition-end", 0),
+    ] };
+    const shrub = expandSourceCommonEvents(page([
+      command("show-text", 0, { text: "Un arbuste bloque le passage." }),
+      command("call-common-event", 0, { parameters: [59] }),
+      command("condition", 0, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(PBItems::HACHAENDEBLE)>0" }),
+      command("show-text", 1, { text: "La hache coupe l'arbuste." }),
+      command("play-sound", 1, { audio: { name: "PRSFX- Cut", volume: 80, pitch: 100 } }),
+      command("show-animation", 1, { parameters: [0, 19] }),
+      command("set-self-switch", 1, { id: "A", value: true }),
+      command("ruby-script", 1, { source: "Kernel.pbItemBall(PBItems::PECHABERRY)" }),
+      command("ruby-script", 1, { source: "Kernel.pbItemBall(PBItems::ORANBERRY)" }),
+      command("ruby-script", 1, { source: "$PokemonBag.pbDeleteItem(:HACHAENDEBLE,1)" }),
+      command("show-text", 1, { text: "La hache s'est cassée." }),
+      command("condition-end", 0),
+    ]), new Map([[59, common]]));
+    const state = { ...createSourceEventState(), variables: { "926": 12 },
+      inventory: { MADERA: 1, VIRUTASFERREAS: 1 } };
+
+    const result = resolveEventFlow(shrub, [0], state, 9, 39);
+
+    expect(result).toMatchObject({ complete: true, pendingChoice: null, blockedReason: null,
+      consumedChoices: 1 });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "show-text", "remove-item", "remove-item", "grant-item", "show-text", "play-sound",
+      "show-animation", "set-self-switch", "grant-item", "grant-item", "remove-item", "show-text",
+    ]);
+    expect(result.page.commands[5]?.data).toEqual({ audio: { name: "PRSFX- Cut", volume: 80, pitch: 100 } });
+    expect(result.page.commands[6]?.data).toEqual({ parameters: [0, 19] });
+  });
+
+  it("uses an already owned weak axe without requiring the inline alchemy level", () => {
+    const common: SourceCommonEvent = { id: 59, name: "TenerCorte", commands: [
+      command("condition", 0, { kind: "variable", operands: [926, 0, 12, 1] }),
+      command("show-choices", 1, { choices: ["Oui", "Non"], cancelType: 2 }),
+      command("choice-branch", 1, { choiceIndex: 0, text: "Oui" }),
+      command("ruby-script", 2, { source: "Kernel.pbItemBall(PBItems::HACHAENDEBLE)" }),
+      command("choice-branch", 1, { choiceIndex: 1, text: "Non" }),
+      command("choice-end", 1), command("condition-end", 0),
+    ] };
+    const shrub = expandSourceCommonEvents(page([
+      command("call-common-event", 0, { parameters: [59] }),
+      command("condition", 0, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(:HACHAENDEBLE)>0" }),
+      command("set-self-switch", 1, { id: "A", value: true }),
+      command("ruby-script", 1, { source: "$PokemonBag.pbDeleteItem(:HACHAENDEBLE,1)" }),
+      command("condition-end", 0),
+    ]), new Map([[59, common]]));
+    const state = { ...createSourceEventState(), variables: { "926": 0 }, inventory: { HACHAENDEBLE: 1 } };
+
+    const result = resolveEventFlow(shrub, [], state, 46, 28);
+
+    expect(result).toMatchObject({ complete: true, pendingChoice: null, blockedReason: null,
+      consumedChoices: 0 });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual(["set-self-switch", "remove-item"]);
+  });
+
+  it("ports the Magic Watering Can flower chain through its source inventory and world mutations", () => {
+    const flower = page([
+      command("condition", 0, { kind: "ruby-script",
+        script: "$PokemonBag.pbQuantity(PBItems::REGADERAMAGICA)>0" }),
+      command("show-text", 1, { text: "Voulez-vous l'arroser avec la Regadera Mágica ?" }),
+      command("show-choices", 1, { choices: ["Oui", "Non"], cancelType: 2 }),
+      command("choice-branch", 1, { choiceIndex: 0, text: "Oui" }),
+      command("show-animation", 2, { parameters: [0, 28] }),
+      command("wait", 2, { frames: 30 }),
+      command("show-text", 2, { text: "Quelque chose jaillit de l'intérieur !" }),
+      command("ruby-script", 2, { source: "$PokemonBag.pbDeleteItem(:REGADERAMAGICA,1)" }),
+      command("ruby-script", 2, { source: "Kernel.pbItemBall(PBItems::TALISMANMALVO)" }),
+      command("set-switches", 2, { firstId: 400, lastId: 400, value: true }),
+      command("choice-branch", 1, { choiceIndex: 1, text: "Non" }),
+      command("choice-end", 1), command("condition-end", 0),
+    ]);
+    const state = { ...createSourceEventState(), inventory: { REGADERAMAGICA: 1 } };
+    const result = resolveEventFlow(flower, [0], state, 192, 1);
+    expect(result).toMatchObject({ complete: true, blockedReason: null, consumedChoices: 1 });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "show-text", "show-animation", "wait", "show-text", "remove-item", "grant-item", "set-switches",
+    ]);
+    expect(result.page.commands[1]?.data).toEqual({ parameters: [0, 28] });
+  });
+
+  it("evaluates the ETERNO Unown door condition from ordered persisted forms", () => {
+    const forms = [4, 19, 4, 17, 13, 14];
+    const base = createSourceEventState();
+    const members = forms.map((form, index) => ({
+      id: `unown-${index}`, species: "UNOWN", nickname: null, level: 5, experience: 0,
+      stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 }, hp: 20,
+      majorStatus: null, ability: null, heldItem: null, moves: [],
+      metadata: { schemaVersion: 1 as const, personality: index, originalTrainerId: 0, originalTrainerName: "Joueur",
+        originalTrainerGender: null, origin: { method: "encounter" as const, mapId: null, level: 5,
+          receivedAt: null, hatchedMapId: null, hatchedAt: null, fateful: false }, nature: "HARDY", gender: null,
+        happiness: 70, shiny: false, form, pokerus: { strain: 0, days: 0 }, markings: 0, ribbons: [],
+        contest: { cool: 0, beauty: 0, cute: 0, smart: 0, tough: 0, sheen: 0 }, ivs: [0, 0, 0, 0, 0, 0],
+        evs: [0, 0, 0, 0, 0, 0], eggSteps: 0, ball: "POKEBALL" },
+    }));
+    const door = page([
+      command("condition", 0, { kind: "ruby-script", script: "unown_check" }),
+      command("set-switches", 1, { firstId: 900, lastId: 900, value: true }),
+      command("else", 0), command("show-text", 1, { text: "La porte reste close." }),
+      command("condition-end", 0),
+    ]);
+    const state = { ...base, party: { schemaVersion: 1 as const, activeIndex: 0, members } };
+    expect(resolveEventFlow(door, [], state, 403, 1).page.commands.map((entry) => entry.kind))
+      .toEqual(["set-switches"]);
+    const reversed = { ...state, party: { ...state.party, members: [...members].reverse() } };
+    expect(resolveEventFlow(door, [], reversed, 403, 1).page.commands.map((entry) => entry.kind))
+      .toEqual(["show-text"]);
+  });
+
   it("does not let a legacy numeric outfit assignment block the avatar-profile presentation", () => {
     const result = resolveEventFlow(page([
       command("ruby-script", 0, { source: "$Trainer.outfit=7" }),

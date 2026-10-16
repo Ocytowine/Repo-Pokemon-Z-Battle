@@ -30,6 +30,7 @@ import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { createSourceDevPokemonEntries, filterSourceDevPokemonEntries, SOURCE_DEV_POKEMON_PAGE_SIZE,
   sourceDevPokemonGenderOptions, sourceDevPokemonTypes, type SourceDevPokemonGender,
   type SourceDevPokemonSort } from "./source-dev-pokemon-picker.js";
+import { isSourceFieldItem } from "./source-field-item.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -117,6 +118,7 @@ export interface SourceMenuViewCallbacks {
   readonly onGrantTestPokemon: (species: string, level: number, gender: SourceDevPokemonGender) => void;
   readonly onTeleportToTestDayCare: () => void;
   readonly onOpenTestDayCare: () => void;
+  readonly onOpenTestMining: () => void;
   readonly onAccelerateTestEggs: () => void;
   readonly onOpenIncubator: () => void;
   readonly onUseTruthLens: () => void;
@@ -162,6 +164,11 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onUseFieldItem: (itemId: string) => {
+    readonly ok: boolean;
+    readonly message: string;
+    readonly eventState: SourceEventState;
+  };
   readonly onCraftAlchemy: (itemId: string, quantity: number) => {
     readonly ok: boolean;
     readonly message: string;
@@ -196,7 +203,7 @@ export class SourceMenuView {
   private devPokemonPage = 0;
   private devPokemonLevel = 5;
   private devPokemonGender: SourceDevPokemonGender = "auto";
-  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" = "movement";
+  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" | "minigames" = "movement";
   private selectedAlchemyRecipeId: string | null = null;
   private alchemyQuantity = 1;
   private alchemyNotice: string | null = null;
@@ -639,6 +646,7 @@ export class SourceMenuView {
         centerHtml: `<img src="${sourceItemIconUrl(selectedEntry.item.id)}" data-source-item-icon alt=""><strong>${escapeSourceHtml(selectedItemDisplayName!)}</strong>`,
         actions: sourceItemActions(selectedEntry.item, { quantity: selectedEntry.quantity,
           machineCompatibilityAvailable: machineSpecies !== undefined,
+          fieldUsable: isSourceFieldItem(selectedEntry.item.internalName),
           specificActions: selectedEntry.item.internalName === "INCUBADORA"
             ? [{ id: "specific:incubator", label: "Ouvrir", symbol: "◉", enabled: true,
                 hint: "Gérer les six emplacements" }]
@@ -773,6 +781,15 @@ export class SourceMenuView {
       button.addEventListener("click", () => {
         const action = button.dataset.sourceWheelAction;
         if (action === "use" || action === "give" || action === "discard" || action === "teach") {
+          if (action === "use" && this.selectedBagItemId !== null && isSourceFieldItem(this.selectedBagItemId)) {
+            const itemId = this.selectedBagItemId;
+            const result = this.callbacks.onUseFieldItem(itemId);
+            this.bagNotice = result.message;
+            this.bagAction = null;
+            this.bagResult = { message: result.message, itemId, repeatAction: null };
+            this.renderBag(content, { ...model, eventState: result.eventState });
+            return;
+          }
           this.bagAction = action === "use" && this.selectedBagItemId !== null
             && isPokemonPartyItemUsableInField(this.selectedBagItemId) ? "use-party-confirm" : action;
           this.selectedBagPokemonId = null;
@@ -1048,6 +1065,7 @@ export class SourceMenuView {
       <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items">Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
       <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form source-dev-pokemon-picker"><div class="source-dev-pokemon-filters"><label class="source-dev-pokemon-search"><span>Rechercher</span><input id="source-dev-pokemon-query" type="search" value="${escapeSourceHtml(this.devPokemonQuery)}" placeholder="Nom français, numéro…" autocomplete="off"></label><label><span>Type</span><select id="source-dev-pokemon-type"><option value="">Tous les types</option>${pokemonTypes}</select></label><label><span>Classement</span><select id="source-dev-pokemon-sort"><option value="number"${this.devPokemonSort === "number" ? " selected" : ""}>Numéro du Pokédex</option><option value="name"${this.devPokemonSort === "name" ? " selected" : ""}>Nom alphabétique</option></select></label><button type="button" id="source-dev-pokemon-reset">Réinitialiser</button></div><div id="source-dev-pokemon-results" aria-live="polite"></div><div class="source-dev-pokemon-grant"><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><label><span>Genre</span><select id="source-dev-pokemon-gender" disabled><option value="auto">Choisissez une espèce</option></select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon sélectionné</button></div><small>Le genre proposé respecte l'espèce. Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch.</small></div></details>
       <details data-dev-section="services"${this.openDevSection === "services" ? " open" : ""}><summary>Services Pokémon <small>Interfaces en développement</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-day-care">TP devant la Pension</button><button type="button" id="source-dev-open-day-care">Ouvrir l’interface</button><button type="button" class="wide" id="source-dev-accelerate-eggs">Ramener les Œufs à 5 pas</button></div><small>Le TP rejoint la Route 5 sans modifier l’histoire. L’accès direct et l’accélération concernent seulement les données personnelles de test.</small></div></details>
+      <details data-dev-section="minigames"${this.openDevSection === "minigames" ? " open" : ""}><summary>Mini-jeux <small>Fouilles</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" class="wide" id="source-dev-open-mining">Tester les fouilles</button></div><small>Lance une paroi neuve avec le marteau et le burin. Les trésors dégagés rejoignent réellement le Sac de cette sauvegarde.</small></div></details>
       </div>`;
     content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((details) => {
       details.addEventListener("toggle", () => {
@@ -1126,6 +1144,8 @@ export class SourceMenuView {
       this.callbacks.onTeleportToTestDayCare);
     content.querySelector<HTMLButtonElement>("#source-dev-accelerate-eggs")?.addEventListener("click",
       this.callbacks.onAccelerateTestEggs);
+    content.querySelector<HTMLButtonElement>("#source-dev-open-mining")?.addEventListener("click",
+      this.callbacks.onOpenTestMining);
     this.renderDevPokemonPicker(content, model);
   }
 

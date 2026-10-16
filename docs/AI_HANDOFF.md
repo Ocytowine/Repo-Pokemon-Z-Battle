@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-15.
+Derniere mise a jour : 2026-10-16.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -3655,3 +3655,99 @@ web reste prioritaire sur les anciennes affectations numériques `$Trainer.outfi
 Tests : développement d'événements communs et détection des cycles, projection de
 fabrication, portage des deux hooks, traduction du contexte commun et effacement
 temporaire Coop.
+
+## Arbustes Coupe et Hachuela Endeble — 2026-10-16
+
+Coupe propre à Pokémon Z est raccordée au même noyau d'obstacles destructibles que
+les rochers. L'audit de la v2.12 FR trouve 30 arbustes sur 19 cartes, tous liés à
+l'événement commun `TenerCorte` (59). Si le joueur ne possède pas de
+`HACHAENDEBLE`, cet événement peut fabriquer une hache avec une `MADERA` et une
+`VIRUTASFERREAS`. La recette du menu Alchimie est débloquée au niveau 10, mais la
+fabrication contextuelle source vérifie la variable 926 au niveau 12 : cette
+incohérence du jeu original est conservée et testée, pas corrigée arbitrairement.
+
+Une hache déjà possédée fonctionne sans cette vérification. L'interaction joue
+`PRSFX- Cut`, rend l'animation de carte 19 `Corte`, exécute la courte oscillation
+de l'arbuste, applique ses récompenses éventuelles puis retire exactement une
+hache avec le message de casse source. Vingt-neuf arbustes emploient un
+self-switch persistant ; Map046/EV028 emploie `pbEraseThisEvent` et revient au
+rechargement de la carte. Les gains possibles restent lus dans chaque événement,
+sans table de récompenses codée à la main.
+
+Autorité et Coop : ingrédients, hache et récompenses appartiennent au joueur ; la
+mutation du monde partagé reste exécutée par l'hôte. Le self-switch rejoint
+l'histoire de l'hôte et la disparition temporaire passe par la liste d'acteurs
+autoritaire déjà restaurée par la room. Son, animation et disparition sont publiés
+aux joueurs présents ; une excursion personnelle de l'invité réutilise le même
+noyau local. Aucun message réseau ni état parallèle propre à Coupe n'a été ajouté.
+
+Tests : fabrication contextuelle complète, recette personnelle au niveau 10,
+utilisation d'une hache déjà possédée sous le niveau 12, son/animation source,
+récompenses, casse, self-switch et détection Coop de l'effacement temporaire.
+
+## Objets de terrain, amulettes et énigme ETERNO — 2026-10-16
+
+Les 18 amulettes de type de Z utilisent maintenant un état personnel persistant
+`typeAmulet`. L'usage depuis le Sac consomme une unité, refuse tout cumul et lance
+un compteur de 500 pas ; les déplacements sur glace (terrain 12) ne le réduisent
+pas. Le filtre est appliqué dans le noyau commun de tirage, donc aux rencontres de
+marche, grotte, pêche et Éclate-Roc. Le Ruby source place l'effet sous un tirage à
+50 % : une rencontre sur deux tente de limiter les slots aux espèces du type, puis
+revient à la table normale si aucun slot ne correspond. Ce comportement parfois
+moins fort que sa description est conservé volontairement.
+
+Cet état, l'objet consommé et le compteur restent privés au joueur en solo, hôte,
+invité ou excursion. Seule la rencontre déjà obtenue suit le contrat de combat
+Coop existant ; aucune équipe, table filtrée ou amulette n'est publiée à la room.
+La migration des anciennes sauvegardes initialise l'effet à `null`.
+
+Le premier registre générique d'objets de terrain sensibles au lieu couvre aussi
+`TALISMANMALVO`. Il ne se consomme pas : hors cible il affiche l'échec source ; en
+Map190 `(74,25)` il active le switch 412. Sur le monde partagé, cette mutation est
+réservée à l'hôte puis publiée avec le monde et les acteurs. Un invité en excursion
+utilise le même noyau sur sa progression locale.
+
+La chaîne de la `REGADERAMAGICA` n'est pas un handler du Sac dans Z : elle reste
+portée par les fleurs de Map192/Map215. Le lecteur générique résout la possession,
+le choix, l'animation 28, l'attente, la consommation, l'obtention du Talisman et le
+switch 400. Son obtention en Map191 passe par le self-switch et `grant-item` déjà
+communs.
+
+Enfin, la condition Ruby `unown_check` est évaluée génériquement depuis l'équipe
+persistante. Elle exige exactement six `UNOWN` dans l'ordre avec les formes
+`[4,19,4,17,13,14]` (ETERNO). Les formes étaient déjà transportées par
+`PersistentPokemon.metadata.form`; aucun état parallèle n'a été créé.
+
+## Mini-jeu de fouilles — 2026-10-16
+
+`pbMiningGame` est porté comme une vraie scène personnelle et non comme un tirage
+d'objet. Le noyau reprend la grille source de 13 × 10 cases, les profondeurs de
+roche de 2 à 6, les 61 variantes graphiques pondérées de trésors, les 13 formes de
+métal, les règles anti-chevauchement et anti-doublon, ainsi que les 2 à 4 trésors
+et 4 à 6 obstacles d'une paroi. Le burin frappe en croix et ajoute une fissure ; le
+marteau frappe les neuf cases et en ajoute deux. Une pièce métallique exposée
+arrête le coup central. À 49 fissures, la paroi s'effondre avant le verdict de fin.
+
+La scène réutilise les feuilles `Mining/*` et les onze sons source. Elle accepte
+clavier, souris et tactile : toucher une case la sélectionne et frappe, tandis que
+les boutons de changement d'outil, de frappe et de sortie gardent une cible
+tactile. Un compteur indique les trésors dégagés et leur éclat de découverte ne
+se rejoue pas lors des coups suivants. Les trésors entièrement dégagés sont remis une seule fois au Sac, y
+compris après un abandon ou un effondrement. L'entrée `Test dev > Mini-jeux >
+Tester les fouilles` crée une paroi neuve sans exiger Marteau/Ciseau afin de rendre
+le lot testable avant d'atteindre la Grotte de Las-Eau.
+
+Le port Ruby transforme génériquement `pbMiningGame` en commande auditée
+`open-mining`. Les événements réels de Map024 et Map132 utilisent donc la même
+scène une fois leurs conditions source satisfaites. Autorité : plateau, commandes
+et récompenses sont personnels en solo, chez l'hôte et chez l'invité ; aucune
+mutation narrative ou donnée du Sac n'est publiée. Une séquence source est mise en
+pause pendant la scène puis reprend après le règlement, sans seconde
+implémentation Coop.
+
+Tests : validité intégrale du catalogue, bornes de génération, absence de
+chevauchement, révélation atomique, blocage par le métal, priorité de
+l'effondrement et conversion/audit de `pbMiningGame`.
+
+Restent explicitement hors de ce jalon : les interfaces Guide des
+personnages/PokéObjectif, Succès et Méga-Évolution.

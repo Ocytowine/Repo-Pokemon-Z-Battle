@@ -371,6 +371,49 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 @media (max-width: 430px) { .source-dev-pokemon-filters, .source-dev-pokemon-grid, .source-dev-pokemon-grant { grid-template-columns: 1fr; }.source-dev-pokemon-search, .source-dev-pokemon-grant button { grid-column: 1; } }
 @media (prefers-reduced-motion: reduce) { .source-dev-pokemon-icon { animation: none; } }
 
+/* Fouilles : scène source 4:3, commandes tactiles et même noyau en solo/Coop. */
+.source-mining { position: absolute; inset: 0; z-index: 180; overflow: hidden; color: #fff; background: #15100d; font-family: system-ui, sans-serif; }
+.source-mining-scene { position: absolute; inset: 0; overflow: hidden; background: #332117 url('/__pokemon-z/source/Graphics/Pictures/Mining/miningbg.png') center/100% 100% no-repeat; image-rendering: pixelated; }
+.source-mining-board { position: absolute; top: 16.6667%; left: 0; width: 81.25%; height: 83.3333%; overflow: hidden; }
+.source-mining-rock { position: absolute; inset: 0; z-index: 2; display: grid; grid-template-columns: repeat(13, 1fr); grid-template-rows: repeat(10, 1fr); }
+.source-mining-tile { min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background-color: transparent; background-image: url('/__pokemon-z/source/Graphics/Pictures/Mining/tiles.png'); background-repeat: no-repeat; background-position-x: center; background-size: 100% 600%; cursor: crosshair; image-rendering: pixelated; touch-action: manipulation; }
+.source-mining-tile.open { background-image: none; }
+.source-mining-tile:focus-visible { outline: 2px solid #fff6a8; outline-offset: -2px; }
+.source-mining-buried { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; image-rendering: pixelated; }
+.source-mining-buried img { position: absolute; max-width: none; image-rendering: pixelated; }
+.source-mining-buried.revealed { filter: saturate(1.08); }
+.source-mining-buried.just-revealed { animation: source-mining-reveal 600ms ease-out 1; }
+@keyframes source-mining-reveal { 0%, 100% { filter: none; } 35% { filter: brightness(2.8) drop-shadow(0 0 10px #fff); } }
+.source-mining-cursor { position: absolute; z-index: 4; width: 7.6923077%; height: 10%; pointer-events: none; background: url('/__pokemon-z/source/Graphics/Pictures/Mining/cursor.png') left center/200% 100% no-repeat; filter: drop-shadow(0 1px 1px #000); image-rendering: pixelated; }
+.source-mining-cursor.hammer { background-position: right center; }
+.source-mining-cursor.striking::after { position: absolute; width: 300%; height: 300%; left: -100%; top: -125%; content: ''; background: url('/__pokemon-z/source/Graphics/Pictures/Mining/tools.png') left top/200% 200% no-repeat; transform-origin: 55% 70%; animation: source-mining-strike 300ms ease-in 1; image-rendering: pixelated; }
+.source-mining-cursor.striking.hammer::after { background-position: left bottom; }
+@keyframes source-mining-strike { 0% { transform: translate(28%, -20%) rotate(-24deg); } 55% { transform: translate(0, 0) rotate(8deg); } 100% { transform: translate(0, 0) rotate(8deg); opacity: 0; } }
+.source-mining-meter { position: absolute; z-index: 6; top: 2%; left: 2%; display: grid; width: 70%; grid-template-columns: auto minmax(70px, 1fr) auto; gap: 8px; padding: 7px 10px; align-items: center; color: #fff3d7; border: 1px solid #f0c77b88; border-radius: 8px; background: #20130ddd; box-shadow: 0 3px 10px #0008; font-size: 8px; text-shadow: 0 1px #000; }
+.source-mining-meter > div { height: 7px; overflow: hidden; border: 1px solid #e4c49399; border-radius: 99px; background: #0b0908; }
+.source-mining-meter i { display: block; height: 100%; background: linear-gradient(90deg, #63d36f 0 45%, #f3ca54 70%, #ed5c4c 100%); transition: width 160ms ease; }
+.source-mining-meter strong { min-width: 31px; text-align: right; }
+.source-mining-found { position: absolute; z-index: 6; top: 2%; right: 1.5%; display: grid; min-width: 22%; padding: 6px 9px; color: #ead8b6; border: 1px solid #e7c17088; border-radius: 8px; background: #20130ddd; box-shadow: 0 3px 10px #0008; text-align: center; }
+.source-mining-found strong { color: #ffe071; font-size: 13px; line-height: 1; }.source-mining-found span { margin-top: 3px; font-size: 6px; font-weight: 750; text-transform: uppercase; }
+.source-mining-found.updated { animation: source-mining-found 520ms ease-out 1; }
+@keyframes source-mining-found { 35% { color: #fff; background: #786121; box-shadow: 0 0 16px #fff3a7; transform: scale(1.08); } }
+.source-mining-tool { position: absolute; z-index: 6; top: 25%; right: 1.5%; display: grid; width: 15%; min-width: 62px; min-height: 122px; padding: 5px; place-items: center; color: #fff4d9; border: 1px solid #e7c17088; border-radius: 9px; background: #291911dc; box-shadow: 0 4px 12px #0009; cursor: pointer; touch-action: manipulation; }
+.source-mining-tool span { display: block; width: 52px; height: 76px; background: url('/__pokemon-z/source/Graphics/Pictures/Mining/toolicons.png') left top/200% 100% no-repeat; image-rendering: pixelated; }
+.source-mining-tool.hammer span { background-position: right top; }
+.source-mining-tool strong { font-size: 9px; }.source-mining-tool small { color: #d7b985; font-size: 6px; }
+.source-mining-controls { position: absolute; z-index: 6; right: 1%; bottom: 2%; left: 1%; display: grid; grid-template-columns: minmax(62px, auto) 1fr minmax(76px, auto); gap: 7px; align-items: center; pointer-events: none; }
+.source-mining-controls p { margin: 0; padding: 5px 8px; color: #eadcc5; border-radius: 6px; background: #160e0bcc; font-size: 6px; text-align: center; }
+.source-mining-controls button { min-height: 38px; padding: 6px 10px; color: #fff; border: 1px solid #e5c68688; border-radius: 7px; background: #4b2d1d; box-shadow: 0 2px 7px #0008; cursor: pointer; font-size: 8px; font-weight: 850; pointer-events: auto; touch-action: manipulation; }
+.source-mining-controls button:last-child { color: #30200d; background: #f4d56e; }
+.source-mining-dialog { position: absolute; inset: 0; z-index: 10; display: grid; padding: 8%; place-items: center; background: #08050399; backdrop-filter: blur(2px); }
+.source-mining-dialog section { display: grid; width: min(360px, 88%); gap: 10px; padding: 18px; color: #fff5df; border: 2px solid #f1cf87; border-radius: 10px; background: linear-gradient(145deg, #24160f, #57341e); box-shadow: 0 10px 30px #000b; text-align: center; }
+.source-mining-dialog strong { font-size: 15px; }.source-mining-dialog p { margin: 0; color: #ead7b9; font-size: 9px; line-height: 1.45; }
+.source-mining-dialog ul { display: flex; margin: 0; padding: 0; gap: 5px; flex-wrap: wrap; justify-content: center; list-style: none; }
+.source-mining-dialog li { padding: 4px 7px; color: #34220d; border-radius: 99px; background: #f3d77f; font-size: 8px; font-weight: 850; }
+.source-mining-dialog button { min-height: 44px; color: #2c1a0b; border: 0; border-radius: 8px; background: #f5d36d; cursor: pointer; font-weight: 900; touch-action: manipulation; }
+@media (max-width: 520px) { .source-mining-meter { width: 68%; gap: 4px; font-size: 6px; }.source-mining-tool { min-width: 50px; min-height: 92px; }.source-mining-tool span { width: 38px; height: 58px; }.source-mining-controls p { display: none; }.source-mining-controls { grid-template-columns: 1fr 1fr; } }
+@media (prefers-reduced-motion: reduce) { .source-mining-buried.just-revealed, .source-mining-found.updated, .source-mining-cursor.striking::after { animation-duration: 1ms; } }
+
 /* Source evolution screen: 512x384 stage, coloured endpoints, white morph silhouettes. */
 .source-evolution-panel { position: absolute; inset: 0; width: 100%; max-height: none; padding: 0; overflow: hidden; border: 0; border-radius: inherit; background: #f8f8f8; }
 .source-evolution-stage { width: 100%; height: 100%; aspect-ratio: 4 / 3; margin: 0; overflow: hidden; border-radius: 0; background: #0b4168; box-shadow: none; animation: none; }

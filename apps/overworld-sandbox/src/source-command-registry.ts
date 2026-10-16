@@ -32,6 +32,7 @@ export const SOURCE_COMMAND_CAPABILITIES: Readonly<Record<string, SourceCommandC
   "open-ranch": capability("transition", "rendered", "Ranch Pokémon personnel"),
   "open-day-care": capability("transition", "rendered", "Pension Pokémon personnelle"),
   "open-day-care-eggs": capability("transition", "rendered", "remise personnelle des Œufs de Pension"),
+  "open-mining": capability("transition", "rendered", "mini-jeu personnel de fouilles"),
   "set-pokedex-enabled": capability("state", "executed", "acces au Pokedex persistant"),
   "set-follower": capability("state", "executed", "activation persistante du Pokémon suiveur"),
   "move-route": capability("movement", "rendered", "route animee"),

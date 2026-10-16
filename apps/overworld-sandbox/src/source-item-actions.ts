@@ -10,6 +10,7 @@ export interface SourceItemActionOptions {
   readonly quantity: number;
   readonly machineCompatibilityAvailable?: boolean;
   readonly specificActions?: readonly SourceItemSpecificAction[];
+  readonly fieldUsable?: boolean;
 }
 
 export interface SourceItemTargetFlow {
@@ -51,7 +52,7 @@ export function isSourceItemHoldable(item: SourceShopItem): boolean {
 /** Extension-ready item menu: item-specific actions are appended by feature modules through options. */
 export function sourceItemActions(item: SourceShopItem,
   options: SourceItemActionOptions): readonly SourceActionWheelAction<SourceItemActionId>[] {
-  const usable = isPokemonItemUsableInField(item.internalName)
+  const usable = options.fieldUsable === true || isPokemonItemUsableInField(item.internalName)
     || isPokemonPartyItemUsableInField(item.internalName);
   const giveable = isSourceItemHoldable(item);
   const discardable = isSourceItemDiscardable(item) && options.quantity > 0;

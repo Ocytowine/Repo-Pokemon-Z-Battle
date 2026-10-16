@@ -5,6 +5,7 @@ import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 import { portSourcePokeVialCommand } from "./source-poke-vial.js";
+import { sourcePartySpellsUnownEterno } from "./source-unown-puzzle.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -48,6 +49,7 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
   const operands = command.data.operands;
   if (typeof kind !== "string") return null;
   if (kind === "ruby-script" && typeof command.data.script === "string") {
+    if (command.data.script.trim() === "unown_check") return sourcePartySpellsUnownEterno(state.party);
     const condition = parseSourceInventoryQuantityCondition(command.data.script);
     if (condition !== null) {
       const movementItem = condition.itemId === "SURFMONTURA" || /^BICYCLE\d*$/u.test(condition.itemId);
