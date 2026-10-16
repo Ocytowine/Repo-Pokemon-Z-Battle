@@ -71,6 +71,20 @@ export function sourceBagEntries(inventory: Readonly<Record<string, number>>,
   }).sort((left, right) => left.item.id - right.item.id);
 }
 
+function normalizedBagSearch(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/gu, "").toLocaleLowerCase("fr").trim();
+}
+
+/** Accent-insensitive search shared by the Bag UI and its tests. */
+export function sourceBagEntryMatches(entry: SourceBagEntry, query: string, machineMoveName?: string): boolean {
+  const terms = normalizedBagSearch(query).split(/\s+/u).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = normalizedBagSearch([
+    entry.item.name, entry.item.description, entry.item.internalName, machineMoveName ?? "",
+  ].join(" "));
+  return terms.every((term) => haystack.includes(term));
+}
+
 export function sourceBagPocketCounts(inventory: Readonly<Record<string, number>>,
   catalog: ReadonlyMap<string, SourceShopItem>): ReadonlyMap<number, number> {
   const counts = new Map<number, number>();

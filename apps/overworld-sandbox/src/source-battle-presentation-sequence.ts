@@ -61,6 +61,21 @@ function withActiveIndex(state: TeamBattleState, side: BattleSide, activeIndex: 
     replacementRequired: state.replacementRequired.filter((candidate) => candidate !== side) };
 }
 
+function withMegaEvolution(state: TeamBattleState, side: BattleSide, teamIndex: number,
+  form: number): TeamBattleState {
+  const team = state.teams[side];
+  const member = team.members[teamIndex];
+  const target = member?.megaEvolution;
+  if (member === undefined || target === undefined) return state;
+  const damage = member.stats.maxHp - member.hp;
+  return { ...state, teams: { ...state.teams, [side]: { ...team,
+    members: team.members.map((candidate, index) => index !== teamIndex ? candidate : { ...candidate,
+      stats: { ...target.stats }, types: [...target.types], ability: target.ability,
+      hp: Math.max(0, Math.min(target.stats.maxHp, target.stats.maxHp - damage)),
+      appearance: { form, shiny: candidate.appearance?.shiny ?? false,
+        gender: candidate.appearance?.gender ?? null } }) } } };
+}
+
 function withSwitchedIndex(state: TeamBattleState, side: BattleSide, fromIndex: number,
   toIndex: number): TeamBattleState {
   const team = state.teams[side];
@@ -129,6 +144,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         player: { ...resolved.teams.player, activeIndex: previousActive.player },
         opponent: { ...resolved.teams.opponent, activeIndex: previousActive.opponent },
       } };
+    } else if (event.type === "megaEvolved") {
+      state = withMegaEvolution(state, event.side, event.teamIndex, event.toForm);
+      const pokemon = state.teams[event.side].members[event.teamIndex];
+      message(`${pokemon?.name ?? "Le Pokémon"} a Méga-Évolué !`, "status");
     } else if (event.type === "moveUsed") {
       const battler = state.teams[event.side].members[state.teams[event.side].activeIndex];
       const move = battler?.moves.find((slot) => slot.move.internalName === event.move)?.move;

@@ -3751,3 +3751,108 @@ l'effondrement et conversion/audit de `pbMiningGame`.
 
 Restent explicitement hors de ce jalon : les interfaces Guide des
 personnages/PokéObjectif, Succès et Méga-Évolution.
+
+## Guide des personnages et audit PokéObjectif — 2026-10-16
+
+Le Sac sait maintenant ouvrir le Guide des personnages depuis l'objet
+`PERSONAJES`. Le catalogue reprend exactement les 30 entrées de
+`guia-personajes.rb`, leurs noms, leurs chemins `infog_*.png` et la variable source
+240. La v2.12 ne définit toutefois que deux seuils : Olivier au niveau 0, puis les
+29 autres fiches dès le niveau 1. Le moteur conserve le seuil sur chaque entrée
+pour accueillir une progression source corrigée sans refaire l'interface.
+
+Les 30 images `Graphics/Pictures/infog_*.png` référencées par le Ruby ne sont pas
+présentes dans l'installation française auditée. La vue responsive les charge si
+elles deviennent disponibles, puis utilise automatiquement une illustration ou
+une pose officielle déjà présente dans les dossiers `Pictures`/`Characters` du
+jeu source. Olivier emploie ainsi `olivierPres.png` au lieu d'aboutir sur un
+message d'asset absent. Chaque entrée possède une liste ordonnée de replis et la
+fiche textuelle n'apparaît que si aucun de ces fichiers n'est disponible. Ne pas
+copier ces images dans Git : elles restent servies depuis l'installation locale.
+Autorité : catalogue source et variable narrative de
+l'hôte dans un monde partagé ; domaine : lecture seule ; persistance : aucune
+donnée supplémentaire ; réplication : aucune, chaque client projette la variable
+narrative déjà synchronisée. En excursion, la progression locale est utilisée.
+
+`POKEOBJETIVO` est bien déclaré comme objet important à usage terrain, mais aucun
+`ItemHandlers`, appel Ruby, événement commun, catalogue d'objectifs ou illustration
+associée n'existe dans les scripts, cartes ou assets de la v2.12 FR. Sa roue le
+signale donc comme indisponible avec cette cause précise. Ne pas inventer une table
+d'étapes à partir de numéros de cartes ou de switches : raccorder le même composant
+de lecture lorsque des données source fiables seront fournies.
+
+Restent hors de ce jalon : PokéObjectif faute de données source, Succès et
+Méga-Évolution.
+
+## Recherche globale du Sac — 2026-10-16
+
+Le Sac possède une recherche instantanée placée au-dessus des poches. Une requête
+non vide parcourt tous les objets possédés, même hors de la poche sélectionnée, et
+présente directement les cartes d'objets sans recréer leurs dossiers virtuels. La
+recherche est insensible aux accents et accepte plusieurs termes cumulés ; elle
+porte sur le nom affiché, la description, l'identifiant interne et le nom français
+de la capacité associée à une CT/CS. Les résultats conservent la roue d'actions
+normale. Effacer la requête restaure la poche précédente ; choisir explicitement
+une poche efface la recherche afin que la navigation reste compréhensible.
+
+Cette fonction est une projection purement locale de l'inventaire personnel : elle
+ne modifie aucune sauvegarde, n'envoie aucun message Coop et se comporte de la même
+façon en solo, chez l'hôte et chez l'invité.
+
+Le catalogue `Test dev > Gestion du Sac` possède également sa propre recherche
+instantanée. Contrairement à celle du Sac, elle parcourt tous les objets du jeu,
+y compris ceux que le joueur ne possède pas encore. Elle reprend les mêmes champs
+(nom, description, identifiant et capacité de CT/CS), affiche la catégorie de
+chaque résultat et sélectionne automatiquement la bonne poche avant le don. Une
+recherche sans résultat ne peut jamais déclencher par erreur le don de toute une
+catégorie. La quantité choisie reste mémorisée pendant le filtrage.
+
+## Méga-Évolution — catalogue et contrat partagé, lot 1 — 2026-10-16
+
+Le portage de la Méga-Évolution a commencé par les données et la règle métier,
+avant toute commande d'interface. `prepare:local` produit désormais
+`mega-evolutions.json` directement depuis `Pokemon_MegaEvolution` sans exécuter
+le Ruby. L'installation v2.12 FR contient 106 espèces et 114 couples
+espèce/Méga-Gemme/forme ; Charizard, Chesnaught, Delphox, Greninja et plusieurs
+autres espèces ont plusieurs branches qui ne doivent donc jamais être ramenées à
+une table « une espèce = une forme ».
+
+Le même catalogue extrait également le contrat global : le joueur doit posséder
+`BRAZALESPIRITUAL`, le switch 34 peut interdire la mécanique, une seule
+Méga-Évolution est permise par propriétaire et par combat, les adversaires PNJ
+n'ont pas besoin de l'objet d'activation, et Sky Drop bloque l'activation. Le
+noyau pur `megaEvolutionEligibility` représente ces décisions sans dépendance au
+DOM ou au client ; il est destiné à être appelé aussi bien par l'adaptateur solo
+que par la room Coop autoritaire.
+
+Contrairement à l'ancienne note de débogage, aucune capacité à connaître n'est
+exigée par le code de Pokémon Z 2.12 : la branche est choisie par l'espèce et la
+Méga-Gemme tenue. L'audit signale une anomalie source : `GROUDONITE` est utilisée
+par la définition de Groudon mais absente d'`items.txt`. Ne pas inventer cet
+objet ; garder cette branche indisponible tant qu'une donnée source corrigée n'est
+pas fournie.
+
+## Méga-Évolution — transport et intention de tour, lot 2 — 2026-10-16
+
+Le catalogue `mega-evolutions.json` est maintenant chargé avec chaque carte. La
+préparation d'équipe reconnaît une Méga-Gemme compatible, la conserve dans la
+sauvegarde personnelle et projette dans le combattant uniquement le couple
+`heldItem/form` requis par le combat. Elle ne fait plus passer cette gemme pour
+un objet tenu non pris en charge. Le même chemin prépare les équipes locales,
+les défis PvP, les participations Coop et les équipes de Dresseurs ; le repli de
+compatibilité conserve également les réservistes KO au lieu de les écarter.
+
+Le menu Attaque propose une commande Méga uniquement au porteur d'une gemme
+compatible, si le Bracelet Spirituel est présent et si le switch source 34 ne
+bloque pas la mécanique. Le choix est attaché à l'action de capacité sous la
+forme stricte `megaEvolution: true` et traverse le même contrat de protocole en
+solo et en room autoritaire. Les métadonnées de l'équipe et l'intention sont
+validées par le protocole ; aucune donnée de sauvegarde privée n'est répliquée.
+
+Dette volontaire du lot suivant : l'intention est transportée mais le moteur ne
+transforme pas encore le Pokémon. Il reste à enregistrer puis consommer l'unique
+usage par propriétaire côté autoritaire, appliquer temporairement forme,
+statistiques, types et talent avant la capacité, restaurer la forme à la fin du
+combat, apprendre à l'IA adverse à demander la transformation, puis porter les
+animations `MegaEvolution`/`MegaEvolution2`. Ne pas considérer le bouton seul
+comme une Méga-Évolution fonctionnelle.

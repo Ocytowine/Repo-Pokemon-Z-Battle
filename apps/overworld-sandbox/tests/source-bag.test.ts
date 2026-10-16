@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceTestItemPocket, sourceBagEntries,
-  sourceBagFamilyEntries, sourceBagNodes, sourceBagPage, sourceBagPocketCounts, sourceItemIconFallbackUrl,
+  sourceBagEntryMatches, sourceBagFamilyEntries, sourceBagNodes, sourceBagPage, sourceBagPocketCounts, sourceItemIconFallbackUrl,
   sourceItemIconUrl, sourcePocketIconUrl } from "../src/source-bag.js";
 import type { SourceShopItem } from "../src/source-economy.js";
 import { sourceActionWheelHtml } from "../src/source-action-wheel.js";
@@ -25,6 +25,16 @@ describe("source bag", () => {
     expect(sourceBagEntries(inventory, catalog, 2)).toEqual([{ item: potion, quantity: 3 }]);
     expect(sourceBagEntries(inventory, catalog, 3)).toEqual([{ item: ball, quantity: 5 }]);
     expect([...sourceBagPocketCounts(inventory, catalog)]).toEqual([[3, 1], [2, 1]]);
+  });
+
+  it("searches names, descriptions, identifiers and machine moves without accents", () => {
+    const entry = { item: { ...potion, name: "Élixir Max", internalName: "MAXELIXIR",
+      description: "Restaure tous les PP." }, quantity: 2 };
+    expect(sourceBagEntryMatches(entry, "elixir")).toBe(true);
+    expect(sourceBagEntryMatches(entry, "tous pp")).toBe(true);
+    expect(sourceBagEntryMatches(entry, "maxelixir")).toBe(true);
+    expect(sourceBagEntryMatches(entry, "blizzard", "Blizzard")).toBe(true);
+    expect(sourceBagEntryMatches(entry, "potion")).toBe(false);
   });
 
   it("fills a personal test inventory without mutating its previous values", () => {

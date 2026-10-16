@@ -70,6 +70,7 @@ import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
+import { sourceMegaActivationAvailable } from "./source-mega-evolution.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { SourceDayCareView } from "./source-day-care-view.js";
 import { SourceDayCareEggView } from "./source-day-care-egg-view.js";
@@ -1210,6 +1211,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     battleback: importedAssets.battleback ?? "snow",
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
+    megaEvolutions: importedAssets.megaEvolutions,
   },
   getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
@@ -1289,9 +1291,11 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) sourceBattles.renderVisuals();
     else if (!networkBattleAnimating) void sourceBattleVisuals.render(battle, importedAssets?.battleback ?? "snow");
   },
-  onMove: (moveIndex, local, activeSlot, target) => {
-    if (local) void sourceBattles.submitAction(moveIndex, activeSlot, target);
-    else multiplayer.submitBattleAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
+  onMove: (moveIndex, local, activeSlot, megaEvolution, target) => {
+    if (local) void sourceBattles.submitAction(moveIndex, activeSlot, megaEvolution, target);
+    else multiplayer.submitBattleAction({ kind: "move", moveIndex,
+      ...(megaEvolution ? { megaEvolution: true as const } : {}),
+      ...(target === undefined ? {} : { target }) }, activeSlot);
   },
   onSwitch: (teamIndex, local, activeSlot) => {
     if (local) void sourceBattles.switchPokemon(teamIndex, activeSlot);
@@ -3875,6 +3879,8 @@ function renderEncounter(): void {
         && canCaptureSharedBattleTarget(networkBattle.participation, networkBattle.state,
           networkBattle.sourceContext.origin),
     escaped: networkBattle?.escaped === true,
+    megaEvolutionEnabled: sourceMegaActivationAvailable(importedAssets.megaEvolutions,
+      sourceEventState.inventory, sourceEventState.switches),
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
@@ -3913,7 +3919,9 @@ function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourcePl
   if (importedAssets === null) return { team: null,
     unavailableReason: "Les données de combat ne sont pas encore chargées.",
     requiresHealing: false, notice: null };
-  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog);
+  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog,
+    importedAssets.megaEvolutions, sourceMegaActivationAvailable(importedAssets.megaEvolutions,
+      sourceEventState.inventory, sourceEventState.switches));
 }
 
 function sourceBattleJoinTeamDiagnostic(): string {

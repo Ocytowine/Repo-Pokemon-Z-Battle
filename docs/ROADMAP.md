@@ -1026,11 +1026,20 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] porter le minijeu de fouilles déclenché par Marteau + Ciseau : plateau 13 × 10,
   burin/marteau, métal, fissures, trésors source, sons, récompenses personnelles,
   commande `pbMiningGame` auditée et raccourci Test dev ;
-- [ ] porter les interfaces Guide des personnages et PokéObjectif ;
+- [x] porter l'interface Guide des personnages depuis son catalogue Ruby et sa
+  variable de progression 240, avec un repli explicite lorsque les infographies
+  référencées sont absentes de la distribution ;
+- [ ] porter PokéObjectif lorsque sa table d'objectifs ou son gestionnaire source
+  sera disponible : la v2.12 FR ne fournit que l'objet, sans logique d'utilisation ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
+- [ ] terminer la Méga-Évolution ; les lots 1 et 2 extraient automatiquement les
+  106 espèces/114 formes, fournissent l'éligibilité partagée solo/Coop,
+  transportent les gemmes dans l'état de combat et portent l'intention avec la
+  capacité choisie. Restent la consommation autoritaire de l'usage unique, la
+  mutation temporaire des caractéristiques et la présentation source.
 
 Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
 passable des cartes d'introduction avant trois choix issus des sources (difficulte,

@@ -49,6 +49,14 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage(JSON.stringify({ ...message, damage: 999 }))).toThrow("submitAction mal formé");
   });
 
+  it("transports only an explicit Mega Evolution intent with a move", () => {
+    const message: ClientMessage = { type: "submitAction", version: 15, requestId: "mega-1",
+      battleId: "battle-1", turn: 3, action: { kind: "move", moveIndex: 1, megaEvolution: true } };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message,
+      action: { kind: "move", moveIndex: 1, megaEvolution: false } }))).toThrow("submitAction mal formé");
+  });
+
   it("validates every client message shape strictly", () => {
     expect(parseClientMessage('{"type":"setReady","version":15,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
     expect(parseClientMessage('{"type":"requestSnapshot","version":15,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
@@ -142,6 +150,21 @@ describe("multiplayer protocol", () => {
       requestId: "source-capture", context, playerTeam: captureTeam, opponentTeam: captureTeam,
       battleItems: { POKEBALL: 2 } })))
       .toMatchObject({ type: "openSourceBattle", opponentTeam: { members: [{ capture: { weight: 69 } }] } });
+  });
+
+  it("accepts bounded Mega Evolution metadata in battle teams", () => {
+    const megaTeam = { ...duelTeam, members: [{ ...duelTeam.members[0],
+      megaEvolution: { heldItem: "EEVEEITE", form: 1,
+        stats: { maxHp: 40, attack: 30, defense: 30, specialAttack: 30, specialDefense: 30, speed: 30 },
+        types: ["NORMAL"], ability: "RUNAWAY", activationAvailable: true } }] };
+    expect(parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+      requestId: "duel-mega", team: megaTeam })))
+      .toMatchObject({ team: { members: [{ megaEvolution: { heldItem: "EEVEEITE", form: 1,
+        activationAvailable: true } }] } });
+    expect(() => parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+      requestId: "duel-mega-invalid", team: { ...duelTeam, members: [{ ...duelTeam.members[0],
+        megaEvolution: { ...megaTeam.members[0]!.megaEvolution, form: 0 } }] } })))
+      .toThrow("challengePlayer mal forme");
   });
 
   it("accepts every engine-supported held item in PvP responses and shared battle openings", () => {

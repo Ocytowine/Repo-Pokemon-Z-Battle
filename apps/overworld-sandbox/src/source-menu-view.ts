@@ -1,6 +1,6 @@
 import type { ImportedAvatar, ImportedMapAssets } from "./imported-map.js";
 import { SOURCE_BAG_PAGE_SIZE, SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagFamilyEntries, sourceBagNodes,
-  sourceBagPage, sourceBagPocketCounts, sourceBagSubfamily, sourceItemIconUrl,
+  sourceBagEntryMatches, sourceBagPage, sourceBagPocketCounts, sourceBagSubfamily, sourceItemIconUrl,
   sourceItemIconFallbackUrl, sourcePocketIconUrl } from "./source-bag.js";
 import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
 import type { SourceEventState, SourceFishingRod } from "./source-event-state.js";
@@ -31,6 +31,8 @@ import { createSourceDevPokemonEntries, filterSourceDevPokemonEntries, SOURCE_DE
   sourceDevPokemonGenderOptions, sourceDevPokemonTypes, type SourceDevPokemonGender,
   type SourceDevPokemonSort } from "./source-dev-pokemon-picker.js";
 import { isSourceFieldItem } from "./source-field-item.js";
+import { SOURCE_CHARACTER_GUIDE, sourceCharacterGuideImageUrls, sourceCharacterGuideLevel,
+  unlockedSourceCharacterGuideEntries } from "./source-character-guide.js";
 
 export function escapeSourceHtml(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
@@ -183,6 +185,7 @@ export class SourceMenuView {
   private selectedBagItemId: string | null = null;
   private selectedBagFamilyId: string | null = null;
   private bagPage = 0;
+  private bagQuery = "";
   private selectedBagPokemonId: string | null = null;
   private bagAction: "wheel" | "use" | "use-party-confirm" | "rare-candy-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
   private discardQuantity = 1;
@@ -196,6 +199,8 @@ export class SourceMenuView {
   private bagNotice: string | null = null;
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
+  private devItemQuery = "";
+  private devItemQuantity = 99;
   private selectedDevPokemonId: string | null = null;
   private devPokemonQuery = "";
   private devPokemonType: string | null = null;
@@ -212,6 +217,8 @@ export class SourceMenuView {
   private selectedRegionPointKey: string | null = null;
   private regionMapMode: "consult" | "fly" = "consult";
   private pokeVialConfirming = false;
+  private characterGuideOpen = false;
+  private selectedCharacterGuideId = "olivier";
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
@@ -220,7 +227,8 @@ export class SourceMenuView {
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
-    if (!model.open) { this.pokeVialConfirming = false; return; }
+    if (!model.open) { this.pokeVialConfirming = false; this.characterGuideOpen = false; return; }
+    if (model.tab !== "bag") this.characterGuideOpen = false;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
@@ -589,7 +597,14 @@ export class SourceMenuView {
 
   private renderBag(content: HTMLElement, model: SourceMenuViewModel): void {
     const counts = sourceBagPocketCounts(model.eventState.inventory, model.assets.items);
-    const entries = sourceBagEntries(model.eventState.inventory, model.assets.items, this.selectedPocket);
+    const searching = this.bagQuery.trim().length > 0;
+    const pocketEntries = sourceBagEntries(model.eventState.inventory, model.assets.items, this.selectedPocket);
+    const entries = searching
+      ? SOURCE_BAG_POCKETS.flatMap(({ id }) => sourceBagEntries(model.eventState.inventory, model.assets.items, id))
+        .filter((entry) => sourceBagEntryMatches(entry, this.bagQuery,
+          entry.item.machineMove === null || entry.item.machineMove === undefined ? undefined
+            : model.assets.battleCatalog.moves.find((move) => move.internalName === entry.item.machineMove)?.name))
+      : pocketEntries;
     let familyEntries = this.selectedBagFamilyId === null ? []
       : sourceBagFamilyEntries(entries, this.selectedBagFamilyId);
     if (this.selectedBagFamilyId !== null && familyEntries.length === 0) {
@@ -597,12 +612,13 @@ export class SourceMenuView {
       this.bagPage = 0;
       familyEntries = [];
     }
-    const visibleNodes = this.selectedBagFamilyId === null ? sourceBagNodes(entries)
+    const visibleNodes = searching ? entries.map((entry) => ({ kind: "item" as const, entry }))
+      : this.selectedBagFamilyId === null ? sourceBagNodes(entries)
       : familyEntries.map((entry) => ({ kind: "item" as const, entry }));
     const pageSize = window.matchMedia("(max-width: 430px)").matches ? 4 : SOURCE_BAG_PAGE_SIZE;
     const pagedNodes = sourceBagPage(visibleNodes, this.bagPage, pageSize);
     this.bagPage = pagedNodes.page;
-    const selectedFamily = familyEntries[0] === undefined ? null : sourceBagSubfamily(familyEntries[0].item);
+    const selectedFamily = searching || familyEntries[0] === undefined ? null : sourceBagSubfamily(familyEntries[0].item);
     if (this.selectedBagItemId !== null
       && !entries.some(({ item }) => item.internalName === this.selectedBagItemId)) this.selectedBagItemId = null;
     const selectedEntry = entries.find(({ item }) => item.internalName === this.selectedBagItemId) ?? null;
@@ -641,6 +657,11 @@ export class SourceMenuView {
           && model.fieldShortcuts.includes("fishing")
           ? "Retirer le bouton de pêche du terrain" : "Utiliser cette canne avec le bouton de terrain" },
     ];
+    const characterGuideEntries = unlockedSourceCharacterGuideEntries(model.eventState.variables);
+    const selectedCharacter = characterGuideEntries.find((entry) => entry.id === this.selectedCharacterGuideId)
+      ?? characterGuideEntries[0] ?? SOURCE_CHARACTER_GUIDE[0]!;
+    const characterGuideImageUrls = sourceCharacterGuideImageUrls(selectedCharacter);
+    const characterGuidePanel = !this.characterGuideOpen ? "" : `<div class="source-bag-flow-backdrop"><section class="source-character-guide" role="dialog" aria-modal="true" aria-label="Guide des personnages"><header><div><small>ARCHIVES DE L'AVENTURE</small><strong>Guide des personnages</strong><span>${characterGuideEntries.length}/${SOURCE_CHARACTER_GUIDE.length} fiches</span></div><button type="button" data-source-character-guide-close aria-label="Fermer">×</button></header><div class="source-character-guide-layout"><nav aria-label="Personnages rencontrés">${characterGuideEntries.map((entry) => `<button type="button" data-source-character-guide-entry="${escapeSourceHtml(entry.id)}"${entry.id === selectedCharacter.id ? ' class="active" aria-current="true"' : ""}>${escapeSourceHtml(entry.name)}</button>`).join("")}</nav><article><img src="${characterGuideImageUrls[0]}" data-source-character-guide-image alt="Illustration de ${escapeSourceHtml(selectedCharacter.name)}"><div data-source-character-guide-fallback hidden><strong>${escapeSourceHtml(selectedCharacter.name)}</strong><p>Aucune illustration de ce personnage n’est disponible dans cette installation de Pokémon Z.</p></div></article></div><footer>Progression source : ${sourceCharacterGuideLevel(model.eventState.variables)} · Variable 240</footer></section></div>`;
     const actionWheel = selectedEntry === null || this.bagAction !== "wheel" ? ""
       : sourceActionWheelHtml({ label: `Actions pour ${selectedItemDisplayName}`,
         centerHtml: `<img src="${sourceItemIconUrl(selectedEntry.item.id)}" data-source-item-icon alt=""><strong>${escapeSourceHtml(selectedItemDisplayName!)}</strong>`,
@@ -658,6 +679,12 @@ export class SourceMenuView {
                   symbol: "★", enabled: true,
                   hint: model.fieldShortcuts.includes("truth-lens")
                     ? "Retirer le Miroir des raccourcis" : "Afficher le Miroir après la Boussole" }]
+            : selectedEntry.item.internalName === "PERSONAJES"
+              ? [{ id: "specific:character-guide", label: "Consulter", symbol: "i", enabled: true,
+                  hint: "Ouvrir les fiches rencontrées" }]
+            : selectedEntry.item.internalName === "POKEOBJETIVO"
+              ? [{ id: "specific:adventure-objective", label: "Indisponible", symbol: "?", enabled: false,
+                  hint: "Cette version source ne contient aucune table d’objectifs" }]
             : fishingActions }) });
     const targetPanel = selectedEntry === null || (this.bagAction !== "use" && this.bagAction !== "give") ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>${this.bagAction === "give" ? "DONNER À UN POKÉMON" : selectedTarget === null ? "CHOISIR UNE CIBLE" : "CHOISIR UNE CAPACITÉ"}</small><strong>${escapeSourceHtml(selectedTarget?.nickname ?? selectedTarget?.species ?? selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${model.eventState.party.members.length === 0
@@ -684,19 +711,59 @@ export class SourceMenuView {
       : model.assets.battleCatalog.moves.find((move) => move.internalName === resultItem.machineMove)?.name;
     const resultPanel = this.bagResult === null ? "" : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow source-bag-result"><header><div><small>RÉSULTAT</small><strong>${escapeSourceHtml(resultItem === undefined ? this.bagResult.itemId : sourceItemDisplayName(resultItem, resultMoveName))}</strong></div></header><p>${escapeSourceHtml(this.bagResult.message)}</p><footer>${this.bagResult.repeatAction !== null && (model.eventState.inventory[this.bagResult.itemId] ?? 0) > 0 ? `<button type="button" data-source-bag-repeat="${this.bagResult.repeatAction}">Recommencer</button>` : ""}<button type="button" data-source-bag-result-close>Continuer</button></footer></section></div>`;
     const inventoryGrid = entries.length === 0
-      ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>Poche vide</strong><small>Aucun objet dans la catégorie ${escapeSourceHtml(pocket.name)}.</small></div>`
+      ? `<div class="source-menu-empty"><img src="${sourcePocketIconUrl(pocket.id)}" alt=""><strong>${searching ? "Aucun résultat" : "Poche vide"}</strong><small>${searching ? `Aucun objet ne correspond à « ${escapeSourceHtml(this.bagQuery.trim())} ».` : `Aucun objet dans la catégorie ${escapeSourceHtml(pocket.name)}.`}</small></div>`
       : sourceBagGridHtml(pagedNodes.entries, { itemAttribute: "data-source-bag-item",
         familyAttribute: "data-source-bag-family", selectedItemId: this.selectedBagItemId,
         displayName: ({ item }) => { const moveName = item.machineMove === null || item.machineMove === undefined
           ? undefined : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name;
         return sourceItemDisplayName(item, moveName); } });
-    this.setMenuHeader("SAC", selectedFamily?.name ?? pocket.name,
+    this.setMenuHeader("SAC", searching ? "Recherche" : selectedFamily?.name ?? pocket.name,
       `${model.eventState.money.toLocaleString("fr-FR")} ₽`);
-    content.innerHTML = `<nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
+    content.innerHTML = `<div class="source-bag-toolbar"><label><span>Rechercher un objet</span><input type="search" data-source-bag-search value="${escapeSourceHtml(this.bagQuery)}" placeholder="Nom, effet, CT/CS…" autocomplete="off" spellcheck="false"></label><button type="button" data-source-bag-search-clear${searching ? "" : " disabled"}>Effacer</button><small>${searching ? `${entries.length} résultat${entries.length > 1 ? "s" : ""} dans tout le Sac` : "Recherche dans toutes les poches"}</small></div><nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
         `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === this.selectedPocket ? "active" : ""}" title="${escapeSourceHtml(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeSourceHtml(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
       ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
-      <section class="source-inventory-browser"><div class="source-bag-list">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+      <section class="source-inventory-browser"><div class="source-bag-list">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${characterGuidePanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
     bindSourceItemIconFallback(content);
+    const searchInput = content.querySelector<HTMLInputElement>("[data-source-bag-search]");
+    searchInput?.addEventListener("input", () => {
+      this.bagQuery = searchInput.value;
+      this.bagPage = 0;
+      this.selectedBagFamilyId = null;
+      this.selectedBagItemId = null;
+      this.bagAction = null;
+      this.renderBag(content, model);
+      const nextInput = content.querySelector<HTMLInputElement>("[data-source-bag-search]");
+      nextInput?.focus();
+      nextInput?.setSelectionRange(this.bagQuery.length, this.bagQuery.length);
+    });
+    content.querySelector<HTMLButtonElement>("[data-source-bag-search-clear]")?.addEventListener("click", () => {
+      this.bagQuery = "";
+      this.bagPage = 0;
+      this.renderBag(content, model);
+      content.querySelector<HTMLInputElement>("[data-source-bag-search]")?.focus();
+    });
+    const guideImage = content.querySelector<HTMLImageElement>("[data-source-character-guide-image]");
+    let guideImageIndex = 0;
+    guideImage?.addEventListener("error", () => {
+      guideImageIndex += 1;
+      const nextUrl = characterGuideImageUrls[guideImageIndex];
+      if (nextUrl !== undefined) {
+        guideImage.src = nextUrl;
+        return;
+      }
+      guideImage.hidden = true;
+      const fallback = content.querySelector<HTMLElement>("[data-source-character-guide-fallback]");
+      if (fallback !== null) fallback.hidden = false;
+    });
+    content.querySelector<HTMLButtonElement>("[data-source-character-guide-close]")?.addEventListener("click", () => {
+      this.characterGuideOpen = false;
+      this.renderBag(content, model);
+    });
+    content.querySelectorAll<HTMLButtonElement>("[data-source-character-guide-entry]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.selectedCharacterGuideId = button.dataset.sourceCharacterGuideEntry ?? "olivier";
+        this.renderBag(content, model);
+      }));
     content.querySelectorAll<HTMLButtonElement>("[data-source-quantity-delta]").forEach((button) =>
       button.addEventListener("click", () => {
         if (selectedEntry === null) return;
@@ -719,6 +786,7 @@ export class SourceMenuView {
       const pocketId = Number(button.dataset.sourcePocket);
       if (!Number.isInteger(pocketId) || !SOURCE_BAG_POCKETS.some((candidate) => candidate.id === pocketId)) return;
       this.selectedPocket = pocketId;
+      this.bagQuery = "";
       this.selectedBagFamilyId = null;
       this.bagPage = 0;
       this.selectedBagItemId = null;
@@ -796,6 +864,11 @@ export class SourceMenuView {
           this.renderBag(content, model);
         } else if (action === "specific:incubator") this.callbacks.onOpenIncubator();
         else if (action === "specific:truth-lens") this.callbacks.onUseTruthLens();
+        else if (action === "specific:character-guide") {
+          this.characterGuideOpen = true;
+          this.bagAction = null;
+          this.renderBag(content, model);
+        }
         else if (action === "specific:truth-lens-shortcut") {
           this.callbacks.onFieldShortcut("truth-lens", !model.fieldShortcuts.includes("truth-lens"));
         }
@@ -1043,15 +1116,23 @@ export class SourceMenuView {
       .map((capability: SourceMovementCapability) => `<li class="${movement.unlocks[capability] ? "ready" : "locked"}"><i></i><span><strong>${sourceMovementCapabilityLabel(capability)}</strong><small>${movement.unlocks[capability] ? "Disponible" : "Encore verrouillé par la progression"}</small></span></li>`).join("");
     const diveLabel = movement.canSurfaceHere ? "Remonter à la surface" : "Plonger";
     const pockets = SOURCE_BAG_POCKETS.map((pocket) => `<option value="${pocket.id}"${pocket.id === this.selectedDevPocket ? " selected" : ""}>${escapeSourceHtml(pocket.name)}</option>`).join("");
+    const searchingItems = this.devItemQuery.trim().length > 0;
     const pocketItems = [...model.assets.items.values()].filter((item) => item.pocket === this.selectedDevPocket)
       .sort((left, right) => left.id - right.id);
-    if (this.selectedDevItemId !== null && !pocketItems.some((item) => item.internalName === this.selectedDevItemId)) {
+    const visibleItems = (searchingItems ? [...model.assets.items.values()] : pocketItems)
+      .filter((item) => !searchingItems || sourceBagEntryMatches({ item, quantity: 1 }, this.devItemQuery,
+        item.machineMove === null || item.machineMove === undefined ? undefined
+          : model.assets.battleCatalog.moves.find((move) => move.internalName === item.machineMove)?.name))
+      .sort((left, right) => left.pocket - right.pocket || left.id - right.id);
+    if (this.selectedDevItemId !== null && !visibleItems.some((item) => item.internalName === this.selectedDevItemId)) {
       this.selectedDevItemId = null;
     }
-    const items = [`<option value=""${this.selectedDevItemId === null ? " selected" : ""}>Toute la catégorie</option>`,
-      ...pocketItems.map((item) => `<option value="${escapeSourceHtml(item.internalName)}"${item.internalName === this.selectedDevItemId ? " selected" : ""}>${escapeSourceHtml(item.name)} · ${escapeSourceHtml(item.internalName)}</option>`)].join("");
+    const items = [searchingItems
+      ? `<option value=""${this.selectedDevItemId === null ? " selected" : ""}>${visibleItems.length === 0 ? "Aucun objet trouvé" : "Choisir un résultat"}</option>`
+      : `<option value=""${this.selectedDevItemId === null ? " selected" : ""}>Toute la catégorie</option>`,
+      ...visibleItems.map((item) => `<option value="${escapeSourceHtml(item.internalName)}"${item.internalName === this.selectedDevItemId ? " selected" : ""}>${searchingItems ? `${escapeSourceHtml(SOURCE_BAG_POCKETS.find(({ id }) => id === item.pocket)?.name ?? `Poche ${item.pocket}`)} · ` : ""}${escapeSourceHtml(item.name)} · ${escapeSourceHtml(item.internalName)}</option>`)].join("");
     const quantities = [1, 5, 10, 50, 99, 999].map((quantity) =>
-      `<option value="${quantity}"${quantity === 99 ? " selected" : ""}>${quantity}</option>`).join("");
+      `<option value="${quantity}"${quantity === this.devItemQuantity ? " selected" : ""}>${quantity}</option>`).join("");
     const levelCaps = [17, 27, 36, 42, 50, 56, 70, 75, 80, 85, 94, 100].map((level) =>
       `<option value="${level}"${model.dev.levelCapOverride === level ? " selected" : ""}>Niveau ${level}</option>`).join("");
     const devPokemonEntries = createSourceDevPokemonEntries(model.assets.battleCatalog, model.assets.pokemonAssets);
@@ -1062,7 +1143,7 @@ export class SourceMenuView {
     content.innerHTML = `<div class="source-menu-title"><div><small>OUTILS LOCAUX</small><h3>Test dev</h3></div><span>PERSONNEL</span></div><div class="source-dev-tools">
       <details data-dev-section="movement"${this.openDevSection === "movement" ? " open" : ""}><summary>Déplacements <small>${escapeSourceHtml(movement.mode.toUpperCase())}</small></summary><div class="source-dev-section"><div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div><ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf : interaction face à l'eau. Corniches, glace, cascades et parois restent pilotées par le terrain source.</p></div></details>
       <details data-dev-section="unlocks"${this.openDevSection === "unlocks" ? " open" : ""}><summary>Déblocages <small>Cap effectif ${model.dev.effectiveLevelCap}</small></summary><div class="source-dev-section"><label class="source-movement-test"><span><strong>Tous les déplacements</strong><small>Ignore localement leurs prérequis sans modifier badges, objets ou histoire.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label><label class="source-dev-field"><span>Cap de niveau</span><select id="source-dev-level-cap"><option value=""${model.dev.levelCapOverride === null ? " selected" : ""}>Progression normale · ${model.dev.storyLevelCap}</option>${levelCaps}</select><small>Le cap simulé sert aux Bonbons Rares et aux combats ouverts par ce navigateur.</small></label></div></details>
-      <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items">Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
+      <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label class="source-dev-item-search"><span>Rechercher dans tous les objets</span><div><input id="source-dev-item-query" type="search" value="${escapeSourceHtml(this.devItemQuery)}" placeholder="Nom, effet, identifiant, CT/CS…" autocomplete="off" spellcheck="false"><button type="button" id="source-dev-item-query-clear"${searchingItems ? "" : " disabled"}>Effacer</button></div><small>${searchingItems ? `${visibleItems.length} résultat${visibleItems.length > 1 ? "s" : ""} dans toutes les catégories` : "Saisissez un nom pour ignorer temporairement la catégorie."}</small></label><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items"${searchingItems && this.selectedDevItemId === null ? " disabled" : ""}>Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
       <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form source-dev-pokemon-picker"><div class="source-dev-pokemon-filters"><label class="source-dev-pokemon-search"><span>Rechercher</span><input id="source-dev-pokemon-query" type="search" value="${escapeSourceHtml(this.devPokemonQuery)}" placeholder="Nom français, numéro…" autocomplete="off"></label><label><span>Type</span><select id="source-dev-pokemon-type"><option value="">Tous les types</option>${pokemonTypes}</select></label><label><span>Classement</span><select id="source-dev-pokemon-sort"><option value="number"${this.devPokemonSort === "number" ? " selected" : ""}>Numéro du Pokédex</option><option value="name"${this.devPokemonSort === "name" ? " selected" : ""}>Nom alphabétique</option></select></label><button type="button" id="source-dev-pokemon-reset">Réinitialiser</button></div><div id="source-dev-pokemon-results" aria-live="polite"></div><div class="source-dev-pokemon-grant"><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><label><span>Genre</span><select id="source-dev-pokemon-gender" disabled><option value="auto">Choisissez une espèce</option></select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon sélectionné</button></div><small>Le genre proposé respecte l'espèce. Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch.</small></div></details>
       <details data-dev-section="services"${this.openDevSection === "services" ? " open" : ""}><summary>Services Pokémon <small>Interfaces en développement</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-day-care">TP devant la Pension</button><button type="button" id="source-dev-open-day-care">Ouvrir l’interface</button><button type="button" class="wide" id="source-dev-accelerate-eggs">Ramener les Œufs à 5 pas</button></div><small>Le TP rejoint la Route 5 sans modifier l’histoire. L’accès direct et l’accélération concernent seulement les données personnelles de test.</small></div></details>
       <details data-dev-section="minigames"${this.openDevSection === "minigames" ? " open" : ""}><summary>Mini-jeux <small>Fouilles</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" class="wide" id="source-dev-open-mining">Tester les fouilles</button></div><small>Lance une paroi neuve avec le marteau et le burin. Les trésors dégagés rejoignent réellement le Sac de cette sauvegarde.</small></div></details>
@@ -1087,15 +1168,40 @@ export class SourceMenuView {
     content.querySelector<HTMLSelectElement>("#source-dev-pocket")?.addEventListener("change", (event) => {
       this.selectedDevPocket = Number((event.currentTarget as HTMLSelectElement).value);
       this.selectedDevItemId = null;
+      this.devItemQuery = "";
       this.openDevSection = "bag";
       this.renderDevTools(content, model);
     });
     content.querySelector<HTMLSelectElement>("#source-dev-item")?.addEventListener("change", (event) => {
       this.selectedDevItemId = (event.currentTarget as HTMLSelectElement).value || null;
+      const selectedItem = this.selectedDevItemId === null ? undefined : model.assets.items.get(this.selectedDevItemId);
+      if (selectedItem !== undefined && selectedItem.pocket !== this.selectedDevPocket) {
+        this.selectedDevPocket = selectedItem.pocket;
+        this.openDevSection = "bag";
+        this.renderDevTools(content, model);
+      }
+    });
+    const devItemQuery = content.querySelector<HTMLInputElement>("#source-dev-item-query");
+    devItemQuery?.addEventListener("input", () => {
+      this.devItemQuery = devItemQuery.value;
+      this.openDevSection = "bag";
+      this.renderDevTools(content, model);
+      const next = content.querySelector<HTMLInputElement>("#source-dev-item-query");
+      next?.focus();
+      next?.setSelectionRange(this.devItemQuery.length, this.devItemQuery.length);
+    });
+    content.querySelector<HTMLButtonElement>("#source-dev-item-query-clear")?.addEventListener("click", () => {
+      this.devItemQuery = "";
+      this.selectedDevItemId = null;
+      this.openDevSection = "bag";
+      this.renderDevTools(content, model);
+      content.querySelector<HTMLInputElement>("#source-dev-item-query")?.focus();
+    });
+    content.querySelector<HTMLSelectElement>("#source-dev-item-quantity")?.addEventListener("change", (event) => {
+      this.devItemQuantity = Number((event.currentTarget as HTMLSelectElement).value);
     });
     content.querySelector<HTMLButtonElement>("#source-dev-grant-items")?.addEventListener("click", () => {
-      const quantity = Number(content.querySelector<HTMLSelectElement>("#source-dev-item-quantity")?.value ?? 99);
-      this.callbacks.onGrantTestItems(this.selectedDevPocket, this.selectedDevItemId, quantity);
+      this.callbacks.onGrantTestItems(this.selectedDevPocket, this.selectedDevItemId, this.devItemQuantity);
     });
     content.querySelector<HTMLButtonElement>("#source-dev-reset-pocket")?.addEventListener("click", () => {
       if (window.confirm("Vider tous les objets de cette catégorie ?")) this.callbacks.onResetTestItemPocket(this.selectedDevPocket);

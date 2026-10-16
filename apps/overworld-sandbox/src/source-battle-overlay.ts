@@ -28,6 +28,7 @@ export interface SourceBattleOverlayModel {
   readonly escapeConfirmationRequired: number;
   readonly capturable: boolean;
   readonly escaped: boolean;
+  readonly megaEvolutionEnabled: boolean;
   readonly bag: {
     readonly balls: readonly SourceBattleBagEntry[];
     readonly medicine: readonly SourceBattleBagEntry[];
@@ -37,7 +38,8 @@ export interface SourceBattleOverlayModel {
 
 export interface SourceBattleOverlayCallbacks {
   readonly onRenderVisuals: (state: TeamBattleState, local: boolean) => void;
-  readonly onMove: (moveIndex: number, local: boolean, activeSlot: number, target?: BattlePosition) => void;
+  readonly onMove: (moveIndex: number, local: boolean, activeSlot: number, megaEvolution: boolean,
+    target?: BattlePosition) => void;
   readonly onSwitch: (teamIndex: number, local: boolean, activeSlot: number) => void;
   readonly onItem: (itemId: string, targetTeamIndex: number, local: boolean, activeSlot: number,
     targetMoveIndex?: number) => void;
@@ -90,6 +92,7 @@ export class SourceBattleOverlay {
   private selectedBagFamilyId: string | null = null;
   private bagPage = 0;
   private pendingReplacement: { readonly turn: number; readonly activeSlot: number } | null = null;
+  private readonly megaEvolutionSelections = new Set<number>();
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {
     document.querySelector<HTMLElement>("#encounter-actions")?.addEventListener("click", (event) => {
@@ -107,12 +110,14 @@ export class SourceBattleOverlay {
       this.menu = "root";
       this.renderedTurn = null;
       this.pendingReplacement = null;
+      this.megaEvolutionSelections.clear();
       return;
     }
     if (this.renderedTurn !== model.state.turn) {
       this.menu = "root";
       this.renderedTurn = model.state.turn;
       this.activeSlot = 0;
+      this.megaEvolutionSelections.clear();
       this.pendingMoveIndex = null;
       this.pendingItemId = null;
       this.pendingItemTargetIndex = null;
@@ -261,9 +266,20 @@ export class SourceBattleOverlay {
 
   private renderMoves(actions: HTMLElement, active: BattleTeam["members"][number],
     model: SourceBattleOverlayModel, blocked: boolean): void {
+    const megaOwner = model.state.megaEvolution?.owners[active.id] ?? (this.activeSlot === 0 ? "player" : active.id);
+    const megaAvailable = model.megaEvolutionEnabled && active.megaEvolution !== undefined
+      && active.megaEvolution.activationAvailable && active.appearance?.form !== active.megaEvolution.form
+      && !model.state.megaEvolution?.usedOwnerIds.includes(megaOwner);
+    const megaSelected = megaAvailable && this.megaEvolutionSelections.has(this.activeSlot);
     const cards = active.moves.map((slot, index) => `<button data-encounter-move="${index}"${disabled(blocked || slot.pp <= 0)}><span class="source-move-name"><img src="${pokemonTypeIconUrl(slot.move.type)}" alt="">${escapeSourceHtml(slot.move.name)}</span><small>${slot.pp} PP · ${escapeSourceHtml(slot.move.type)}</small></button>`).join("");
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ATTAQUE</small><strong>Quelle capacité ?</strong></div></header><div class="source-battle-move-grid">${cards}</div></div>`;
+    const mega = active.megaEvolution === undefined ? "" : `<button type="button" class="source-battle-mega${megaSelected ? " active" : ""}" data-battle-mega${disabled(blocked || !megaAvailable)}><span>${megaSelected ? "MÉGA ACTIVÉE" : "MÉGA-ÉVOLUTION"}</span><small>${escapeSourceHtml(active.megaEvolution.heldItem)}</small></button>`;
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ATTAQUE</small><strong>Quelle capacité ?</strong></div>${mega}</header><div class="source-battle-move-grid">${cards}</div></div>`;
     this.bindBack(actions, model);
+    actions.querySelector<HTMLButtonElement>("[data-battle-mega]")?.addEventListener("click", () => {
+      if (megaSelected) this.megaEvolutionSelections.delete(this.activeSlot);
+      else this.megaEvolutionSelections.add(this.activeSlot);
+      this.render(model);
+    });
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-move]").forEach((button) =>
       button.addEventListener("click", () => {
         const moveIndex = Number(button.dataset.encounterMove);
@@ -277,7 +293,9 @@ export class SourceBattleOverlay {
           this.render(model);
         } else {
           this.menu = "root";
-          this.callbacks.onMove(moveIndex, model.local, this.activeSlot);
+          const megaEvolution = this.megaEvolutionSelections.has(this.activeSlot);
+          this.megaEvolutionSelections.delete(this.activeSlot);
+          this.callbacks.onMove(moveIndex, model.local, this.activeSlot, megaEvolution);
         }
       }));
   }
@@ -295,7 +313,9 @@ export class SourceBattleOverlay {
       const moveIndex = this.pendingMoveIndex!;
       this.pendingMoveIndex = null;
       this.menu = "root";
-      this.callbacks.onMove(moveIndex, model.local, this.activeSlot,
+      const megaEvolution = this.megaEvolutionSelections.has(this.activeSlot);
+      this.megaEvolutionSelections.delete(this.activeSlot);
+      this.callbacks.onMove(moveIndex, model.local, this.activeSlot, megaEvolution,
         { side: "opponent", slot: Number(button.dataset.targetSlot) });
     }));
   }

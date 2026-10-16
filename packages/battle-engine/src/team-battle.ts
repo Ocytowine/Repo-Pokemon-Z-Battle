@@ -1,6 +1,7 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
+import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import type {
   BattleEvent,
   BattleSide,
@@ -221,6 +222,7 @@ export function createTeamBattleState(
       members: team.members.map((member, index) => index === team.activeIndex
         ? { ...member, stages: { ...member.stages, attack: Math.max(-6, member.stages.attack + delta) } } : member) } } };
   }
+  state = initializeMegaEvolutionState(state);
   validateState(state);
   return state;
 }
@@ -236,6 +238,12 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   itemPolicy: PokemonItemUsePolicy = { context: "battle", revivalAllowed: true }): TeamTurnResult {
   validateState(state);
   if (state.replacementRequired.length > 0) throw new Error("Resolve required replacements before the next turn.");
+  const megaResult = resolveMegaEvolutionIntents(state, SIDES.flatMap((side) => {
+    const action = actions[side];
+    return action.kind === "move" && action.megaEvolution === true
+      ? [{ side, teamIndex: state.teams[side].activeIndex }] : [];
+  }));
+  state = megaResult.state;
   const teams = cloneTeams(state);
   const switchEvents: TeamBattleEvent[] = [];
   const itemEvents: TeamBattleEvent[] = [];
@@ -340,6 +348,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const events: TeamBattleEvent[] = [
     { type: "turnStarted", turn: state.turn },
     { type: "teamActionOrdered", order: orderedActions },
+    ...megaResult.events,
     ...pursuitEvents,
     ...switchEvents,
     ...itemEvents,
@@ -357,6 +366,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
       winner,
       teams,
       replacementRequired: winner === null ? replacementRequired : [],
+      ...(state.megaEvolution === undefined ? {} : { megaEvolution: state.megaEvolution }),
       ...(result.state.effects === undefined ? {} : { effects: result.state.effects }),
     },
     events,
@@ -368,6 +378,7 @@ export function replaceFaintedPokemon(
   state: TeamBattleState,
   replacements: Readonly<Partial<Record<BattleSide, number>>>,
 ): TeamReplacementResult {
+  state = initializeMegaEvolutionState(state);
   validateState(state);
   if (state.replacementRequired.length === 0) throw new Error("No replacement is required.");
   for (const side of SIDES) {

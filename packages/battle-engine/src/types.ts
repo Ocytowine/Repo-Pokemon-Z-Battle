@@ -123,6 +123,15 @@ export interface BattlerState {
     readonly shiny: boolean;
     readonly gender: "male" | "female" | "genderless" | null;
   };
+  /** Compatible source form projected from the persistent held stone. */
+  readonly megaEvolution?: {
+    readonly heldItem: string;
+    readonly form: number;
+    readonly stats: BattleStats;
+    readonly types: readonly string[];
+    readonly ability: BattleAbility;
+    readonly activationAvailable: boolean;
+  };
 }
 
 export interface BattleState {
@@ -163,6 +172,8 @@ export interface PokemonCaptureCalculation {
 export interface MoveAction {
   readonly kind: "move";
   readonly moveIndex: number;
+  /** Owner intent, resolved authoritatively before the selected move. */
+  readonly megaEvolution?: true;
   /** Required for a selectable target in a double battle; ignored in a simple battle. */
   readonly target?: BattlePosition;
 }
@@ -278,6 +289,11 @@ export interface TeamBattleState {
   readonly format?: "single" | "double";
   readonly slotReplacements?: readonly BattlePosition[];
   readonly effects?: BattleEffects;
+  /** Authoritative once-per-owner usage and member ownership for Mega Evolution. */
+  readonly megaEvolution?: {
+    readonly owners: Readonly<Record<string, string>>;
+    readonly usedOwnerIds: readonly string[];
+  };
 }
 
 export interface BattlePosition {
@@ -292,6 +308,8 @@ export interface PositionedTeamBattleAction {
 
 export type TeamBattleEvent =
   | BattleEvent
+  | { readonly type: "megaEvolved"; readonly side: BattleSide; readonly teamIndex: number;
+      readonly pokemonId: string; readonly fromForm: number; readonly toForm: number; readonly heldItem: string }
   | {
       readonly type: "teamActionOrdered";
       readonly order: readonly { readonly side: BattleSide; readonly kind: "move" | "switch" | "wait" | "item" | "capture" }[];

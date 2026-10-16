@@ -48,11 +48,12 @@ function isSourceAvatar(value: unknown): boolean {
 function isBattleAction(value: unknown): boolean {
   const move = isRecord(value)
     && ["kind", "moveIndex"].every((key) => key in value)
-    && Object.keys(value).every((key) => ["kind", "moveIndex", "target"].includes(key))
+    && Object.keys(value).every((key) => ["kind", "moveIndex", "target", "megaEvolution"].includes(key))
     && value.kind === "move"
     && Number.isInteger(value.moveIndex)
     && Number(value.moveIndex) >= 0
     && Number(value.moveIndex) <= 3
+    && (value.megaEvolution === undefined || value.megaEvolution === true)
     && (value.target === undefined || isRecord(value.target) && hasExactKeys(value.target, ["side", "slot"])
       && ["player", "opponent"].includes(String(value.target.side)) && safeInteger(value.target.slot, 0, 1));
   const switching = isRecord(value)
@@ -146,7 +147,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile", "megaEvolution"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -160,6 +161,17 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !hasExactKeys(member.capture, ["rate", "baseSpeed", "weight"])
       || !safeInteger(member.capture.rate, 1, 255) || !safeInteger(member.capture.baseSpeed, 1, 999)
       || !safeInteger(member.capture.weight, 0, 999_999))) return false;
+    if (member.megaEvolution !== undefined && (!isRecord(member.megaEvolution)
+      || !hasExactKeys(member.megaEvolution, ["heldItem", "form", "stats", "types", "ability", "activationAvailable"])
+      || !SOURCE_IDENTIFIER.test(String(member.megaEvolution.heldItem))
+      || !safeInteger(member.megaEvolution.form, 1, 999) || !isRecord(member.megaEvolution.stats)
+      || !hasExactKeys(member.megaEvolution.stats, BATTLE_STATS)
+      || !BATTLE_STATS.every((stat) => safeInteger(member.megaEvolution.stats![stat], 1, 999_999))
+      || !Array.isArray(member.megaEvolution.types) || member.megaEvolution.types.length < 1
+      || member.megaEvolution.types.length > 2
+      || !member.megaEvolution.types.every((type) => SOURCE_IDENTIFIER.test(String(type)))
+      || !SOURCE_IDENTIFIER.test(String(member.megaEvolution.ability))
+      || typeof member.megaEvolution.activationAvailable !== "boolean")) return false;
     const stats = member.stats;
     const stages = member.stages;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))

@@ -15,6 +15,7 @@ import { extractMapAnimations } from "./extract-map-animations.js";
 import { extractAlchemyRecipes } from "./extract-alchemy-recipes.js";
 import { extractRegionMaps } from "./extract-region-map.js";
 import { createBattleIntegrationAudit } from "./battle-integration-audit.js";
+import { extractMegaEvolutions } from "./extract-mega-evolutions.js";
 
 interface EncounterJson {
   readonly records: readonly {
@@ -92,6 +93,7 @@ export async function extractRuntimeData(
     extractRegionMaps(paths.source),
   ]);
   const alchemyRecipes = await extractAlchemyRecipes(paths.output, scripts);
+  const megaEvolutions = await extractMegaEvolutions(paths.output, scripts);
   const battleIntegrationAudit = await createBattleIntegrationAudit(paths.output, battleAnimations.catalog) as {
     readonly summary: { readonly issues: number };
   };
@@ -140,6 +142,8 @@ export async function extractRuntimeData(
       normalizedBattleAnimations: battleAnimations.catalog.animations.length,
       normalizedMapAnimations: mapAnimations.animations.length,
       battleIntegrationIssues: battleIntegrationAudit.summary.issues,
+      megaEvolutionSpecies: megaEvolutions.speciesCount,
+      megaEvolutionForms: megaEvolutions.records.length,
     },
     tableProbe,
     missingEncounterMaps,

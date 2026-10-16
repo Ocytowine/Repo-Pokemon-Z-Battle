@@ -1,6 +1,7 @@
-import { isHeldItemSupported, playerPartyToBattleTeam, type PersistentPokemon, type PlayerBattleCatalog,
+import { calculatePokemonStats, isHeldItemSupported, playerPartyToBattleTeam, type PersistentPokemon, type PlayerBattleCatalog,
   type PlayerPartyState } from "@pokemon-z-battle/player-state";
 import type { BattleTeam, BattlerState } from "@pokemon-z-battle/battle-engine";
+import { sourceMegaEvolutionForPokemon, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
 
 export interface SourceBattleTeamPreparation {
   readonly team: BattleTeam | null;
@@ -14,25 +15,37 @@ function errorMessage(error: unknown): string {
 }
 
 function projectJoinMember(party: PlayerPartyState, member: PersistentPokemon,
-  catalog: PlayerBattleCatalog): { readonly battler: BattlerState; readonly omittedMoves: number;
+  catalog: PlayerBattleCatalog, megaCatalog?: SourceMegaEvolutionCatalog,
+  megaActivationAvailable = false): { readonly battler: BattlerState; readonly omittedMoves: number;
     readonly omittedHeldItem: boolean } {
-  const project = (candidate: PersistentPokemon): BattlerState => playerPartyToBattleTeam(
-    { ...party, activeIndex: 0, members: [candidate] }, catalog).members[0]!;
-  const omittedHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
+  const megaEvolution = sourceMegaEvolutionForPokemon(megaCatalog, member.species, member.heldItem);
+  const project = (candidate: PersistentPokemon): BattlerState => {
+    const conscious = candidate.hp > 0 ? candidate : { ...candidate, hp: 1 };
+    const battler = playerPartyToBattleTeam(
+      { ...party, activeIndex: 0, members: [conscious] }, catalog).members[0]!;
+    return { ...battler, hp: candidate.hp,
+      ...(megaEvolution === undefined ? {} : { megaEvolution: {
+        heldItem: megaEvolution.heldItem, form: megaEvolution.form,
+        stats: calculatePokemonStats({ baseStats: megaEvolution.baseStats }, member.level, member.metadata),
+        types: [...megaEvolution.types], ability: megaEvolution.ability, activationAvailable: megaActivationAvailable } }) };
+  };
+  const omittedHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem)
+    && megaEvolution === undefined;
   const compatibleMember = omittedHeldItem ? { ...member, heldItem: null } : member;
+  const battleMember = megaEvolution === undefined ? compatibleMember : { ...compatibleMember, heldItem: null };
   try {
-    return { battler: project(compatibleMember), omittedMoves: 0, omittedHeldItem };
+    return { battler: project(battleMember), omittedMoves: 0, omittedHeldItem };
   } catch (originalError) {
-    const compatibleMoves = compatibleMember.moves.filter((move) => {
+    const compatibleMoves = battleMember.moves.filter((move) => {
       try {
-        project({ ...compatibleMember, moves: [move] });
+        project({ ...battleMember, moves: [move] });
         return true;
       } catch {
         return false;
       }
     });
     if (compatibleMoves.length === 0) throw originalError;
-    return { battler: project({ ...compatibleMember, moves: compatibleMoves }),
+    return { battler: project({ ...battleMember, moves: compatibleMoves }),
       omittedMoves: member.moves.length - compatibleMoves.length, omittedHeldItem };
   }
 }
@@ -42,7 +55,8 @@ function projectJoinMember(party: PlayerPartyState, member: PersistentPokemon,
  * disguise a healthy party as fainted or prevent compatible conscious members from joining.
  */
 export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
-  catalog: PlayerBattleCatalog): SourceBattleTeamPreparation {
+  catalog: PlayerBattleCatalog, megaCatalog?: SourceMegaEvolutionCatalog,
+  megaActivationAvailable = false): SourceBattleTeamPreparation {
   if (party.members.length === 0) return { team: null,
     unavailableReason: "Votre équipe est vide.", requiresHealing: false, notice: null };
   if (party.members.every((member) => member.hp <= 0)) return { team: null,
@@ -50,7 +64,15 @@ export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
     requiresHealing: true, notice: null };
 
   try {
-    return { team: playerPartyToBattleTeam(party, catalog), unavailableReason: null,
+    const team = playerPartyToBattleTeam(party, catalog);
+    return { team: { ...team, members: team.members.map((battler, index) => {
+      const member = party.members[index]!;
+      const megaEvolution = sourceMegaEvolutionForPokemon(megaCatalog, member.species, member.heldItem);
+      return megaEvolution === undefined ? battler : { ...battler,
+        megaEvolution: { heldItem: megaEvolution.heldItem, form: megaEvolution.form,
+          stats: calculatePokemonStats({ baseStats: megaEvolution.baseStats }, member.level, member.metadata),
+          types: [...megaEvolution.types], ability: megaEvolution.ability, activationAvailable: megaActivationAvailable } };
+    }) }, unavailableReason: null,
       requiresHealing: false, notice: null };
   } catch (wholeTeamError) {
     const compatible: BattleTeam["members"][number][] = [];
@@ -58,9 +80,8 @@ export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
     let omittedMoves = 0;
     let omittedHeldItems = 0;
     for (const member of party.members) {
-      if (member.hp <= 0) continue;
       try {
-        const projected = projectJoinMember(party, member, catalog);
+        const projected = projectJoinMember(party, member, catalog, megaCatalog, megaActivationAvailable);
         compatible.push(projected.battler);
         omittedMoves += projected.omittedMoves;
         omittedHeldItems += Number(projected.omittedHeldItem);
@@ -79,7 +100,8 @@ export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
       omittedHeldItems === 0 ? null
         : `${omittedHeldItems} objet${omittedHeldItems > 1 ? "s tenus ont" : " tenu a"} été neutralisé${omittedHeldItems > 1 ? "s" : ""}`,
     ].filter((notice): notice is string => notice !== null);
-    return { team: { activeIndex: 0, members: compatible }, unavailableReason: null,
+    const activeIndex = compatible.findIndex((member) => member.hp > 0);
+    return { team: { activeIndex, members: compatible }, unavailableReason: null,
       requiresHealing: false, notice: notices.length === 0 ? null
         : `${notices.join(" et ")} pour ce combat. Les données personnelles restent inchangées.` };
   }

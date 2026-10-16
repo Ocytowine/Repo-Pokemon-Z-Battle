@@ -2,6 +2,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   activeTeamIndices, applyBattleJoin, approveBattleJoin,
   applyPokemonItemEffect,
   battleMemberIndicesOwnedBy,
+  bindMegaEvolutionOwners,
   canCaptureSharedBattleTarget, canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
   closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession,
   createTeamBattleState, openSharedBattleJoinWindow,
@@ -1403,6 +1404,9 @@ export class AuthoritativeBattleRoom {
           ...(this.#battleState.teams.opponent.activeIndices === undefined ? {} : { activeMemberIds: this.#battleState.teams.opponent.activeIndices
             .map((index) => this.#battleState!.teams.opponent.members[index]!.id) }) },
       } };
+      this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+        (["player", "opponent"] as const).flatMap((side) => this.#battleParticipation!.camps[side].members
+          .map((member) => [member.battler.id, member.ownerId ?? `source-${side}`] as const))));
       this.#battleInventories.clear();
       this.#battleConsumedItems.clear();
       this.#battleInventories.set(player.playerId, { ...(message.battleItems ?? {}) });
@@ -1500,6 +1504,13 @@ export class AuthoritativeBattleRoom {
           opponent: { ...joinedState.teams.opponent, ...(previousState.teams.opponent.items === undefined
             ? {} : { items: [...previousState.teams.opponent.items] }) },
         } };
+        this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+          (["player", "opponent"] as const).flatMap((side) => participation.camps[side].members
+            .map((member) => [member.battler.id, member.ownerId ?? `source-${side}`] as const))));
+        if (this.#battleState.megaEvolution !== undefined && previousState.megaEvolution !== undefined) {
+          this.#battleState = { ...this.#battleState, megaEvolution: { ...this.#battleState.megaEvolution,
+            usedOwnerIds: [...previousState.megaEvolution.usedOwnerIds] } };
+        }
         this.synchronizeBattleParticipation();
         if (this.#activeEncounter !== null) this.#battleLedger = createSharedBattleLedger(this.#battleState);
         this.#battleJoinProposal = null;
@@ -1616,6 +1627,11 @@ export class AuthoritativeBattleRoom {
         ? { player: challenge.team.activeIndex, opponent: team.activeIndex }
         : { player: team.activeIndex, opponent: challenge.team.activeIndex };
       this.#battleState = createTeamBattleState(teams, activeIndices);
+      this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+        (["player", "opponent"] as const).flatMap((side) => {
+          const ownerId = [...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? side;
+          return this.#battleState!.teams[side].members.map((member) => [member.id, ownerId] as const);
+        })));
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;
       this.#escapeConfirmations.clear();

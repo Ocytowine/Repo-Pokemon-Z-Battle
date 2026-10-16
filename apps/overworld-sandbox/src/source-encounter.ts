@@ -10,6 +10,7 @@ import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty,
   storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
   type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
+import type { SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
 
 export interface SourceEncounterRequest {
   readonly species: string;
@@ -26,8 +27,9 @@ export interface SourceTrainerDefinition {
     readonly abilityIndex?: number | null }[];
 }
 
-function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog) {
-  const preparation = prepareSourcePlayerBattleTeam(party, catalog);
+function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog,
+  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false) {
+  const preparation = prepareSourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
   if (preparation.team === null) {
     throw new Error(preparation.unavailableReason ?? "L'équipe ne peut pas participer à ce combat.");
   }
@@ -35,8 +37,9 @@ function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreation
 }
 
 export function createSourceEncounterBattle(party: PlayerPartyState, encounter: SourceEncounterRequest,
-  catalog: PlayerCreationCatalog, opponentId: string): TeamBattleState {
-  const player = sourcePlayerBattleTeam(party, catalog);
+  catalog: PlayerCreationCatalog, opponentId: string, megaCatalog?: SourceMegaEvolutionCatalog,
+  megaActivationAvailable = false): TeamBattleState {
+  const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
   const opponentParty = addPokemonToParty(createEmptyPlayerParty(),
     createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog));
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
@@ -45,8 +48,9 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
-  catalog: PlayerCreationCatalog, format: "single" | "double" = "single"): TeamBattleState {
-  const player = sourcePlayerBattleTeam(party, catalog);
+  catalog: PlayerCreationCatalog, format: "single" | "double" = "single",
+  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false): TeamBattleState {
+  const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
     let pokemon = createPersistentPokemon(`trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${index}`,
@@ -73,7 +77,10 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     }
     opponentParty = addPokemonToParty(opponentParty, pokemon);
   });
-  const opponent = playerPartyToBattleTeam(opponentParty, catalog);
+  const opponentPreparation = prepareSourcePlayerBattleTeam(opponentParty, catalog, megaCatalog, true);
+  if (opponentPreparation.team === null) throw new Error(opponentPreparation.unavailableReason
+    ?? "Équipe du Dresseur incompatible avec le moteur.");
+  const opponent = opponentPreparation.team;
   const state = format === "double"
     ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
     : createTeamBattleState({ player: player.members, opponent: opponent.members },

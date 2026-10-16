@@ -187,4 +187,19 @@ describe("source battle presentation sequence", () => {
     expect(sequence).toEqual([expect.objectContaining({ kind: "status",
       message: "Cœur de Coq de Passerouge l'empêche de perdre de la Défense !" })]);
   });
+
+  it("updates the rendered form and combat profile before announcing Mega Evolution", () => {
+    const hero = { ...battler("Dracaufeu", 15), appearance: { form: 0, shiny: false, gender: "male" as const },
+      megaEvolution: { heldItem: "CHARIZARDITEX", form: 1, activationAvailable: true,
+        types: ["FIRE", "DRAGON"], ability: "TOUGHCLAWS",
+        stats: { maxHp: 30, attack: 25, defense: 20, specialAttack: 24, specialDefense: 18, speed: 22 } } };
+    const state = createTeamBattleState({ player: [hero], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "megaEvolved", side: "player", teamIndex: 0, pokemonId: hero.id,
+        fromForm: 0, toForm: 1, heldItem: "CHARIZARDITEX" },
+    ]);
+    expect(sequence).toEqual([expect.objectContaining({ kind: "status", message: "Dracaufeu a Méga-Évolué !",
+      state: { teams: { player: { members: [expect.objectContaining({ hp: 25, ability: "TOUGHCLAWS",
+        types: ["FIRE", "DRAGON"], appearance: { form: 1 } })] } } } })]);
+  });
 });

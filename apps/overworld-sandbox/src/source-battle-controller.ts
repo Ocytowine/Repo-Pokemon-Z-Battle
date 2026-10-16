@@ -25,6 +25,7 @@ import {
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 import type { SourceBattleReportStore } from "./source-battle-report.js";
+import { sourceMegaActivationAvailable, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
 
 export interface SourceBattleResources {
   readonly catalog: PlayerCreationCatalog;
@@ -32,6 +33,7 @@ export interface SourceBattleResources {
   readonly battleback: string;
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
+  readonly megaEvolutions?: SourceMegaEvolutionCatalog;
 }
 
 export interface SourceBattlePresentation {
@@ -205,7 +207,9 @@ export class SourceBattleController {
     if (encounter === null || resources === null || this.active) return false;
     try {
       const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
-        `wild-${encounter.species.toLowerCase()}`);
+        `wild-${encounter.species.toLowerCase()}`, resources.megaEvolutions,
+        resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
+          eventState.inventory, eventState.switches));
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
@@ -262,7 +266,10 @@ export class SourceBattleController {
       return false;
     }
     try {
-      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single");
+      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog,
+        audio.format ?? "single", resources.megaEvolutions,
+        resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
+          eventState.inventory, eventState.switches));
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
@@ -386,8 +393,11 @@ export class SourceBattleController {
     }
   }
 
-  public async submitAction(moveIndex: number, activeSlot = 0, target?: BattlePosition): Promise<void> {
-    await this.submitTurnAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
+  public async submitAction(moveIndex: number, activeSlot = 0, megaEvolution = false,
+    target?: BattlePosition): Promise<void> {
+    await this.submitTurnAction({ kind: "move", moveIndex,
+      ...(megaEvolution ? { megaEvolution: true as const } : {}),
+      ...(target === undefined ? {} : { target }) }, activeSlot);
   }
 
   public acknowledgeSharedBattleOpened(): void {

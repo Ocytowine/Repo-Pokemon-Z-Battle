@@ -1,6 +1,7 @@
 import { resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
+import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import type {
   BattleEvent, BattlePosition, BattleSide, BattleState, BattleTeam, BattlerState, DoubleBattleEvent,
   DoubleTurnResult, PositionedTeamBattleAction, RandomSource, TeamBattleAction, TeamBattleState,
@@ -35,8 +36,8 @@ export function createDoubleTeamBattleState(members: Readonly<Record<BattleSide,
       return { ...member, stages: { ...member.stages, attack: Math.max(-6, member.stages.attack + delta) } };
     }) };
   }
-  return { turn: 1, status: "active", winner: null, format: "double", teams,
-    replacementRequired: [], slotReplacements: [] };
+  return initializeMegaEvolutionState({ turn: 1, status: "active", winner: null, format: "double", teams,
+    replacementRequired: [], slotReplacements: [] });
 }
 
 export function activeTeamIndices(team: BattleTeam): readonly number[] {
@@ -235,7 +236,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   rng: RandomSource, itemPolicy: PokemonItemUsePolicy = { context: "battle", revivalAllowed: true }): DoubleTurnResult {
   if (state.status !== "active" || state.format !== "double") throw new Error("Combat double actif attendu.");
   if ((state.slotReplacements?.length ?? 0) > 0) throw new Error("Les remplacements doubles doivent etre resolus avant le tour.");
-  const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
+  state = initializeMegaEvolutionState(state);
+  let teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
   const required = activeBattlePositions(state).filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
   const effectiveSubmitted = submitted.map((entry): PositionedTeamBattleAction => {
     if (entry.action.kind !== "move") return entry;
@@ -249,10 +251,17 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   if (byActor.size !== effectiveSubmitted.length || required.some((position) => !byActor.has(key(position)))) {
     throw new Error("Chaque Pokemon actif doit choisir exactement une action.");
   }
+  const megaResult = resolveMegaEvolutionIntents({ ...state, teams }, effectiveSubmitted.flatMap((entry) => {
+    if (entry.action.kind !== "move" || entry.action.megaEvolution !== true) return [];
+    const teamIndex = activeTeamIndices(teams[entry.actor.side])[entry.actor.slot];
+    return teamIndex === undefined ? [] : [{ side: entry.actor.side, teamIndex }];
+  }));
+  state = megaResult.state;
+  teams = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
   const switchEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "switch");
   const itemEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "item");
   const captureEntries = effectiveSubmitted.filter((entry) => entry.action.kind === "capture");
-  const events: DoubleBattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
+  const events: DoubleBattleEvent[] = [{ type: "turnStarted", turn: state.turn }, ...megaResult.events];
   const trace: DoubleTurnResult["trace"][number][] = [];
   let effects = state.effects;
   const pursuitKeys = new Set<string>();

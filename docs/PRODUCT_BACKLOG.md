@@ -502,8 +502,20 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-MEGA-1 — Mega-Evolution
 
-- Priorite/statut : `P1` / bloque par objets tenus, inventaire et combats.
-- Doit verifier les regles exactes de Pokemon Z avant conception du contrat.
+- Priorite/statut : `P1` / lots 1 et 2 (catalogue, règle d'éligibilité, transport
+  des gemmes et intention de tour solo/Coop) réalisés le 2026-10-16 ; résolution
+  autoritaire, mutation de combat et présentation à faire.
+- `prepare:local` extrait sans exécuter le Ruby 106 espèces et 114 couples
+  Méga-Gemme/forme. Le contrat source exige `BRAZALESPIRITUAL`, respecte le switch
+  global 34, autorise une seule Méga-Évolution par propriétaire et par combat et
+  dispense les Dresseurs adverses de l'objet d'activation.
+- Le noyau commun d'éligibilité est partagé entre le futur adaptateur solo et la
+  room autoritaire. La Méga-Gemme compatible est désormais projetée dans le
+  combattant et `megaEvolution: true` voyage avec l'action de capacité, sans
+  muter la sauvegarde personnelle. La capacité spéciale évoquée dans l'ancienne note n'est pas
+  une condition de Pokémon Z 2.12 : la forme dépend de l'espèce et de la gemme
+  tenue. `GROUDONITE` est référencée par le Ruby mais absente du catalogue des
+  objets ; l'audit la conserve comme anomalie au lieu de créer un objet fictif.
 
 ### SOLO-PENSION-1 — Pension
 
