@@ -1013,6 +1013,8 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   communes au solo et à la room Coop ;
 - [x] généraliser les raccourcis de terrain configurables pour la Boussole, le
   Miroir de la Vérité, la Pêche et Chevroum ;
+- [x] porter les rochers Éclate-Roc propres à Z : événement commun de fabrication,
+  Poudre Explosive, disparition persistante ou temporaire et rencontre optionnelle ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur

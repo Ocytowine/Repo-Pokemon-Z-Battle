@@ -59,7 +59,7 @@ export interface SourceEncounter {
   readonly species: string;
   readonly level: number;
   /** Migrated saves may omit it; new encounters preserve the field origin for capture rules and reports. */
-  readonly method?: "land" | "cave" | "fishing" | "scripted";
+  readonly method?: "land" | "cave" | "rock-smash" | "fishing" | "scripted";
   readonly victorySwitches: Readonly<Record<string, boolean>>;
   readonly escapable: boolean;
 }
@@ -401,7 +401,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && encounterValue.level >= 1 && encounterValue.level <= 100
       && (encounterValue.victorySwitches === undefined || booleanDictionary(encounterValue.victorySwitches) !== null)
       && (encounterValue.escapable === undefined || typeof encounterValue.escapable === "boolean")
-      && (encounterValue.method === undefined || ["land", "cave", "fishing", "scripted"].includes(String(encounterValue.method)))
+      && (encounterValue.method === undefined || ["land", "cave", "rock-smash", "fishing", "scripted"]
+        .includes(String(encounterValue.method)))
       ? { species: encounterValue.species, level: encounterValue.level,
         ...(encounterValue.method === undefined ? {} : {
           method: encounterValue.method as NonNullable<SourceEncounter["method"]>,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { resolveEventFlow } from "../src/source-event-flow.js";
 import { createSourceEventState } from "../src/source-event-state.js";
+import { expandSourceCommonEvents, type SourceCommonEvent } from "../src/source-common-events.js";
 
 type Command = ImportedEventPage["commands"][number];
 const condition = { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null } as const;
@@ -149,6 +150,91 @@ describe("source event choice and condition flow", () => {
       expect.objectContaining({ kind: "grant-item", data: { itemId: "POLVOBRILLANTE", quantity: 2,
         policy: "PERSONAL" } }),
     ]);
+  });
+
+  it("projects crafted inventory into later conditions from the same interaction", () => {
+    const eventPage = page([
+      command("ruby-script", 0, { source: "$PokemonBag.pbDeleteItem(:BRASACANDENTE,1)" }),
+      command("ruby-script", 0, { source: "$PokemonBag.pbDeleteItem(:POLVOBRILLANTE,1)" }),
+      command("ruby-script", 0, { source: "Kernel.pbItemBall(PBItems::POLVOEXPLOSIVO)" }),
+      command("condition", 0, { kind: "ruby-script",
+        script: "$PokemonBag.pbQuantity(PBItems::POLVOEXPLOSIVO)>0" }),
+      command("show-text", 1, { text: "La poudre peut être utilisée immédiatement." }),
+      command("condition-end", 0),
+    ]);
+    const state = { ...createSourceEventState(),
+      inventory: { BRASACANDENTE: 1, POLVOBRILLANTE: 1 } };
+
+    const result = resolveEventFlow(eventPage, [], state, 54, 2);
+
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "remove-item", "remove-item", "grant-item", "show-text",
+    ]);
+  });
+
+  it("ports Pokemon Z rock destruction and its optional 25 percent encounter", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbEraseThisEvent" }),
+      command("ruby-script", 0, { source: "Kernel.pbRockSmashRandomEncounter" }),
+    ]), [], createSourceEventState(), 54, 2);
+
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands).toEqual([
+      expect.objectContaining({ kind: "erase-event", data: expect.objectContaining({ policy: "SHARED" }) }),
+      expect.objectContaining({ kind: "request-random-encounter", data: expect.objectContaining({
+        method: "RockSmash", chancePercent: 25, optional: true, policy: "HOST_ONLY",
+      }) }),
+    ]);
+  });
+
+  it("resolves the complete Z rock flow through common-event crafting and immediate use", () => {
+    const common: SourceCommonEvent = { id: 58, name: "TenerGolpeRoca", commands: [
+      command("show-text", 0, { text: "Un rocher fissuré bloque le passage." }),
+      command("condition", 0, { kind: "variable", operands: [926, 0, 3, 1] }),
+      command("condition", 1, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(:BRASACANDENTE)>0" }),
+      command("condition", 2, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(:POLVOBRILLANTE)>0" }),
+      command("show-choices", 3, { choices: ["Oui", "Non"], cancelType: 2 }),
+      command("choice-branch", 3, { choiceIndex: 0, text: "Oui" }),
+      command("ruby-script", 4, { source: "$PokemonBag.pbDeleteItem(:BRASACANDENTE,1)" }),
+      command("ruby-script", 4, { source: "$PokemonBag.pbDeleteItem(:POLVOBRILLANTE,1)" }),
+      command("ruby-script", 4, { source: "Kernel.pbItemBall(PBItems::POLVOEXPLOSIVO)" }),
+      command("choice-branch", 3, { choiceIndex: 1, text: "Non" }),
+      command("choice-end", 3), command("condition-end", 2), command("condition-end", 1),
+      command("condition-end", 0),
+    ] };
+    const rock = expandSourceCommonEvents(page([
+      command("call-common-event", 0, { parameters: [58] }),
+      command("condition", 0, { kind: "ruby-script", script: "$PokemonBag.pbQuantity(:POLVOEXPLOSIVO)>0" }),
+      command("show-choices", 1, { choices: ["Oui", "Non"], cancelType: 2 }),
+      command("choice-branch", 1, { choiceIndex: 0, text: "Oui" }),
+      command("ruby-script", 2, { source: "$PokemonBag.pbDeleteItem(:POLVOEXPLOSIVO,1)" }),
+      command("set-self-switch", 2, { id: "A", value: true }),
+      command("ruby-script", 2, { source: "Kernel.pbRockSmashRandomEncounter" }),
+      command("choice-branch", 1, { choiceIndex: 1, text: "Non" }),
+      command("choice-end", 1), command("condition-end", 0),
+    ]), new Map([[58, common]]));
+    const state = { ...createSourceEventState(), variables: { "926": 3 },
+      inventory: { BRASACANDENTE: 1, POLVOBRILLANTE: 1 } };
+
+    const result = resolveEventFlow(rock, [0, 0], state, 54, 2);
+
+    expect(result).toMatchObject({ complete: true, pendingChoice: null, blockedReason: null,
+      consumedChoices: 2 });
+    expect(result.page.commands.map((entry) => entry.kind)).toEqual([
+      "show-text", "remove-item", "remove-item", "grant-item", "remove-item",
+      "set-self-switch", "request-random-encounter",
+    ]);
+  });
+
+  it("does not let a legacy numeric outfit assignment block the avatar-profile presentation", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "$Trainer.outfit=7" }),
+    ]), [], createSourceEventState(), 336, 10);
+
+    expect(result).toMatchObject({ complete: true, blockedReason: null });
+    expect(result.page.commands[0]).toMatchObject({ kind: "runtime-noop",
+      data: { policy: "AVATAR_PROFILE_PRESENTATION" } });
   });
 
   it.each([

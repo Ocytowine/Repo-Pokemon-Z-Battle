@@ -107,7 +107,8 @@ import { isSourceItemDiscardable } from "./source-item-actions.js";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
   shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
+  sourceEventUsesTransientErase, sourceStateWithHostStory, sourceStateWithLocalStory,
+  sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "./source-coop-policy.js";
 import { isSourceFacingFishableTerrain, isSourceSurfableTerrain, loadSourceMovementTestOverride,
   persistSourceMovementTestOverride,
@@ -453,14 +454,16 @@ function checkSourceWildEncounter(): boolean {
 }
 
 function startSourceRandomTableEncounter(method: SourceEncounterMethod,
-  onComplete: (won: boolean) => void): boolean {
+  onComplete: (won: boolean) => void, chancePercent = 100): boolean {
   if (importedAssets === null || sourceEventState.pendingEncounter !== null
     || sourceEventState.party.members.length === 0) return false;
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
-  const encounter = rollEncounterForMethod(importedAssets.encounter, method, rng);
+  const triggered = chancePercent >= 100 || rng.nextInt(100) < chancePercent;
+  const encounter = triggered ? rollEncounterForMethod(importedAssets.encounter, method, rng) : null;
   sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot(),
     pendingEncounter: encounter === null ? null : { ...encounter,
-      method: method === "Cave" ? "cave" : method.endsWith("Rod") ? "fishing" : "land",
+      method: method === "Cave" ? "cave" : method === "RockSmash" ? "rock-smash"
+        : method.endsWith("Rod") ? "fishing" : "land",
       victorySwitches: {}, escapable: true } };
   persistSourceEventState();
   return encounter !== null && sourceBattles.startPendingEncounter(onComplete);
@@ -585,10 +588,8 @@ function hiddenSourceEventIds(): ReadonlySet<number> {
   if (!isNetworkGuest() || networkSourceWorld?.mapId !== importedAssets.map.id) return hidden;
   const authoritativeActors = new Set(networkSourceWorld.actors.map((actor) => actor.eventId));
   for (const event of importedAssets.events) {
-    const transientEncounter = event.pages.some((page) => page.commands.some((command) =>
-      command.kind === "ruby-script" && typeof command.data.source === "string"
-      && /^(?:Kernel\.)?pbEncounter\(EncounterTypes::/u.test(command.data.source.trim())));
-    if (transientEncounter && !authoritativeActors.has(event.id)) hidden.add(event.id);
+    const transientWorldEvent = event.pages.some(sourceEventUsesTransientErase);
+    if (transientWorldEvent && !authoritativeActors.has(event.id)) hidden.add(event.id);
   }
   return hidden;
 }

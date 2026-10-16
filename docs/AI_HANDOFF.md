@@ -3620,3 +3620,38 @@ La Pêche reste un raccourci contextuel : son bouton n'apparaît que face à une
 zone pêchable et hors mouvement. Le Miroir et Chevroum sont des raccourcis
 persistants : ils restent visibles et utilisables pendant la marche ; une scène
 qui interdit leur activation les désactive temporairement sans retirer leur bouton.
+
+## Rochers Éclate-Roc et événements communs — 2026-10-16
+
+Le prochain lot de terrain reprend la mécanique réellement employée par Pokémon Z,
+pas une CS Coupe inventée. Les 78 pages de rochers trouvées sur les cartes source
+appellent l'événement commun `TenerGolpeRoca` : le joueur peut fabriquer une dose
+de `POLVOEXPLOSIVO` avec une `BRASACANDENTE` et une `POLVOBRILLANTE` lorsque le
+niveau d'Alchimie le permet, puis choisir de la consommer pour libérer le passage.
+Les textes et choix de l'événement commun utilisent le catalogue français de
+contexte 0, désormais fusionné avec celui de la carte.
+
+`source-common-events.ts` développe génériquement les commandes
+`call-common-event` avant la résolution et l'audit de scène, avec protection contre
+les cycles et la profondeur excessive. `source-event-flow.ts` projette les
+mutations d'inventaire déjà retenues au sein du même échange : une poudre fabriquée
+peut donc être reconnue par la condition suivante sans modifier prématurément la
+sauvegarde. Les hooks `pbEraseThisEvent` et `pbRockSmashRandomEncounter` deviennent
+respectivement `erase-event` et une rencontre `RockSmash` optionnelle à 25 %.
+La distribution v2.12 FR locale ne contient actuellement aucune table RockSmash ;
+dans ce cas le tirage reste silencieux comme la source et aucune rencontre n'est
+inventée. Les objets remis après certains rochers continuent par le pipeline
+générique du Sac.
+
+Autorité et Coop : la poudre, ses ingrédients et les objets reçus sont personnels.
+Sur une carte partagée, seul l'hôte exécute la mutation du rocher ; le self-switch
+rejoint l'histoire persistante de l'hôte et son rendu est répliqué. Les rares
+effacements `pbEraseThisEvent`, valables seulement jusqu'au rechargement de carte,
+sont déduits chez l'invité de la liste autoritaire des acteurs. Une reconnexion
+restaure donc les self-switches persistants et la room restaure les acteurs encore
+présents. En excursion, l'invité utilise le même noyau local. Le profil d'avatar
+web reste prioritaire sur les anciennes affectations numériques `$Trainer.outfit`.
+
+Tests : développement d'événements communs et détection des cycles, projection de
+fabrication, portage des deux hooks, traduction du contexte commun et effacement
+temporaire Coop.

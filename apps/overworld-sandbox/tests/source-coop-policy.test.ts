@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
   shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
-  sourceStateWithHostStory, sourceStateWithLocalStory, sourceWorldUpdateIsStaleDuringGuestExcursion }
+  sourceEventUsesTransientErase, sourceStateWithHostStory, sourceStateWithLocalStory,
+  sourceWorldUpdateIsStaleDuringGuestExcursion }
   from "../src/source-coop-policy.js";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
@@ -17,6 +18,20 @@ function page(kinds: readonly string[]): ImportedEventPage {
 }
 
 describe("guest source event policy", () => {
+  it("reconstructs erased rocks and roaming encounters from the authoritative actor list", () => {
+    const erasedRock = { ...page([]), commands: [
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "pbEraseThisEvent" } },
+    ] };
+    const roaming = { ...page([]), commands: [
+      { kind: "ruby-script", text: null, indent: 0,
+        data: { source: "Kernel.pbEncounter(EncounterTypes::Land)" } },
+    ] };
+
+    expect(sourceEventUsesTransientErase(erasedRock)).toBe(true);
+    expect(sourceEventUsesTransientErase(roaming)).toBe(true);
+    expect(sourceEventUsesTransientErase(page(["show-text"]))).toBe(false);
+  });
+
   it("keeps map interactions ahead of player challenges", () => {
     expect(sourceInteractionTarget(true, true)).toBe("event");
     expect(sourceInteractionTarget(true, false)).toBe("event");

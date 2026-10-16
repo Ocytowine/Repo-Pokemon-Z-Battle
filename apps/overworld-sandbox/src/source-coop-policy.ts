@@ -8,6 +8,14 @@ import { sourceVariablesWithPersonalPokeVial } from "./source-poke-vial.js";
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
 export type SourceInteractionTarget = "event" | "player" | null;
 
+/** Events erased only for the current map visit are reconstructed from the host actor snapshot. */
+export function sourceEventUsesTransientErase(page: ImportedEventPage): boolean {
+  return page.commands.some((command) => command.kind === "ruby-script"
+    && typeof command.data.source === "string"
+    && (/^(?:Kernel\.)?pbEncounter\(EncounterTypes::/u.test(command.data.source.trim())
+      || /^(?:Kernel\.)?pbEraseThisEvent$/u.test(command.data.source.trim())));
+}
+
 /**
  * Un joueur distant peut occuper la case devant un comptoir sans masquer le
  * PNJ place derriere. Le duel reste disponible lorsqu'aucun evenement de carte

@@ -127,6 +127,7 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
   let pendingChoice: PendingEventChoice | null = null;
   let blockedReason: string | null = null;
   const commands = page.commands;
+  const projectedInventory: Record<string, number> = { ...state.inventory };
 
   const walk = (start: number, end: number): boolean => {
     let index = start;
@@ -174,7 +175,7 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
           return false;
         }
         const otherwise = matchingIndex(commands, index + 1, conditionEnd, command.indent, new Set(["else"]));
-        const result = evaluateCondition(command, state, mapId, eventId, context);
+        const result = evaluateCondition(command, { ...state, inventory: projectedInventory }, mapId, eventId, context);
         if (result === null) {
           const deferred = portSourceRubyCondition(command);
           if (deferred === null) {
@@ -221,6 +222,15 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         return false;
       }
       output.push(executable);
+      if ((executable.kind === "grant-item" || executable.kind === "remove-item")
+        && typeof executable.data.itemId === "string" && Number.isSafeInteger(executable.data.quantity)) {
+        const itemId = executable.data.itemId;
+        const quantity = executable.data.quantity as number;
+        const current = projectedInventory[itemId] ?? 0;
+        const next = executable.kind === "grant-item" ? current + quantity : current - quantity;
+        if (next <= 0) delete projectedInventory[itemId];
+        else projectedInventory[itemId] = next;
+      }
       index += consumedCommands;
     }
     return true;
