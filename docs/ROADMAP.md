@@ -1035,11 +1035,13 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
-- [ ] terminer la Méga-Évolution ; les lots 1 et 2 extraient automatiquement les
-  106 espèces/114 formes, fournissent l'éligibilité partagée solo/Coop,
-  transportent les gemmes dans l'état de combat et portent l'intention avec la
-  capacité choisie. Restent la consommation autoritaire de l'usage unique, la
-  mutation temporaire des caractéristiques et la présentation source.
+- [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
+  106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
+  autoritairement forme, caractéristiques, types et talent avec un usage par
+  propriétaire en solo, PvP et Coop. Les deux animations communes, leurs plans,
+  sons et changement de sprite sont raccordés. Restent les effets des
+  talents/climats que le moteur général ne sait pas encore rendre et la validation
+  manuelle complète des variantes de forme.
 
 Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
 passable des cartes d'introduction avant trois choix issus des sources (difficulte,

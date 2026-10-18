@@ -27,6 +27,11 @@ describe("source Mega Evolution catalog", () => {
     expect(sourceMegaActivationAvailable(catalog, { BRAZALESPIRITUAL: 1 }, { "34": true })).toBe(false);
   });
 
+  it("stays unavailable while the source catalog is loading", () => {
+    expect(sourceMegaActivationAvailable(null, { BRAZALESPIRITUAL: 1 }, {})).toBe(false);
+    expect(sourceMegaActivationAvailable(undefined, { BRAZALESPIRITUAL: 1 }, {})).toBe(false);
+  });
+
   it("rejects malformed source records", () => {
     expect(() => parseSourceMegaEvolutionCatalog({ ...sourceCatalog,
       records: [{ species: "VENUSAUR", heldItem: "VENUSAURITE", form: 0 }] }))

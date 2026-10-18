@@ -3849,10 +3849,83 @@ forme stricte `megaEvolution: true` et traverse le même contrat de protocole en
 solo et en room autoritaire. Les métadonnées de l'équipe et l'intention sont
 validées par le protocole ; aucune donnée de sauvegarde privée n'est répliquée.
 
-Dette volontaire du lot suivant : l'intention est transportée mais le moteur ne
-transforme pas encore le Pokémon. Il reste à enregistrer puis consommer l'unique
-usage par propriétaire côté autoritaire, appliquer temporairement forme,
-statistiques, types et talent avant la capacité, restaurer la forme à la fin du
-combat, apprendre à l'IA adverse à demander la transformation, puis porter les
-animations `MegaEvolution`/`MegaEvolution2`. Ne pas considérer le bouton seul
-comme une Méga-Évolution fonctionnelle.
+Ce lot ne transformait pas encore le Pokémon ; cette dette de résolution est
+désormais couverte par le lot 3 ci-dessous. Les animations communes restent à
+porter séparément.
+
+## Méga-Évolution — résolution autoritaire, lot 3 — 2026-10-17
+
+L'extracteur lit désormais, pour chacune des 114 branches, les statistiques de
+base, types et talent déclarés dans `Pokemon_MegaEvolution`. La préparation du
+combat recalcule les caractéristiques finales avec le niveau, les IV, les EV et
+la nature du Pokémon. Au moment de résoudre le tour, le noyau commun applique la
+forme avant le calcul de priorité et de dégâts, conserve les dégâts déjà subis
+comme le `calcStats` source, puis produit l'événement autoritaire `megaEvolved`.
+La présentation change immédiatement le sprite de forme et affiche le message ;
+les animations communes source restent le lot suivant.
+
+L'usage unique n'est pas attaché au camp mais au propriétaire. Le solo utilise
+un propriétaire par côté ; le PvP lie chaque camp à son joueur ; une composition
+Coop conserve l'identité du propriétaire de chaque Pokémon. Deux partenaires du
+même camp peuvent donc chacun Méga-Évoluer une fois, mais un même joueur ne peut
+pas transformer deux de ses Pokémon. Cet état est inclus dans le snapshot de
+combat, survit aux changements de Pokémon et à une participation Coop tardive.
+L'IA des Dresseurs utilise le même noyau et demande automatiquement sa
+Méga-Évolution lorsqu'une branche compatible est disponible.
+
+La transformation reste strictement temporaire : le règlement persistant ne
+recopie que PV, statut, PP, bonheur et objets pertinents depuis la projection de
+combat. Les statistiques, le talent et la forme Méga ne sont jamais inscrits dans
+la sauvegarde personnelle.
+
+Audit source : la branche `MAGEARNA:1` demande la forme 1, tandis que ses
+remplacements de statistiques et de talent sont conditionnés par `form >= 2`.
+Le catalogue signale cette incohérence dans `audit.fallbackCombatData` et reprend
+les données de base pour la forme 1, sans corriger arbitrairement le Ruby. La
+branche Groudon/GROUDONITE reste parallèlement indisponible faute d'objet source.
+
+Le déroulé visuel et sonore des animations communes est couvert par le lot 4
+ci-dessous. La dette restante concerne les effets des talents ou climats spéciaux
+qui ne sont pas encore pris en charge par le moteur de combat général.
+
+Correctif de chargement du 2026-10-17 : le premier rendu de l'application précède
+volontairement le chargement asynchrone des données source. Le calcul de
+disponibilité Méga accepte donc explicitement un catalogue absent et répond
+`false` jusqu'à son arrivée. Ne pas réintroduire dans `renderEncounter()` un accès
+direct à `importedAssets.megaEvolutions`, sous peine de bloquer l'écran initial et
+le chargement du profil actif.
+
+## Méga-Évolution — présentation source, lot 4 — 2026-10-17
+
+La présentation solo et Coop consomme désormais le même événement autoritaire
+`megaEvolved` et rejoue l'ordre observé dans `pbMegaEvolve` : message d'activation,
+`Common:MegaEvolution` sur l'ancienne forme, changement de sprite et de profil de
+combat, `Common:MegaEvolution2`, puis message final. Le lecteur commun restitue les
+cellules de l'animation, le fond mobile `ebMegaBg.png`, le flash avant-plan
+`PRAS- Flash FG.png`, les deux sons `PRSFX- Mega Evolution1/2` et le cri source
+ralenti. La cible d'une animation commune sans cible explicite est correctement
+ramenée sur son utilisateur, y compris pour un combattant adverse ou un second
+slot de combat double.
+
+L'extracteur conserve maintenant dans chaque timing de combat les coordonnées,
+l'opacité, la couleur et la durée des plans avant/arrière. Cette brique est
+générique et pourra servir aux autres animations `Common:*`; aucun frame Méga ni
+nom de ressource n'est codé dans le moteur de présentation. Les références audio
+sans extension sont résolues par le manifeste local afin d'éviter les 404.
+
+Correctif de rendu du 2026-10-18 : plusieurs transitions d'un même plan peuvent
+commencer à la même frame et ne modifier qu'une propriété chacune. Le lecteur
+doit alors composer leurs effets propriété par propriété, sans réappliquer les
+valeurs initiales des propriétés absentes. Ce défaut maintenait notamment
+`ebMegaBg.png` transparent : sa transition horizontale annulait à chaque frame
+la montée d'opacité du fond bleu ciel de la Méga-Évolution. Le fond mobile, son
+fondu et les autres plans de l'animation sont désormais cumulés correctement.
+
+## Cartes de l'équipe — identité et conditions — 2026-10-18
+
+La variante utilisée par l'onglet Équipe du menu regroupe désormais sur une même
+ligne le nom, le niveau mis en évidence et les seules icônes de type. Le statut et
+l'objet tenu occupent une seconde ligne bornée, avant les PV. Cette structure
+empêche ces informations optionnelles de repousser ou recouvrir les quatre cases
+de capacités. Le composant partagé conserve sa présentation historique dans le
+Ranch, la Pension et les sélections de combat grâce à l'option `teamLayout`.

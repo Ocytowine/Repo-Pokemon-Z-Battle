@@ -16,6 +16,7 @@ export interface SourcePokemonCardOptions {
   readonly heldItemName?: string | null;
   readonly compact?: boolean;
   readonly showGender?: boolean;
+  readonly teamLayout?: boolean;
 }
 
 function pokemonIconCycleDuration(entry: SourcePokemonCollectionEntry): number | null {
@@ -54,6 +55,7 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
   const selected = options.selected === true ? " selected" : "";
   const active = options.active === true ? " active" : "";
   const compact = options.compact === true ? " compact" : "";
+  const teamLayout = options.teamLayout === true ? " team-layout" : "";
   const attributes = element === "button"
     ? ` type="button" data-pokemon-id="${escapeHtml(entry.pokemon.id)}" aria-haspopup="dialog" aria-expanded="${options.selected === true}"` : "";
   const types = entry.types.map((type) => {
@@ -84,9 +86,12 @@ export function sourcePokemonCardHtml(entry: SourcePokemonCollectionEntry,
     : `<span class="source-pokemon-card-metrics">${options.highlightPotential === true
       ? `<b>Potentiel ${entry.potentialPower} · ${escapeHtml(sourcePokemonPowerTier(entry.potentialPower).label)}</b>` : ""}${options.highlightTraining === true
       ? `<b>IV ${sourcePokemonStarText(entry.ivStars)} · EV ${sourcePokemonStarText(entry.evStars)}</b>` : ""}</span>`;
-  return `<${element}${attributes} class="source-pokemon-card${selected}${active}${compact}">
+  const identity = options.teamLayout === true
+    ? `${collectionContext}<span class="source-pokemon-card-identity"><strong>${escapeHtml(entry.displayName)} ${gender}</strong><em class="source-pokemon-level">N.${entry.pokemon.level}</em><span class="source-pokemon-types">${types}</span></span><span class="source-pokemon-card-condition">${status}${heldItem}</span>${vitals}`
+    : `${collectionContext}<strong>${escapeHtml(entry.displayName)} ${gender} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span>${heldItem}${status}${vitals}`;
+  return `<${element}${attributes} class="source-pokemon-card${selected}${active}${compact}${teamLayout}">
     ${sourcePokemonIconHtml(entry)}
-    <span class="source-pokemon-card-copy">${collectionContext}<strong>${escapeHtml(entry.displayName)} ${gender} <em>N.${entry.pokemon.level}</em></strong><span class="source-pokemon-types">${types}</span>${heldItem}${status}${vitals}</span>
+    <span class="source-pokemon-card-copy">${identity}</span>
     <span class="source-pokemon-moves" aria-label="Capacités de ${escapeHtml(entry.displayName)}">${moves}</span>${metrics}
   </${element}>`;
 }

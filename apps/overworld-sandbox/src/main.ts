@@ -3879,7 +3879,7 @@ function renderEncounter(): void {
         && canCaptureSharedBattleTarget(networkBattle.participation, networkBattle.state,
           networkBattle.sourceContext.origin),
     escaped: networkBattle?.escaped === true,
-    megaEvolutionEnabled: sourceMegaActivationAvailable(importedAssets.megaEvolutions,
+    megaEvolutionEnabled: sourceMegaActivationAvailable(importedAssets?.megaEvolutions,
       sourceEventState.inventory, sourceEventState.switches),
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;

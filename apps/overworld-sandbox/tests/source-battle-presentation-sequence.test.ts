@@ -188,7 +188,7 @@ describe("source battle presentation sequence", () => {
       message: "Cœur de Coq de Passerouge l'empêche de perdre de la Défense !" })]);
   });
 
-  it("updates the rendered form and combat profile before announcing Mega Evolution", () => {
+  it("keeps both visual states around the authoritative Mega Evolution", () => {
     const hero = { ...battler("Dracaufeu", 15), appearance: { form: 0, shiny: false, gender: "male" as const },
       megaEvolution: { heldItem: "CHARIZARDITEX", form: 1, activationAvailable: true,
         types: ["FIRE", "DRAGON"], ability: "TOUGHCLAWS",
@@ -198,8 +198,12 @@ describe("source battle presentation sequence", () => {
       { type: "megaEvolved", side: "player", teamIndex: 0, pokemonId: hero.id,
         fromForm: 0, toForm: 1, heldItem: "CHARIZARDITEX" },
     ]);
-    expect(sequence).toEqual([expect.objectContaining({ kind: "status", message: "Dracaufeu a Méga-Évolué !",
-      state: { teams: { player: { members: [expect.objectContaining({ hp: 25, ability: "TOUGHCLAWS",
-        types: ["FIRE", "DRAGON"], appearance: { form: 1 } })] } } } })]);
+    expect(sequence).toHaveLength(1);
+    expect(sequence[0]).toMatchObject({ kind: "mega-evolution", side: "player", teamIndex: 0,
+      activationMessage: "Le lien avec son Dresseur déclenche la Méga-Évolution de Dracaufeu !",
+      message: "Dracaufeu a Méga-Évolué !",
+      beforeState: { teams: { player: { members: [{ appearance: { form: 0 } }] } } } });
+    expect(sequence[0]?.state.teams.player.members[0]).toMatchObject({ hp: 25, ability: "TOUGHCLAWS",
+      types: ["FIRE", "DRAGON"], appearance: { form: 1 } });
   });
 });

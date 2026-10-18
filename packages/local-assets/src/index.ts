@@ -89,7 +89,11 @@ export interface BattleAnimationRecord {
   readonly index: number; readonly name: string; readonly graphicPath: string;
   readonly hue: number; readonly position: number;
   readonly frames: readonly (readonly BattleAnimationCel[])[];
-  readonly timings: readonly { readonly frame: number; readonly type: number; readonly name: string; readonly volume: number; readonly pitch: number }[];
+  readonly timings: readonly { readonly frame: number; readonly type: number; readonly name: string;
+    readonly volume: number; readonly pitch: number; readonly x?: number | null; readonly y?: number | null;
+    readonly opacity?: number | null; readonly duration?: number;
+    readonly color?: { readonly red: number | null; readonly green: number | null;
+      readonly blue: number | null; readonly alpha: number | null } }[];
 }
 
 export interface BattleAnimationsManifest {

@@ -44,8 +44,8 @@ export function sourceMegaEvolutionForPokemon(catalog: SourceMegaEvolutionCatalo
     definition.species === species && definition.heldItem === heldItem);
 }
 
-export function sourceMegaActivationAvailable(catalog: SourceMegaEvolutionCatalog,
+export function sourceMegaActivationAvailable(catalog: SourceMegaEvolutionCatalog | null | undefined,
   inventory: Readonly<Record<string, number>>, switches: Readonly<Record<string, boolean>>): boolean {
-  return switches[String(catalog.disableSwitchId)] !== true
+  return catalog !== null && catalog !== undefined && switches[String(catalog.disableSwitchId)] !== true
     && catalog.activationItems.some((item) => (inventory[item] ?? 0) > 0);
 }

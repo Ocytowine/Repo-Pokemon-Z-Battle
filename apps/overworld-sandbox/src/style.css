@@ -137,7 +137,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-battle-stage.waiting-for-join .source-battle-sprite, .source-battle-stage.waiting-for-join .source-battle-hud, .source-battle-stage.waiting-for-join .source-player-ball { opacity: 0; }
 .source-battle-background, .source-stage-wash { position: absolute; inset: 0; width: 100%; height: 100%; }.source-battle-background { z-index: -2; object-fit: fill; }.source-stage-wash { z-index: -1; background: linear-gradient(180deg, #ffffff08, transparent 55%, #07101938); }
 .source-battle-base { position: absolute; z-index: 0; object-fit: contain; }.source-player-base { left: -16.6016%; top: 55.2083%; width: 83.2031%; height: 50%; }.source-enemy-base { left: 48.4375%; top: 24.4792%; width: 53.125%; height: 33.3333%; }
-.source-animation-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }.source-effects-back { z-index: 1; }.source-move-effects { z-index: 3; }.source-animation-canvas { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; image-rendering: pixelated; }
+.source-animation-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }.source-effects-back { z-index: 1; }.source-move-effects { z-index: 3; }.source-animation-canvas, .source-animation-plane { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0; image-rendering: pixelated; }.source-animation-plane { background-repeat: repeat; background-size: auto; }
 .source-capture-flash { position: absolute; display: block; width: 28%; aspect-ratio: 1; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #fff 0 11%, #d7faff 12% 25%, #6ee5ffff 26% 43%, #348dffcc 44% 61%, #1d5dff55 62% 72%, transparent 78%); box-shadow: 0 0 25px 8px #62dcffdd, 0 0 48px #2a82ff99, inset 0 0 18px 4px #fff; mix-blend-mode: screen; }
 .source-sendout-flash { position: absolute; z-index: 1; inset: 0; opacity: 0; background: #f8f8f8; pointer-events: none; }.source-battle-curtain { position: absolute; z-index: 30; inset: 0; display: none; opacity: 0; pointer-events: none; background: #050706; }.source-battle-curtain.active { display: block; }
 .source-battle-sprite { position: absolute; z-index: 2; display: grid; place-items: center; transform-origin: center bottom; transition: opacity .35s ease, transform .35s ease, filter .16s ease; }.source-battle-sprite canvas { width: 100%; height: 100%; border: 0; border-radius: 0; image-rendering: pixelated; filter: drop-shadow(0 12px 7px #0006); }.source-player-sprite { left: 15.625%; top: 58.59%; width: 18.75%; height: 25%; }.source-opponent-sprite { left: 65.625%; top: 18.75%; width: 18.75%; height: 25%; }
@@ -1195,6 +1195,82 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
   height: 100%;
   min-height: 0;
 }
+.source-team-grid > .source-pokemon-card.team-layout {
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 4px 7px;
+  overflow: hidden;
+  align-content: stretch;
+}
+.source-pokemon-card.team-layout .source-pokemon-card-copy {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto auto minmax(12px, auto) auto;
+  gap: 2px;
+  align-content: center;
+}
+.source-pokemon-card.team-layout .source-pokemon-card-identity {
+  display: flex;
+  min-width: 0;
+  gap: 4px;
+  align-items: center;
+}
+.source-pokemon-card.team-layout .source-pokemon-card-identity > strong {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1 1 auto;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-pokemon-card.team-layout .source-pokemon-level {
+  flex: 0 0 auto;
+  padding: 2px 5px;
+  color: #10263a;
+  border-radius: 99px;
+  background: linear-gradient(#dff5ff, #8fcfeb);
+  box-shadow: inset 0 0 0 1px #ffffff80;
+  font-size: 7px;
+  font-style: normal;
+  font-weight: 950;
+}
+.source-pokemon-card.team-layout .source-pokemon-types {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
+.source-pokemon-card.team-layout .source-pokemon-types span {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  padding: 1px;
+  place-items: center;
+  border: 1px solid #ffffff42;
+  border-radius: 50%;
+}
+.source-pokemon-card.team-layout .source-pokemon-types img { width: 10px; height: 10px; }
+.source-pokemon-card.team-layout .source-pokemon-types b {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.source-pokemon-card.team-layout .source-pokemon-card-condition {
+  display: flex;
+  min-width: 0;
+  min-height: 12px;
+  gap: 3px;
+  align-items: center;
+  overflow: hidden;
+}
+.source-pokemon-card.team-layout .source-pokemon-card-status { flex: 0 0 auto; }
+.source-pokemon-card.team-layout .source-pokemon-held-item {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+.source-pokemon-card.team-layout .source-pokemon-vitals em { font-size: 6px; }
+.source-pokemon-card.team-layout .source-pokemon-moves { align-self: end; }
 .source-team-empty-slot {
   position: relative;
   display: grid;

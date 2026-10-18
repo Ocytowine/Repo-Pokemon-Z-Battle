@@ -443,6 +443,7 @@ export class SourceMenuView {
     const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml(entry, {
       active: entry.teamIndex === model.eventState.party.activeIndex,
       selected: entry.pokemon.id === this.selectedTeamPokemonId,
+      teamLayout: true,
       heldItemName: entry.pokemon.heldItem === null ? null
         : model.assets.items.get(entry.pokemon.heldItem)?.name ?? entry.pokemon.heldItem,
     })).join("");

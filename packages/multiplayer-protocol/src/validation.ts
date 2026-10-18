@@ -161,17 +161,21 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !hasExactKeys(member.capture, ["rate", "baseSpeed", "weight"])
       || !safeInteger(member.capture.rate, 1, 255) || !safeInteger(member.capture.baseSpeed, 1, 999)
       || !safeInteger(member.capture.weight, 0, 999_999))) return false;
-    if (member.megaEvolution !== undefined && (!isRecord(member.megaEvolution)
-      || !hasExactKeys(member.megaEvolution, ["heldItem", "form", "stats", "types", "ability", "activationAvailable"])
-      || !SOURCE_IDENTIFIER.test(String(member.megaEvolution.heldItem))
-      || !safeInteger(member.megaEvolution.form, 1, 999) || !isRecord(member.megaEvolution.stats)
-      || !hasExactKeys(member.megaEvolution.stats, BATTLE_STATS)
-      || !BATTLE_STATS.every((stat) => safeInteger(member.megaEvolution.stats![stat], 1, 999_999))
-      || !Array.isArray(member.megaEvolution.types) || member.megaEvolution.types.length < 1
-      || member.megaEvolution.types.length > 2
-      || !member.megaEvolution.types.every((type) => SOURCE_IDENTIFIER.test(String(type)))
-      || !SOURCE_IDENTIFIER.test(String(member.megaEvolution.ability))
-      || typeof member.megaEvolution.activationAvailable !== "boolean")) return false;
+    const megaEvolution = member.megaEvolution;
+    if (megaEvolution !== undefined) {
+      if (!isRecord(megaEvolution)
+        || !hasExactKeys(megaEvolution, ["heldItem", "form", "stats", "types", "ability", "activationAvailable"])
+        || !SOURCE_IDENTIFIER.test(String(megaEvolution.heldItem))
+        || !safeInteger(megaEvolution.form, 1, 999) || !isRecord(megaEvolution.stats)
+        || !Array.isArray(megaEvolution.types) || megaEvolution.types.length < 1
+        || megaEvolution.types.length > 2
+        || !megaEvolution.types.every((type) => SOURCE_IDENTIFIER.test(String(type)))
+        || !SOURCE_IDENTIFIER.test(String(megaEvolution.ability))
+        || typeof megaEvolution.activationAvailable !== "boolean") return false;
+      const megaStats = megaEvolution.stats;
+      if (!hasExactKeys(megaStats, BATTLE_STATS)
+        || !BATTLE_STATS.every((stat) => safeInteger(megaStats[stat], 1, 999_999))) return false;
+    }
     const stats = member.stats;
     const stages = member.stages;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))

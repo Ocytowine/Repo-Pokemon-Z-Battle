@@ -71,6 +71,17 @@ describe("shared Pokemon card and contextual actions", () => {
     expect(sourcePokemonCardHtml(entry())).not.toContain("source-pokemon-held-item");
   });
 
+  it("groups the Team identity, level, types and conditions without changing moves", () => {
+    const held = { ...entry(), pokemon: { ...pokemon, heldItem: "LEFTOVERS" } };
+    const html = sourcePokemonCardHtml(held, { teamLayout: true, heldItemName: "Restes" });
+    expect(html).toContain("source-pokemon-card team-layout");
+    expect(html).toContain("source-pokemon-card-identity");
+    expect(html).toContain("source-pokemon-level");
+    expect(html).toContain("source-pokemon-card-condition");
+    expect(html).toContain("Restes");
+    expect(html).toContain("source-pokemon-moves");
+  });
+
   it("marks Ranch cards as compact without changing the shared Pokemon data", () => {
     const html = sourcePokemonCardHtml(entry("ranch"), { compact: true });
     expect(html).toContain("source-pokemon-card compact");

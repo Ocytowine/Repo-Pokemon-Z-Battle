@@ -17,6 +17,9 @@ export type SourceBattlePresentationStep =
   | { readonly kind: "message"; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "status"; readonly message: string; readonly state: TeamBattleState;
       readonly side?: BattleSide; readonly visual?: SourceBattleStatusVisual }
+  | { readonly kind: "mega-evolution"; readonly side: BattleSide; readonly teamIndex: number;
+      readonly activationMessage: string; readonly message: string;
+      readonly beforeState: TeamBattleState; readonly state: TeamBattleState }
   | { readonly kind: "faint"; readonly side: BattleSide; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "replacement"; readonly side: BattleSide; readonly message: string;
       readonly state: TeamBattleState }
@@ -145,9 +148,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         opponent: { ...resolved.teams.opponent, activeIndex: previousActive.opponent },
       } };
     } else if (event.type === "megaEvolved") {
+      const beforeState = state;
+      const before = state.teams[event.side].members[event.teamIndex];
       state = withMegaEvolution(state, event.side, event.teamIndex, event.toForm);
       const pokemon = state.teams[event.side].members[event.teamIndex];
-      message(`${pokemon?.name ?? "Le Pokémon"} a Méga-Évolué !`, "status");
+      const name = pokemon?.name ?? before?.name ?? "Le Pokémon";
+      steps.push({ kind: "mega-evolution", side: event.side, teamIndex: event.teamIndex,
+        activationMessage: `Le lien avec son Dresseur déclenche la Méga-Évolution de ${name} !`,
+        message: `${name} a Méga-Évolué !`, beforeState, state });
     } else if (event.type === "moveUsed") {
       const battler = state.teams[event.side].members[state.teams[event.side].activeIndex];
       const move = battler?.moves.find((slot) => slot.move.internalName === event.move)?.move;

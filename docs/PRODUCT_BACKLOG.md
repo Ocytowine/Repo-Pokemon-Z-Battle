@@ -502,9 +502,10 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### SOLO-MEGA-1 — Mega-Evolution
 
-- Priorite/statut : `P1` / lots 1 et 2 (catalogue, règle d'éligibilité, transport
-  des gemmes et intention de tour solo/Coop) réalisés le 2026-10-16 ; résolution
-  autoritaire, mutation de combat et présentation à faire.
+- Priorite/statut : `P1` / lots 1 à 4 réalisés au 2026-10-17 : catalogue,
+  éligibilité, transport, intention et transformation autoritaire avec usage
+  individuel en solo/PvP/Coop, puis présentation des deux animations communes,
+  plans et sons source. Effets moteur particuliers et validation manuelle à faire.
 - `prepare:local` extrait sans exécuter le Ruby 106 espèces et 114 couples
   Méga-Gemme/forme. Le contrat source exige `BRAZALESPIRITUAL`, respecte le switch
   global 34, autorise une seule Méga-Évolution par propriétaire et par combat et
@@ -512,7 +513,9 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - Le noyau commun d'éligibilité est partagé entre le futur adaptateur solo et la
   room autoritaire. La Méga-Gemme compatible est désormais projetée dans le
   combattant et `megaEvolution: true` voyage avec l'action de capacité, sans
-  muter la sauvegarde personnelle. La capacité spéciale évoquée dans l'ancienne note n'est pas
+  muter la sauvegarde personnelle. Le noyau applique désormais avant l'attaque
+  la forme, les statistiques recalculées, les types et le talent, tout en
+  conservant les dégâts subis. La capacité spéciale évoquée dans l'ancienne note n'est pas
   une condition de Pokémon Z 2.12 : la forme dépend de l'espèce et de la gemme
   tenue. `GROUDONITE` est référencée par le Ruby mais absente du catalogue des
   objets ; l'audit la conserve comme anomalie au lieu de créer un objet fictif.

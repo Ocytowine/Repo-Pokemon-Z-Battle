@@ -159,6 +159,49 @@ export function selectSourceCommonBattleAnimation(manifest: BattleAnimationsMani
   return manifest.animations.find((entry) => entry.name === name) ?? null;
 }
 
+export interface SourceBattleAnimationPlaneState {
+  readonly path: string | null;
+  readonly x: number;
+  readonly y: number;
+  readonly opacity: number;
+}
+
+/** Replays the source plane timings at a given frame. Types 1/2 address the
+ * background plane and 3/4 the foreground plane. Keeping this data-driven also
+ * covers future Common animations without hard-coding their frame numbers. */
+export function sourceBattleAnimationPlaneState(animation: BattleAnimationRecord, frame: number,
+  plane: "background" | "foreground"): SourceBattleAnimationPlaneState {
+  const setType = plane === "background" ? 1 : 3;
+  const changeType = plane === "background" ? 2 : 4;
+  let state: SourceBattleAnimationPlaneState = { path: null, x: 0, y: 0, opacity: 0 };
+  const active: { readonly timing: BattleAnimationRecord["timings"][number];
+    readonly from: SourceBattleAnimationPlaneState }[] = [];
+  for (let current = 0; current <= frame; current += 1) {
+    for (const timing of animation.timings) {
+      if (timing.frame !== current) continue;
+      if (timing.type === setType) {
+        state = { path: timing.name === "" ? null : `Graphics/Animations/${timing.name}`,
+          x: timing.x ?? 0, y: timing.y ?? 0, opacity: timing.opacity ?? 0 };
+        active.splice(0);
+      } else if (timing.type === changeType) active.push({ timing, from: { ...state } });
+    }
+    for (const transition of active) {
+      const duration = Math.max(1, transition.timing.duration ?? 5);
+      const progress = Math.min(1, Math.max(0, (current - transition.timing.frame) / duration));
+      const interpolate = (from: number, to: number | null | undefined): number =>
+        to === null || to === undefined ? from : from + (to - from) * progress;
+      state = { ...state,
+        x: transition.timing.x === null || transition.timing.x === undefined ? state.x
+          : interpolate(transition.from.x, transition.timing.x),
+        y: transition.timing.y === null || transition.timing.y === undefined ? state.y
+          : interpolate(transition.from.y, transition.timing.y),
+        opacity: transition.timing.opacity === null || transition.timing.opacity === undefined ? state.opacity
+          : interpolate(transition.from.opacity, transition.timing.opacity) };
+    }
+  }
+  return state;
+}
+
 export interface SourceBattleAudio {
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
@@ -583,6 +626,15 @@ export class SourceBattleVisuals {
             ? Promise.resolve() : this.playStatusVisual(step.side, step.visual, step.state),
           readableMessageDelay(850),
         ]);
+      } else if (step.kind === "mega-evolution") {
+        this.message(step.activationMessage);
+        await readableMessageDelay(850);
+        await this.render(step.beforeState, this.#battleback);
+        await this.playCommonSourceAnimation(step.side, "Common:MegaEvolution", stepSlot, true);
+        await this.render(step.state, this.#battleback);
+        await this.playCommonSourceAnimation(step.side, "Common:MegaEvolution2", stepSlot, true);
+        this.message(step.message);
+        await readableMessageDelay(900);
       } else if (step.kind === "faint") {
         this.updateHud(step.state);
         this.message(step.message);
@@ -1258,17 +1310,18 @@ export class SourceBattleVisuals {
     return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse);
   }
 
-  private async playCommonSourceAnimation(side: BattleSide, name: string): Promise<boolean> {
+  private async playCommonSourceAnimation(side: BattleSide, name: string, activeSlot = 0,
+    targetIsUser = false): Promise<boolean> {
     const manifests = await this.manifests();
     const sourceAnimations = manifests.animations;
     if (sourceAnimations === undefined) return false;
     const animation = selectSourceCommonBattleAnimation(sourceAnimations, name);
     return animation === null ? false
-      : this.playSourceAnimationRecord(side, animation, false, side === "opponent");
+      : this.playSourceAnimationRecord(side, animation, false, side === "opponent", activeSlot, targetIsUser);
   }
 
   private async playSourceAnimationRecord(side: BattleSide, animation: BattleAnimationRecord,
-    explicitOpponent: boolean, reverse: boolean): Promise<boolean> {
+    explicitOpponent: boolean, reverse: boolean, activeSlot = 0, targetIsUser = false): Promise<boolean> {
     const sourceAnimations = this.#manifests?.animations;
     if (sourceAnimations === undefined) return false;
     const front = document.getElementById("source-move-effects");
@@ -1283,13 +1336,20 @@ export class SourceBattleVisuals {
       canvas.height = sourceAnimations.coordinateSystem.height;
       canvas.className = "source-animation-canvas";
       const backCanvas = canvas.cloneNode(false) as HTMLCanvasElement;
-      front.replaceChildren(canvas);
-      back.replaceChildren(backCanvas);
+      const backgroundPlane = document.createElement("div");
+      backgroundPlane.className = "source-animation-plane";
+      const foregroundPlane = backgroundPlane.cloneNode(false) as HTMLDivElement;
+      front.replaceChildren(canvas, foregroundPlane);
+      back.replaceChildren(backgroundPlane, backCanvas);
       const context = canvas.getContext("2d");
       const backContext = backCanvas.getContext("2d");
       for (const [frameIndex, frame] of animation.frames.entries()) {
-        this.playSourceTimings(animation, frameIndex);
-        this.transformBattlers(frame, side, explicitOpponent, reverse);
+        this.playSourceTimings(animation, frameIndex, side, activeSlot);
+        this.applyAnimationPlane(backgroundPlane,
+          sourceBattleAnimationPlaneState(animation, frameIndex, "background"));
+        this.applyAnimationPlane(foregroundPlane,
+          sourceBattleAnimationPlaneState(animation, frameIndex, "foreground"));
+        this.transformBattlers(frame, side, explicitOpponent, reverse, activeSlot, targetIsUser);
         this.drawSourceFrame(backContext, image, frame, reverse, false);
         this.drawSourceFrame(context, image, frame, reverse, true);
         await delay(50);
@@ -1330,22 +1390,32 @@ export class SourceBattleVisuals {
   }
 
   private transformBattlers(frame: readonly BattleAnimationCel[], attacker: BattleSide,
-    explicitOpponent: boolean, reverse: boolean): void {
+    explicitOpponent: boolean, reverse: boolean, activeSlot = 0, targetIsUser = false): void {
     const userSide: BattleSide = explicitOpponent ? (attacker === "player" ? "opponent" : "player") : attacker;
     const targetSide: BattleSide = userSide === "player" ? "opponent" : "player";
     const stageWidth = document.getElementById("source-battle-stage")?.getBoundingClientRect().width ?? 512;
     for (const cel of frame) {
       if (cel.pattern !== -1 && cel.pattern !== -2) continue;
-      const side = cel.pattern === -1 ? userSide : targetSide;
+      const side = cel.pattern === -1 || targetIsUser ? userSide : targetSide;
       const reference = transformBattleAnimationPoint(cel.pattern === -1 ? 128 : 384, cel.pattern === -1 ? 224 : 96, reverse);
       const point = transformBattleAnimationPoint(cel.x, cel.y, reverse);
-      const sprite = document.getElementById(`source-${side}-sprite`);
+      const slot = side === userSide ? activeSlot : 0;
+      const sprite = document.getElementById(`source-${side}-sprite${slot === 0 ? "" : `-${slot + 1}`}`);
       if (sprite === null) continue;
       sprite.style.translate = `${((point.x - reference.x) / 512) * stageWidth}px ${((point.y - reference.y) / 384) * stageWidth * 0.75}px`;
       sprite.style.rotate = `${reverse ? -cel.angle : cel.angle}deg`;
       sprite.style.scale = `${(cel.zoomX / 100) * (cel.mirror ? -1 : 1)} ${cel.zoomY / 100}`;
       sprite.style.opacity = String(cel.opacity / 255);
     }
+  }
+
+  private applyAnimationPlane(element: HTMLElement, state: SourceBattleAnimationPlaneState): void {
+    const width = element.parentElement?.clientWidth ?? 512;
+    const height = element.parentElement?.clientHeight ?? 384;
+    element.style.backgroundImage = state.path === null ? "none" : `url("${sourceUrl(state.path)}")`;
+    element.style.backgroundSize = `${width}px ${height}px`;
+    element.style.backgroundPosition = `${(-state.x / 512) * width}px ${(-state.y / 384) * height}px`;
+    element.style.opacity = String(Math.min(1, Math.max(0, state.opacity / 255)));
   }
 
   private resetBattlerTransforms(): void {
@@ -1360,14 +1430,15 @@ export class SourceBattleVisuals {
     }
   }
 
-  private async playBattlerCry(battler: BattlerState | undefined): Promise<void> {
+  private async playBattlerCry(battler: BattlerState | undefined, volume = 0.8,
+    playbackRate = 1): Promise<void> {
     if (battler === undefined) return;
     const manifests = await this.manifests().catch(() => null);
     const record = manifests?.pokemon.records.find((candidate) => candidate.internalName === battler.species);
     const cry = record === undefined ? null : resolvePokemonAsset(record, { kind: "cry",
       form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
       female: battler.appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
-    if (cry !== null) this.playAudio(cry, { volume: 0.8, oneShot: true });
+    if (cry !== null) this.playAudio(cry, { volume, playbackRate, oneShot: true });
   }
 
   private async playStatusVisual(side: BattleSide, visual: SourceBattleStatusVisual,
@@ -1637,12 +1708,24 @@ export class SourceBattleVisuals {
     await readableMessageDelay(850);
   }
 
-  private playSourceTimings(animation: BattleAnimationRecord, frame: number): void {
+  private playSourceTimings(animation: BattleAnimationRecord, frame: number,
+    side: BattleSide, activeSlot: number): void {
     for (const timing of animation.timings) {
-      if (timing.frame !== frame || timing.type !== 0 || timing.name.length === 0) continue;
-      this.playAudio(`Audio/SE/${timing.name}`, { oneShot: true,
-        volume: Math.min(1, Math.max(0, timing.volume / 100)),
-        playbackRate: Math.min(4, Math.max(0.25, timing.pitch / 100)) });
+      if (timing.frame !== frame || timing.type !== 0) continue;
+      const volume = Math.min(1, Math.max(0, timing.volume / 100));
+      const playbackRate = Math.min(4, Math.max(0.25, timing.pitch / 100));
+      if (timing.name.length > 0) {
+        const requested = `Audio/SE/${timing.name}`;
+        const assets = this.#manifests?.assets;
+        const path = assets === undefined ? requested : /\.[a-z0-9]+$/iu.test(timing.name)
+          ? availableAudio(assets, requested) ?? requested
+          : availableAudioStem(assets, requested);
+        if (path !== null) this.playAudio(path, { oneShot: true, volume, playbackRate });
+      } else {
+        const team = this.#renderedState?.teams[side];
+        const index = team === undefined ? undefined : (team.activeIndices ?? [team.activeIndex])[activeSlot];
+        void this.playBattlerCry(index === undefined ? undefined : team?.members[index], volume, playbackRate);
+      }
     }
   }
 
