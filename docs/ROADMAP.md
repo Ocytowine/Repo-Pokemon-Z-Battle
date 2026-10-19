@@ -1044,6 +1044,11 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   alerte et `map:56` ne conserve que `FAINTATTACK`, réellement absent de
   `move2anim.dat` et rendu par le fallback prévu. Reste uniquement la recette
   manuelle solo/hôte/invité/reconnexion avant de cocher le lot.
+- [ ] valider manuellement le combat narratif de Núbila à la Clairière Collinaire
+  (Map046/EV020). Le blocage de construction est corrigé : index de talent caché
+  Essentials, Acidarmure, Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii sont
+  portés dans le noyau partagé. L'audit ciblé ne conserve que l'animation source
+  absente de `LUZDECADENTE`, couverte par le fallback prévu.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les

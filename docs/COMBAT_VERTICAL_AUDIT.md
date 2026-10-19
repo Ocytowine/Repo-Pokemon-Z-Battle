@@ -244,3 +244,13 @@ aucune correspondance dans `move2anim.dat` : le fallback reste volontairement
 actif conformément à la règle d'import, sans animation inventée. Le code du lot
 est terminé ; la fermeture fonctionnelle attend encore la recette manuelle des
 cinq Dresseurs et rencontres en solo, hôte, invité puis après reconnexion.
+
+## Correctif transversal — Clairière Collinaire, Map046
+
+Le combat narratif contre `NUBILA1:Núbila:0` dispose maintenant de toutes ses
+dépendances bloquantes : convention Essentials des index de talents, Acidarmure,
+Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii/Gloutonnerie. Le test du pont
+source reconstruit l'équipe réelle de trois Pokémon. Son audit ciblé ne conserve
+que l'animation de `LUZDECADENTE`, absente de la table source et donc rendue par
+le fallback. Une recette manuelle du déclenchement et de la reprise de scène sur
+Map046 reste requise.

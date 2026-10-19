@@ -628,6 +628,7 @@ describe("ability conformance regressions", () => {
   it("keeps an explicit audit entry for every ability advertised by the battle core", () => {
     const audited: Record<(typeof IMPLEMENTED_BATTLE_ABILITIES)[number], string> = {
       ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type attack bonus", AERILATE: "normal-to-flying conversion",
+      ALQUIMIAVIL: "double opposing poison damage",
       BATTLEARMOR: "critical immunity",
       BIGPECKS: "defense drop immunity", BLAZE: "low HP fire power", CHLOROPHYLL: "sun speed",
       COMPOUNDEYES: "accuracy multiplier",
@@ -636,7 +637,8 @@ describe("ability conformance regressions", () => {
       COMPETITIVE: "opponent stat-drop special attack boost",
       FILTER: "super-effective damage reduction", FLAMEBODY: "contact burn", FLORACION: "final grass damage",
       GLUTTONY: "pinch berry threshold", GOOEY: "contact speed drop", GRASSYSURGE: "entry grassy terrain",
-      GUTS: "status attack", HUGEPOWER: "physical attack", IMMUNITY: "poison immunity", IMPOSTER: "entry transformation",
+      GUTS: "status attack", HEATPROOF: "fire damage reduction", HUGEPOWER: "physical attack",
+      IMMUNITY: "poison immunity", IMPOSTER: "entry transformation",
       INNERFOCUS: "flinch immunity", INTIMIDATE: "entry attack drop", KEENEYE: "accuracy and evasion",
       IRONFIST: "punch move power", LEVITATE: "ground immunity", LIQUIDVOICE: "source normal-to-water conversion",
       LEAFGUARD: "sun status immunity", MAGICGUARD: "indirect damage", MEGALAUNCHER: "pulse move power",

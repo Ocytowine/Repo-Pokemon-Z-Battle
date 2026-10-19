@@ -4290,3 +4290,28 @@ signalée avec le fallback visuel, jamais être masquée ou inventée. Les tests
 build du monorepo passent. Le lot est terminé côté code mais ne doit être coché
 comme fermé qu'après validation manuelle des cinq Dresseurs/rencontres en solo,
 hôte, invité et après reconnexion.
+
+## Clairière Collinaire — combat narratif de Núbila — 2026-10-19
+
+Le combat de Map046/EV020 atteignait bien `request-trainer-battle`, mais la
+construction de l'équipe de `NUBILA1:Núbila:0` était refusée avant l'ouverture du
+combat. Deux causes se cumulaient : l'index de talent source suivait la convention
+Essentials (slots normaux 0/1, talents cachés à partir de 2), tandis que le pont
+runtime décalait les talents cachés selon le nombre réel de talents normaux ; puis
+plusieurs dépendances tactiques de l'équipe n'étaient pas encore portées.
+
+Le pont interprète désormais correctement le slot caché `2`, même lorsqu'une
+espèce ne possède qu'un seul talent normal. Le noyau partagé porte Acidarmure
+(`02F`, Défense +2), Gyroballe (`08D`, puissance issue du rapport des Vitesses),
+Ignifugé (`HEATPROOF`, dégâts Feu divisés par deux), Alchimie Vil
+(`ALQUIMIAVIL`, dégâts de poison adverses doublés) et la Baie Lichii, avec le
+seuil à la moitié des PV sous Gloutonnerie. Ces états et événements utilisent le
+même contrat en solo et dans la room autoritaire.
+
+Un test d'intégration reconstruit les trois Pokémon et l'inventaire exacts de
+Núbila afin d'empêcher toute régression du déclenchement. Après `prepare:local`,
+`audit:combat -- --scope trainer:NUBILA1:Núbila:0` ne conserve que
+`LUZDECADENTE · not-mapped` : cette absence vient de `move2anim.dat`, n'empêche
+pas le combat et doit employer le fallback visuel existant sans animation
+inventée. La reprise narrative doit être validée manuellement sur Map046, puis
+en hôte et invité si la scène est jouée en Coop.

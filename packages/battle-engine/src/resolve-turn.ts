@@ -127,6 +127,7 @@ function statChangeEffect(move: BattleMove): StatChangeEffect | null {
     case "01F": return { target: "self", stat: "speed", delta: 1 };
     case "022": return { target: "self", stat: "evasion", delta: 1 };
     case "020": return { target: "self", stat: "specialAttack", delta: 1 };
+    case "02F": return { target: "self", stat: "defense", delta: 2 };
     case "030": return { target: "self", stat: "speed", delta: 2 };
     case "033": return { target: "self", stat: "specialDefense", delta: 2 };
     case "034": return { target: "self", stat: "evasion", delta: 2 };
@@ -667,11 +668,12 @@ function applyResidualStatus(
     const nextStatus = status.kind === "poison" && status.toxicCounter !== null
       ? { kind: "poison" as const, toxicCounter: Math.min(15, status.toxicCounter + 1) }
       : status;
-    const rawDamage = nextStatus.kind === "burn" || nextStatus.kind === "frozen"
+    let rawDamage = nextStatus.kind === "burn" || nextStatus.kind === "frozen"
       ? Math.floor(battler.stats.maxHp / 16)
       : nextStatus.toxicCounter === null
         ? Math.floor(battler.stats.maxHp / 12)
         : Math.floor((battler.stats.maxHp * nextStatus.toxicCounter) / 16);
+    if (nextStatus.kind === "poison" && battlers[opponentOf(side)].ability === "ALQUIMIAVIL") rawDamage *= 2;
     const amount = Math.min(battler.hp, Math.max(1, rawDamage));
     const hp = battler.hp - amount;
     battlers[side] = { ...battler, hp, majorStatus: nextStatus };
@@ -706,6 +708,17 @@ export function resolveBattlePassiveEndOfTurn(battler: BattlerState, side: Battl
       next = { ...next, hp: next.hp + amount, heldItem: null };
       events.push({ type: "itemActivated", side, item: "ORANBERRY", effect: "heal", amount, hp: next.hp });
       events.push({ type: "heldItemConsumed", side, item: "ORANBERRY", effect: "heal", hp: next.hp });
+      next = applyCheekPouch(next, side, events);
+    }
+    const liechiThreshold = next.ability === "GLUTTONY" ? Math.floor(next.stats.maxHp / 2)
+      : Math.floor(next.stats.maxHp / 4);
+    if (next.heldItem === "LIECHIBERRY" && next.hp <= liechiThreshold && next.stages.attack < 6) {
+      const delta = next.ability === "SIMPLE" ? 2 : 1;
+      const stage = Math.min(6, next.stages.attack + delta);
+      next = { ...next, heldItem: null, stages: { ...next.stages, attack: stage } };
+      events.push({ type: "itemActivated", side, item: "LIECHIBERRY", effect: "boost", amount: 0, hp: next.hp });
+      events.push({ type: "heldItemConsumed", side, item: "LIECHIBERRY", effect: "boost", hp: next.hp });
+      events.push({ type: "statStageChanged", source: side, target: side, stat: "attack", delta, stage });
       next = applyCheekPouch(next, side, events);
     }
     const heals = next.heldItem === "LEFTOVERS"
@@ -1054,7 +1067,7 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       lightScreen: effects.sides[actualTargetSide].lightScreenTurns > 0,
       luckyChant: effects.sides[actualTargetSide].luckyChantTurns > 0,
       mudSport: effects.mudSportTurns > 0,
-      waterSport: effects.waterSportTurns > 0 };
+      waterSport: effects.waterSportTurns > 0, weather: effects.weather };
     const assuranceMultiplier = slot.move.functionCode === "082"
       && (options.targetTookDamageThisTurn === true || damagedThisTurn.has(actualTargetSide)) ? 2 : 1;
     const roundMultiplier = slot.move.functionCode === "083" ? options.roundMultiplier ?? 1 : 1;
@@ -1228,11 +1241,12 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         item, move: slot.move.internalName });
     }
     if (damage > 0 && slot.move.functionCode === "0F4"
-      && (battlers[actualTargetSide].heldItem === "ORANBERRY" || battlers[actualTargetSide].heldItem === "PAYAPABERRY")) {
+      && (battlers[actualTargetSide].heldItem === "ORANBERRY" || battlers[actualTargetSide].heldItem === "PAYAPABERRY"
+        || battlers[actualTargetSide].heldItem === "LIECHIBERRY")) {
       if (battlers[actualTargetSide].ability === "STICKYHOLD" && !hasMoldBreaker(battlers[side])) {
         events.push({ type: "abilityActivated", side: actualTargetSide, ability: "STICKYHOLD", effect: "block-move" });
       } else {
-        const berry = battlers[actualTargetSide].heldItem as "ORANBERRY" | "PAYAPABERRY";
+        const berry = battlers[actualTargetSide].heldItem as "LIECHIBERRY" | "ORANBERRY" | "PAYAPABERRY";
         battlers[actualTargetSide] = { ...battlers[actualTargetSide], heldItem: null };
         events.push({ type: "heldItemConsumed", side: actualTargetSide, item: berry, effect: "eaten", hp: battlers[actualTargetSide].hp });
         if (berry === "ORANBERRY" && battlers[side].hp > 0) {
@@ -1241,6 +1255,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
           battlers[side] = { ...eater, hp: eater.hp + amount };
           if (amount > 0) events.push({ type: "hpRestored", side, source: "move", move: slot.move.internalName,
             amount, hp: eater.hp + amount });
+        }
+        if (berry === "LIECHIBERRY" && battlers[side].hp > 0) {
+          applyStatChange(side, actualTargetSide, { target: "self", stat: "attack", delta: 1 }, battlers, events);
         }
         battlers[side] = applyCheekPouch(battlers[side], side, events);
       }

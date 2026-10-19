@@ -187,6 +187,48 @@ describe("source encounter bridge", () => {
       ability: "MOODY" });
   });
 
+  it("builds Nubila's narrative team with Essentials hidden-ability slots", () => {
+    const species = catalog.pokemon[0]!;
+    const nubilaCatalog: PlayerCreationCatalog = {
+      ...catalog,
+      pokemon: [
+        ...catalog.pokemon,
+        { ...species, internalName: "WEEPINBELL", name: "Boustiflor", types: ["GRASS", "POISON"],
+          abilities: ["CHLOROPHYLL"], hiddenAbilities: ["GLUTTONY"] },
+        { ...species, internalName: "BRONZOR", name: "Archéomire", types: ["STEEL", "PSYCHIC"],
+          abilities: ["LEVITATE", "HEATPROOF"] },
+        { ...species, internalName: "DUOSION", name: "Méios", types: ["PSYCHIC"],
+          abilities: ["ALQUIMIAVIL", "CORROSION"] },
+      ],
+      moves: [
+        ...catalog.moves,
+        { ...tackle, id: 2, internalName: "ACIDARMOR", name: "Acidarmure", functionCode: "02F", power: 0,
+          category: "Status", pp: 20 },
+        { ...tackle, id: 3, internalName: "GYROBALL", name: "Gyroballe", functionCode: "08D", type: "STEEL",
+          power: 1, pp: 5 },
+        { ...tackle, id: 4, internalName: "LUZDECADENTE", name: "Lumière Décadente", functionCode: "159",
+          type: "PSYCHIC", power: 65, category: "Special", pp: 10 },
+      ],
+    };
+    const party = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 18, nubilaCatalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "NUBILA1", name: "Núbila", version: 0,
+      items: ["SUPERPOTION"], pokemon: [
+        { species: "WEEPINBELL", level: 18, heldItem: "LIECHIBERRY", abilityIndex: 2,
+          moves: ["TACKLE", null, null, null] },
+        { species: "BRONZOR", level: 18, abilityIndex: 1, moves: ["GYROBALL", null, null, null] },
+        { species: "DUOSION", level: 19, abilityIndex: 0,
+          moves: ["LUZDECADENTE", "ACIDARMOR", null, null] },
+      ] }, nubilaCatalog);
+
+    expect(battle.teams.opponent.items).toEqual(["SUPERPOTION"]);
+    expect(battle.teams.opponent.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ species: "WEEPINBELL", ability: "GLUTTONY", heldItem: "LIECHIBERRY" }),
+      expect.objectContaining({ species: "BRONZOR", ability: "HEATPROOF" }),
+      expect.objectContaining({ species: "DUOSION", ability: "ALQUIMIAVIL" }),
+    ]));
+  });
+
   it("preserves the source Trainer inventory in the authoritative battle state", () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
     const battle = createSourceTrainerBattle(party, { trainerType: "LIDER1", name: "Canola", version: 0,

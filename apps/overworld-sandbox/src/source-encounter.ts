@@ -90,11 +90,13 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     const species = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
     if (species === undefined) throw new Error(`Espèce de Dresseur absente du catalogue : ${member.species}.`);
     const abilityIndex = member.abilityIndex ?? null;
+    // Essentials keeps 0/1 for normal slots and starts hidden abilities at 2,
+    // even when the species declares only one normal ability.
     const ability = abilityIndex === null
       ? pokemon.ability
-      : abilityIndex < species.abilities.length
+      : abilityIndex < 2
         ? species.abilities[abilityIndex] ?? null
-        : species.hiddenAbilities?.[abilityIndex - species.abilities.length] ?? null;
+        : species.hiddenAbilities?.[abilityIndex - 2] ?? null;
     if (abilityIndex !== null && ability === null) {
       throw new Error(`Index de talent invalide pour ${member.species} : ${abilityIndex}.`);
     }

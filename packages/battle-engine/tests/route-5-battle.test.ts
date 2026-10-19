@@ -181,4 +181,47 @@ describe("Route 5 battle dependencies", () => {
     expect(() => resolveTeamTurn(state, { player: { kind: "item", itemId: "POTION", targetTeamIndex: 0 },
       opponent: { kind: "wait" } }, steadyRandom)).toThrow("embargo");
   });
+
+  it("covers the mechanics required by Núbila's narrative team", () => {
+    const acidArmor = move("ACIDARMOR", "02F", "Status");
+    const armored = usePlayerMove(battler("player", { moves: [{ move: acidArmor, pp: 40 }] }));
+    expect(armored.state.battlers.player.stages.defense).toBe(2);
+
+    const gyroBall = { ...move("GYROBALL", "08D", "Physical", 1), type: "STEEL" };
+    const slow = calculateDamage("player", battler("player", { stats: { maxHp: 160, attack: 80,
+      defense: 80, specialAttack: 80, specialDefense: 80, speed: 20 } }), battler("opponent", {
+      stats: { maxHp: 160, attack: 80, defense: 80, specialAttack: 80, specialDefense: 80, speed: 120 },
+    }), gyroBall, steadyRandom, []);
+    const fast = calculateDamage("player", battler("player", { stats: { maxHp: 160, attack: 80,
+      defense: 80, specialAttack: 80, specialDefense: 80, speed: 120 } }), battler("opponent", {
+      stats: { maxHp: 160, attack: 80, defense: 80, specialAttack: 80, specialDefense: 80, speed: 20 },
+    }), gyroBall, steadyRandom, []);
+    expect(slow).toBeGreaterThan(fast * 8);
+
+    const fireMove = { ...move("EMBER", "00A", "Special", 80), type: "FIRE" };
+    const normalDamage = calculateDamage("player", battler("player"), battler("opponent"), fireMove,
+      steadyRandom, []);
+    const heatproofDamage = calculateDamage("player", battler("player"),
+      battler("opponent", { ability: "HEATPROOF" }), fireMove, steadyRandom, []);
+    expect(heatproofDamage).toBeLessThanOrEqual(Math.ceil(normalDamage / 2));
+  });
+
+  it("applies Vile Alchemy poison damage and Gluttony's Liechi threshold", () => {
+    const poisoned = battler("player", { majorStatus: { kind: "poison", toxicCounter: null } });
+    const alchemist = battler("opponent", { ability: "ALQUIMIAVIL", stats: { maxHp: 160, attack: 1,
+      defense: 80, specialAttack: 1, specialDefense: 80, speed: 20 } });
+    const poisonResult = resolveTurn(battle(poisoned, alchemist), {
+      player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 },
+    }, steadyRandom);
+    expect(poisonResult.events).toContainEqual(expect.objectContaining({ type: "statusDamage",
+      side: "player", status: "poison", amount: 26 }));
+
+    const berryUser = battler("player", { hp: 79, ability: "GLUTTONY", heldItem: "LIECHIBERRY" });
+    const berryResult = resolveTurn(battle(berryUser, alchemist), {
+      player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 },
+    }, steadyRandom);
+    expect(berryResult.state.battlers.player).toMatchObject({ heldItem: null, stages: { attack: 1 } });
+    expect(berryResult.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      side: "player", item: "LIECHIBERRY" }));
+  });
 });

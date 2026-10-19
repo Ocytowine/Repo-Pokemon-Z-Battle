@@ -17,8 +17,8 @@ export interface BattleMove {
   readonly functionCode: "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "027" | "028" | "030"
-    | "02D" | "033" | "034" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04C" | "04D" | "04F"
-    | "064" | "069" | "06D" | "06F" | "077" | "07B" | "082" | "083" | "086" | "088" | "091" | "093" | "095" | "098" | "09A" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
+    | "02D" | "02F" | "033" | "034" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04C" | "04D" | "04F"
+    | "064" | "069" | "06D" | "06F" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
     | "0FA" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
@@ -33,9 +33,9 @@ export interface BattleMove {
   readonly targetCode?: string;
 }
 
-export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "AERILATE", "BATTLEARMOR", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "CHLOROPHYLL", "COMPOUNDEYES", "CORROSION",
+export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "AERILATE", "ALQUIMIAVIL", "BATTLEARMOR", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "CHLOROPHYLL", "COMPOUNDEYES", "CORROSION",
   "CONTRAGUARDIA", "DRYSKIN", "FILTER", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "INTIMIDATE",
-  "FLAMEBODY", "GLUTTONY", "GOOEY", "GRASSYSURGE", "IMMUNITY", "IMPOSTER", "IRONFIST", "KEENEYE", "LEAFGUARD", "LEVITATE", "LIQUIDVOICE", "MAGICGUARD", "MEGALAUNCHER", "MOLDBREAKER", "MULTISCALE", "NEUROFORCE", "NOGUARD", "OVERGROW", "OWNTEMPO", "PIELHELADA", "PIXILATE",
+  "FLAMEBODY", "GLUTTONY", "GOOEY", "GRASSYSURGE", "HEATPROOF", "IMMUNITY", "IMPOSTER", "IRONFIST", "KEENEYE", "LEAFGUARD", "LEVITATE", "LIQUIDVOICE", "MAGICGUARD", "MEGALAUNCHER", "MOLDBREAKER", "MULTISCALE", "NEUROFORCE", "NOGUARD", "OVERGROW", "OWNTEMPO", "PIELHELADA", "PIXILATE",
   "NATURALCURE", "PIELHERBACEA", "PRANKSTER", "PROTEAN", "PUREPOWER", "QUICKFEET", "REGENERATOR", "RIVALRY", "SAPSIPPER", "SERENEGRACE", "SHELLARMOR", "SHEDSKIN", "SHIELDDUST",
   "RATTLED", "ROCKHEAD", "ROUGHSKIN", "RUNAWAY", "SCRAPPY", "SHEERFORCE", "SIMPLE", "SKILLLINK", "SNIPER", "SOLIDROCK", "SOUNDPROOF", "STATIC", "STEADFAST", "STICKYHOLD", "STRONGJAW", "SWARM", "SWIFTSWIM", "SYNCHRONIZE", "TECHNICIAN", "UNAWARE", "WATERABSORB", "COMPETITIVE",
   "THICKFAT", "TORRENT", "TOUGHCLAWS"] as const;
@@ -44,7 +44,7 @@ export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[numbe
 export type BattleAbility = ImplementedBattleAbility | (string & {});
 export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT", "FOCUSSASH",
   "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES",
-  "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "ORANBERRY", "PAYAPABERRY"] as const;
+  "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "LIECHIBERRY", "ORANBERRY", "PAYAPABERRY"] as const;
 export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number];
 
 export function isHeldItemSupported(value: string): value is HeldItem {
@@ -247,7 +247,7 @@ export type BattleEvent =
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
-  | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage"; readonly amount: number; readonly hp: number }
+  | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage" | "boost"; readonly amount: number; readonly hp: number }
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;

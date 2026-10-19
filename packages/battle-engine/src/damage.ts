@@ -8,6 +8,7 @@ export interface BattleDamageContext {
   readonly luckyChant: boolean;
   readonly mudSport: boolean;
   readonly waterSport: boolean;
+  readonly weather?: "sun" | "rain" | "sand" | "hail" | null;
 }
 
 function stagedStat(value: number, stage: number): number {
@@ -86,6 +87,17 @@ export function calculateDamage(
     : move.functionCode !== "09A" ? move.power
     : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
       : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
+  if (move.functionCode === "08D") {
+    const speed = (battler: BattlerState): number => {
+      let value = stagedStat(battler.stats.speed, battler.stages.speed);
+      if (battler.ability === "QUICKFEET" && battler.majorStatus !== null) value = Math.max(1, Math.round(value * 1.5));
+      else if (battler.majorStatus?.kind === "paralysis") value = Math.max(1, Math.round(value / 4));
+      if (battler.ability === "CHLOROPHYLL" && context.weather === "sun"
+        || battler.ability === "SWIFTSWIM" && context.weather === "rain") value *= 2;
+      return Math.max(1, value);
+    };
+    power = Math.max(1, Math.min(150, Math.floor((25 * speed(defender)) / speed(attacker))));
+  }
   if (move.functionCode === "07B" && defender.majorStatus?.kind === "poison") power *= 2;
   if (move.functionCode === "091") power *= 2 ** Math.max(0, (attacker.volatile?.furyCutterCount ?? 1) - 1);
   if (move.functionCode === "0D3") power *= 2 ** Math.max(0, 4 - (attacker.volatile?.rolloutTurns ?? 4));
@@ -110,6 +122,7 @@ export function calculateDamage(
   if (attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
   if (!ignoresDefenderAbility && defender.ability === "DRYSKIN" && moveType === "FIRE") statusModifier *= 1.25;
+  if (!ignoresDefenderAbility && defender.ability === "HEATPROOF" && moveType === "FIRE") statusModifier *= 0.5;
   if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;
   if (context.lightScreen && move.category === "Special" && !critical) statusModifier *= 0.5;
   if (context.mudSport && moveType === "ELECTRIC") statusModifier /= 3;

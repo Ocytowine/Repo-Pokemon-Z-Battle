@@ -283,9 +283,11 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       && battler.ability !== "MAGICGUARD") {
       const nextStatus = status.kind === "poison" && status.toxicCounter !== null
         ? { kind: "poison" as const, toxicCounter: Math.min(15, status.toxicCounter + 1) } : status;
-      const raw = nextStatus.kind === "burn" || nextStatus.kind === "frozen"
+      let raw = nextStatus.kind === "burn" || nextStatus.kind === "frozen"
         ? Math.floor(battler.stats.maxHp / 16) : nextStatus.toxicCounter === null
           ? Math.floor(battler.stats.maxHp / 12) : Math.floor((battler.stats.maxHp * nextStatus.toxicCounter) / 16);
+      if (nextStatus.kind === "poison" && activeTeamIndices(teams[otherSide(position.side)])
+        .some((opposingIndex) => teams[otherSide(position.side)].members[opposingIndex]?.ability === "ALQUIMIAVIL")) raw *= 2;
       const amount = Math.min(battler.hp, Math.max(1, raw));
       battler = { ...battler, hp: battler.hp - amount, majorStatus: nextStatus };
       inner.push({ type: "statusDamage", side: position.side, status: nextStatus.kind, amount, hp: battler.hp });
