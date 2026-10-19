@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { OverworldNetworkSession, roomSnapshotForPlayer, type NetworkSessionCallbacks } from "../src/network-session.js";
+import { battleCompositionChanged, OverworldNetworkSession, roomSnapshotForPlayer,
+  type NetworkSessionCallbacks } from "../src/network-session.js";
+import { createDoubleTeamBattleState, createTeamBattleState, type BattlerState } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, type RoomSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 
 const ticket = {
@@ -73,6 +75,29 @@ afterEach(() => {
 });
 
 describe("overworld network session", () => {
+  it("detects battle composition changes without treating HP updates as expansions", () => {
+    const member = (id: string): BattlerState => ({ id, species: id, name: id, level: 5, types: ["NORMAL"],
+      stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 },
+      stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
+      hp: 20, majorStatus: null, ability: null, heldItem: null, moves: [] });
+    const single = createTeamBattleState({ player: [member("host"), member("reserve")], opponent: [member("wild")] });
+    const damaged = { ...single, teams: { ...single.teams, player: { ...single.teams.player,
+      members: [{ ...single.teams.player.members[0]!, hp: 12 }, single.teams.player.members[1]!] } } };
+    expect(battleCompositionChanged(single, damaged)).toBe(false);
+    const joined = createDoubleTeamBattleState({ player: [member("host"), member("guest")], opponent: [member("wild")] });
+    expect(battleCompositionChanged(single, joined)).toBe(true);
+    const changedDouble = createDoubleTeamBattleState({ player: [member("host"), member("other-guest")],
+      opponent: [member("wild")] });
+    expect(battleCompositionChanged(joined, changedDouble)).toBe(true);
+    const replacement = { ...joined, teams: { ...joined.teams, player: { ...joined.teams.player,
+      members: [joined.teams.player.members[0]!, { ...joined.teams.player.members[1]!, hp: 0 }, member("reserve")],
+      activeIndices: [0, 2] } } };
+    expect(battleCompositionChanged(joined, replacement)).toBe(true);
+    const sameRosterReplacement = { ...joined, teams: { ...joined.teams, player: { ...joined.teams.player,
+      activeIndices: [1, 0] } } };
+    expect(battleCompositionChanged(joined, sameRosterReplacement)).toBe(false);
+  });
+
   it("hides a source battle from either player until they join or observe", () => {
     const snapshot = { phase: "battle", sourceWorld: { presence: { player: "shared", opponent: "away" } },
       battle: { sourceContext: {}, participation: { camps: {

@@ -1285,7 +1285,9 @@ export class AuthoritativeBattleRoom {
       || this.#activeEncounter === null && this.#sourceBattleContext === null
       || this.#battleParticipation === null || this.#battleState.status !== "active"
       || this.#battleJoinProposal !== null
-      || this.#activeDuel || this.#pendingActions.size > 0 || !joinableLifecycle) {
+      || this.#activeDuel || this.#pendingActions.size > 0 || this.#pendingDoubleActions.size > 0
+      || this.#pendingReplacements.size > 0 || this.#battleState.replacementRequired.length > 0
+      || (this.#battleState.slotReplacements?.length ?? 0) > 0 || !joinableLifecycle) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce combat n'accepte plus de participant.")];
     }
     if (this.#sourceBattleContext?.origin === "source-wild" && message.side !== "player") {
@@ -1414,15 +1416,22 @@ export class AuthoritativeBattleRoom {
       this.#battleJoinInventory = null;
       this.#battleLedger = createSharedBattleLedger(this.#battleState);
       this.#battleJoinProposal = null;
-      this.#battleObserverIds = [];
+      // Un double natif est deja complet : les autres joueurs presents le voient
+      // directement comme spectateurs, sans ouvrir une proposition impossible.
+      this.#battleObserverIds = message.context.format === "double"
+        ? [...this.#players.values()].filter((candidate) => candidate.playerId !== player.playerId
+          && candidate.connected && world.presence[candidate.side] === "shared")
+          .map((candidate) => candidate.playerId)
+        : [];
       this.#battleJoinRefusal = null;
       this.#sourceBattleContext = message.context;
       const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
         && candidate.connected && (message.context.origin === "source-trainer"
           || world.presence[candidate.side] === "shared"));
       this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
-        origin: message.context.origin, narrativeOwnerId: player.playerId, allowJoin: guestAvailable,
-        requireInviteChoice: message.context.origin === "source-trainer" });
+        origin: message.context.origin, narrativeOwnerId: player.playerId,
+        allowJoin: guestAvailable && message.context.format !== "double",
+        requireInviteChoice: message.context.origin === "source-trainer" && message.context.format !== "double" });
       this.#activeEncounter = null;
       this.#activeDuel = false;
       this.#pendingActions.clear();
@@ -1458,7 +1467,9 @@ export class AuthoritativeBattleRoom {
         ? this.#battleSession?.lifecycle === "join-window" || this.#battleSession?.lifecycle === "active"
         : this.#battleSession?.lifecycle === "join-window";
     if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
-      || !joinableLifecycle
+      || !joinableLifecycle || this.#pendingActions.size > 0 || this.#pendingDoubleActions.size > 0
+      || this.#pendingReplacements.size > 0 || this.#battleState.replacementRequired.length > 0
+      || (this.#battleState.slotReplacements?.length ?? 0) > 0
       || this.#battleJoinProposal === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune proposition de participation active.")];
     }
@@ -1497,8 +1508,24 @@ export class AuthoritativeBattleRoom {
         }
         this.#battleJoinInventory = null;
         if (this.#sourceBattleContext !== null) this.#sourceBattleContext = { ...this.#sourceBattleContext, format: "double" };
-        const joinedState = createDoubleTeamBattleState(teams, activeIndices);
-        this.#battleState = { ...joinedState, turn: previousState.turn, teams: {
+        const previouslyActiveIds = new Set((["player", "opponent"] as const).flatMap((side) =>
+          activeTeamIndices(previousState.teams[side]).map((index) => previousState.teams[side].members[index]!.id)));
+        // La reconstruction initialise uniquement les talents des nouveaux entrants.
+        // Les talents d'entree des combattants deja presents ne doivent pas etre rejoues.
+        const withoutReplayedAbility = (members: readonly BattlerState[]): readonly BattlerState[] => members
+          .map((member) => previouslyActiveIds.has(member.id) ? { ...member, ability: null } : member);
+        const initializationTeams: Record<BattleSide, readonly BattlerState[]> = {
+          player: withoutReplayedAbility(teams.player),
+          opponent: withoutReplayedAbility(teams.opponent),
+        };
+        const initializedState = createDoubleTeamBattleState(initializationTeams, activeIndices);
+        const restoreAbilities = (side: BattleSide): BattleTeam => ({ ...initializedState.teams[side],
+          members: initializedState.teams[side].members.map((member) => ({ ...member,
+            ability: teams[side].find((source) => source.id === member.id)?.ability ?? null })) });
+        const joinedState = { ...initializedState,
+          teams: { player: restoreAbilities("player"), opponent: restoreAbilities("opponent") } };
+        this.#battleState = { ...joinedState, turn: previousState.turn,
+          ...(previousState.effects === undefined ? {} : { effects: previousState.effects }), teams: {
           player: { ...joinedState.teams.player, ...(previousState.teams.player.items === undefined
             ? {} : { items: [...previousState.teams.player.items] }) },
           opponent: { ...joinedState.teams.opponent, ...(previousState.teams.opponent.items === undefined

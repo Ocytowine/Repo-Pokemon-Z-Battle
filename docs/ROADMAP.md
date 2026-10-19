@@ -2175,6 +2175,14 @@ partiels et la recette manuelle sont detailles dans
 `docs/COMBAT_VERTICAL_AUDIT.md`; deux TP neutres de Test dev permettent d'atteindre
 les nids sans modifier les interrupteurs d'histoire.
 
+Stabilisation Coop du 2026-10-19 : les combats de nid déjà doubles sont visibles
+par l'invité présent comme spectateur, sans autoriser un troisième combattant. Les
+combats simples rejoignables refusent désormais toute modification de composition
+pendant une action ou un remplacement. Leur passage en double conserve les effets
+tactiques et ne rejoue pas les talents d'entrée des actifs existants. Le client
+réconcilie toute modification structurelle des camps et sérialise le chargement
+des sprites, ce qui supprime les compositions différentes entre hôte et invité.
+
 Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de
 deux crans comme dans les scripts de Z et vise les deux adversaires en double via

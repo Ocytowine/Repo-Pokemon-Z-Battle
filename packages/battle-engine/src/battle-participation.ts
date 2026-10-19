@@ -130,6 +130,9 @@ export function proposeBattleJoin(state: SharedBattleParticipation, input: {
 }): BattleJoinProposal {
   assertSharedBattleParticipation(state);
   requireIdentifier(input.joinerId, "Le Dresseur invité");
+  if (state.format === "double") {
+    throw new Error("Un combat deja double ne peut pas accueillir un autre Dresseur.");
+  }
   if (Object.values(state.camps).some((camp) => camp.trainerIds.includes(input.joinerId))) {
     throw new Error("Ce Dresseur participe déjà au combat.");
   }
@@ -184,6 +187,9 @@ export function battleJoinApproved(proposal: BattleJoinProposal): boolean {
 
 export function applyBattleJoin(state: SharedBattleParticipation, proposal: BattleJoinProposal): SharedBattleParticipation {
   assertSharedBattleParticipation(state);
+  if (state.format === "double") {
+    throw new Error("Un combat deja double ne peut pas accueillir un autre Dresseur.");
+  }
   if (!battleJoinApproved(proposal)) throw new Error("La composition n'a pas encore été acceptée par tous les Dresseurs concernés.");
   if (Object.values(state.camps).some((camp) => camp.trainerIds.includes(proposal.joinerId))) {
     throw new Error("Ce Dresseur participe déjà au combat.");

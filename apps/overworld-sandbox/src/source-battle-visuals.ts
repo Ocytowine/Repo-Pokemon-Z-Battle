@@ -515,10 +515,13 @@ export class SourceBattleVisuals {
     if (player === undefined || opponent === undefined) return;
     const appearanceKey = (battler: BattlerState) => `${battler.species}:${battler.appearance?.form ?? 0}:${Number(battler.appearance?.shiny)}:${battler.appearance?.gender ?? "unknown"}`;
     const key = `${battleback}:${playerIndices.map((index) => appearanceKey(state.teams.player.members[index]!)).join("|")}:${opponentIndices.map((index) => appearanceKey(state.teams.opponent.members[index]!)).join("|")}`;
-    if (key === this.#renderedSpecies) {
-      if (this.#rendering !== null) await this.#rendering;
-      return;
+    if (this.#rendering !== null) {
+      const pending = this.#rendering;
+      await pending;
+      if (this.#rendering === pending) this.#rendering = null;
+      return this.render(state, battleback);
     }
+    if (key === this.#renderedSpecies) return;
     this.#renderedSpecies = key;
     const rendering = (async (): Promise<void> => {
       try {

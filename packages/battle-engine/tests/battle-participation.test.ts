@@ -65,9 +65,9 @@ describe("shared battle participation", () => {
     expect(activeBattleController(joined, "opponent")).toBe("guest");
   });
 
-  it("accepts a second trainer in doubles and rejects full camps or rosters larger than six", () => {
-    expect(proposeBattleJoin(battle("double"), { joinerId: "guest", side: "player", members: [pokemon("g")],
-      finalMemberIds: ["starter", "g"] }).side).toBe("player");
+  it("keeps pre-existing doubles observable and rejects full camps or rosters larger than six", () => {
+    expect(() => proposeBattleJoin(battle("double"), { joinerId: "guest", side: "player", members: [pokemon("g")],
+      finalMemberIds: ["starter", "g"] })).toThrow(/deja double/u);
     expect(() => proposeBattleJoin(battle(), { joinerId: "guest", side: "player",
       members: Array.from({ length: 6 }, (_, index) => pokemon(`g${index}`)),
       finalMemberIds: ["starter", ...Array.from({ length: 6 }, (_, index) => `g${index}`)] })).toThrow(/six/u);

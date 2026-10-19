@@ -705,6 +705,34 @@ describe("authoritative battle room", () => {
       sourceContext: { origin: "source-wild" } });
   });
 
+  it("keeps a native double source battle visible to the guest as observer but refuses joining", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const secondPlayer = { ...battler("player"), id: "player-two" };
+    const secondOpponent = { ...battler("opponent"), id: "opponent-two" };
+    const context = { ...sourceBattleContext("alice"), format: "double" as const,
+      rewards: { ...sourceBattleContext("alice").rewards, opponents: [
+        ...sourceBattleContext("alice").rewards.opponents,
+        { memberId: secondOpponent.id, species: secondOpponent.species, level: secondOpponent.level,
+          baseExperience: 58 },
+      ] } };
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "native-double-open",
+      context, playerTeam: { activeIndex: 0, members: [battler("player"), secondPlayer] },
+      opponentTeam: { activeIndex: 0, members: [battler("opponent"), secondOpponent] } });
+    const battle = room.snapshot().battle!;
+    expect(battle).toMatchObject({ state: { format: "double" }, session: { lifecycle: "active" },
+      observerIds: ["bob"] });
+    const refused = room.receive("bob", { type: "proposeBattleJoin", version: 15,
+      requestId: "native-double-join", battleId: battle.id, side: "player",
+      team: initialBattle().teams.player, finalMemberIds: ["player"] });
+    expect(refused[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE" });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
+      worldWithSource, persisted);
+    expect(restored.snapshot().battle?.observerIds).toEqual(["bob"]);
+  });
+
   it("lets the host help a shared wild encounter opened by the guest", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), worldWithSource);
     room.connect("alice");

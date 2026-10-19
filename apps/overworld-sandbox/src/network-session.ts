@@ -107,6 +107,22 @@ export function roomSnapshotForPlayer(snapshot: RoomSnapshot, playerId: string,
   return { ...snapshot, phase: "waiting", battle: null };
 }
 
+/** Detecte un changement structurel sans confondre celui-ci avec les PV ou le tour. */
+export function battleCompositionChanged(before: TeamBattleState, after: TeamBattleState): boolean {
+  const signature = (state: TeamBattleState): string => JSON.stringify({
+    format: state.format ?? "single",
+    teams: (["player", "opponent"] as const).map((side) => {
+      const team = state.teams[side];
+      const activeIndices = team.activeIndices ?? [team.activeIndex];
+      return {
+        members: team.members.map((member) => member.id),
+        activeSlotCount: activeIndices.length,
+      };
+    }),
+  });
+  return signature(before) !== signature(after);
+}
+
 export class OverworldNetworkSession {
   private activeSession: MutableNetworkSession | null = null;
   private connectionPending = false;
@@ -555,7 +571,9 @@ export class OverworldNetworkSession {
         this.callbacks.onBattleStarted(snapshot.battle.id, snapshot.battle.state);
       } else if (previousBattle !== null && snapshot.battle !== null
         && previousBattle.id === snapshot.battle.id
-        && previousBattle.state.format !== "double" && snapshot.battle.state.format === "double") {
+        && battleCompositionChanged(previousBattle.state, snapshot.battle.state)) {
+        session.submittedTurn = null;
+        session.submittedActiveSlots = [];
         this.callbacks.onBattleExpanded(snapshot.battle.id, previousBattle.state, snapshot.battle.state);
       }
       if (snapshot.battle === null || snapshot.battle.state.turn !== session.submittedTurn) {

@@ -4151,3 +4151,25 @@ l'audit d'autorun intermédiaire du contrôleur de combat. La séquence proprié
 reprend d'abord ses commandes post-combat, consomme la rencontre, puis effectue
 elle-même l'audit à sa finalisation. Cela empêche une page nouvellement active de
 s'intercaler et de relancer le combat avant les récompenses ou le self-switch.
+
+### Stabilisation Coop des combats doubles scénarisés — 2026-10-19
+
+Un combat source qui est déjà double n'ouvre plus de fenêtre de jonction : ses
+deux emplacements tactiques sont déjà occupés par la scène. L'autre joueur présent
+sur la carte est inscrit comme spectateur et reçoit le même snapshot autoritaire,
+mais toute intention de participation est refusée par le noyau et par la room.
+
+Pour les combats simples encore rejoignables, une proposition est désormais
+bloquée dès qu'une action simple/double ou un remplacement est en attente. La
+conversion en double conserve le tour, les effets de terrain et de camp, les
+objets de Dresseur et l'utilisation de la Méga-Évolution. Les talents d'entrée des
+combattants déjà sur le terrain ne sont pas rejoués ; seuls les nouveaux entrants
+peuvent les déclencher.
+
+Le client compare maintenant la structure complète des camps (format, identités
+et nombre de slots actifs), y compris lorsqu'elle était déjà double. Il invalide
+les actions locales soumises puis rejoue une seule présentation de jonction. Le
+rendu des battlers est sérialisé afin qu'un ancien chargement d'image ne puisse
+plus terminer après le nouveau snapshot et réafficher une mauvaise composition.
+Les remplacements ordinaires à nombre de slots constant restent traités par leur
+événement dédié et ne sont pas confondus avec une jonction.
