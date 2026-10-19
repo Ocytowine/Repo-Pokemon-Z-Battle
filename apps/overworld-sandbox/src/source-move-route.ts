@@ -38,6 +38,8 @@ export interface SourceRouteStepResult {
   readonly complete: boolean;
   readonly switchChange: { readonly id: number; readonly value: boolean } | null;
   readonly sound: { readonly name: string; readonly volume: number; readonly pitch: number } | null;
+  /** Nature visuelle du déplacement, partagée par les acteurs locaux et Coop. */
+  readonly movementAction: "step" | "jump";
   readonly supported: boolean;
   readonly reason: string | null;
 }
@@ -91,14 +93,14 @@ function movement(actor: SourceRouteActor, direction: Direction, preserveDirecti
 }
 
 function success(actor: SourceRouteActor, destination: GridPoint | null = null, waitMs = 0,
-  extra: Partial<Pick<SourceRouteStepResult, "complete" | "switchChange" | "sound">> = {}): SourceRouteStepResult {
+  extra: Partial<Pick<SourceRouteStepResult, "complete" | "switchChange" | "sound" | "movementAction">> = {}): SourceRouteStepResult {
   return { actor, destination, waitMs, complete: extra.complete ?? false, switchChange: extra.switchChange ?? null,
-    sound: extra.sound ?? null, supported: true, reason: null };
+    sound: extra.sound ?? null, movementAction: extra.movementAction ?? "step", supported: true, reason: null };
 }
 
 function unsupported(actor: SourceRouteActor, kind: string): SourceRouteStepResult {
   return { actor, destination: null, waitMs: 0, complete: false, switchChange: null,
-    sound: null, supported: false, reason: `mouvement ${kind} non pris en charge` };
+    sound: null, movementAction: "step", supported: false, reason: `mouvement ${kind} non pris en charge` };
 }
 
 export function executeSourceMoveRouteStep(actor: SourceRouteActor, step: SourceMoveRouteStep,
@@ -124,7 +126,9 @@ export function executeSourceMoveRouteStep(actor: SourceRouteActor, step: Source
   if (step.kind === "step-away-from-player") return movement(actor, toward(actor, context.player, true));
   if (step.kind === "jump") {
     const [x, y] = step.parameters;
-    return integer(x) && integer(y) ? success(actor, { x: actor.x + x, y: actor.y + y }) : unsupported(actor, step.kind);
+    return integer(x) && integer(y)
+      ? success(actor, { x: actor.x + x, y: actor.y + y }, 0, { movementAction: "jump" })
+      : unsupported(actor, step.kind);
   }
   if (step.kind === "wait") {
     const [frames] = step.parameters;

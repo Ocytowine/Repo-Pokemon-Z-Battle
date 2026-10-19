@@ -1036,7 +1036,10 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
 - [x] automatiser et valider Route 3 → Bois-en-Tronc (Maps 023 à 029) : Dresseurs,
   branche simple/double selon l'équipe apte, rencontres de nid et récompenses
   post-victoire autoritaires. Le parcours et les deux nids ont été validés
-  manuellement avec les assets locaux le 2026-10-19.
+  manuellement avec les assets locaux le 2026-10-19. Le rendu générique des
+  commandes `jump` de PNJ a ensuite été corrigé (arc, durée selon la distance et
+  réplication Coop) pour la vieille dame de Map029/EV026 ; cette scène précise
+  attend une nouvelle vérification visuelle.
 - [ ] fermer Route 5 (Maps 055–056) avec l'audit `map:ID`, les rencontres et les
   cinq Dresseurs. Le portage automatisé est terminé : fonctions à compteur et à
   contexte, Morphing/Imposteur, climat/terrain, talents de contact et contrats

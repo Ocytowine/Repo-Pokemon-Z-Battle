@@ -103,6 +103,7 @@ export interface ImportedEventPose extends GridPoint {
   readonly pattern?: number;
   readonly characterName?: string;
   readonly opacity?: number;
+  readonly renderOffsetY?: number;
 }
 
 export interface ImportedMapAssets {
@@ -1137,11 +1138,11 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
       if (image !== undefined) {
         const field = sourceFieldVisualState(map, assets.tileset, Math.round(eventX), Math.round(eventY), "walk",
-          false, page.settings.alwaysOnTop);
+          (pose?.renderOffsetY ?? 0) !== 0, page.settings.alwaysOnTop);
         drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
           pose?.pattern ?? eventGraphicPattern(page, now), opacity,
           eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name) && field.shadow,
-          0, field.bushDepth, field.reflection && sourceEventHasReflection(event.name), now);
+          pose?.renderOffsetY ?? 0, field.bushDepth, field.reflection && sourceEventHasReflection(event.name), now);
       }
     }
   };

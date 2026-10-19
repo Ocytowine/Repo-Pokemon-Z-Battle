@@ -359,13 +359,16 @@ describe("multiplayer protocol", () => {
   it("validates a read-only source scene without accepting arbitrary presentation commands", () => {
     const scene = { mapId: 3, sequenceActive: true,
       dialogue: { label: "Crisanto", text: "Regarde !", choices: [] },
-      actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255 }],
+      actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255,
+        renderOffsetY: -12 }],
       presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
     expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
     const message: ClientMessage = { type: "setSourceScene", version: 15, requestId: "scene-1", scene };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseSourceSceneSnapshot({ ...scene,
       presentation: { id: 2, kind: "execute-ruby", data: {} } })).toThrow("Commande visuelle");
+    expect(() => parseSourceSceneSnapshot({ ...scene,
+      actors: [{ ...scene.actors[0]!, renderOffsetY: -256 }] })).toThrow("Acteur de cinematique");
   });
 
   it("rejects malformed and oversized payloads", () => {

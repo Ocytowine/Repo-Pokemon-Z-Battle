@@ -8,6 +8,7 @@ export interface SourceSceneActorSnapshot {
   readonly pattern?: number;
   readonly characterName?: string;
   readonly opacity?: number;
+  readonly renderOffsetY?: number;
 }
 
 export interface SourceSceneDialogueSnapshot {
@@ -71,13 +72,14 @@ function safeJson(value: unknown, depth = 0): boolean {
 
 function parseActor(value: unknown): SourceSceneActorSnapshot {
   if (!record(value) || !exactKeys(value, ["eventId", "x", "y", "direction"],
-    ["pattern", "characterName", "opacity"])
+    ["pattern", "characterName", "opacity", "renderOffsetY"])
     || !integer(value.eventId, 1, 999_999) || !finite(value.x, -1_024, 1_024)
     || !finite(value.y, -1_024, 1_024) || typeof value.direction !== "string"
     || !DIRECTIONS.has(value.direction as Direction)
     || (value.pattern !== undefined && !integer(value.pattern, 0, 3))
     || (value.characterName !== undefined && !shortText(value.characterName, 256))
-    || (value.opacity !== undefined && !finite(value.opacity, 0, 255))) {
+    || (value.opacity !== undefined && !finite(value.opacity, 0, 255))
+    || (value.renderOffsetY !== undefined && !finite(value.renderOffsetY, -128, 128))) {
     throw new Error("Acteur de cinematique source invalide.");
   }
   return value as unknown as SourceSceneActorSnapshot;

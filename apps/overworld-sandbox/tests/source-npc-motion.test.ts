@@ -173,6 +173,28 @@ describe("source NPC motion", () => {
     });
   });
 
+  it("renders a scripted jump as an arc with a duration scaled to its distance", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    const actor = controller.scriptedActor(event.id, map.id, [event], createSourceEventState(), 100)!;
+    const duration = controller.applyScriptedActor(event.id, actor, { x: 6, y: 2 }, 100, "jump");
+
+    expect(duration).toBe(1_000);
+    expect(controller.poses(600).get(event.id)).toMatchObject({ x: 4, y: 2 });
+    expect(controller.poses(600).get(event.id)?.renderOffsetY).toBeLessThan(-10);
+    expect(controller.poses(1_100).get(event.id)).toMatchObject({ x: 6, y: 2, renderOffsetY: 0 });
+  });
+
+  it("replays a narrative actor's vertical jump offset for a Coop guest", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    controller.applyNetworkActors([
+      { eventId: event.id, x: event.x, y: event.y, direction: "down", renderOffsetY: -14 },
+    ], 100);
+
+    expect(controller.poses(100).get(event.id)).toMatchObject({ renderOffsetY: -14 });
+  });
+
   it("exports logical world actors and interpolates a host step on a guest", () => {
     const host = new SourceNpcMotionController();
     host.reset(map.id, [event], 0);

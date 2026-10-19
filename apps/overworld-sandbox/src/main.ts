@@ -354,7 +354,8 @@ function currentSourceScene(): SourceSceneSnapshot | null {
     return [{ eventId: event.id, x: pose.x, y: pose.y, direction: sourceActorDirection(pose.direction),
       ...(pose.pattern === undefined ? {} : { pattern: pose.pattern }),
       ...(pose.characterName === undefined ? {} : { characterName: pose.characterName }),
-      ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }) }];
+      ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }),
+      ...(pose.renderOffsetY === undefined ? {} : { renderOffsetY: pose.renderOffsetY }) }];
   });
   return { mapId: importedAssets.map.id, sequenceActive: sourceSequences.current !== null,
     dialogue: dialogue === null ? null : { label: dialogue.label,
@@ -813,7 +814,8 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       }
     } else {
       duration = Math.max(duration,
-        sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now()));
+        sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now(),
+          result.movementAction));
       publishCurrentSourceActors();
     }
     renderImportedView();

@@ -4315,3 +4315,21 @@ Núbila afin d'empêcher toute régression du déclenchement. Après `prepare:lo
 pas le combat et doit employer le fallback visuel existant sans animation
 inventée. La reprise narrative doit être validée manuellement sur Map046, puis
 en hôte et invité si la scène est jouée en Coop.
+
+## Bois-en-Tronc — sauts scénarisés des PNJ — 2026-10-19
+
+Le retour `Map030 · EV026 crisanto · étape 155/188` correspond à la scène source
+de Map029/EV026 : après le remède, l'ancienne (`event 32`, sprite `anciana`)
+effectue des sauts horizontaux de 2, 2 puis 4 cases. Le moteur traitait jusque-là
+la commande de route `jump` comme un pas au sol, avec la durée fixe d'une case ;
+le dernier saut ressemblait donc à une téléportation/glissade et aucun arc
+vertical n'était rendu.
+
+Les routes exposent désormais explicitement la nature `jump` du déplacement. Le
+contrôleur de PNJ emploie la même interpolation en arc que les autres transitions
+aériennes et dimensionne la durée selon la distance réelle, y compris pour un
+saut sur place. Le décalage vertical fait partie de la pose de cinématique
+répliquée : l'hôte et l'invité voient donc le même arc, sans seconde logique
+cliente. Les tests couvrent la commande, un saut scénarisé de quatre cases et la
+réception du décalage vertical par un invité Coop. La scène Map029/EV026 reste à
+rejouer manuellement depuis une sauvegarde antérieure à la démonstration.
