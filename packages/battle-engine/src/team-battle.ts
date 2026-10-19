@@ -2,6 +2,7 @@ import { resolveSelectedMoves } from "./resolve-turn.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
+import { restoreTransformedBattler, transformBattler } from "./battle-transform.js";
 import type {
   BattleEvent,
   BattleSide,
@@ -43,6 +44,14 @@ function cloneBattler(battler: BattlerState): BattlerState {
     stages: { ...battler.stages },
     majorStatus: battler.majorStatus === null ? null : { ...battler.majorStatus },
     ...(battler.volatile === undefined ? {} : { volatile: { ...battler.volatile } }),
+    ...(battler.transformOriginal === undefined ? {} : {
+      transformOriginal: {
+        ...battler.transformOriginal,
+        types: [...battler.transformOriginal.types],
+        stats: { ...battler.transformOriginal.stats },
+        moves: battler.transformOriginal.moves.map((slot) => ({ ...slot, move: { ...slot.move } })),
+      },
+    }),
     moves: battler.moves.map((slot) => ({ ...slot, move: { ...slot.move } })),
   };
 }
@@ -135,11 +144,13 @@ function switchPokemon(
   let healed = 0;
   const members = team.members.map((member, index) => {
     if (index !== fromIndex) return member;
+    const outgoingAbility = member.ability;
+    member = restoreTransformedBattler(member);
     const { volatile: _volatile, ...persistent } = member;
-    const hp = member.ability === "REGENERATOR" && member.hp > 0
+    const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
-    const curedStatus = member.ability === "NATURALCURE" ? null
+    const curedStatus = outgoingAbility === "NATURALCURE" ? null
       : member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
         ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus;
     return {
@@ -172,6 +183,30 @@ function switchPokemon(
       stat: "attack", delta: stage - opponent.stages.attack, stage });
   }
   return events;
+}
+
+function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, side: BattleSide,
+  effects: TeamBattleState["effects"]): { readonly events: readonly TeamBattleEvent[];
+    readonly effects: TeamBattleState["effects"] } {
+  const active = activePokemon(teams[side]);
+  const events: TeamBattleEvent[] = [];
+  if (active.ability === "IMPOSTER") {
+    const transformed = transformBattler(active, activePokemon(teams[opponentOf(side)]));
+    if (transformed !== null) {
+      const team = teams[side];
+      teams[side] = { ...team, members: team.members.map((member, index) =>
+        index === team.activeIndex ? transformed : member) };
+      events.push({ type: "abilityActivated", side, ability: "IMPOSTER", effect: "transform" });
+    }
+  }
+  if (active.ability === "GRASSYSURGE") {
+    const current = effects ?? { sides: {
+      player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 },
+    }, waterSportTurns: 0 };
+    effects = { ...current, terrain: "grassy", terrainTurns: 5 };
+    events.push({ type: "abilityActivated", side, ability: "GRASSYSURGE", effect: "set-terrain" });
+  }
+  return { events, effects };
 }
 
 function duelState(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>): BattleState {
@@ -226,6 +261,21 @@ export function createTeamBattleState(
     state = { ...state, teams: { ...state.teams, [other]: { ...team,
       members: team.members.map((member, index) => index === team.activeIndex
         ? { ...member, stages: { ...member.stages, attack: Math.max(-6, member.stages.attack + delta) } } : member) } } };
+  }
+  for (const side of SIDES) {
+    const other = opponentOf(side);
+    const active = activePokemon(state.teams[side]);
+    if (active.ability === "IMPOSTER") {
+      const transformed = transformBattler(active, activePokemon(state.teams[other]));
+      if (transformed !== null) state = { ...state, teams: { ...state.teams,
+        [side]: { ...state.teams[side], members: state.teams[side].members.map((member, index) =>
+          index === state.teams[side].activeIndex ? transformed : member) } } };
+    }
+    if (active.ability === "GRASSYSURGE") state = { ...state, effects: {
+      sides: { player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 } },
+      waterSportTurns: 0, mudSportTurns: 0, terrain: "grassy", terrainTurns: 5,
+      weather: null, weatherTurns: 0, environment: "none",
+    } };
   }
   state = initializeMegaEvolutionState(state);
   validateState(state);
@@ -286,6 +336,9 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const action = actions[side];
     if (action.kind !== "switch") continue;
     switchEvents.push(...switchPokemon(teams, side, action.teamIndex, "voluntary"));
+    const entered = applyEntryAbilities(teams, side, effects);
+    effects = entered.effects;
+    switchEvents.push(...entered.events);
   }
   for (const side of itemOrder) {
     const action = actions[side];
@@ -293,6 +346,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const team = teams[side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error(`Invalid item target for ${side}.`);
+    if ((target.volatile?.embargoTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: embargo.`);
     const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
     teams[side] = { ...team, members: team.members.map((member, index) =>
@@ -393,13 +447,17 @@ export function replaceFaintedPokemon(
   }
   const teams = cloneTeams(state);
   const events: TeamBattleEvent[] = [];
+  let effects = state.effects;
   for (const side of state.replacementRequired) {
     const teamIndex = replacements[side];
     if (teamIndex === undefined) throw new Error(`Missing replacement for ${side}.`);
     events.push(...switchPokemon(teams, side, teamIndex, "replacement"));
+    const entered = applyEntryAbilities(teams, side, effects);
+    effects = entered.effects;
+    events.push(...entered.events);
   }
   return {
-    state: { ...state, teams, replacementRequired: [] },
+    state: { ...state, teams, replacementRequired: [], ...(effects === undefined ? {} : { effects }) },
     events,
     trace: [],
   };

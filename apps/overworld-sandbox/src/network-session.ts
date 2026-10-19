@@ -160,7 +160,11 @@ export class OverworldNetworkSession {
       const response = await fetch(`${serverUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" },
         body: JSON.stringify(kind === "create" ? { profile, sourceWorld: validatedSourceWorld } : { profile }) });
       const value: unknown = await response.json();
-      if (!response.ok) throw new Error(isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`);
+      if (!response.ok) {
+        const code = isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`;
+        const detail = isRecord(value) && typeof value.detail === "string" ? ` · ${value.detail}` : "";
+        throw new Error(`${code}${detail}`);
+      }
       this.connect(serverUrl, parseTicket(value), profile);
     } catch (error) {
       this.setStatus("Erreur", error instanceof Error ? error.message : "Connexion impossible.");

@@ -78,6 +78,7 @@ export function canEscapeSourceBattle(state: TeamBattleState, attempts: number, 
   // garantie : aucun adversaire ne peut attaquer un emplacement déjà K.O.
   if (state.replacementRequired.length > 0 || (state.slotReplacements?.length ?? 0) > 0) return true;
   const battlers = activeBattlers(state);
+  if (battlers.player.ability === "RUNAWAY") return true;
   const rate = battlers.player.stats.speed > battlers.opponent.stats.speed ? 256
     : (Math.floor((battlers.player.stats.speed * 128) / Math.max(1, battlers.opponent.stats.speed))
       + attempts * 30) & 0xff;

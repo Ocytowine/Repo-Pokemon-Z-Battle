@@ -186,9 +186,61 @@ Le tirage Dardargnan niveau 17 est maintenant constructible : `TWINEEDLE` (`0BE`
 résout ses deux impacts et sa chance d'empoisonnement par impact dans le noyau
 commun, et traverse le même validateur en solo et dans la room Coop.
 
-Dettes explicites : `BUGBITE`, `RAPIDSPIN`, `COVET`/`THIEF`, `LEECHSEED`,
-`CHARGE`, `ASSURANCE`, `ROUND`, `FLAIL`, `HELPINGHAND` et `TAKEDOWN` restent
-classées partielles lorsque leur effet complet exige pièges, transfert persistant
-d'objet, drain positionnel double, combo d'allié ou recul. L'absence de mapping
-source de l'animation de `THIEF` conserve le fallback. La validation manuelle du
-parcours et des deux nids reste requise avec les assets locaux.
+Fermeture des mécaniques partielles du 2026-10-19 : `CHARGE`, `DEFOG`,
+`ASSURANCE`, `ROUND`, `RAGE`, `FLAIL`/`REVERSAL`, `HELPINGHAND`, `LEECHSEED`,
+`COVET`/`THIEF`, `BUGBITE`/`PLUCK`, la famille `TAKEDOWN` et `RAPIDSPIN` sont
+désormais exécutées complètement par le noyau commun simple/double. Cela couvre
+les seuils exacts de Fléau, les combos de tour et d'allié, le drain lié à la
+position en double, le recul et ses immunités, ainsi que le nettoyage des écrans,
+terrains, pièges et graines. Le transfert d'objet est temporaire contre un
+Dresseur et conservé après un combat sauvage, y compris au règlement Coop.
+
+Le catalogue des objets tenus continue d'être étendu par lots : Picore/Piqûre
+appliquent l'effet des Baies déjà admises par ce contrat, sans inventer l'effet
+d'une Baie encore absente du moteur. L'absence de mapping source de l'animation
+de `THIEF` conserve le fallback prévu par l'audit.
+
+Validation manuelle du 2026-10-19 : le porteur a validé avec ses assets locaux
+le parcours complet Maps 023 à 029 ainsi que les nids de Couafarel et insecte.
+La recette couvre le déclenchement, les combats, leurs fins et les suites de
+scène ; ce lot vertical est donc fermé fonctionnellement.
+
+## Lot 5 — Route 5, Maps 055–056 — portage automatisé terminé, recette manuelle attendue
+
+Le pipeline accepte désormais un périmètre `map:ID`. Il réunit les rencontres de
+la carte, les combats de Dresseurs et les combats sauvages scénarisés extraits de
+ses événements. Les capacités par niveau sont arrêtées au niveau réel de chaque
+Pokémon et un Dresseur sans index de talent forcé utilise son premier talent
+normal, comme la construction runtime. Ce périmètre évite de bloquer une zone sur
+des apprentissages futurs ou des talents cachés qu'elle ne peut pas rencontrer.
+
+Premier sous-lot porté dans le noyau partagé : Écrasement (`010`), Pouvoir Antique
+(`02D`), Soucigraine (`064`), Ombre Nocturne (`06D`), Acrobatie (`086`) et Sabotage
+(`0F0`). Les dégâts fixes respectent les immunités de type ; Soucigraine conserve
+la liste de talents non remplaçables de Z ; Sabotage applique son multiplicateur,
+Viscosité et la restitution de l'objet après le combat. Les événements tactiques
+de changement de talent et de perte d'objet traversent le même snapshot validé et
+la même présentation en solo et en Coop.
+
+Le second sous-lot ferme Taillade (`091`), Ampleur (`095`), Force Nature (`0B3`),
+Roulade (`0D3`), Morphing (`069`), Brouhaha (`0D1`) et Embargo (`0F8`). Les
+compteurs de verrouillage, leur remise à zéro, les PP, le réveil et le blocage des
+objets font partie du snapshot tactique partagé. Force Nature reçoit un contexte
+générique d'environnement (`grass`, `cave`, eau, sable, neige, etc.) depuis la
+rencontre, sans condition liée à une carte.
+
+Les talents requis sont raccordés au même noyau simple/double : Chlorophylle,
+Glissade, Corps Ardent, Gloutonnerie pour les Baies actuellement supportées,
+Poisseux, Créa-Herbe, Vaccin, Imposteur, Feuille Garde, Brise Moule, Tempo Perso,
+Phobique, Peau Dure et Fuite. Intimidation est également sortie du statut partiel.
+Morphing conserve l'identité originale et la restaure au retrait ; Imposteur et
+Créa-Herbe s'appliquent à l'entrée, y compris après remplacement. Les effets
+persistants sont communs au solo, à l'hôte et à la room autoritaire, donc restaurés
+depuis le snapshot après reconnexion.
+
+Après `prepare:local` du 2026-10-19, `map:55` ne remonte plus aucune alerte et
+`map:56` ne remonte que l'animation `FAINTATTACK`. Cette capacité n'a réellement
+aucune correspondance dans `move2anim.dat` : le fallback reste volontairement
+actif conformément à la règle d'import, sans animation inventée. Le code du lot
+est terminé ; la fermeture fonctionnelle attend encore la recette manuelle des
+cinq Dresseurs et rencontres en solo, hôte, invité puis après reconnexion.

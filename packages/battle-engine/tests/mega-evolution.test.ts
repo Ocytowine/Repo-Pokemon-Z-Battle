@@ -50,8 +50,8 @@ describe("mega evolution eligibility", () => {
         types: ["FIRE", "DRAGON"], ability: "TOUGHCLAWS",
         stats: { maxHp: 180, attack: 160, defense: 120, specialAttack: 150, specialDefense: 100, speed: 120 },
       } });
-    let state = createTeamBattleState({ player: [battler("first"), battler("second")],
-      opponent: [{ ...battler("foe"), megaEvolution: undefined }] });
+    const { megaEvolution: _foeMega, ...foe } = battler("foe");
+    let state = createTeamBattleState({ player: [battler("first"), battler("second")], opponent: [foe] });
     state = bindMegaEvolutionOwners(state, { first: "trainer-a", second: "trainer-a" });
     const first = resolveMegaEvolutionIntents(state, [{ side: "player", teamIndex: 0 }]);
     expect(first.state.teams.player.members[0]).toMatchObject({ hp: 150, ability: "TOUGHCLAWS",
@@ -73,8 +73,8 @@ describe("mega evolution eligibility", () => {
       megaEvolution: { heldItem: "EEVEEITE", form: 1, activationAvailable: true, types: ["NORMAL"],
         ability: "ADAPTABILITY", stats: { maxHp: 25, attack: 20, defense: 20,
           specialAttack: 20, specialDefense: 20, speed: 20 } } });
-    let state = createTeamBattleState({ player: [base("host"), base("guest")],
-      opponent: [{ ...base("foe"), megaEvolution: undefined }] });
+    const { megaEvolution: _foeMega, ...foe } = base("foe");
+    let state = createTeamBattleState({ player: [base("host"), base("guest")], opponent: [foe] });
     state = bindMegaEvolutionOwners(state, { host: "host-id", guest: "guest-id" });
     const result = resolveMegaEvolutionIntents(state, [
       { side: "player", teamIndex: 0 }, { side: "player", teamIndex: 1 },

@@ -24,7 +24,7 @@ Usage:
   pokemon-z-extractor extract-assets --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-maps --source <game-directory> --output <output-directory>
   pokemon-z-extractor prepare-local [--source <game-directory> --output <output-directory>]
-  pokemon-z-extractor audit-combat [--scope pokemon:INTERNAL_NAME|trainer:TYPE:NAME:VERSION|mega:INTERNAL_NAME:FORM]
+  pokemon-z-extractor audit-combat [--scope pokemon:INTERNAL_NAME|trainer:TYPE:NAME:VERSION|mega:INTERNAL_NAME:FORM|map:ID]
   pokemon-z-extractor extract-events --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-hooks --source <game-directory> --output <output-directory>
 

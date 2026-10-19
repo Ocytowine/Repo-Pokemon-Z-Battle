@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import type { NormalizedBattleAnimation } from "./extract-battle-animations.js";
 
@@ -45,6 +45,13 @@ interface MegaEvolutionCatalog {
 
 interface Dataset<T> { readonly records: readonly T[] }
 
+interface EncounterRecord {
+  readonly mapId: number;
+  readonly methods: readonly { readonly slots: readonly {
+    readonly species: string; readonly minimumLevel: number; readonly maximumLevel: number;
+  }[] }[];
+}
+
 export interface BattleIntegrationAnimationCatalog {
   readonly mappings: readonly {
     readonly internalName: string;
@@ -72,12 +79,27 @@ function addUsage(usages: Map<string, Set<string>>, key: string, scope: string):
   usages.set(key, current);
 }
 
+function stringsIn(value: unknown): readonly string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (typeof value === "object" && value !== null) return Object.values(value).flatMap(stringsIn);
+  return [];
+}
+
+async function optionalJson<T>(file: string, fallback: T): Promise<T> {
+  try { return JSON.parse(await readFile(file, "utf8")) as T; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
+    throw error;
+  }
+}
+
 export async function createBattleIntegrationAudit(outputDirectory: string,
   animationCatalog: BattleIntegrationAnimationCatalog): Promise<object> {
   const read = async <T>(file: string): Promise<T> => JSON.parse(
     await readFile(path.join(outputDirectory, file), "utf8"),
   ) as T;
-  const [movesData, pokemonData, trainersData, megaEvolutionData, engineSupport] = await Promise.all([
+  const [movesData, pokemonData, trainersData, megaEvolutionData, engineSupport, encounterData, eventFiles] = await Promise.all([
     read<Dataset<MoveRecord>>("moves.json"), read<Dataset<PokemonRecord>>("pokemon.json"),
     read<Dataset<TrainerRecord>>("trainers.json"),
     read<MegaEvolutionCatalog>("mega-evolutions.json"),
@@ -85,6 +107,11 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
       readonly moveFunctionCodes: readonly { readonly key: string; readonly engineSupport: Support }[];
       readonly abilities: readonly { readonly key: string; readonly engineSupport: Support }[];
     } }>("engine-support-report.json"),
+    optionalJson<Dataset<EncounterRecord>>(path.join(outputDirectory, "encounters.json"), { records: [] }),
+    readdir(path.join(outputDirectory, "events")).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [] as string[];
+      throw error;
+    }),
   ]);
   const moves = new Map(movesData.records.map((record) => [record.internalName, record]));
   const pokemon = new Map(pokemonData.records.map((record) => [record.internalName, record]));
@@ -94,7 +121,8 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     .map((entry) => [entry.key, entry.engineSupport] as const));
   const moveUsage = new Map<string, Set<string>>();
   const abilityUsage = new Map<string, Set<string>>();
-  const scopes: { kind: "pokemon" | "trainer" | "mega"; id: string; moves: string[]; abilities: string[] }[] = [];
+  const scopes: { kind: "pokemon" | "trainer" | "mega" | "map"; id: string; moves: string[];
+    abilities: string[]; pokemon?: string[]; trainers?: string[] }[] = [];
 
   for (const record of pokemonData.records) {
     const scope = `pokemon:${record.internalName}`;
@@ -133,6 +161,67 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     scopeAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
     scopes.push({ kind: "mega", id: `${megaEvolution.species}:${megaEvolution.form}`,
       moves: scopeMoves, abilities: scopeAbilities });
+  }
+  const encountersByMap = new Map<number, EncounterRecord>();
+  for (const encounter of encounterData.records) encountersByMap.set(encounter.mapId, encounter);
+  for (const eventFile of eventFiles.filter((file) => /^Map\d{3}\.json$/u.test(file)).sort()) {
+    const mapId = Number.parseInt(eventFile.slice(3, 6), 10);
+    const scope = `map:${mapId}`;
+    const mapMoves = new Set<string>();
+    const mapAbilities = new Set<string>();
+    const mapPokemon = new Set<string>();
+    const mapTrainers = new Set<string>();
+    const includePokemon = (species: string, level: number): void => {
+      const definition = pokemon.get(species);
+      if (definition === undefined) return;
+      mapPokemon.add(species);
+      defaultMoves(definition, level).forEach((move) => mapMoves.add(move));
+      if (definition.abilities[0] !== undefined) mapAbilities.add(definition.abilities[0]);
+    };
+    const encounter = encountersByMap.get(mapId);
+    const encounteredLevels = new Map<string, number>();
+    for (const slot of encounter?.methods.flatMap((method) => method.slots) ?? []) {
+      encounteredLevels.set(slot.species, Math.max(encounteredLevels.get(slot.species) ?? 1, slot.maximumLevel));
+    }
+    for (const [species, level] of encounteredLevels) includePokemon(species, level);
+    const eventData = await optionalJson<unknown>(path.join(outputDirectory, "events", eventFile), null);
+    for (const source of stringsIn(eventData)) {
+      const trainer = /pbTrainerBattle\(PBTrainers::([A-Z][A-Z0-9_]*),\s*"((?:\\.|[^"\\])*)",\s*_I\("(?:\\.|[^"\\])*"\),\s*(?:true|false),\s*(\d+),\s*(?:true|false)/u.exec(source);
+      if (trainer !== null) {
+        const trainerId = `${trainer[1]}:${trainer[2]}:${trainer[3]}`;
+        const definition = trainersData.records.find((candidate) =>
+          `${candidate.trainerType}:${candidate.name}:${candidate.version}` === trainerId);
+        if (definition !== undefined) {
+          mapTrainers.add(trainerId);
+          for (const member of definition.pokemon) {
+            mapPokemon.add(member.species);
+            const species = pokemon.get(member.species);
+            const explicitMoves = member.moves.filter((move): move is string => move !== null);
+            (explicitMoves.length > 0 ? explicitMoves : defaultMoves(species, member.level))
+              .forEach((move) => mapMoves.add(move));
+            const availableAbilities = [...(species?.abilities ?? []), ...(species?.hiddenAbilities ?? [])];
+            const abilityIndex = member.abilityIndex;
+            if (abilityIndex === null && availableAbilities[0] !== undefined) {
+              mapAbilities.add(availableAbilities[0]);
+            }
+            else if (abilityIndex !== null && availableAbilities[abilityIndex] !== undefined) {
+              mapAbilities.add(availableAbilities[abilityIndex]!);
+            }
+          }
+        }
+      }
+      for (const boss of source.matchAll(/pbBossFight\((.+?),\s*(\d+)\)/gu)) {
+        const level = Number.parseInt(boss[2]!, 10);
+        for (const species of boss[1]!.matchAll(/:([A-Z][A-Z0-9_]*)/gu)) includePokemon(species[1]!, level);
+      }
+      for (const wild of source.matchAll(/pbWildBattle\(PBSpecies::([A-Z][A-Z0-9_]*),\s*(\d+)\)/gu)) {
+        includePokemon(wild[1]!, Number.parseInt(wild[2]!, 10));
+      }
+    }
+    mapMoves.forEach((move) => addUsage(moveUsage, move, scope));
+    mapAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
+    scopes.push({ kind: "map", id: String(mapId), moves: [...mapMoves], abilities: [...mapAbilities],
+      pokemon: [...mapPokemon], trainers: [...mapTrainers] });
   }
 
   const importedAnimationIndices = new Set(animationCatalog.animations.map((animation) => animation.index));
@@ -179,6 +268,7 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     policy: "Toute nouvelle espèce, forme Méga ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
     summary: {
       pokemon: pokemonData.records.length, trainers: trainersData.records.length,
+      maps: scopes.filter((scope) => scope.kind === "map").length,
       megaEvolutions: megaEvolutionData.records.length,
       moves: moveDependencies.length, abilities: abilityDependencies.length,
       importedAnimations: animationCatalog.animations.length, issues: issues.length,

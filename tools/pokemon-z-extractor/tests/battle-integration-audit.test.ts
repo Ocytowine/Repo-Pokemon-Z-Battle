@@ -48,6 +48,58 @@ describe("battle integration audit", () => {
     expect(report.issues).toContainEqual(expect.objectContaining({ key: "DROUGHT",
       usedBy: ["mega:CHARIZARD:2"] }));
   });
+
+  it("creates a map scope from encounters, trainer calls and scripted boss levels", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "pokemon-z-map-audit-"));
+    temporaryDirectories.push(directory);
+    await mkdir(path.join(directory, "events"));
+    await Promise.all([
+      writeJson(directory, "moves.json", { records: [
+        { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000" },
+        { id: 2, internalName: "NIGHTSHADE", name: "Ombre Nocturne", functionCode: "06D" },
+        { id: 3, internalName: "FUTUREMOVE", name: "Future", functionCode: "999" },
+      ] }),
+      writeJson(directory, "pokemon.json", { records: [
+        { internalName: "LILLIPUP", name: "Ponchiot", abilities: ["RUNAWAY"],
+          levelUpMoves: [{ level: 1, move: "TACKLE" }, { level: 99, move: "FUTUREMOVE" }] },
+        { internalName: "SHUPPET", name: "Polichombr", abilities: ["FRISK"],
+          levelUpMoves: [{ level: 1, move: "NIGHTSHADE" }] },
+        { internalName: "LICKITUNG", name: "Excelangue", abilities: ["OWNTEMPO"],
+          levelUpMoves: [{ level: 1, move: "TACKLE" }, { level: 30, move: "FUTUREMOVE" }] },
+      ] }),
+      writeJson(directory, "trainers.json", { records: [{ internalName: "trainer", trainerType: "CURANDERA",
+        name: "Merce", version: 0, pokemon: [{ species: "SHUPPET", level: 18,
+          moves: ["NIGHTSHADE", null, null, null], abilityIndex: null }] }] }),
+      writeJson(directory, "mega-evolutions.json", { records: [] }),
+      writeJson(directory, "encounters.json", { records: [{ mapId: 56, methods: [{ slots: [
+        { species: "LILLIPUP", minimumLevel: 17, maximumLevel: 19 },
+      ] }] }] }),
+      writeJson(directory, "engine-support-report.json", { categories: {
+        moveFunctionCodes: [{ key: "000", engineSupport: "supported" },
+          { key: "06D", engineSupport: "not-implemented" }, { key: "999", engineSupport: "not-implemented" }],
+        abilities: [{ key: "RUNAWAY", engineSupport: "not-implemented" },
+          { key: "FRISK", engineSupport: "not-implemented" }, { key: "OWNTEMPO", engineSupport: "not-implemented" }],
+      } }),
+      writeJson(path.join(directory, "events"), "Map056.json", { commands: [
+        { source: "pbTrainerBattle(PBTrainers::CURANDERA,\"Merce\",_I(\"Fin\"),false,0,false,0)" },
+        { source: "pbBossFight([:LICKITUNG][pbGet(183)],22)" },
+      ] }),
+    ]);
+
+    const report = await createBattleIntegrationAudit(directory, { mappings: [], animations: [] }) as {
+      readonly scopes: readonly { readonly kind: string; readonly id: string; readonly moves: readonly string[];
+        readonly pokemon?: readonly string[]; readonly trainers?: readonly string[] }[];
+      readonly issues: readonly { readonly key: string; readonly usedBy: readonly string[] }[];
+    };
+    expect(report.scopes).toContainEqual(expect.objectContaining({ kind: "map", id: "56",
+      moves: expect.arrayContaining(["TACKLE", "NIGHTSHADE"]),
+      pokemon: expect.arrayContaining(["LILLIPUP", "SHUPPET", "LICKITUNG"]),
+      trainers: ["CURANDERA:Merce:0"] }));
+    expect(report.scopes.find((scope) => scope.kind === "map" && scope.id === "56")?.moves)
+      .not.toContain("FUTUREMOVE");
+    expect(report.issues).toContainEqual(expect.objectContaining({ key: "NIGHTSHADE",
+      usedBy: expect.arrayContaining(["map:56"]) }));
+  });
 });
 
 describe("Mega integration audit", () => {

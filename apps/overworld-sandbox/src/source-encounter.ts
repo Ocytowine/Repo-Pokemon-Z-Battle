@@ -18,6 +18,16 @@ export interface SourceEncounterRequest {
   readonly level: number;
   readonly initialStages?: Readonly<Partial<Record<BattleStat, number>>>;
   readonly boss?: true;
+  readonly method?: "land" | "cave" | "rock-smash" | "fishing" | "scripted";
+}
+
+type BattleEnvironment = NonNullable<TeamBattleState["effects"]>["environment"];
+
+function withEnvironment(state: TeamBattleState, environment: BattleEnvironment): TeamBattleState {
+  const effects = state.effects ?? { sides: {
+    player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 },
+  }, waterSportTurns: 0 };
+  return { ...state, effects: { ...effects, environment } };
 }
 
 export interface SourceTrainerDefinition {
@@ -52,22 +62,26 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
     ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
     : createTeamBattleState({ player: player.members, opponent: opponent.members },
       { player: player.activeIndex, opponent: opponent.activeIndex });
-  if (encounter.initialStages === undefined) return state;
-  const opponentTeam = state.teams.opponent;
+  const environment: BattleEnvironment = encounter.method === "cave" || encounter.method === "rock-smash" ? "cave"
+    : encounter.method === "fishing" ? "moving-water" : encounter.method === "land" ? "grass" : "none";
+  const contextualState = withEnvironment(state, environment);
+  if (encounter.initialStages === undefined) return contextualState;
+  const opponentTeam = contextualState.teams.opponent;
   const withInitialStages = (member: (typeof opponentTeam.members)[number]) => {
     const stages = Object.fromEntries(Object.entries(member.stages).map(([stat, stage]) =>
       [stat, Math.max(-6, Math.min(6, stage + (encounter.initialStages?.[stat as BattleStat] ?? 0)))])
     ) as unknown as typeof member.stages;
     return { ...member, stages };
   };
-  return { ...state, teams: { ...state.teams, opponent: { ...opponentTeam,
+  return { ...contextualState, teams: { ...contextualState.teams, opponent: { ...opponentTeam,
     members: opponentTeam.members.map((member, index) => index !== opponentTeam.activeIndex
       ? member : withInitialStages(member)) } } };
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
   catalog: PlayerCreationCatalog, format: "single" | "double" = "single",
-  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false): TeamBattleState {
+  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false,
+  environment: BattleEnvironment = "none"): TeamBattleState {
   const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
@@ -103,8 +117,8 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
     : createTeamBattleState({ player: player.members, opponent: opponent.members },
       { player: player.activeIndex, opponent: opponent.activeIndex });
-  return { ...state, teams: { ...state.teams,
-    opponent: { ...state.teams.opponent, items: [...(trainer.items ?? [])] } } };
+  return withEnvironment({ ...state, teams: { ...state.teams,
+    opponent: { ...state.teams.opponent, items: [...(trainer.items ?? [])] } } }, environment);
 }
 
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
@@ -204,7 +218,7 @@ export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleSt
 }
 
 export function storeSourceEncounterParty(party: PlayerPartyState, state: TeamBattleState): PlayerPartyState {
-  return storeProjectedBattleTeam(party, state.teams.player);
+  return storeProjectedBattleTeam(party, state.teams.player, { retainTransferredHeldItems: true });
 }
 
 export interface SourceEncounterSettlement {

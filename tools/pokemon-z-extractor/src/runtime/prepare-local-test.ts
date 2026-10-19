@@ -103,10 +103,10 @@ export async function prepareLocalTest(
 ): Promise<LocalTestPreparationResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await extractPbsData(paths.source, paths.output);
+  await extractEvents(paths.source, paths.output);
   const runtime = await extractRuntimeData(paths.source, paths.output);
   await extractAssets(paths.source, paths.output);
   await extractWorldMaps(paths.source, paths.output);
-  await extractEvents(paths.source, paths.output);
   await createMegaIntegrationAudit(paths.output);
   await extractScriptHooks(paths.source, paths.output);
   const manifestPath = await writeLocalDataManifest(paths.output);

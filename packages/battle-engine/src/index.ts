@@ -9,6 +9,7 @@ export { activeBattlePositions, activeTeamIndices, battlerAtPosition, createDoub
 export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,
   chooseSourceBattleReplacement } from "./battle-tactics.js";
 export { resolveBattleVolatileEndOfTurn, resolveTurn } from "./resolve-turn.js";
+export { restoreTransformedBattler, transformBattler } from "./battle-transform.js";
 export { SeededRandom } from "./rng.js";
 export { activateSharedBattleSession, closeSharedBattleSession, createSharedBattleSession, openSharedBattleJoinWindow,
   settleEscapedSharedBattleSession, settleSharedBattleSession } from "./shared-battle-session.js";

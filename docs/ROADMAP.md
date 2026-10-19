@@ -1033,9 +1033,17 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   sera disponible : la v2.12 FR ne fournit que l'objet, sans logique d'utilisation ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
-- [x] automatiser le P0 Route 3 → Bois-en-Tronc (Maps 023 à 029) : Dresseurs,
+- [x] automatiser et valider Route 3 → Bois-en-Tronc (Maps 023 à 029) : Dresseurs,
   branche simple/double selon l'équipe apte, rencontres de nid et récompenses
-  post-victoire autoritaires. La recette manuelle solo/hôte/invité reste ouverte.
+  post-victoire autoritaires. Le parcours et les deux nids ont été validés
+  manuellement avec les assets locaux le 2026-10-19.
+- [ ] fermer Route 5 (Maps 055–056) avec l'audit `map:ID`, les rencontres et les
+  cinq Dresseurs. Le portage automatisé est terminé : fonctions à compteur et à
+  contexte, Morphing/Imposteur, climat/terrain, talents de contact et contrats
+  solo/room sont dans le noyau commun. Après `prepare:local`, `map:55` est à zéro
+  alerte et `map:56` ne conserve que `FAINTATTACK`, réellement absent de
+  `move2anim.dat` et rendu par le fallback prévu. Reste uniquement la recette
+  manuelle solo/hôte/invité/reconnexion avant de cocher le lot.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
@@ -1864,6 +1872,31 @@ autonomes sur une même carte.
 
 ### Phase 11 - Mecanismes solo structurants
 
+Decision produit du 2026-10-19 : la priorite de cette phase est desormais le
+portage fonctionnel complet des Pokemon et des Dresseurs avant les ameliorations
+de confort UI/UX. Les refontes de navigation, le rangement avance de l'equipe et
+les autres optimisations d'interface restent autorisees uniquement lorsqu'elles
+bloquent le test d'une mecanique portee.
+
+Le travail avance par frontieres verticales du parcours. Pour chaque nouvelle
+espece, rencontre ou equipe de Dresseur, le pipeline controle les capacites, les
+talents, les objets tenus, les statuts, les formes/evolutions et les animations
+source. Toute dependance manquante est portee comme mecanique generique dans le
+noyau commun, puis validee avec le meme contrat en solo, hote et invite. Une
+espece n'est pas consideree terminee parce que ses donnees ou son sprite sont
+charges : toutes les dependances qu'elle peut effectivement employer dans le
+perimetre teste doivent etre executees ou explicitement auditees comme partielles.
+
+Ordre de travail retenu :
+
+1. fermer les dettes fonctionnelles des lots verticaux deja accessibles ;
+2. continuer le parcours narratif par groupes de cartes, rencontres et Dresseurs ;
+3. terminer les mecanismes transverses du cycle Pokemon (capacites, talents,
+   objets tenus, statuts, capture, evolution, formes et apprentissage) rencontres
+   par ces lots ;
+4. seulement apres cette couverture, reprendre les ameliorations UI/UX qui ne
+   conditionnent pas les tests.
+
 L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les
 donnees importees masquent encore un ecart de comportement important : 24/353
 fonctions d'attaque et 14/255 talents sont executes. Les objets sont avances mais
@@ -2170,10 +2203,10 @@ et sept talents deterministes utilisent le noyau commun solo/Coop. Les combats d
 nid et leurs recompenses differees sont hote-autoritaires et restaurables apres
 reconnexion. Le sous-lot de fidelite porte maintenant le vrai deux-contre-un des
 boss, leurs rangs initiaux, le tirage persistant du nid insecte et le
-repositionnement replique des acteurs de la scene post-combat. Les effets encore
-partiels et la recette manuelle sont detailles dans
-`docs/COMBAT_VERTICAL_AUDIT.md`; deux TP neutres de Test dev permettent d'atteindre
-les nids sans modifier les interrupteurs d'histoire.
+repositionnement replique des acteurs de la scene post-combat. Les mécaniques
+partielles ont ensuite été fermées et la recette manuelle Maps 023 à 029, nids
+compris, a été validée avec les assets locaux. Deux TP neutres de Test dev
+permettent toujours d'atteindre les nids sans modifier les interrupteurs d'histoire.
 
 Stabilisation Coop du 2026-10-19 : les combats de nid déjà doubles restent masqués
 à l'invité jusqu'à ce qu'il interagisse avec l'hôte adjacent pour les observer,
@@ -2188,6 +2221,22 @@ combat duo source : deux adversaires sont actifs nativement. En Coop, l'invité
 peut prendre le second poste allié avant le premier tour ; le second Pokémon de
 l'hôte reste en réserve, sans dépasser le format 2 contre 2. Les combats sauvages
 déjà doubles restent non rejoignables et seulement observables.
+La persistance Cloudflare est désormais séparée du flux temps réel : sons et
+transport ne sont pas écrits, tandis que mouvements joueur/PNJ sont consolidés
+en checkpoints au lieu d'un `storage.put()` par message. Les mutations critiques
+restent persistées immédiatement pour préserver combats, narration et reconnexion.
+
+Fermeture des mécaniques partielles Route 3–Route 4 du 2026-10-19 : les douze
+codes auparavant partiels (`021`, `049`, `082`, `083`, `093`, `098`, `09C`,
+`0DC`, `0F1`, `0F4`, `0FA`, `110`) sont maintenant pris en charge dans le noyau
+simple et double. Chargeur, Anti-Brume, Assurance, Chant Canon, Frénésie, Fléau,
+Coup d'Main, Vampigraine, Larcin/Implore, Piqûre/Picore, le recul et Tour Rapide
+partagent le même état autoritaire en solo et Coop. Les transferts d'objets sont
+restaurés après un combat de Dresseur, mais conservés après un sauvage. L'audit
+local passe à 81/353 fonctions supportées et aucune fonction classée `partial` ;
+les 272 fonctions restantes demeurent explicitement non implémentées et seront
+portées avec leurs futurs lots verticaux. Le fallback de Larcin reste nécessaire,
+car le jeu source ne fournit aucun mapping dans `move2anim.dat`.
 
 Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de

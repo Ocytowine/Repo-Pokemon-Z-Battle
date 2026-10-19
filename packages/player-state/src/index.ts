@@ -1065,9 +1065,9 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "001", "003", "004", "005", "006", "007", "008", "009", "00A", "00C", "00F", "012", "013", "016",
+const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "001", "003", "004", "005", "006", "007", "008", "009", "00A", "00C", "00F", "010", "012", "013", "016", "017",
   "01C", "01D", "01E", "01F", "020", "021", "022", "023", "027", "028", "030", "033", "034", "042", "043", "044", "045", "046", "047", "048", "049", "04B", "04C", "04D", "04F",
-  "06F", "077", "07B", "082", "083", "088", "093", "098", "09A", "09C", "09D", "09E", "0A1", "0A2", "0A3", "0A5", "0A7", "0AA", "0AD", "0B9", "0BA", "0BC", "0BD", "0BE", "0C0", "0CF", "0D5", "0D8", "0DC", "0DD", "0E8", "0F1", "0F4", "0FA", "10D", "10E", "110", "116", "159", "906"]);
+  "02D", "064", "069", "06D", "06F", "077", "07B", "082", "083", "086", "088", "091", "093", "095", "098", "09A", "09C", "09D", "09E", "0A1", "0A2", "0A3", "0A5", "0A7", "0AA", "0AD", "0B3", "0B9", "0BA", "0BC", "0BD", "0BE", "0C0", "0CF", "0D1", "0D3", "0D5", "0D8", "0DC", "0DD", "0E8", "0F0", "0F1", "0F4", "0F8", "0FA", "10D", "10E", "110", "116", "159", "906"]);
 
 function supportedAbility(value: string | null): BattleAbility | null {
   if (value === null) return null;
@@ -1229,6 +1229,14 @@ export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: Player
   return { activeIndex, members };
 }
 
+function settledHeldItem(result: BattlerState, retainTransferredHeldItems: boolean): HeldItem | null {
+  if (result.heldItemTransfer === undefined) return result.heldItem;
+  // In a wild battle Pokemon Z lets the player retain an item acquired from the
+  // wild target, but a wild opponent cannot permanently steal the player's item.
+  if (retainTransferredHeldItems && result.heldItemTransfer.originalItem === null) return result.heldItem;
+  return result.heldItemTransfer.originalItem;
+}
+
 export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): PlayerPartyState {
   const byId = new Map(team.members.map((member) => [member.id, member]));
   const members = party.members.map((member) => {
@@ -1238,7 +1246,7 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? member.metadata
         : { ...member.metadata, happiness: result.happiness },
-      heldItem: result.heldItem,
+      heldItem: settledHeldItem(result, false),
       moves: member.moves.map((slot) => {
         const current = pp.get(slot.internalName);
         if (current === undefined) throw new Error(`Résultat sans la capacité ${slot.internalName}.`);
@@ -1255,7 +1263,8 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
  * Restores a deliberately reduced battle projection without deleting source-only moves,
  * unsupported held items or reserve members which were not sent to the battle engine.
  */
-export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTeam): PlayerPartyState {
+export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTeam,
+  options: { readonly retainTransferredHeldItems?: boolean } = {}): PlayerPartyState {
   const byId = new Map(team.members.map((member) => [member.id, member]));
   const members = party.members.map((member) => {
     const result = byId.get(member.id);
@@ -1265,7 +1274,8 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? member.metadata
         : { ...member.metadata, happiness: result.happiness },
-      heldItem: preserveHeldItem ? member.heldItem : result.heldItem,
+      heldItem: preserveHeldItem ? member.heldItem
+        : settledHeldItem(result, options.retainTransferredHeldItems === true),
       moves: member.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeId = team.members[team.activeIndex]?.id;
@@ -1276,7 +1286,8 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
 
 /** Restores only the Pokémon owned by one participant from a shared camp battle. */
 export function storeOwnedBattleResults(party: PlayerPartyState, participation: SharedBattleParticipation,
-  state: TeamBattleState, ownerId: string): PlayerPartyState {
+  state: TeamBattleState, ownerId: string,
+  options: { readonly retainTransferredHeldItems?: boolean } = {}): PlayerPartyState {
   const owned = new Map<string, { readonly side: BattleSide; readonly battler: BattlerState }>();
   for (const side of ["player", "opponent"] as const) {
     const teamById = new Map(state.teams[side].members.map((battler) => [battler.id, battler]));
@@ -1296,7 +1307,8 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? pokemon.metadata
         : { ...pokemon.metadata, happiness: result.happiness },
-      heldItem: preserveSourceHeldItem ? pokemon.heldItem : result.heldItem,
+      heldItem: preserveSourceHeldItem ? pokemon.heldItem
+        : settledHeldItem(result, options.retainTransferredHeldItems === true),
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])

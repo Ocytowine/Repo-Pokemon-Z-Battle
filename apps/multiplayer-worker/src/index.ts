@@ -6,6 +6,7 @@ import { AuthoritativeBattleRoom, type PersistedRoomState, type RoomDispatch } f
 import { DEMO_WORLD_CATALOG, createDemoWorldState } from "@pokemon-z-battle/overworld-engine";
 import { createDemoBattle } from "./demo-battle.js";
 import { generateRoomCode, roomCodeFromPath } from "./routing.js";
+import { ROOM_CHECKPOINT_MAX_MS, roomCheckpointDelay, roomPersistenceMode } from "./persistence-policy.js";
 
 interface Env {
   readonly BATTLE_ROOMS: DurableObjectNamespace<BattleRoom>;
@@ -31,6 +32,12 @@ function json(value: unknown, status = 200, headers: HeadersInit = {}): Response
   return new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
 }
 
+function internalError(error: unknown, boundary: "worker" | "room"): Response {
+  const detail = error instanceof Error ? error.message.slice(0, 240) : "Erreur interne inconnue.";
+  console.error(`[${boundary}]`, error);
+  return json({ error: boundary === "room" ? "ROOM_INTERNAL_ERROR" : "WORKER_INTERNAL_ERROR", detail }, 500);
+}
+
 function randomToken(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   return [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
@@ -51,6 +58,9 @@ export class BattleRoom extends DurableObject<Env> {
   #room: AuthoritativeBattleRoom | null = null;
   #roomCode: string | null = null;
   #identities = new Map<string, string>();
+  #checkpointTimer: ReturnType<typeof setTimeout> | null = null;
+  #checkpointDirty = false;
+  #checkpointStartedAt: number | null = null;
   readonly #initialized: Promise<void>;
 
   public constructor(ctx: DurableObjectState, env: Env) {
@@ -68,12 +78,16 @@ export class BattleRoom extends DurableObject<Env> {
   }
 
   public override async fetch(request: Request): Promise<Response> {
-    await this.#initialized;
-    const url = new URL(request.url);
-    if (request.method === "POST" && url.pathname === "/create") return this.createRoom(await request.json());
-    if (request.method === "POST" && url.pathname === "/join") return this.joinRoom(await request.json());
-    if (request.method === "GET" && url.pathname === "/socket") return this.openSocket(request, url);
-    return json({ error: "Route Durable Object inconnue." }, 404);
+    try {
+      await this.#initialized;
+      const url = new URL(request.url);
+      if (request.method === "POST" && url.pathname === "/create") return this.createRoom(await request.json());
+      if (request.method === "POST" && url.pathname === "/join") return this.joinRoom(await request.json());
+      if (request.method === "GET" && url.pathname === "/socket") return this.openSocket(request, url);
+      return json({ error: "Route Durable Object inconnue." }, 404);
+    } catch (error) {
+      return internalError(error, "room");
+    }
   }
 
   public override async webSocketMessage(socket: WebSocket, payload: ArrayBuffer | string): Promise<void> {
@@ -87,7 +101,9 @@ export class BattleRoom extends DurableObject<Env> {
       if (typeof payload !== "string") throw new ProtocolValidationError("Les messages binaires ne sont pas acceptés.");
       const message = parseClientMessage(payload);
       const dispatches = this.#room.receive(attachment.playerId, message);
-      await this.persist();
+      const persistence = roomPersistenceMode(message);
+      if (persistence === "immediate") await this.persistImmediately();
+      else if (persistence === "checkpoint") await this.scheduleCheckpoint();
       this.dispatch(dispatches);
       if (message.type === "leaveRoom") socket.close(1000, "Session quittée");
     } catch (error) {
@@ -109,7 +125,7 @@ export class BattleRoom extends DurableObject<Env> {
     if (this.#room === null) return;
     const snapshot = this.#room.expireDisconnectedPlayers();
     if (snapshot !== null) {
-      await this.persist();
+      await this.persistImmediately();
       this.broadcast({ type: "snapshot", version: PROTOCOL_VERSION, snapshot });
     }
     await this.schedulePresenceAlarm();
@@ -134,7 +150,7 @@ export class BattleRoom extends DurableObject<Env> {
     this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed),
       { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState(), sourceWorld });
     const ticket = await this.issueTicket(profile);
-    await this.persist();
+    await this.persistImmediately();
     return json(ticket, 201);
   }
 
@@ -146,7 +162,7 @@ export class BattleRoom extends DurableObject<Env> {
     catch { return json({ error: "INVALID_PROFILE" }, 400); }
     try {
       const ticket = await this.issueTicket(profile);
-      await this.persist();
+      await this.persistImmediately();
       return json(ticket, 201);
     } catch (error) {
       if (error instanceof Error && error.message === "ROOM_FULL") return json({ error: "ROOM_FULL" }, 409);
@@ -187,7 +203,7 @@ export class BattleRoom extends DurableObject<Env> {
     server.serializeAttachment({ playerId } satisfies SocketAttachment);
     this.ctx.acceptWebSocket(server, [`player:${playerId}`]);
     const connection = this.#room.connect(playerId);
-    await this.persist();
+    await this.persistImmediately();
     await this.schedulePresenceAlarm();
     this.send(server, {
       type: "welcome",
@@ -211,7 +227,7 @@ export class BattleRoom extends DurableObject<Env> {
       .some((candidate) => candidate !== socket && candidate.readyState === WebSocket.OPEN);
     if (stillConnected) return;
     const snapshot = this.#room.disconnect(attachment.playerId);
-    await this.persist();
+    await this.persistImmediately();
     this.broadcast({ type: "snapshot", version: PROTOCOL_VERSION, snapshot });
     await this.schedulePresenceAlarm();
   }
@@ -240,6 +256,37 @@ export class BattleRoom extends DurableObject<Env> {
     if (this.#room === null || this.#roomCode === null) return;
     const identities = [...this.#identities].map(([playerId, tokenHash]) => ({ playerId, tokenHash }));
     await this.ctx.storage.put("room", { roomCode: this.#roomCode, room: this.#room.exportState(), identities } satisfies PersistedRoomBundle);
+  }
+
+  private async persistImmediately(): Promise<void> {
+    if (this.#checkpointTimer !== null) clearTimeout(this.#checkpointTimer);
+    this.#checkpointTimer = null;
+    this.#checkpointDirty = false;
+    this.#checkpointStartedAt = null;
+    await this.persist();
+  }
+
+  private async scheduleCheckpoint(): Promise<void> {
+    const now = Date.now();
+    this.#checkpointDirty = true;
+    this.#checkpointStartedAt ??= now;
+    if (now - this.#checkpointStartedAt >= ROOM_CHECKPOINT_MAX_MS) {
+      await this.persistImmediately();
+      return;
+    }
+    if (this.#checkpointTimer !== null) clearTimeout(this.#checkpointTimer);
+    const delay = roomCheckpointDelay(this.#checkpointStartedAt, now);
+    this.#checkpointTimer = setTimeout(() => {
+      this.#checkpointTimer = null;
+      this.ctx.waitUntil(this.flushCheckpoint());
+    }, delay);
+  }
+
+  private async flushCheckpoint(): Promise<void> {
+    if (!this.#checkpointDirty) return;
+    this.#checkpointDirty = false;
+    this.#checkpointStartedAt = null;
+    await this.persist();
   }
 
   private async schedulePresenceAlarm(): Promise<void> {
@@ -272,7 +319,9 @@ export default {
     const origin = env.ALLOWED_ORIGIN ?? "*";
     if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }), origin);
 
-    if (request.method === "POST" && url.pathname === "/api/rooms") {
+    try {
+
+      if (request.method === "POST" && url.pathname === "/api/rooms") {
       let body: unknown;
       try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
       const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
@@ -283,24 +332,29 @@ export default {
         if (response.status !== 409) return withCors(response, origin);
       }
       return withCors(json({ error: "ROOM_CODE_EXHAUSTED" }, 503), origin);
-    }
+      }
 
-    const joinCode = roomCodeFromPath(url.pathname, "join");
-    if (request.method === "POST" && joinCode !== null) {
+      const joinCode = roomCodeFromPath(url.pathname, "join");
+      if (request.method === "POST" && joinCode !== null) {
       let body: unknown;
       try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
       const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
       return withCors(await proxyTicket(env.BATTLE_ROOMS.getByName(joinCode), "join", profile), origin);
-    }
+      }
 
-    const socketCode = roomCodeFromPath(url.pathname, "socket");
-    if (request.method === "GET" && socketCode !== null) {
+      const socketCode = roomCodeFromPath(url.pathname, "socket");
+      if (request.method === "GET" && socketCode !== null) {
       const target = new URL("https://room.internal/socket");
       target.search = url.search;
       return env.BATTLE_ROOMS.getByName(socketCode).fetch(new Request(target, request));
-    }
+      }
 
-    if (request.method === "GET" && url.pathname === "/health") return json({ ok: true, protocolVersion: PROTOCOL_VERSION });
-    return withCors(json({ error: "NOT_FOUND" }, 404), origin);
+      if (request.method === "GET" && url.pathname === "/health") {
+        return withCors(json({ ok: true, protocolVersion: PROTOCOL_VERSION }), origin);
+      }
+      return withCors(json({ error: "NOT_FOUND" }, 404), origin);
+    } catch (error) {
+      return withCors(internalError(error, "worker"), origin);
+    }
   },
 } satisfies ExportedHandler<Env>;

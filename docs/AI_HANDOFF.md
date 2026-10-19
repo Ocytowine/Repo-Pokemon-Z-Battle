@@ -4028,14 +4028,12 @@ Une reconnexion avant le combat ne peut donc ni reroll ni accorder la récompens
 en avance. L'invité voit le combat via le snapshot partagé mais ne peut déclencher
 la narration ni recevoir le Sac de l'hôte.
 
-Dettes conservées dans `docs/COMBAT_VERTICAL_AUDIT.md` : plusieurs fonctions
-restent `partial` (vol durable d'objet, drain positionnel de Vampigraine,
-Tour Rapide sans pièges, combos d'allié et recul), l'animation de `THIEF` n'a pas
-de mapping source, et le vrai deux-contre-un asymétrique n'est pas encore
-reproduit. Les profils de statistiques de boss de la variable 300 sont désormais
-portés par la rencontre persistante. Ne pas annoncer ce P0 comme recette manuelle complète du parcours :
-solo, hôte et invité doivent encore traverser Maps 023 à 029 avec les assets
-locaux et valider les deux nids.
+Les anciennes dettes de mécanique partielle et de deux-contre-un ont été fermées
+par les sous-lots suivants. `THIEF` reste seulement dépourvu de mapping visuel
+source et emploie son fallback. Les profils de statistiques de boss de la
+variable 300 sont portés par la rencontre persistante. La recette Maps 023 à 029,
+les deux nids compris, a été validée manuellement avec les assets locaux le
+2026-10-19 ; ce parcours peut désormais être annoncé comme fonctionnellement clos.
 
 ## Modificateurs narratifs initiaux de rencontre — Exténuation — 2026-10-19
 
@@ -4110,8 +4108,8 @@ de cette commande dans le jeu source.
 Test dev expose `TP nid de Couafarel` (Map024) et `TP nid insecte` (Map028). Ces
 raccourcis ne touchent ni aux switches, ni aux variables, ni aux self-switches :
 ils exigent une sauvegarde dont la page narrative du nid est encore active. La
-recette manuelle solo/hôte/invité reste nécessaire avant de déclarer le parcours
-Maps 023 à 029 validé visuellement.
+recette manuelle solo/hôte/invité de ces raccourcis et du parcours a été validée
+avec les assets locaux le 2026-10-19.
 
 ### Correctif du nid insecte — Dardargnan et Dard-Venin (`0BE`) — 2026-10-19
 
@@ -4188,3 +4186,107 @@ doubles, dont le nid insecte, restent non rejoignables et seulement observables.
 L'audit de dépendances de ce duo a aussi conduit au port générique de `PROTEAN` :
 le Pokémon adopte le type de sa capacité juste avant son exécution, dans le même
 noyau autoritaire pour le solo, l'hôte et l'invité.
+
+Le Worker multijoueur possède désormais une frontière d'erreur CORS au niveau de
+l'adaptateur HTTP et de chaque Durable Object. Une exception de production ne se
+présente donc plus au client comme un faux blocage CORS : elle renvoie
+`WORKER_INTERNAL_ERROR` ou `ROOM_INTERNAL_ERROR`, un détail borné affiché dans le
+menu Coop, et écrit la trace complète dans l'observabilité Cloudflare.
+
+Correctif quota Durable Objects du 2026-10-19 : le Worker ne persiste plus la
+room entière après chaque paquet WebSocket. `moveAvatar` et `setSourceActors`
+sont regroupés en un checkpoint 1,5 seconde après la fin d'une rafale, avec un
+plafond de 30 secondes pendant un mouvement continu. `emitSourceSound`, `ping`
+et `requestSnapshot` ne déclenchent aucune écriture. Les mutations de gameplay,
+de narration et de combat restent write-through. Cette frontière conserve la
+reconnexion autoritaire tout en supprimant l'écriture SQLite par pas, mouvement
+de PNJ ou effet sonore qui épuisait les 100 000 rows written du niveau gratuit.
+
+## Priorité produit — portage fonctionnel des Pokémon — 2026-10-19
+
+Le porteur demande de faire passer le portage complet des Pokémon et de leurs
+mécaniques avant les améliorations de qualité de vie UI/UX. Ne pas reprendre le
+Multi-EXP, le renommage, le rangement avancé de l'équipe ou une refonte visuelle
+tant qu'ils ne bloquent pas une recette fonctionnelle.
+
+La reprise doit continuer par lots verticaux du parcours avec
+`battle-integration-report.json` : espèces sauvages et équipes de Dresseurs,
+puis capacités, talents, objets tenus, statuts, formes/évolutions et animations
+dont elles dépendent. La règle reste générique et partagée par le solo et la room
+Coop ; ne jamais créer une implémentation propre à une espèce ou à un Dresseur.
+Avant de fermer un lot, relancer `prepare:local`, auditer ses scopes, couvrir les
+dépendances signalées et consigner honnêtement tout support partiel.
+
+## Route 3–Route 4 — fermeture des mécaniques partielles — 2026-10-19
+
+Les douze codes encore classés `partial` dans le lot Route 3–Bois-en-Tronc sont
+fermés dans le noyau de combat partagé : `021`, `049`, `082`, `083`, `093`,
+`098`, `09C`, `0DC`, `0F1`, `0F4`, `0FA` et `110`. Les règles ont été relues
+dans `083-81220597-pokebattle-moveeffects.rb` puis portées génériquement : durée
+et consommation de Chargeur, nettoyage complet d'Anti-Brume/Tour Rapide,
+Assurance après dégât, enchaînement de Chant Canon, paliers exacts de Fléau,
+Coup d'Main, drain de Vampigraine vers la position source, vol/consommation
+d'objet et recul avec immunités.
+
+Autorité et état : le resolveur local en solo et la room autoritaire en Coop
+emploient le même `BattleState`. Les compteurs volatils, effets de camp, terrain,
+pièges et provenance positionnelle de Vampigraine font partie du snapshot
+tactique minimal et sont donc restaurés après reconnexion. Les événements de
+présentation sont adressés aux participants du combat. Les objets personnels ne
+sont réglés qu'à la fin : un transfert par Larcin/Implore est annulé contre un
+Dresseur et conservé dans un combat sauvage ; ce choix est partagé par les
+adaptateurs solo et Coop, sans seconde implémentation métier.
+
+`prepare:local` régénère maintenant un rapport à 81/353 fonctions supportées et
+zéro fonction `partial`. Les douze codes ne produisent plus d'issue mécanique.
+Toutes leurs animations mappées sont importées ; seule `THIEF` reste sans mapping
+dans `move2anim.dat` et utilise donc le fallback, sans animation inventée. Le
+catalogue des objets tenus demeure une frontière explicite : Piqûre/Picore sait
+consommer les Baies admises par le moteur, et les familles de Baies futures
+seront ajoutées avec leur propre lot d'objets.
+
+Validation du porteur le 2026-10-19 : Maps 023 à 029 et les deux nids fonctionnent
+avec les assets locaux. Le lot Route 3–Route 4/Bois-en-Tronc est donc clos côté
+automatisation, fidélité mécanique et recette manuelle.
+
+## Route 5 — premier sous-lot et audit par carte — 2026-10-19
+
+La reprise suivante est engagée sur Maps 055–056. `audit:combat` accepte le scope
+`map:55` ou `map:56`, construit depuis `encounters.json` et les événements extraits.
+Il tient compte du niveau réellement rencontré, des capacités explicites des
+Dresseurs et de leur index de talent ; il ne remonte donc plus arbitrairement les
+attaques de niveau 99 ou les talents cachés d'une espèce de bas niveau.
+
+Six fonctions requises sont terminées dans le noyau commun : `010`, `02D`, `064`,
+`06D`, `086` et `0F0`. Elles couvrent peur d'Écrasement, cinq hausses de Pouvoir
+Antique, remplacement prudent du talent par Soucigraine, dégâts fixes et immunité
+d'Ombre Nocturne, puissance sans objet d'Acrobatie, puis puissance et perte
+temporaire d'objet de Sabotage. Les nouveaux événements `abilityChanged` et
+`heldItemRemoved`, ainsi que la provenance de l'objet, sont validés par le
+protocole et présentés à tous les participants. L'objet personnel est restauré au
+règlement ; le noyau et l'état tactique sont identiques en solo et dans la room.
+
+### Route 5 — fermeture automatisée des dépendances — 2026-10-19
+
+Le noyau commun porte maintenant `091`, `095`, `069`, `0B3`, `0D1`, `0D3` et
+`0F8` : Taillade/Roulade conservent et réinitialisent leurs compteurs, Ampleur
+utilise la distribution source, Brouhaha verrouille l'action et réveille les
+Pokémon, Embargo bloque objets tenus et objets de Dresseur, et Morphing copie le
+combattant puis restaure l'identité originale au retrait. Force Nature choisit
+sa capacité depuis un champ `environment` générique alimenté par les rencontres
+terrestres, grottes et pêche ; ce champ voyage avec le snapshot autoritaire.
+
+Les talents de Map055–056 sont actifs dans les chemins simple et double : entrée
+(Imposteur, Créa-Herbe, Intimidation), contact (Corps Ardent, Peau Dure, Poisseux),
+statut (Vaccin, Feuille Garde, Tempo Perso), vitesse météo (Chlorophylle,
+Glissade), Phobique et Fuite. Les remplacements restaurent Morphing et rejouent
+les talents d'entrée ; la room Coop emploie ces mêmes fonctions sans logique
+cliente parallèle. Le protocole accepte les nouveaux codes et compteurs.
+
+Validation automatique : `prepare:local` réussit, `audit:combat -- --scope map:55`
+retourne 0 alerte et `map:56` conserve uniquement `FAINTATTACK · not-mapped`.
+Cette dernière absence est présente dans la source `move2anim.dat` et doit rester
+signalée avec le fallback visuel, jamais être masquée ou inventée. Les tests et le
+build du monorepo passent. Le lot est terminé côté code mais ne doit être coché
+comme fermé qu'après validation manuelle des cinq Dresseurs/rencontres en solo,
+hôte, invité et après reconnexion.

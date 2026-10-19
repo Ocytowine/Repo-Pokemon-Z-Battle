@@ -34,11 +34,23 @@ export function calculateDamage(
   const effectiveMove = effectiveMoveType(attacker, move);
   const moveType = effectiveMove.type;
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
+  const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
+    && (moveType === "NORMAL" || moveType === "FIGHTING")
+    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
+  const typeEffect = defenderTypes.length === 0 ? 1 : typeEffectiveness(moveType, defenderTypes);
+  const effectiveness = !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND"
+    ? 0 : typeEffect;
   if (move.functionCode === "06F") {
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
-    const result = Math.max(1, Math.floor((attacker.level * variance) / 100));
+    const result = effectiveness === 0 ? 0 : Math.max(1, Math.floor((attacker.level * variance) / 100));
     trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
-      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, abilityModifier: null, result });
+      critical: false, variance, stab: 1, effectiveness, statusModifier: 1, abilityModifier: null, result });
+    return result;
+  }
+  if (move.functionCode === "06D") {
+    const result = effectiveness === 0 ? 0 : attacker.level;
+    trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
+      critical: false, variance: 100, stab: 1, effectiveness, statusModifier: 1, abilityModifier: null, result });
     return result;
   }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
@@ -67,24 +79,21 @@ export function calculateDamage(
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = defender.capture?.weight ?? 0;
+  const flailRatio = Math.floor((48 * attacker.hp) / attacker.stats.maxHp);
   let power = move.functionCode === "098"
-    ? attacker.hp * 48 <= attacker.stats.maxHp ? 200 : attacker.hp * 5 <= attacker.stats.maxHp ? 150
-      : attacker.hp * 3 <= attacker.stats.maxHp ? 100 : attacker.hp * 2 <= attacker.stats.maxHp ? 80
-        : attacker.hp * 3 <= attacker.stats.maxHp * 2 ? 40 : 20
+    ? flailRatio < 2 ? 200 : flailRatio < 5 ? 150 : flailRatio < 10 ? 100
+      : flailRatio < 17 ? 80 : flailRatio < 33 ? 40 : 20
     : move.functionCode !== "09A" ? move.power
     : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
       : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
   if (move.functionCode === "07B" && defender.majorStatus?.kind === "poison") power *= 2;
+  if (move.functionCode === "091") power *= 2 ** Math.max(0, (attacker.volatile?.furyCutterCount ?? 1) - 1);
+  if (move.functionCode === "0D3") power *= 2 ** Math.max(0, 4 - (attacker.volatile?.rolloutTurns ?? 4));
+  if (move.functionCode === "086" && attacker.heldItem === null) power *= 2;
+  if (move.functionCode === "0F0" && defender.heldItem !== null) power = Math.floor(power * 1.5);
   const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
   const variance = 85 + draw(rng, trace, "damage-variance", 16);
   const stab = attacker.types.includes(moveType) ? attacker.ability === "ADAPTABILITY" ? 2 : 1.5 : 1;
-  const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
-    && (moveType === "NORMAL" || moveType === "FIGHTING")
-    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
-  const typeEffect = defenderTypes.length === 0 ? 1 : typeEffectiveness(moveType, defenderTypes);
-  const effectiveness = !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND"
-    ? 0 : typeEffect;
-
   let result = baseDamage;
   if (critical) result = Math.round(result * (attacker.ability === "SNIPER" ? 2.25 : 1.5));
   result = Math.floor((result * variance) / 100);

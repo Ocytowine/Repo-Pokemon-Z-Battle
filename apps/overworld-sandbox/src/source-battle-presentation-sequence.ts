@@ -178,10 +178,20 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       message(event.reason === "protected" ? `${activeName(state, event.side)} est bloqué par la protection adverse.`
         : event.reason === "taunted" ? `${activeName(state, event.side)} ne peut pas utiliser cette capacité sous l'effet de Provoc.`
           : "Mais cela échoue !", "status");
+    } else if (event.type === "abilityChanged") {
+      message(`${activeName(state, event.target)} acquiert le talent ${event.ability}.`, "status");
     } else if (event.type === "ppReduced") {
       message(`${event.move} perd ${event.amount} PP.`, "status");
+    } else if (event.type === "heldItemRemoved") {
+      message(`${activeName(state, event.target)} perd son objet tenu.`, "status");
     } else if (event.type === "battleEffectChanged") {
-      const label = event.effect === "reflect" ? "Reflet" : event.effect === "lucky-chant" ? "Air Veinard" : "Tourniquet";
+      const labels: Record<typeof event.effect, string> = {
+        reflect: "Reflet", "light-screen": "Mur Lumière", "lucky-chant": "Air Veinard",
+        "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
+        "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
+        mist: "Brume", safeguard: "Rune Protect", terrain: "Le terrain",
+      };
+      const label = labels[event.effect];
       message(event.turns > 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
     } else if (event.type === "statusApplied") {
       message(`${activeName(state, event.target)} subit ${STATUS_NAMES[event.status]}.`, "status",
@@ -211,6 +221,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                       : event.effect === "protect" ? `${name} se protège.`
                         : event.effect === "endure" ? `${name} se prépare à tenir le coup.`
                           : event.effect === "rage" ? `${name} entre en rage.`
+                            : event.effect === "charge" ? `${name} commence à charger de l'énergie.`
+                              : event.effect === "helping-hand" ? `${name} reçoit un coup de main.`
+                                : event.effect === "leech-seed" ? `${name} est infecté par Vampigraine.`
                             : `${name} est pris au piège par ${event.move ?? "l'attaque"}.`;
       message(text, "status", event.effect === "confusion" || event.effect === "flinch"
         ? { side: event.target, effect: event.effect } : undefined);
@@ -224,14 +237,20 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, `${activeName(state, event.side)} se blesse dans sa confusion et perd ${event.amount} PV.`);
     } else if (event.type === "bindingDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${event.move} et perd ${event.amount} PV.`);
+    } else if (event.type === "leechSeedDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} perd ${event.amount} PV à cause de Vampigraine.`);
     } else if (event.type === "curseDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de la malédiction et perd ${event.amount} PV.`);
+    } else if (event.type === "recoilDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} est blessé par le contrecoup et perd ${event.amount} PV.`);
     } else if (event.type === "itemActivated") {
       health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
     } else if (event.type === "heldItemConsumed") {
       message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
+    } else if (event.type === "heldItemTransferred") {
+      message(`${activeName(state, event.target)} dérobe ${event.item} avec ${event.move}.`, "status");
     } else if (event.type === "trainerItemUsed") {
       const team = state.teams[event.side];
       const target = team.members[event.targetIndex];

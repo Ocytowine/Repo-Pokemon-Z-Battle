@@ -36,7 +36,7 @@ import { SourceBattleController, sharedBattleExperiencePresentations,
   type SourceBattleOutcome } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, rollStepEncounter,
-  sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
+  isGrassTerrain, sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
   type SourceEncounterMethod } from "./source-wild-encounter.js";
 import { advanceSourceTypeAmulet } from "./source-type-amulet.js";
 import { useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
@@ -1224,6 +1224,9 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     victoryMusic: importedAssets.wildVictoryMe,
     megaEvolutions: importedAssets.megaEvolutions,
     encounterModifiers: importedAssets.encounterModifiers,
+    environment: importedAssets.encounter?.methods.some((method) => method.method === "Cave") === true ? "cave"
+      : isGrassTerrain(terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y))
+        ? "grass" : "none",
   },
   getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),

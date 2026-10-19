@@ -37,6 +37,7 @@ export interface SourceBattleResources {
   readonly victoryMusic: string | null;
   readonly megaEvolutions?: SourceMegaEvolutionCatalog;
   readonly encounterModifiers?: SourceEncounterModifierCatalog;
+  readonly environment?: NonNullable<NonNullable<TeamBattleState["effects"]>["environment"]>;
 }
 
 export interface SourceBattlePresentation {
@@ -289,7 +290,7 @@ export class SourceBattleController {
       const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog,
         audio.format ?? "single", resources.megaEvolutions,
         resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
-          eventState.inventory, eventState.switches));
+          eventState.inventory, eventState.switches), resources.environment ?? "none");
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
@@ -601,7 +602,8 @@ export class SourceBattleController {
               form: target.appearance?.form ?? pokemon.metadata.form,
               shiny: target.appearance?.shiny ?? pokemon.metadata.shiny,
               gender: target.appearance?.gender ?? pokemon.metadata.gender } };
-          const party = storeProjectedBattleTeam(eventState.party, before.teams.player);
+          const party = storeProjectedBattleTeam(eventState.party, before.teams.player,
+            { retainTransferredHeldItems: true });
           const capturedState = { ...eventState, party,
             ranch: addPokemonToStorage(eventState.ranch, pokemon) };
           const nextState = completePendingEncounter(capturedState);
