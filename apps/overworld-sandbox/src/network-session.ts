@@ -393,7 +393,7 @@ export class OverworldNetworkSession {
   }
 
   public observeBattle(): void {
-    const battleId = this.activeSession?.snapshot?.battle?.id;
+    const battleId = this.activeSession?.snapshot?.battle?.id ?? this.activeSession?.joinableBattle?.id;
     if (battleId !== undefined) this.sendRequest({ type: "observeBattle", battleId });
   }
 

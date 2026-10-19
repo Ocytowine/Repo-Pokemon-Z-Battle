@@ -1416,13 +1416,7 @@ export class AuthoritativeBattleRoom {
       this.#battleJoinInventory = null;
       this.#battleLedger = createSharedBattleLedger(this.#battleState);
       this.#battleJoinProposal = null;
-      // Un double natif est deja complet : les autres joueurs presents le voient
-      // directement comme spectateurs, sans ouvrir une proposition impossible.
-      this.#battleObserverIds = message.context.format === "double"
-        ? [...this.#players.values()].filter((candidate) => candidate.playerId !== player.playerId
-          && candidate.connected && world.presence[candidate.side] === "shared")
-          .map((candidate) => candidate.playerId)
-        : [];
+      this.#battleObserverIds = [];
       this.#battleJoinRefusal = null;
       this.#sourceBattleContext = message.context;
       const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
@@ -1559,11 +1553,13 @@ export class AuthoritativeBattleRoom {
   }
 
   private observeBattle(player: RoomPlayer, requestId: string, battleId: string): readonly RoomDispatch[] {
-    const joinableLifecycle = this.#activeEncounter !== null
+    const nativeDoubleObservation = this.#sourceBattleContext !== null && this.#battleState?.format === "double"
+      && this.#battleSession?.lifecycle === "active";
+    const joinableLifecycle = nativeDoubleObservation || (this.#activeEncounter !== null
       ? this.#battleState?.turn === 1 && this.#battleSession?.lifecycle === "join-window"
       : this.#sourceBattleContext?.origin === "source-wild"
         ? this.#battleSession?.lifecycle === "join-window" || this.#battleSession?.lifecycle === "active"
-        : this.#battleSession?.lifecycle === "join-window";
+        : this.#battleSession?.lifecycle === "join-window");
     if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
       || !joinableLifecycle) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "La fenetre de participation est fermee.")];
@@ -1581,6 +1577,16 @@ export class AuthoritativeBattleRoom {
       || this.#sourceWorldState.presence[player.side] !== "shared")) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE",
         "L'invite doit etre present sur la carte partagee pour observer ce combat.")];
+    }
+    if (this.#sourceBattleContext !== null && this.#sourceWorldState !== null) {
+      const owner = [...this.#players.values()].find((candidate) =>
+        candidate.playerId === this.#battleParticipation?.battleOwnerId);
+      const avatar = this.#sourceWorldState.avatars[player.side];
+      const target = owner === undefined ? undefined : this.#sourceWorldState.avatars[owner.side];
+      if (target === undefined || Math.abs(avatar.x - target.x) + Math.abs(avatar.y - target.y) !== 1) {
+        return [this.error(player.playerId, requestId, "INTERACTION_UNAVAILABLE",
+          "Placez-vous a cote du meneur du combat pour l'observer.")];
+      }
     }
     if (!this.#battleObserverIds.includes(player.playerId)) {
       this.#battleObserverIds = [...this.#battleObserverIds, player.playerId];

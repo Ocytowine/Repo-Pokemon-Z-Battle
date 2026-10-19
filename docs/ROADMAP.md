@@ -2175,8 +2175,9 @@ partiels et la recette manuelle sont detailles dans
 `docs/COMBAT_VERTICAL_AUDIT.md`; deux TP neutres de Test dev permettent d'atteindre
 les nids sans modifier les interrupteurs d'histoire.
 
-Stabilisation Coop du 2026-10-19 : les combats de nid déjà doubles sont visibles
-par l'invité présent comme spectateur, sans autoriser un troisième combattant. Les
+Stabilisation Coop du 2026-10-19 : les combats de nid déjà doubles restent masqués
+à l'invité jusqu'à ce qu'il interagisse avec l'hôte adjacent pour les observer,
+sans autoriser un troisième combattant. Les
 combats simples rejoignables refusent désormais toute modification de composition
 pendant une action ou un remplacement. Leur passage en double conserve les effets
 tactiques et ne rejoue pas les talents d'entrée des actifs existants. Le client
