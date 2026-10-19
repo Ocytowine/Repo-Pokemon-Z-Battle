@@ -4155,9 +4155,11 @@ s'intercaler et de relancer le combat avant les récompenses ou le self-switch.
 ### Stabilisation Coop des combats doubles scénarisés — 2026-10-19
 
 Un combat source qui est déjà double n'ouvre plus de fenêtre de jonction : ses
-deux emplacements tactiques sont déjà occupés par la scène. L'autre joueur présent
-sur la carte est inscrit comme spectateur et reçoit le même snapshot autoritaire,
-mais toute intention de participation est refusée par le noyau et par la room.
+deux emplacements tactiques sont déjà occupés par la scène. Il reste masqué à
+l'autre joueur, qui poursuit librement son exploration. Celui-ci doit se placer à
+côté du meneur et interagir avec lui pour devenir spectateur et recevoir le
+snapshot autoritaire ; toute intention de participation reste refusée par le
+noyau et par la room.
 
 Pour les combats simples encore rejoignables, une proposition est désormais
 bloquée dès qu'une action simple/double ou un remplacement est en attente. La

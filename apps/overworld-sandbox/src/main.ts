@@ -4065,13 +4065,21 @@ function interact(playerId: AvatarId): void {
     if (target === null && trySourceTraversalInteraction()) return;
     const joinableBattle = multiplayer.current?.joinableBattle;
     const remoteAhead = multiplayer.active && !guestSourceExcursion && remotePlayerAhead();
+    const observerOnlyBattle = joinableBattle?.state.format === "double"
+      && joinableBattle.session.lifecycle === "active";
     const battleOwnerAdjacent = joinableBattle !== null && joinableBattle !== undefined
-      && joinableBattle.session.lifecycle === "join-window"
+      && (joinableBattle.session.lifecycle === "join-window" || observerOnlyBattle)
       && multiplayer.active && !guestSourceExcursion && remotePlayerAdjacent();
     const interactionTarget = battleOwnerAdjacent
       ? "player" : sourceInteractionTarget(target !== null, remoteAhead);
     if (interactionTarget === "player") {
       if (joinableBattle !== null && joinableBattle !== undefined) {
+        if (observerOnlyBattle) {
+          multiplayer.observeBattle();
+          importedNotice = "Vous rejoignez le combat comme spectateur…";
+          renderImportedView();
+          return;
+        }
         sourceBattleJoinView.open(joinableBattle.id);
         const preparation = currentPlayerBattleJoinPreparation();
         console.info("[coop-battle-join]", { battleId: joinableBattle.id,
