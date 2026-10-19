@@ -223,7 +223,7 @@ export interface SourceBattleVisualOptions {
 const BATTLE_STATUS_ROWS: Readonly<Record<string, { readonly row: number; readonly label: string }>> = {
   sleep: { row: 0, label: "Sommeil" }, poison: { row: 1, label: "Poison" },
   burn: { row: 2, label: "Brûlure" }, paralysis: { row: 3, label: "Paralysie" },
-  frozen: { row: 4, label: "Gel" }, caduco: { row: 5, label: "Caduco" },
+  frozen: { row: 4, label: "Gel" }, caduco: { row: 5, label: "Exténuation" },
   hemorrhage: { row: 6, label: "Hémorragie" },
 };
 
@@ -323,6 +323,7 @@ export class SourceBattleVisuals {
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null; readonly battleback?: string;
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
+    readonly initialOpponentStatBoost?: boolean;
     readonly waitBeforeSendOut?: () => Promise<void>;
     readonly stateBeforeSendOut?: () => TeamBattleState;
     readonly joiningTrainer?: () => Promise<{ readonly side: BattleSide; readonly image: HTMLImageElement | null;
@@ -424,6 +425,11 @@ export class SourceBattleVisuals {
         this.message(`En avant, ${arrival.battler.name} !`);
         await this.playJoinedBattlerSendOut("player", sprite, arrival.battler, manifests, selectedAudio.sendOut);
         document.getElementById(`source-player-hud${suffix}`)?.classList.remove("joining");
+      }
+      if (audio.initialOpponentStatBoost === true) {
+        this.message(`${sendOutOpponent.name} augmente ses statistiques !`);
+        await this.playStatusVisual("opponent", "stat-up", sendOutState);
+        await readableMessageDelay(700);
       }
     } catch {
       // Les visuels et le moteur de combat restent utilisables si l'audio local est absent.
@@ -531,8 +537,13 @@ export class SourceBattleVisuals {
         this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
         document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
         const active = { player: playerIndices, opponent: opponentIndices } as const;
-        await Promise.all((["player", "opponent"] as const).flatMap((side) => active[side].map((index, slot) =>
-          this.renderBattler(side, state.teams[side].members[index]!, side === "player", manifests, slot, state.format))));
+        await Promise.all((["player", "opponent"] as const).flatMap((side) => {
+          // Un combat 2 contre 1 n'utilise le placement double que du côté qui
+          // possède réellement deux slots. L'adversaire seul reste centré.
+          const sideFormat = active[side].length > 1 ? "double" as const : "single" as const;
+          return active[side].map((index, slot) => this.renderBattler(side,
+            state.teams[side].members[index]!, side === "player", manifests, slot, sideFormat));
+        }));
         for (const side of ["player", "opponent"] as const) {
           const second = document.getElementById(`source-${side}-sprite-2`);
           if (second !== null) second.hidden = active[side].length < 2;
@@ -599,7 +610,7 @@ export class SourceBattleVisuals {
         const move = battler?.moves.find((slot) => slot.move.internalName === step.move)?.move;
         this.message(step.message);
         await readableMessageDelay(500);
-        if (move === undefined || !(await this.playSourceAnimation(step.side, move))) {
+        if (move === undefined || !(await this.playSourceAnimation(step.side, move, stepSlot))) {
           const sprite = spriteId === null ? null : document.getElementById(spriteId);
           sprite?.classList.add("attacking");
           await delay(360);
@@ -1300,14 +1311,14 @@ export class SourceBattleVisuals {
     }
   }
 
-  private async playSourceAnimation(side: BattleSide, move: BattleMove): Promise<boolean> {
+  private async playSourceAnimation(side: BattleSide, move: BattleMove, activeSlot = 0): Promise<boolean> {
     const manifests = await this.manifests();
     const sourceAnimations = manifests.animations;
     if (sourceAnimations === undefined) return false;
     const selection = selectSourceBattleAnimation(sourceAnimations, side, move.internalName);
     if (selection === null) return false;
     const { animation, explicitOpponent, reverse } = selection;
-    return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse);
+    return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse, activeSlot);
   }
 
   private async playCommonSourceAnimation(side: BattleSide, name: string, activeSlot = 0,
@@ -1443,6 +1454,9 @@ export class SourceBattleVisuals {
 
   private async playStatusVisual(side: BattleSide, visual: SourceBattleStatusVisual,
     state: TeamBattleState): Promise<void> {
+    const team = state.teams[side];
+    const active = team.activeIndices ?? [team.activeIndex];
+    const slot = Math.max(0, active.indexOf(team.activeIndex));
     const commonName = visual === "sleep" ? "Common:Sleep"
       : visual === "poison" ? "Common:Poison"
         : visual === "burn" ? "Common:Burn"
@@ -1453,10 +1467,7 @@ export class SourceBattleVisuals {
                   : visual === "stat-down" ? "Common:StatDown"
                     : visual === "caduco" ? "Common:Caduco"
                       : visual === "hemorrhage" ? "Common:Hemorragia" : null;
-    if (commonName !== null && await this.playCommonSourceAnimation(side, commonName)) return;
-    const team = state.teams[side];
-    const active = team.activeIndices ?? [team.activeIndex];
-    const slot = Math.max(0, active.indexOf(team.activeIndex));
+    if (commonName !== null && await this.playCommonSourceAnimation(side, commonName, slot)) return;
     const sprite = document.getElementById(`source-${side}-sprite${slot === 0 ? "" : `-${slot + 1}`}`);
     if (sprite === null) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;

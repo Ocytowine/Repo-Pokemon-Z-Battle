@@ -222,7 +222,7 @@ describe("multiplayer protocol", () => {
           boostTenPercent: false, boostTwentyPercent: false } }, continuation: "trainer-sequence" } as const;
     for (const functionCode of ["00F", "009", "012", "013", "01E", "022", "023", "027", "028", "048", "049",
       "04B", "04D", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A7", "0AA", "0AD",
-      "0B9", "0BA", "0BC", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
+      "0B9", "0BA", "0BC", "0BE", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
       const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, functionCode };
       const team = { ...duelTeam, items: ["SUPERPOTION"], members: [{ ...duelTeam.members[0],
         heldItem: "EVIOLITE" as const, canEvolve: true,

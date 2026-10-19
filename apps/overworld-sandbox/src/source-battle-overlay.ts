@@ -154,12 +154,14 @@ export class SourceBattleOverlay {
       return;
     }
     const activeIndices = team.activeIndices ?? [team.activeIndex];
-    const controllableSlots = activeIndices.flatMap((index, slot) => model.controllableMemberIds === null
+    const ownedSlots = activeIndices.flatMap((index, slot) => model.controllableMemberIds === null
       || model.controllableMemberIds.includes(team.members[index]!.id) ? [slot] : []);
     const replacementSlots = model.state.format === "double"
       ? (model.state.slotReplacements ?? []).filter((position) => position.side === "player")
-        .map((position) => position.slot).filter((slot) => controllableSlots.includes(slot))
+        .map((position) => position.slot).filter((slot) => ownedSlots.includes(slot))
       : model.state.replacementRequired.includes("player") ? [0] : [];
+    const controllableSlots = ownedSlots.filter((slot) => replacementSlots.includes(slot)
+      || team.members[activeIndices[slot]!]!.hp > 0);
     if (replacementSlots.length > 0 && !replacementSlots.includes(this.activeSlot)) this.activeSlot = replacementSlots[0]!;
     if (!controllableSlots.includes(this.activeSlot) || model.submittedActiveSlots.includes(this.activeSlot)) {
       this.activeSlot = controllableSlots.find((slot) => !model.submittedActiveSlots.includes(slot)) ?? controllableSlots[0] ?? 0;

@@ -1033,6 +1033,9 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   sera disponible : la v2.12 FR ne fournit que l'objet, sans logique d'utilisation ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
+- [x] automatiser le P0 Route 3 → Bois-en-Tronc (Maps 023 à 029) : Dresseurs,
+  branche simple/double selon l'équipe apte, rencontres de nid et récompenses
+  post-victoire autoritaires. La recette manuelle solo/hôte/invité reste ouverte.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
@@ -1041,7 +1044,16 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   propriétaire en solo, PvP et Coop. Les deux animations communes, leurs plans,
   sons et changement de sprite sont raccordés. Restent les effets des
   talents/climats que le moteur général ne sait pas encore rendre et la validation
-  manuelle complète des variantes de forme.
+  manuelle complète des variantes de forme. Le lot 5 ajoute un périmètre d'audit
+  `mega:ESPECE:FORME`, contrôle automatiquement les références d'acquisition des
+  gemmes et porte seize talents déterministes dans le noyau partagé. Le lot 6
+  ajoute les conversions de type, Lévitation, Querelleur, Anti-Bruit et Sans
+  Limite, avec un premier contrat Brise Moule audité comme partiel. 59/114 formes
+  ont désormais leur talent actif ; les 55 autres restent reliées aux 38 talents
+  généraux précisément listés par `battle-integration-report.json`. L'audit source
+  confirme également trois gemmes sans acquisition événementielle
+  (`DURALUDONITA`, `GROUDONITE`, `RAYQUAZITE`), dont `GROUDONITE` absente du
+  catalogue d'objets ; ne pas inventer leur distribution.
 
 Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
 passable des cartes d'introduction avant trois choix issus des sources (difficulte,
@@ -2150,6 +2162,19 @@ frappes multiples exposent chaque impact/PV a la presentation. `088`, `0AA` et
 rejoint desormais la recette globale de `STAB-BATTLE-1` ; l'IA tactique generale
 sera traitee dans un lot distinct.
 
+Quatrieme lot vertical du 2026-10-19, P0 automatise : Route 3, Nouvelle Reunion,
+Route 4, Clairiere Collinaire et Bois-en-Tronc sont couverts par le pipeline de
+dependances. Le nombre de Pokemon aptes choisit generiquement la branche simple ou
+double ; huit nouvelles fonctions completes, les capacites de bas niveau requises
+et sept talents deterministes utilisent le noyau commun solo/Coop. Les combats de
+nid et leurs recompenses differees sont hote-autoritaires et restaurables apres
+reconnexion. Le sous-lot de fidelite porte maintenant le vrai deux-contre-un des
+boss, leurs rangs initiaux, le tirage persistant du nid insecte et le
+repositionnement replique des acteurs de la scene post-combat. Les effets encore
+partiels et la recette manuelle sont detailles dans
+`docs/COMBAT_VERTICAL_AUDIT.md`; deux TP neutres de Test dev permettent d'atteindre
+les nids sans modifier les interrupteurs d'histoire.
+
 Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de
 deux crans comme dans les scripts de Z et vise les deux adversaires en double via
@@ -2486,3 +2511,20 @@ existants et ne creent pas de logique de gameplay parallele.
 - [x] importer et lire les animations communes de statut du jeu source ;
 - [ ] résorber progressivement les dettes signalées par périmètre au moment où les
   nouvelles rencontres deviennent jouables, sans bloquer sur les zones futures.
+
+### Fidélité narrative des rencontres — 2026-10-19
+
+- [x] extraire les statuts initiaux conditionnés par carte, espèce et switch depuis
+  `onWildPokemonCreate` ;
+- [x] appliquer l'Exténuation du Couafarel de Nouvelle Réunion et des zones
+  concernées avant la création du snapshot de combat solo/Coop ;
+- [x] employer le libellé français `Exténuation` tout en conservant l'identifiant
+  source interne `caduco` et l'animation `Common:Caduco` ;
+- [x] étendre le même catalogue aux formes, capacités forcées, objets, IV/EV,
+  shiny et surnoms, puis appliquer ces données avant le snapshot autoritaire ;
+- [x] inscrire toute mutation statique ou condition non comprise dans
+  `encounter-modifiers.json.audit.unsupported` au lieu de l'appliquer globalement ;
+- [x] porter le niveau dynamique de la Map999 et les profils de statistiques de
+  boss de la variable 300 avec leur RNG et leur état tactique autoritaires ;
+- [ ] ajouter à chaque lot de zone une vérification des préparatifs narratifs et
+  des effets post-combat, au-delà du seul audit espèce/capacités/talents.

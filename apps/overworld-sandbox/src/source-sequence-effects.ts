@@ -27,7 +27,7 @@ export function sourceSequenceCommandFamily(command: SourceCommand): SourceSeque
   if (command.kind === "open-mining") return "mining";
   if (command.kind === "transfer-player") return "transfer";
   if (command.kind === "erase-event") return "event";
-  if (command.kind === "move-route" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
+  if (command.kind === "move-route" || command.kind === "set-event-location" || command.kind === "trainer-notice" || command.kind === "wait-for-movement"
     || command.kind === "set-movement-mode") return "movement";
   return "presentation";
 }
@@ -53,6 +53,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openMining: (session: SourceSequenceSession) => void;
   readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
+  readonly setEventLocation: (eventId: number, x: number, y: number, direction?: number) => boolean;
   readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
   readonly setMovementMode: (mode: SourceMovementMode) => void;
   readonly eraseEvent: (mapId: number, eventId: number) => void;
@@ -226,6 +227,19 @@ export class SourceSequenceEffects {
       await this.dependencies.presentTrainerNotice(session, animationId as number);
     } else if (command.kind === "move-route" && typeof command.data.target === "number") {
       this.dependencies.startMoveRoute(session, command.data.target, command.data.route);
+    } else if (command.kind === "set-event-location") {
+      const eventId = command.data.eventId;
+      const x = command.data.x;
+      const y = command.data.y;
+      const direction = command.data.direction;
+      if (!Number.isInteger(eventId) || (eventId as number) <= 0 || !Number.isInteger(x) || !Number.isInteger(y)
+        || direction !== undefined && !Number.isInteger(direction)) {
+        return this.abort(session, "Séquence interrompue : repositionnement d'acteur invalide.");
+      }
+      if (!this.dependencies.setEventLocation(eventId as number, x as number, y as number,
+        direction as number | undefined)) {
+        return this.abort(session, "Séquence interrompue : acteur à repositionner introuvable.");
+      }
     } else if (command.kind === "wait-for-movement") {
       await session.runner.waitForMovement();
     } else if (command.kind === "set-movement-mode") {

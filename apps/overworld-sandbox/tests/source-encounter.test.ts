@@ -31,6 +31,18 @@ const catalog: PlayerCreationCatalog = {
 };
 
 describe("source encounter bridge", () => {
+  it("applies persisted boss ranks to the wild battler only", () => {
+    let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("hero", "CHESPIN", 8, catalog));
+    party = addPokemonToParty(party, createPersistentPokemon("ally", "BUNNELBY", 8, catalog));
+    const battle = createSourceEncounterBattle(party,
+      { species: "BIDOOF", level: 11, boss: true, initialStages: { speed: 1, defense: 2 } }, catalog, "boss");
+    expect(battle.format).toBe("double");
+    expect(battle.teams.player.activeIndices).toEqual([0, 1]);
+    expect(battle.teams.opponent.activeIndices).toEqual([0]);
+    expect(battle.teams.opponent.members[0]?.stages).toMatchObject({ speed: 1, defense: 2 });
+    expect(battle.teams.player.members[0]?.stages).toMatchObject({ speed: 0, defense: 0 });
+  });
+
   it("selects source battle music, victory music and battler cries", () => {
     const asset = (path: string) => ({ path, category: "audio", mediaType: "audio" as const, image: null });
     const cry = (pokemonId: number, path: string) => ({ pokemonId, kind: "cry" as const, form: null, shiny: false,
@@ -106,6 +118,14 @@ describe("source encounter bridge", () => {
     const stored = storeSourceEncounterParty(party, battle);
     expect(stored.members[0]?.moves[0]?.pp).toBe(34);
     expect(stored.members[0]?.hp).toBe(battle.teams.player.members[0]?.hp);
+  });
+
+  it("projects narrative initial effects into the authoritative opponent team", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild",
+      undefined, false, { majorStatus: { kind: "caduco" } });
+    expect(battle.teams.opponent.members[0]?.majorStatus).toEqual({ kind: "caduco" });
   });
 
   it("uses the same turn resolver when the player switches Pokemon in a local battle", () => {

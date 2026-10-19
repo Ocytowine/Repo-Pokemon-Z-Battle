@@ -1,6 +1,6 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
-import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
+import { parseSourceAblePokemonCountCondition, parseSourceInventoryQuantityCondition, portSourceRubyCommand,
   portSourceRubyCondition, isSourceDayCareEggServicePage, isSourceDayCareServicePage } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
@@ -57,6 +57,11 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
         ? Math.max(state.inventory[condition.itemId] ?? 0, 1)
         : state.inventory[condition.itemId] ?? 0;
       return compareInventoryQuantity(owned, condition.comparator, condition.quantity);
+    }
+    const ablePokemon = parseSourceAblePokemonCountCondition(command.data.script);
+    if (ablePokemon !== null) {
+      const count = state.party.members.filter((pokemon) => pokemon.hp > 0 && pokemon.metadata.eggSteps <= 0).length;
+      return compareInventoryQuantity(count, ablePokemon.comparator, ablePokemon.quantity);
     }
     return null;
   }

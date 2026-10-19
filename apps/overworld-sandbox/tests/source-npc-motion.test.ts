@@ -19,6 +19,14 @@ const event: ImportedMapEvent = { id: 6, name: "Promeneur", x: 2, y: 2, pages: [
 }] };
 
 describe("source NPC motion", () => {
+  it("repositions a scene actor immediately for source set-event-location commands", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    expect(controller.setScriptedActorLocation(event.id, { x: 4, y: 1 }, 8)).toBe(true);
+    expect(controller.poses(0).get(event.id)).toMatchObject({ x: 4, y: 1, direction: 8 });
+    expect(controller.setScriptedActorLocation(999, { x: 1, y: 1 })).toBe(false);
+  });
+
   it("converts source speed and frequency to bounded timings", () => {
     expect(sourceNpcStepDuration(3)).toBe(250);
     expect(sourceNpcStepDuration(6)).toBe(80);

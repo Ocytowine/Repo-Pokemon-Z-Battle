@@ -99,6 +99,26 @@ describe("source event choice and condition flow", () => {
       .page.commands[0]?.text).toBe("Insuffisant");
   });
 
+  it("selects single or double trainer branches from the conscious non-egg party count", () => {
+    const eventPage = page([
+      command("condition", 0, { kind: "ruby-script", script: "$Trainer.ablePokemonCount == 1" }),
+      command("show-text", 1, { text: "Combat simple" }), command("else", 0),
+      command("show-text", 1, { text: "Combat double" }), command("condition-end", 0),
+    ]);
+    const template = createSourceEventState().party;
+    const pokemon = { id: "party-1", species: "FENNEKIN", nickname: null, level: 5, experience: 0, hp: 20,
+      stats: { maxHp: 20, attack: 10, defense: 10, specialAttack: 10, specialDefense: 10, speed: 10 },
+      gender: "female" as const, shiny: false, nature: "HARDY", ability: "BLAZE", heldItem: null,
+      friendship: 70, moves: [], ivs: { hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 },
+      evs: { hp: 0, attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0 },
+      metadata: { form: 0, markings: 0, eggSteps: 0, pokerus: 0, obtainedMap: 0, obtainedLevel: 5,
+        obtainedText: "", obtainMode: 0, hatchedMap: 0, language: 2, ownerId: 1, ownerName: "Test" } };
+    const single = { ...createSourceEventState(), party: { ...template, activeIndex: 0, members: [pokemon] } };
+    const double = { ...single, party: { ...single.party, members: [pokemon, { ...pokemon, id: "party-2" }] } };
+    expect(resolveEventFlow(eventPage, [], single, 27, 1).page.commands[0]?.text).toBe("Combat simple");
+    expect(resolveEventFlow(eventPage, [], double, 27, 1).page.commands[0]?.text).toBe("Combat double");
+  });
+
   it("selects the source movement branch from the player's direction", () => {
     const eventPage = page([
       command("condition", 0, { kind: "character-direction", operands: [-1, 6] }),
@@ -123,6 +143,49 @@ describe("source event choice and condition flow", () => {
     expect(result).toMatchObject({ complete: true, blockedReason: null });
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["grant-item", "play-cry", "set-self-switch"]);
     expect(result.page.commands[0]?.data).toMatchObject({ itemId: "ORANBERRY", quantity: 1, policy: "PERSONAL" });
+  });
+
+  it("ports fixed and variable source boss fights into host-authoritative encounters", () => {
+    const fixed = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "$game_variables[300] = [:SPEED, 1, :DEFENSE, 1]" }),
+      command("ruby-script", 0, { source: "$PokemonGlobal.nextBattleBGM=\"CombateNido\"" }),
+      command("condition", 0, { kind: "ruby-script", script: "pbBossFight(PBSpecies::FURFROU,11,0)" }),
+      command("show-text", 1, { text: "Victoire" }), command("condition-end", 0),
+    ]), [], createSourceEventState(), 24, 13);
+    expect(fixed).toMatchObject({ complete: true, blockedReason: null });
+    expect(fixed.page.commands[0]).toMatchObject({ kind: "set-next-wild-battle-stages",
+      data: { stages: { speed: 1, defense: 1 }, policy: "HOST_NARRATIVE" } });
+    expect(fixed.page.commands).toContainEqual(expect.objectContaining({ kind: "request-encounter",
+      data: expect.objectContaining({ species: "FURFROU", level: 11, boss: true, policy: "HOST_ONLY" }) }));
+
+    const variable = resolveEventFlow(page([
+      command("condition", 0, { kind: "ruby-script",
+        script: "pbBossFight([:VOLBEAT,:ILLUMISE,:BUTTERFREE][pbGet(183)],17)" }),
+      command("show-text", 1, { text: "Nid vaincu" }), command("condition-end", 0),
+    ]), [], { ...createSourceEventState(), variables: { "183": 1 } }, 28, 8);
+    expect(variable.page.commands[0]).toMatchObject({ kind: "request-encounter", data: {
+      speciesChoices: ["VOLBEAT", "ILLUMISE", "BUTTERFREE"], speciesVariableId: 183, level: 17,
+      boss: true, policy: "HOST_ONLY",
+    } });
+  });
+
+  it("ports scripted wild encounters with the extended Pokemon Z arguments", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "pbWildBattle(:MORELULL,16,81,false,false)" }),
+    ]), [], createSourceEventState(), 28, 21);
+    expect(result.page.commands[0]).toMatchObject({ kind: "request-encounter",
+      data: { species: "MORELULL", level: 16, policy: "HOST_ONLY" } });
+  });
+
+  it("ports source random reward lists without choosing on the client", () => {
+    const result = resolveEventFlow(page([
+      command("ruby-script", 0, { source:
+        "Kernel.pbReceiveItem([:PPUP,:QUICKBALL,:BRIGHTPOWDER,:SERIOUSMINT,:ELIXIR][rand(5)])" }),
+    ]), [], createSourceEventState(), 28, 8);
+    expect(result.page.commands[0]).toMatchObject({ kind: "grant-random-item", data: {
+      itemChoices: ["PPUP", "QUICKBALL", "BRIGHTPOWDER", "SERIOUSMINT", "ELIXIR"],
+      quantity: 1, policy: "HOST_REWARD",
+    } });
   });
 
   it("preserves mixed-case source item identifiers", () => {

@@ -138,6 +138,8 @@ const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
 const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
+const SOURCE_FURFROU_NEST_DEV_DESTINATION = { mapId: 24, x: 25, y: 15, direction: 8 } as const;
+const SOURCE_INSECT_NEST_DEV_DESTINATION = { mapId: 28, x: 7, y: 40, direction: 8 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
 
 function normalizedSourceAudio(settings: SourceAudioSettings): {
@@ -1061,6 +1063,8 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
   onTeleportToTestDayCare: () => { void requestSourceDevTeleport(SOURCE_DAY_CARE_DEV_DESTINATION); },
+  onTeleportToTestFurfrouNest: () => { void requestSourceDevTeleport(SOURCE_FURFROU_NEST_DEV_DESTINATION); },
+  onTeleportToTestInsectNest: () => { void requestSourceDevTeleport(SOURCE_INSECT_NEST_DEV_DESTINATION); },
   onAccelerateTestEggs: accelerateSourceDevEggs,
   onOpenTestDayCare: () => {
     sourceScenes.closeMenu();
@@ -1203,7 +1207,12 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     sourceEventState = nextState;
     persistSourceEventState();
     enqueueAllSourceProgressions();
-    queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
+    // Une séquence scénarisée reprend elle-même après son combat et effectue
+    // l'audit des autoruns à sa finalisation. La relancer ici ferait entrer un
+    // second événement entre la victoire et les commandes post-combat.
+    if (sourceSequences.current === null) {
+      queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
+    }
   },
   getResources: () => importedAssets === null ? null : {
     catalog: importedAssets.battleCatalog,
@@ -1212,6 +1221,7 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
     megaEvolutions: importedAssets.megaEvolutions,
+    encounterModifiers: importedAssets.encounterModifiers,
   },
   getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
@@ -1273,6 +1283,15 @@ sourceSequenceEffects = new SourceSequenceEffects({
   },
   transferPlayer: executeSourceSequenceTransfer,
   startMoveRoute: startSourceMoveRoute,
+  setEventLocation: (eventId, x, y, direction) => {
+    const moved = sourceNpcMotions.setScriptedActorLocation(eventId, { x, y }, direction);
+    if (moved) {
+      publishCurrentSourceActors();
+      publishCurrentSourceScene();
+      renderImportedView();
+    }
+    return moved;
+  },
   presentTrainerNotice: presentSourceTrainerNotice,
   setMovementMode: applySourceSequenceMovementMode,
   eraseEvent: (mapId, eventId) => {
@@ -1564,6 +1583,9 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
         ?? (visibleBattle?.duel === true ? "Entrenador.ogg" : importedAssets?.wildBattleBgm ?? null),
       victoryMusic: sourceContext?.presentation.victoryMusicId
         ?? (visibleBattle?.duel === true ? "VictoriaEntrenador.ogg" : importedAssets?.wildVictoryMe ?? null),
+      initialOpponentStatBoost: sourceContext?.origin === "source-wild"
+        && Object.values(viewerBattle.teams.opponent.members[viewerBattle.teams.opponent.activeIndex]?.stages ?? {})
+          .some((stage) => stage > 0),
       ...(sourceTrainerFacesViewer
         ? { opponentTrainer: sourceContext.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
         : sourceContext?.origin === "source-trainer" || sourceContext === null

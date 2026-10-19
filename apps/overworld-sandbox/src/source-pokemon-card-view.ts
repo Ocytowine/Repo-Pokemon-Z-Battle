@@ -36,7 +36,7 @@ function pokemonStatusLabel(entry: SourcePokemonCollectionEntry): string | null 
   if (kind === "sleep") return "Sommeil";
   if (kind === "frozen") return "Gel";
   if (kind === "hemorrhage") return "Hémorragie";
-  if (kind === "caduco") return "Caduco";
+  if (kind === "caduco") return "Exténuation";
   return kind ?? null;
 }
 

@@ -3,7 +3,7 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
   type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
-  type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
+  type BattleStat, type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
@@ -11,10 +11,13 @@ import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty,
   type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
 import type { SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
+import { applySourceEncounterInitialEffects, type SourceEncounterInitialEffects } from "./source-encounter-modifiers.js";
 
 export interface SourceEncounterRequest {
   readonly species: string;
   readonly level: number;
+  readonly initialStages?: Readonly<Partial<Record<BattleStat, number>>>;
+  readonly boss?: true;
 }
 
 export interface SourceTrainerDefinition {
@@ -38,13 +41,28 @@ function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreation
 
 export function createSourceEncounterBattle(party: PlayerPartyState, encounter: SourceEncounterRequest,
   catalog: PlayerCreationCatalog, opponentId: string, megaCatalog?: SourceMegaEvolutionCatalog,
-  megaActivationAvailable = false): TeamBattleState {
+  megaActivationAvailable = false, initialEffects?: SourceEncounterInitialEffects): TeamBattleState {
   const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
+  const createdOpponent = createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog);
   const opponentParty = addPokemonToParty(createEmptyPlayerParty(),
-    createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog));
+    initialEffects === undefined ? createdOpponent
+      : applySourceEncounterInitialEffects(createdOpponent, initialEffects, catalog));
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
-  return createTeamBattleState({ player: player.members, opponent: opponent.members },
-    { player: player.activeIndex, opponent: opponent.activeIndex });
+  const state = encounter.boss === true && player.members.length > 1
+    ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
+    : createTeamBattleState({ player: player.members, opponent: opponent.members },
+      { player: player.activeIndex, opponent: opponent.activeIndex });
+  if (encounter.initialStages === undefined) return state;
+  const opponentTeam = state.teams.opponent;
+  const withInitialStages = (member: (typeof opponentTeam.members)[number]) => {
+    const stages = Object.fromEntries(Object.entries(member.stages).map(([stat, stage]) =>
+      [stat, Math.max(-6, Math.min(6, stage + (encounter.initialStages?.[stat as BattleStat] ?? 0)))])
+    ) as unknown as typeof member.stages;
+    return { ...member, stages };
+  };
+  return { ...state, teams: { ...state.teams, opponent: { ...opponentTeam,
+    members: opponentTeam.members.map((member, index) => index !== opponentTeam.activeIndex
+      ? member : withInitialStages(member)) } } };
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,

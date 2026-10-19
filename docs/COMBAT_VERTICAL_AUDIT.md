@@ -128,3 +128,67 @@ engages, exclut les participants K.O. au moment du credit et transmet les credit
 au calculateur `pokemon-z-participant` deja utilise en Coop. Bonus Dresseur,
 partage, gains multiples et details d'arrondi sont couverts par les tests. Le cas
 Remi/Fluvetin passe ainsi de 143 EXP sauvages a 142 EXP Dresseur pour Feunnec.
+
+## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
+
+Frontière automatisée le 2026-10-19 : Maps 023 à 029, soit Rena, Gerard,
+Amarna, Fibo, Hector et Zaida, Maya, Asta et les trois variantes de Crisanto,
+ainsi que les rencontres terrestres et de pêche déclarées jusqu'au niveau 18.
+Le prédicat source `$Trainer.ablePokemonCount == 1` est évalué depuis l'équipe
+personnelle consciente et non depuis un numéro d'événement. Il choisit le combat
+simple ou double avant que l'hôte n'ouvre le combat autoritaire ; l'invité reçoit
+le snapshot et la présentation habituels.
+
+Le registre commun porte désormais les fonctions nécessaires à l'ouverture de
+ces équipes et rencontres : Paralysie garantie (`008`), Amnésie (`033`),
+Grincement (`04C`), Croco Larme (`04F`), Double Pied (`0BD`), Soin (`0D5`),
+Lance-Boue (`09D`) et Mur Lumière (`0A3`). Les capacités de bas niveau
+Bâillement, Attraction, Chargeur, Lilliput, Fléau, Assistance et les attaques
+dont l'effet secondaire reste incomplet sont acceptées par le même protocole.
+Les talents déterministes Battant, Médic Nature, Farceur, Peau Herbée,
+Herbivore, Inconscient et Absorb Eau sont exécutés par le noyau partagé.
+
+Les combats de nid `pbBossFight` sont convertis en rencontres scénarisées
+incontournables. Une liste d'espèces indexée par une variable narrative est
+résolue par l'hôte, jamais par le client. Les récompenses aléatoires sont tirées
+avec l'état RNG persistant puis stockées dans la rencontre en attente ; objets et
+switches ne sont validés qu'après la victoire. Ce contrat couvre solo, hôte,
+invité observateur et reconnexion sans dupliquer la règle métier.
+
+Correction narrative du 2026-10-19 : le Couafarel du nid est créé pendant que le
+switch source 482 est actif. Le hook `onWildPokemonCreate` lui applique alors
+`CADUCO`, nommé `Exténuation` (`EXT`) dans la version française. Cette condition
+est maintenant extraite dans `encounter-modifiers.json` et appliquée avant
+l'ouverture du snapshot autoritaire. Le même mécanisme couvre les statuts de zone
+des Maps 138 à 140 sans règle propre à cet événement. Formes, capacités forcées,
+objets, IV/EV, shiny et surnoms des autres branches statiques du hook utilisent
+désormais ce même catalogue. Les deux conditions shiny dépendant d'un contexte
+dynamique non porté restent listées dans son audit. Le niveau aléatoire de Map999
+et les profils de statistiques de boss de la variable 300 sont portés et persistés
+avant l'ouverture du snapshot autoritaire.
+
+Fermeture P0 du 2026-10-19 : `pbBossFight` reproduit maintenant le format source
+asymétrique deux contre un lorsque l'équipe préparée contient au moins deux
+Pokémon. Le boss reste seul sur son camp et l'hôte commande ses deux emplacements.
+Comme le combat est déjà double, un invité Coop reste observateur et ne peut pas
+s'ajouter au terrain. Le profil de rangs préparé par la variable 300 est appliqué
+au combattant adverse, annoncé par la présentation commune, persisté dans la
+rencontre et restauré sans reroll après reconnexion.
+
+Le nid insecte de Map028 utilise également l'opérande aléatoire natif de RPG Maker
+pour la variable 183. Le tirage est fait une fois par le RNG autoritaire persistant ;
+l'espèce et la récompense restent donc stables pendant toute la séquence. La scène
+post-combat de Couafarel peut repositionner ses acteurs grâce à la commande
+générique `set-event-location`, publiée comme les autres poses de PNJ aux joueurs
+présents. Deux téléportations neutres sont disponibles dans Test dev pour la
+recette des nids de Map024 et Map028 ; elles ne modifient aucun switch narratif.
+Le tirage Dardargnan niveau 17 est maintenant constructible : `TWINEEDLE` (`0BE`)
+résout ses deux impacts et sa chance d'empoisonnement par impact dans le noyau
+commun, et traverse le même validateur en solo et dans la room Coop.
+
+Dettes explicites : `BUGBITE`, `RAPIDSPIN`, `COVET`/`THIEF`, `LEECHSEED`,
+`CHARGE`, `ASSURANCE`, `ROUND`, `FLAIL`, `HELPINGHAND` et `TAKEDOWN` restent
+classées partielles lorsque leur effet complet exige pièges, transfert persistant
+d'objet, drain positionnel double, combo d'allié ou recul. L'absence de mapping
+source de l'animation de `THIEF` conserve le fallback. La validation manuelle du
+parcours et des deux nids reste requise avec les assets locaux.

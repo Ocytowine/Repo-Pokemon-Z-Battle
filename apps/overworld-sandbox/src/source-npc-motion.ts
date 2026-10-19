@@ -314,6 +314,16 @@ export class SourceNpcMotionController {
     return duration;
   }
 
+  public setScriptedActorLocation(eventId: number, point: GridPoint, direction?: number): boolean {
+    const runtime = this.runtimes.get(eventId);
+    if (runtime === undefined || !Number.isSafeInteger(point.x) || !Number.isSafeInteger(point.y)) return false;
+    runtime.x = point.x;
+    runtime.y = point.y;
+    runtime.motion = null;
+    if (direction !== undefined && direction !== 0) runtime.direction = directionName(direction);
+    return true;
+  }
+
   public applyNetworkActors(actors: readonly SourceSceneActorSnapshot[], now: number): void {
     for (const actor of actors) {
       const runtime = this.runtimes.get(actor.eventId);

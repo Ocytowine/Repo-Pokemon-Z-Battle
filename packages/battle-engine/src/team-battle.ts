@@ -139,13 +139,14 @@ function switchPokemon(
     const hp = member.ability === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
+    const curedStatus = member.ability === "NATURALCURE" ? null
+      : member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
+        ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus;
     return {
           ...persistent,
           hp,
           stages: { ...ZERO_STAGES },
-          majorStatus: member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
-            ? { kind: "poison" as const, toxicCounter: 0 }
-            : member.majorStatus,
+          majorStatus: curedStatus,
         };
   });
   teams[side] = { activeIndex: toIndex, members };
@@ -153,6 +154,10 @@ function switchPokemon(
   if (healed > 0) {
     events.push({ type: "abilityActivated", side, ability: "REGENERATOR", effect: "heal-on-switch" },
       { type: "hpRestored", side, source: "move", move: "REGENERATOR", amount: healed, hp: from.hp + healed });
+  }
+  if (from.ability === "NATURALCURE" && from.majorStatus !== null) {
+    events.push({ type: "abilityActivated", side, ability: "NATURALCURE", effect: "cure-status" },
+      { type: "statusCured", side, status: from.majorStatus.kind });
   }
   events.push({ type: "pokemonSwitched", side, fromIndex, toIndex, from: from.id, to: to.id, reason });
   if (to.ability === "INTIMIDATE") {

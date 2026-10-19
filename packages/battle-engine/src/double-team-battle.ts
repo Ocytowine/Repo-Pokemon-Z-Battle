@@ -164,8 +164,9 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
     return { ...persistent, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
-      speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: member.majorStatus?.kind === "poison"
-      && member.majorStatus.toxicCounter !== null ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
+      speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: member.ability === "NATURALCURE" ? null
+      : member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
+        ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
   });
   teams[actor.side] = { ...team, activeIndex: indices[0]!, activeIndices: indices };
   teams[actor.side] = { ...teams[actor.side], members };
@@ -173,6 +174,10 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   if (healed > 0) output.push({ type: "abilityActivated", side: actor.side,
     ability: "REGENERATOR", effect: "heal-on-switch" }, { type: "hpRestored", side: actor.side,
     source: "move", move: "REGENERATOR", amount: healed, hp: team.members[fromIndex]!.hp + healed });
+  const withdrawn = team.members[fromIndex]!;
+  if (withdrawn.ability === "NATURALCURE" && withdrawn.majorStatus !== null) output.push(
+    { type: "abilityActivated", side: actor.side, ability: "NATURALCURE", effect: "cure-status" },
+    { type: "statusCured", side: actor.side, status: withdrawn.majorStatus.kind });
   output.push({ type: "pokemonSwitched", side: actor.side, fromIndex, toIndex: teamIndex,
     from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason: "voluntary" });
   const entering = teams[actor.side].members[teamIndex]!;
@@ -248,7 +253,10 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     return moveIndex < 0 ? entry : { ...entry, action: { ...entry.action, moveIndex } };
   });
   const byActor = new Map(effectiveSubmitted.map((entry) => [key(entry.actor), entry]));
-  if (byActor.size !== effectiveSubmitted.length || required.some((position) => !byActor.has(key(position)))) {
+  const requiredKeys = new Set(required.map(key));
+  if (byActor.size !== effectiveSubmitted.length || byActor.size !== requiredKeys.size
+    || required.some((position) => !byActor.has(key(position)))
+    || effectiveSubmitted.some((entry) => !requiredKeys.has(key(entry.actor)))) {
     throw new Error("Chaque Pokemon actif doit choisir exactement une action.");
   }
   const megaResult = resolveMegaEvolutionIntents({ ...state, teams }, effectiveSubmitted.flatMap((entry) => {
@@ -302,7 +310,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     .map((entry) => { const battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
-      return { ...entry, priority: move.priority, speed: effectiveSpeed(battler), tie: rng.nextInt(1_000_000) }; })
+      const priority = move.priority + (battler.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0);
+      return { ...entry, priority, speed: effectiveSpeed(battler), tie: rng.nextInt(1_000_000) }; })
     .sort((left, right) => right.priority - left.priority || right.speed - left.speed || left.tie - right.tie);
   events.push({ type: "teamActionOrdered", order: [
     ...switchEntries.map((entry) => ({ side: entry.actor.side, kind: "switch" as const })),
@@ -346,27 +355,37 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     trace.push(...result.trace);
   }
   events.push(...applyDoubleEndOfTurn(state, teams, rng, trace));
-  const slotReplacements: BattlePosition[] = [];
   let winner: BattleSide | null = null;
   for (const side of SIDES) {
-    const active = activeTeamIndices(teams[side]);
-    const reserves = teams[side].members.map((member, index) => ({ member, index }))
+    if (!teams[side].members.some((member) => member.hp > 0)) winner = otherSide(side);
+  }
+  const slotReplacements: BattlePosition[] = [];
+  if (winner === null) for (const side of SIDES) {
+    const team = teams[side];
+    const active = activeTeamIndices(team);
+    const reserves = team.members.map((member, index) => ({ member, index }))
       .filter(({ member, index }) => member.hp > 0 && !active.includes(index));
     active.forEach((index, slot) => {
-      if (teams[side].members[index]!.hp <= 0 && reserves.length > slotReplacements.filter((position) => position.side === side).length) {
+      // Les slots restent stables pendant tout le combat : un K.O. sans réserve
+      // demeure un emplacement visuel vide afin que son allié ne change pas de
+      // côté. Il n'est toutefois ni jouable, ni proposé comme remplacement.
+      if (team.members[index]!.hp <= 0
+        && reserves.length > slotReplacements.filter((position) => position.side === side).length) {
         slotReplacements.push({ side, slot });
       }
     });
-    if (!teams[side].members.some((member) => member.hp > 0)) winner = otherSide(side);
   }
   if (winner !== null) events.push({ type: "battleEnded", winner });
   events.push({ type: "turnEnded", turn: state.turn });
   if (effects !== undefined) effects = { sides: {
     player: { reflectTurns: Math.max(0, effects.sides.player.reflectTurns - 1),
+      lightScreenTurns: Math.max(0, (effects.sides.player.lightScreenTurns ?? 0) - 1),
       luckyChantTurns: Math.max(0, effects.sides.player.luckyChantTurns - 1) },
     opponent: { reflectTurns: Math.max(0, effects.sides.opponent.reflectTurns - 1),
+      lightScreenTurns: Math.max(0, (effects.sides.opponent.lightScreenTurns ?? 0) - 1),
       luckyChantTurns: Math.max(0, effects.sides.opponent.luckyChantTurns - 1) },
-  }, waterSportTurns: Math.max(0, effects.waterSportTurns - 1) };
+  }, mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
+  waterSportTurns: Math.max(0, effects.waterSportTurns - 1) };
   return { state: { ...state, turn: state.turn + 1, teams, winner,
     status: winner === null ? "active" : "finished", replacementRequired: [],
     slotReplacements: winner === null ? slotReplacements : [], ...(effects === undefined ? {} : { effects }) }, events, trace };

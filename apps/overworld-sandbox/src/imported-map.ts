@@ -14,6 +14,8 @@ import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-regi
 import { sourceTruthEventOpacity } from "./source-truth-lens.js";
 import { expandSourceCommonEvents, type SourceCommonEvent, type SourceEventCommand } from "./source-common-events.js";
 import { parseSourceMegaEvolutionCatalog, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
+import { parseSourceEncounterModifierCatalog,
+  type SourceEncounterModifierCatalog } from "./source-encounter-modifiers.js";
 
 export const SOURCE_MAP_ID = "source-003";
 export const SOURCE_TILE_SIZE = 32;
@@ -131,6 +133,7 @@ export interface ImportedMapAssets {
   readonly trainers: readonly ImportedTrainer[];
   readonly trainerTypes: readonly ImportedTrainerType[];
   readonly encounter: ImportedEncounterTable | null;
+  readonly encounterModifiers: SourceEncounterModifierCatalog;
   readonly battleback: string | null;
   readonly wildBattleBgm: string | null;
   readonly wildVictoryMe: string | null;
@@ -800,13 +803,14 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   if (!Number.isInteger(mapId) || mapId < 1 || mapId > 999) throw new RangeError(`Identifiant de carte invalide : ${mapId}.`);
   const mapFile = `Map${String(mapId).padStart(3, "0")}.json`;
   await validateSourceLocalData([`maps/${mapFile}`, `events/${mapFile}`, "common-events.json"]);
-  const [mapValue, tilesetValue, eventValue, commonEventsValue, localizationValue, itemsValue, alchemyValue, megaEvolutionsValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
+  const [mapValue, tilesetValue, eventValue, commonEventsValue, localizationValue, itemsValue, alchemyValue, megaEvolutionsValue, encounterModifiersValue, machinesValue, pokemonValue, pokemonAssetsValue, assetManifestValue,
     movesValue, abilitiesValue, encountersValue, battleMetadataValue, regionMapValue, mapInfosValue, trainersValue, trainerTypesValue] = await Promise.all([
     fetchJson(`/__pokemon-z/data/maps/${mapFile}`), fetchJson("/__pokemon-z/data/tilesets.json"), fetchJson(`/__pokemon-z/data/events/${mapFile}`),
     fetchJson("/__pokemon-z/data/common-events.json"),
     fetchJson("/__pokemon-z/data/localization.json"), fetchJson("/__pokemon-z/data/items.json"),
     fetchJson("/__pokemon-z/data/alchemy-recipes.json"),
     fetchJson("/__pokemon-z/data/mega-evolutions.json"),
+    fetchJson("/__pokemon-z/data/encounter-modifiers.json"),
     fetchJson("/__pokemon-z/data/machines.json"),
     fetchJson("/__pokemon-z/data/pokemon.json"), fetchJson("/__pokemon-z/data/pokemon-assets.json"),
     fetchJson("/__pokemon-z/data/asset-manifest.json"), fetchJson("/__pokemon-z/data/moves.json"),
@@ -825,6 +829,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const items = parseImportedItems(itemsValue, localizationValue);
   const alchemy = parseSourceAlchemyCatalog(alchemyValue);
   const megaEvolutions = parseSourceMegaEvolutionCatalog(megaEvolutionsValue);
+  const encounterModifiers = parseSourceEncounterModifierCatalog(encounterModifiersValue);
   const machineCompatibility = parseImportedMachineCompatibility(machinesValue);
   const itemNames = new Map([...items].map(([id, item]) => [id, item.name]));
   const battleCatalog = parseBattleCatalog(pokemonValue, movesValue, abilitiesValue, localizationValue);
@@ -861,7 +866,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
     fieldEffectImages: { footprint: footprintImage, mountedFootprint: mountedFootprintImage,
       waterRipple: waterRippleImage },
-    mapTranslations, itemNames, items, alchemy, megaEvolutions, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
+    mapTranslations, itemNames, items, alchemy, megaEvolutions, encounterModifiers, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
     trainers, trainerTypes, regionMap,
     encounter: parseImportedEncounter(encountersValue, mapId), ...battlePresentation };

@@ -32,6 +32,17 @@ interface TrainerRecord {
   }[];
 }
 
+interface MegaEvolutionRecord {
+  readonly species: string;
+  readonly form: number;
+  readonly heldItem: string;
+  readonly ability: string;
+}
+
+interface MegaEvolutionCatalog {
+  readonly records: readonly MegaEvolutionRecord[];
+}
+
 interface Dataset<T> { readonly records: readonly T[] }
 
 export interface BattleIntegrationAnimationCatalog {
@@ -66,9 +77,10 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
   const read = async <T>(file: string): Promise<T> => JSON.parse(
     await readFile(path.join(outputDirectory, file), "utf8"),
   ) as T;
-  const [movesData, pokemonData, trainersData, engineSupport] = await Promise.all([
+  const [movesData, pokemonData, trainersData, megaEvolutionData, engineSupport] = await Promise.all([
     read<Dataset<MoveRecord>>("moves.json"), read<Dataset<PokemonRecord>>("pokemon.json"),
     read<Dataset<TrainerRecord>>("trainers.json"),
+    read<MegaEvolutionCatalog>("mega-evolutions.json"),
     read<{ readonly categories: {
       readonly moveFunctionCodes: readonly { readonly key: string; readonly engineSupport: Support }[];
       readonly abilities: readonly { readonly key: string; readonly engineSupport: Support }[];
@@ -82,7 +94,7 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     .map((entry) => [entry.key, entry.engineSupport] as const));
   const moveUsage = new Map<string, Set<string>>();
   const abilityUsage = new Map<string, Set<string>>();
-  const scopes: { kind: "pokemon" | "trainer"; id: string; moves: string[]; abilities: string[] }[] = [];
+  const scopes: { kind: "pokemon" | "trainer" | "mega"; id: string; moves: string[]; abilities: string[] }[] = [];
 
   for (const record of pokemonData.records) {
     const scope = `pokemon:${record.internalName}`;
@@ -111,6 +123,16 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     scopeAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
     scopes.push({ kind: "trainer", id: `${trainer.trainerType}:${trainer.name}:${trainer.version}`,
       moves: [...scopeMoves], abilities: [...scopeAbilities] });
+  }
+  for (const megaEvolution of megaEvolutionData.records) {
+    const definition = pokemon.get(megaEvolution.species);
+    const scope = `mega:${megaEvolution.species}:${megaEvolution.form}`;
+    const scopeMoves = [...new Set(definition?.levelUpMoves.map((entry) => entry.move) ?? [])];
+    const scopeAbilities = [megaEvolution.ability];
+    scopeMoves.forEach((move) => addUsage(moveUsage, move, scope));
+    scopeAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
+    scopes.push({ kind: "mega", id: `${megaEvolution.species}:${megaEvolution.form}`,
+      moves: scopeMoves, abilities: scopeAbilities });
   }
 
   const importedAnimationIndices = new Set(animationCatalog.animations.map((animation) => animation.index));
@@ -154,9 +176,10 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
   ];
   return {
     schemaVersion: "1.0.0",
-    policy: "Toute nouvelle espèce ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
+    policy: "Toute nouvelle espèce, forme Méga ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
     summary: {
       pokemon: pokemonData.records.length, trainers: trainersData.records.length,
+      megaEvolutions: megaEvolutionData.records.length,
       moves: moveDependencies.length, abilities: abilityDependencies.length,
       importedAnimations: animationCatalog.animations.length, issues: issues.length,
       missingMoveMechanics: issues.filter((issue) => issue.kind === "move-mechanic").length,

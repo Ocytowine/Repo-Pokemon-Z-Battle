@@ -234,7 +234,7 @@ function statusName(status: MajorStatusState["kind"]): string {
     burn: "BRÛLURE",
     paralysis: "PARALYSIE",
     frozen: "GEL",
-    caduco: "CADUCO",
+    caduco: "EXTÉNUATION",
     hemorrhage: "HÉMORRAGIE",
   }[status];
 }

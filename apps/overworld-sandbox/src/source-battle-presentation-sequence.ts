@@ -29,7 +29,7 @@ export type SourceBattlePresentationStep =
 
 const STATUS_NAMES = {
   burn: "la brûlure",
-  caduco: "Caduco",
+  caduco: "l’Exténuation",
   frozen: "le gel",
   hemorrhage: "l'hémorragie",
   paralysis: "la paralysie",
