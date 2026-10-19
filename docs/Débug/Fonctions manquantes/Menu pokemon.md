@@ -5,3 +5,7 @@ il est possible des mettre en tête un pokemon mais impossible des déplacer les
 il est possible de gruger avec la fonction "mettre en tête" mais c'est pas pratique
 il est important de pouvoir ranger dans l'ordre sa team, pour une question d'organisation mais surtout pour l'ordre d'apparition des pokemon (pour un duo ou si les premiers pkms sont KO se sont les suivant qui partent en combats lors d'un nouveau fight)
 la fonction pourrai être en drag and drop,cela pourrai être plutot pratique, sans avoir à ajouter un bouton en plus et alléger l IUX
+
+
+dans l'inventaire (bouton échap) il y a un Bug, quand on clic sur un pokemon dans sa "team", un menu(B) s'ouvre permettant de mettre en tête le pkm, de voir les info etc...
+lorsqu'on ferme l'inventaire' "échape" en laissant ouvert le menu(B) du pokemon selectionné, ce même menu (B) reste ouvert lorsqu'on retourne dans l'inventaire (bouton échap)
