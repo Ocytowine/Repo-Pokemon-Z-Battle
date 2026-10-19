@@ -640,7 +640,7 @@ describe("ability conformance regressions", () => {
       MULTISCALE: "full HP damage reduction", NEUROFORCE: "super-effective power", NOGUARD: "accuracy bypass", OVERGROW: "low HP grass power",
       NATURALCURE: "status cure on switch", PIELHELADA: "normal-to-ice conversion",
       PIELHERBACEA: "normal-to-grass conversion", PIXILATE: "normal-to-fairy conversion", PRANKSTER: "status priority",
-      PUREPOWER: "physical attack", QUICKFEET: "status speed", REGENERATOR: "switch healing",
+      PROTEAN: "type change before move", PUREPOWER: "physical attack", QUICKFEET: "status speed", REGENERATOR: "switch healing",
       RIVALRY: "source gender damage", SAPSIPPER: "grass immunity and attack boost", SCRAPPY: "ghost immunity bypass", SERENEGRACE: "secondary chance",
       SHEERFORCE: "secondary suppression and power", SHELLARMOR: "critical immunity",
       SHEDSKIN: "status cure", SHIELDDUST: "secondary prevention", SIMPLE: "stat stage multiplier",
@@ -652,6 +652,16 @@ describe("ability conformance regressions", () => {
       UNAWARE: "ignore opposing stat stages", WATERABSORB: "water absorption",
     };
     expect(Object.keys(audited).sort()).toEqual([...IMPLEMENTED_BATTLE_ABILITIES].sort());
+  });
+
+  it("changes a Protean user's type before its selected move", () => {
+    const user = battler("player", { ability: "PROTEAN", types: ["NORMAL"],
+      moves: [{ move: MINIMAL_MOVE_CATALOG.WATERGUN, pp: MINIMAL_MOVE_CATALOG.WATERGUN.pp }] });
+    const result = resolveTurn(battle(user),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(5));
+    expect(result.state.battlers.player.types).toEqual(["WATER"]);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "player",
+      ability: "PROTEAN", effect: "change-type" });
   });
 
   it("applies the deterministic Mega ability damage modifiers in the shared core", () => {

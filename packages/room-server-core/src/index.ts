@@ -1290,6 +1290,10 @@ export class AuthoritativeBattleRoom {
       || (this.#battleState.slotReplacements?.length ?? 0) > 0 || !joinableLifecycle) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce combat n'accepte plus de participant.")];
     }
+    if (this.#sourceBattleContext?.origin === "source-wild" && this.#battleState.format === "double") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
+        "Ce combat sauvage est deja double et ne peut etre rejoint.")];
+    }
     if (this.#sourceBattleContext?.origin === "source-wild" && message.side !== "player") {
       return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
         "Un combat sauvage ne peut etre rejoint que pour aider le Dresseur.")];
@@ -1422,10 +1426,11 @@ export class AuthoritativeBattleRoom {
       const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
         && candidate.connected && (message.context.origin === "source-trainer"
           || world.presence[candidate.side] === "shared"));
+      const trainerJoinAvailable = guestAvailable && message.context.origin === "source-trainer";
       this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
         origin: message.context.origin, narrativeOwnerId: player.playerId,
-        allowJoin: guestAvailable && message.context.format !== "double",
-        requireInviteChoice: message.context.origin === "source-trainer" && message.context.format !== "double" });
+        allowJoin: trainerJoinAvailable || guestAvailable && message.context.format !== "double",
+        requireInviteChoice: trainerJoinAvailable });
       this.#activeEncounter = null;
       this.#activeDuel = false;
       this.#pendingActions.clear();

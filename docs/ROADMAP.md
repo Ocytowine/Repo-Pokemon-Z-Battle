@@ -2183,6 +2183,11 @@ pendant une action ou un remplacement. Leur passage en double conserve les effet
 tactiques et ne rejoue pas les talents d'entrée des actifs existants. Le client
 réconcilie toute modification structurelle des camps et sérialise le chargement
 des sprites, ce qui supprime les compositions différentes entre hôte et invité.
+Un raccourci Test dev vers Hector et Zaida (Map027, événement 12) fournit le vrai
+combat duo source : deux adversaires sont actifs nativement. En Coop, l'invité
+peut prendre le second poste allié avant le premier tour ; le second Pokémon de
+l'hôte reste en réserve, sans dépasser le format 2 contre 2. Les combats sauvages
+déjà doubles restent non rejoignables et seulement observables.
 
 Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de

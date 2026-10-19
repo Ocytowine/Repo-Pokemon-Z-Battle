@@ -4175,3 +4175,16 @@ rendu des battlers est sérialisé afin qu'un ancien chargement d'image ne puiss
 plus terminer après le nouveau snapshot et réafficher une mauvaise composition.
 Les remplacements ordinaires à nombre de slots constant restent traités par leur
 événement dédié et ne sont pas confondus avec une jonction.
+
+La recette dédiée du vrai combat duo utilise Hector et Zaida sur la Route 4
+(Map027, événement 12). Le jeu source les déclare comme `DUOMOSQUETERO` et lance
+nativement le format double quand le joueur possède au moins deux Pokémon. Le
+raccourci `TP duo Hector et Zaida` place le joueur devant eux sans modifier
+l'histoire. En Coop, l'hôte peut appeler l'invité avant le premier tour : le
+Pokémon actif de l'invité remplace alors le second actif de l'hôte, qui reste en
+réserve, et les deux adversaires du duo demeurent actifs. Le camp reste donc
+strictement limité à deux combattants simultanés. Les combats sauvages déjà
+doubles, dont le nid insecte, restent non rejoignables et seulement observables.
+L'audit de dépendances de ce duo a aussi conduit au port générique de `PROTEAN` :
+le Pokémon adopte le type de sa capacité juste avant son exécution, dans le même
+noyau autoritaire pour le solo, l'hôte et l'invité.

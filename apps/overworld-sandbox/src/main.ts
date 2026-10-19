@@ -138,6 +138,7 @@ const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
 const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
+const SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION = { mapId: 27, x: 28, y: 20, direction: 8 } as const;
 const SOURCE_FURFROU_NEST_DEV_DESTINATION = { mapId: 24, x: 25, y: 15, direction: 8 } as const;
 const SOURCE_INSECT_NEST_DEV_DESTINATION = { mapId: 28, x: 7, y: 40, direction: 8 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
@@ -1063,6 +1064,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
   onTeleportToTestDayCare: () => { void requestSourceDevTeleport(SOURCE_DAY_CARE_DEV_DESTINATION); },
+  onTeleportToTestDoubleJoin: () => { void requestSourceDevTeleport(SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION); },
   onTeleportToTestFurfrouNest: () => { void requestSourceDevTeleport(SOURCE_FURFROU_NEST_DEV_DESTINATION); },
   onTeleportToTestInsectNest: () => { void requestSourceDevTeleport(SOURCE_INSECT_NEST_DEV_DESTINATION); },
   onAccelerateTestEggs: accelerateSourceDevEggs,

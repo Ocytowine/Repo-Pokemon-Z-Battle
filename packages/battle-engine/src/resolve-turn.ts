@@ -789,6 +789,11 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     moved.add(side);
     const moveType = effectiveMoveType(battlers[side], slot.move).type;
     const resolvedMove = moveType === slot.move.type ? slot.move : { ...slot.move, type: moveType };
+    if (battlers[side].ability === "PROTEAN"
+      && (battlers[side].types.length !== 1 || battlers[side].types[0] !== moveType)) {
+      battlers[side] = { ...battlers[side], types: [moveType] };
+      events.push({ type: "abilityActivated", side, ability: "PROTEAN", effect: "change-type" });
+    }
     const plannedTargetAction = selectedActions[targetSide] ?? options.targetPlannedAction;
     if (slot.move.functionCode === "012" && volatile.activeTurns > 0) {
       events.push({ type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });

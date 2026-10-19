@@ -726,8 +726,8 @@ describe("authoritative battle room", () => {
     const refused = room.receive("bob", { type: "proposeBattleJoin", version: 15,
       requestId: "native-double-join", battleId: battle.id, side: "player",
       team: initialBattle().teams.player, finalMemberIds: ["player"] });
-    expect(refused[0]?.message).toMatchObject({ type: "error", code: "INVALID_MESSAGE",
-      message: expect.stringContaining("double") });
+    expect(refused[0]?.message).toMatchObject({ type: "error", code: "INVALID_PHASE",
+      message: expect.stringContaining("sauvage est deja double") });
     const observed = room.receive("bob", { type: "observeBattle", version: 15,
       requestId: "native-double-observe", battleId: battle.id });
     expect(observed.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
@@ -882,6 +882,41 @@ describe("authoritative battle room", () => {
       requestId: "continue-alone", battleId }).map((entry) => entry.message.type))
       .toEqual(["ack", "snapshot"]);
     expect(room.snapshot().battle?.session.lifecycle).toBe("active");
+  });
+
+  it("lets the guest take the second allied slot against a native duo of source trainers", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    const hostSecond = { ...battler("player"), id: "host-second" };
+    const duoSecond = { ...battler("opponent"), id: "duo-second" };
+    const opened = room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "trainer-duo-open",
+      context: { ...sourceTrainerBattleContext("alice"), format: "double", rewards: {
+        ...sourceTrainerBattleContext("alice").rewards, opponents: [
+          ...sourceTrainerBattleContext("alice").rewards.opponents,
+          { memberId: duoSecond.id, species: duoSecond.species, level: duoSecond.level, baseExperience: 58 },
+        ] } }, playerTeam: { activeIndex: 0, members: [initial.teams.player.members[0]!, hostSecond] },
+      opponentTeam: { activeIndex: 0, members: [initial.teams.opponent.members[0]!, duoSecond] } });
+    const battleId = room.snapshot().battle!.id;
+    expect(opened.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
+    expect(room.snapshot().battle).toMatchObject({ state: { format: "double", teams: {
+      player: { activeIndices: [0, 1] }, opponent: { activeIndices: [0, 1] },
+    } }, session: { lifecycle: "invite-choice" } });
+    room.receive("alice", { type: "requestBattleJoinWindow", version: 15,
+      requestId: "trainer-duo-call", battleId });
+    const helper = { ...battler("player"), id: "guest-helper" };
+    room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "trainer-duo-propose",
+      battleId, side: "player", team: { activeIndex: 0, members: [helper] },
+      finalMemberIds: ["player", hostSecond.id, helper.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 15, requestId: "trainer-duo-accept",
+      battleId, accept: true });
+    expect(room.snapshot().battle).toMatchObject({ state: { format: "double", teams: {
+      player: { activeIndices: [0, 2] }, opponent: { activeIndices: [0, 1] },
+    } }, participation: { camps: {
+      player: { trainerIds: ["alice", "bob"], activeMemberIds: ["player", "guest-helper"] },
+      opponent: { activeMemberIds: ["opponent", "duo-second"] },
+    } } });
   });
 
   it("requires the host to answer a valid composition before closing the join window", () => {

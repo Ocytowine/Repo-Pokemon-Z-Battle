@@ -36,7 +36,7 @@ export interface BattleMove {
 export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "AERILATE", "BATTLEARMOR", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "COMPOUNDEYES", "CORROSION",
   "CONTRAGUARDIA", "DRYSKIN", "FILTER", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "INTIMIDATE",
   "IRONFIST", "KEENEYE", "LEVITATE", "LIQUIDVOICE", "MAGICGUARD", "MEGALAUNCHER", "MULTISCALE", "NEUROFORCE", "NOGUARD", "OVERGROW", "PIELHELADA", "PIXILATE",
-  "NATURALCURE", "PIELHERBACEA", "PRANKSTER", "PUREPOWER", "QUICKFEET", "REGENERATOR", "RIVALRY", "SAPSIPPER", "SERENEGRACE", "SHELLARMOR", "SHEDSKIN", "SHIELDDUST",
+  "NATURALCURE", "PIELHERBACEA", "PRANKSTER", "PROTEAN", "PUREPOWER", "QUICKFEET", "REGENERATOR", "RIVALRY", "SAPSIPPER", "SERENEGRACE", "SHELLARMOR", "SHEDSKIN", "SHIELDDUST",
   "SCRAPPY", "SHEERFORCE", "SIMPLE", "SKILLLINK", "SNIPER", "SOLIDROCK", "SOUNDPROOF", "STATIC", "STEADFAST", "STRONGJAW", "SWARM", "SYNCHRONIZE", "TECHNICIAN", "UNAWARE", "WATERABSORB", "COMPETITIVE",
   "THICKFAT", "TORRENT", "TOUGHCLAWS"] as const;
 export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[number];
@@ -206,7 +206,7 @@ export type BattleEvent =
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" | "lower-attack" | "heal-on-switch" | "heal-on-berry" | "block-move" | "boost-stat" | "cure-status" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" | "lower-attack" | "heal-on-switch" | "heal-on-berry" | "block-move" | "boost-stat" | "cure-status" | "change-type" }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
