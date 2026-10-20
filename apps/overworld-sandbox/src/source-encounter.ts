@@ -2,7 +2,7 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   replaceFaintedDoublePokemon, replaceFaintedPokemon, resolveTeamTurn,
   sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
-  type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
+  type BattleResolutionRules, type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
@@ -45,12 +45,13 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
-  catalog: PlayerCreationCatalog, format: "single" | "double" = "single"): TeamBattleState {
+  catalog: PlayerCreationCatalog, format: "single" | "double" = "single",
+  opponentId: (memberIndex: number) => string = (memberIndex) =>
+    `trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${memberIndex}`): TeamBattleState {
   const player = sourcePlayerBattleTeam(party, catalog);
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
-    let pokemon = createPersistentPokemon(`trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${index}`,
-      member.species, member.level, catalog);
+    let pokemon = createPersistentPokemon(opponentId(index), member.species, member.level, catalog);
     const species = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
     if (species === undefined) throw new Error(`Espèce de Dresseur absente du catalogue : ${member.species}.`);
     const abilityIndex = member.abilityIndex ?? null;
@@ -83,7 +84,8 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
 }
 
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
-  rng: RandomSource, itemPolicy?: PokemonItemUsePolicy): TeamTurnResult & { readonly actions: TeamTurnActions } {
+  rng: RandomSource, itemPolicy?: PokemonItemUsePolicy,
+  rules: BattleResolutionRules = { opponentItemTheft: true }): TeamTurnResult & { readonly actions: TeamTurnActions } {
   const player = state.teams.player.members[state.teams.player.activeIndex];
   if (player === undefined) throw new Error("Combattant actif introuvable.");
   if (playerAction.kind === "move") {
@@ -94,7 +96,7 @@ export function resolveSourceEncounterAction(state: TeamBattleState, playerActio
     player: playerAction,
     opponent: chooseSourceBattleAction(state, "opponent", rng),
   };
-  return { ...resolveTeamTurn(state, actions, rng, itemPolicy), actions };
+  return { ...resolveTeamTurn(state, actions, rng, itemPolicy, rules), actions };
 }
 
 export function resolveSourceEncounterTurn(state: TeamBattleState, playerMoveIndex: number,
@@ -204,7 +206,7 @@ export function settleSourceTrainerBattle(party: PlayerPartyState, state: TeamBa
   if (state.status !== "finished" || state.winner === null) {
     throw new Error("Le combat de Dresseur n'est pas termine.");
   }
-  const stored = storeOwnedBattleResults(party, participation, state, "local");
+  const stored = storeOwnedBattleResults(party, participation, state, "local", true);
   if (state.winner !== "player") return { party: healPlayerParty(stored), completed: false, gains: [] };
   const tactical = sharedBattleOwnerSettlement(participation, state, ledger, "local");
   const experience = applySharedBattleExperience(stored, tactical, catalog,

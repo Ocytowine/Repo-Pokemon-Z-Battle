@@ -3655,3 +3655,268 @@ web reste prioritaire sur les anciennes affectations numériques `$Trainer.outfi
 Tests : développement d'événements communs et détection des cycles, projection de
 fabrication, portage des deux hooks, traduction du contexte commun et effacement
 temporaire Coop.
+
+## Tirage des talents non forcés et audit de dépendances — 2026-10-20
+
+La règle retenue avec le porteur est maintenant explicite : lorsqu'une rencontre
+ou une équipe de Dresseur ne fournit aucun `abilityIndex`, le Pokémon tire son
+talent parmi les talents normaux de son espèce. Un talent caché n'entre jamais
+dans ce tirage ; il reste accessible lorsqu'un index source le force explicitement.
+Le choix est dérivé de l'identité persistante du Pokémon. Les créations réelles
+emploient une nouvelle identité pour chaque Pokémon sauvage et chaque membre de
+Dresseur, puis conservent le résultat dans l'état de combat : un affichage, un
+tour, une restauration ou une reconnexion ne relancent donc pas le tirage.
+
+Le noyau commun `player-state` porte cette sélection pour les Pokémon possédés,
+sauvages et de Dresseur. En solo, l'adaptateur local crée l'identité avant
+l'ouverture du combat. En Coop, la même équipe est remise à la room, qui devient
+autoritaire sur le snapshot et le RNG des tours ; les participants reçoivent le
+talent déjà choisi. Le domaine du talent est l'état du Pokémon, son audience est
+l'ensemble des participants au combat et aucune intention réseau supplémentaire
+n'est nécessaire. Les anciennes sauvegardes gardent leur talent enregistré.
+
+Le rapport `battle-integration-report.json` passe au schéma `1.1.0`. Chaque scope
+Pokémon ou Dresseur expose désormais `abilitySelections` avec la politique
+`random-normal` ou `forced-index` et ses candidats. Les talents cachés non forcés
+ne gonflent plus les dépendances. Sur la distribution locale, le périmètre passe
+de 243 à 229 talents référencés et de 217 à 203 problèmes de talent ; le total du
+rapport passe de 643 à 629 problèmes. La commande `audit:combat -- --scope ...`
+affiche aussi la politique et les candidats avant les effets manquants.
+
+Couverture ajoutée : sélection stable depuis l'identité, exclusion des talents
+cachés, respect d'un index forcé, variation entre identités de combat, et contrat
+du rapport d'audit.
+
+## Talents de précision, dégâts résistés et survie — 2026-10-20
+
+Le premier lot de la phase de portage des talents couvre les dépendances immédiates
+de Jean puis de Vin. `COMPOUNDEYES` multiplie la précision finale par 1,3,
+`TINTEDLENS` double les dégâts d'une attaque résistée et `STURDY` laisse un Pokémon
+à 1 PV lorsqu'il subit à pleine vie un coup normalement fatal. Les calculs et
+événements appartiennent au noyau `battle-engine` partagé : la room en est
+autoritaire en Coop, réplique le snapshot et la trace, et une reconnexion ne
+rejoue aucun déclenchement déjà résolu. En solo, l'adaptateur local appelle le
+même noyau. Leur audience est limitée aux participants et observateurs du combat.
+
+La couverture reste volontairement exacte dans le registre : Lentiteintée est
+supportée ; Œil Composé reste partiel tant que son effet 50/30/20 sur les objets
+tenus sauvages n'est pas raccordé ; Fermeté reste partiel tant que l'immunité aux
+capacités K.O. en un coup ne peut pas être exercée. Le rapport local compte donc
+27 talents supportés, 5 partiels et 223 absents sur 255. Dans le périmètre de
+dépendances jouable, les problèmes de talent passent de 203 à 202 et le total des
+problèmes de 629 à 628.
+
+La capture locale et le règlement autoritaire Coop recopient désormais le talent
+du combattant capturé. La nouvelle identité persistante ne relance plus ce choix ;
+PV, statut, capacités et apparence suivaient déjà cette même règle. Les tests
+couvrent le seuil exact de précision, la trace du multiplicateur de dégâts, la
+condition pleine vie de Fermeté et la conservation du talent capturé.
+
+## Pickpocket et provenance des objets tenus — 2026-10-20
+
+Le second lot de portage des talents ajoute `PICKPOCKET` au noyau commun. Après
+une attaque de contact ayant infligé des dégâts, un porteur vivant et sans objet
+prend l'objet tenu de l'attaquant. Le noyau émet `abilityActivated` puis
+`heldItemTransferred`, met à jour les deux combattants et conserve dans
+`BattleEffects.itemTransfers` la provenance nécessaire au règlement.
+
+L'autorité est locale en solo et appartient à la room en Coop ; les clients
+n'envoient qu'une intention d'action et reçoivent le snapshot ainsi que les
+événements résolus. Le domaine est tactique partagé, avec une présentation aux
+participants et observateurs du combat. Le contrat `BattleResolutionRules`
+interdit à l'adversaire d'un combat `source-wild` de voler l'objet personnel du
+joueur, sans empêcher le joueur de voler celui du sauvage. Cette règle est passée
+aux combats simples et doubles par l'adaptateur local et la room autoritaire.
+
+La persistance suit le jeu source : un transfert contre un Dresseur est temporaire
+et le règlement personnel restaure les objets initiaux, en solo comme après une
+reconnexion Coop ; les objets réellement consommés restent consommés. En sauvage,
+un transfert autorisé vers le joueur reste persistant. La file visuelle traduit
+le nom du talent et de l'objet et projette immédiatement le changement de porteur.
+
+Après `prepare:local`, le rapport compte 627 problèmes globaux, dont 201 problèmes
+de talents. Le registre moteur compte 28 talents supportés, 5 partiels et 222
+absents sur 255. L'audit ciblé de Vin passe à deux problèmes : `COMPOUNDEYES` et
+`STURDY`, tous deux partiels ; `PICKPOCKET` n'est plus signalé. Jean reste à un
+problème partiel lié à `COMPOUNDEYES`.
+
+Les régressions couvrent simple, double, présentation, règlement personnel et
+room autoritaire : vol en combat de Dresseur, protection du joueur contre un
+sauvage, vol permis au joueur sur un sauvage et restauration après règlement.
+
+## Lot groupé de modificateurs de dégâts — 2026-10-20
+
+La cadence de portage passe à des familles mécaniques. Un seul raccord dans
+`calculateDamage` couvre dix talents : `ADAPTABILITY`, `IRONFIST`, `STRONGJAW`,
+`TOUGHCLAWS`, `TECHNICIAN`, `SNIPER`, `THICKFAT`, `FILTER`, `SOLIDROCK` et
+`MULTISCALE`. Les conditions proviennent des drapeaux source des capacités, de la
+puissance effectivement calculée, du STAB, du critique, du type, de l'efficacité
+et des PV pleins.
+
+L'autorité, le domaine et l'audience ne changent pas : ce calcul tactique pur est
+exécuté par le noyau partagé, localement en solo et par la room en Coop, puis sa
+trace est répliquée aux participants. Il ne crée aucune intention réseau ni état
+persistant. Les reconnexions restaurent directement les PV déjà calculés. La trace
+expose maintenant la liste `abilityModifiers`, ce qui conserve simultanément un
+modificateur offensif et un modificateur défensif ; `abilityModifier` reste le
+premier élément pour les consommateurs existants.
+
+Après une seule régénération en fin de lot, le rapport passe de 627 à 617
+problèmes globaux et de 201 à 191 problèmes de talents. Le registre compte 38
+talents supportés, 5 partiels et 212 absents sur 255. Les tests couvrent chaque
+condition et la combinaison Technicien/Multiécaille.
+
+## Lot groupé de réactions au contact — 2026-10-20
+
+Le hook de contact partagé couvre maintenant `FLAMEBODY`, `POISONPOINT`,
+`EFFECTSPORE`, `ROUGHSKIN`, `IRONBARBS`, `GOOEY` et `POISONTOUCH`. Corps Ardent et
+Point Poison appliquent leur statut avec 30 % de chances ; Effet Spore effectue
+le tirage source poison/sommeil/paralysie et respecte les immunités du type Plante,
+de `OVERCOAT` et de `SAFETYGOGGLES`. Peau Dure et Épine de Fer retirent 1/8 des PV
+maximaux à l'attaquant, Poisseux baisse sa Vitesse et Toucher Toxique empoisonne
+la cible avec 30 % de chances.
+
+La mécanique reste tactique, partagée et sans intention réseau supplémentaire :
+le noyau résout le RNG localement en solo ou dans la room autoritaire en Coop,
+puis réplique les statuts, statistiques, PV et événements aux participants. Une
+reconnexion reprend ces valeurs dans le snapshot. `abilityDamage` donne à la file
+visuelle un palier de PV explicite pour Peau Dure et Épine de Fer. Les statuts et
+baisses de statistique utilisent les événements communs existants.
+
+Après la régénération unique de fin de lot, l'audit passe de 617 à 610 problèmes
+globaux et de 191 à 184 problèmes de talents. Le registre compte 45 talents
+supportés, 5 partiels et 205 absents sur 255. Les tests couvrent les déclenchements,
+les trois tirages d'Effet Spore, ses immunités, les dégâts, la baisse de Vitesse,
+le talent offensif Toucher Toxique et la présentation des PV.
+
+## Lot groupé d'immunités et absorptions élémentaires — 2026-10-20
+
+Le hook commun d'immunité porte huit talents complets : `WATERABSORB`,
+`VOLTABSORB`, `SAPSIPPER`, `STORMDRAIN`, `LIGHTNINGROD`, `MOTORDRIVE`,
+`FLASHFIRE` et `LEVITATE`. Les deux absorptions rendent un quart des PV maximaux ;
+Herbivore monte l'Attaque, Collecteur et Paratonnerre l'Attaque Spéciale, et
+Motorisé la Vitesse. Lévitation annule les capacités Sol offensives. Torche annule
+toute attaque Feu reçue ; la première arme un volatile tactique qui multiplie
+ensuite les dégâts Feu du porteur par 1,5. `DRYSKIN` réutilise aussi l'absorption Eau mais reste
+partiel à cause de ses effets dépendants de la météo.
+
+En combat double, Collecteur et Paratonnerre reproduisent le balayage source des
+combattants actifs : une capacité mono-cible Eau ou Électrik est redirigée vers le
+porteur prioritaire, y compris s'il est l'allié de l'attaquant. Si la cible prévue
+porte déjà le talent, elle reste la cible. Ces deux talents garantissent aussi la
+réussite de la capacité attirée, indépendamment de sa précision.
+
+L'autorité est locale en solo et appartient à la room en Coop. Le domaine est le
+snapshot tactique partagé : PV, niveaux de statistique et volatile Torche sont
+répliqués, puis restaurés tels quels après reconnexion. Les clients n'envoient que
+leurs intentions d'action ; les participants et observateurs du combat constituent
+l'audience de présentation. Le même noyau résout les combats simples, doubles,
+hôte et invité, sans état persistant après la fin du combat.
+
+Après `prepare:local`, l'audit passe de 610 à 602 problèmes globaux et de 184 à
+176 problèmes de talents. Le registre compte 53 talents supportés, 5 partiels et
+197 absents sur 255. Les tests couvrent soins, hausses de statistique, immunité
+Sol, armement puis bonus de Torche, précision garantie et redirection double vers
+un allié ou un adversaire.
+
+## Lot groupé de protections passives — 2026-10-20
+
+Douze talents supplémentaires utilisent quatre gardes communs du moteur.
+`CLEARBODY` et `WHITESMOKE` bloquent toute baisse de statistique causée par un
+adversaire ; `HYPERCUTTER` protège l'Attaque. Le même garde reste utilisé par
+`BIGPECKS` et `KEENEYE`, sans bloquer les baisses que le porteur s'inflige
+lui-même. Il est aussi consulté par Intimidation à la création du combat et lors
+d'une entrée, en simple comme sur chaque emplacement actif d'un combat double.
+
+`IMMUNITY`, `LIMBER`, `INSOMNIA`, `VITALSPIRIT`, `WATERVEIL` et `MAGMAARMOR`
+empêchent respectivement poison, paralysie, sommeil, sommeil, brûlure et gel. Le
+garde est partagé par les capacités de statut, les effets additionnels, les
+talents de contact et Synchro. Lorsqu'un snapshot ancien ou une entrée porte déjà
+un statut incompatible, le noyau le soigne et émet les mêmes événements tactiques.
+`OWNTEMPO` applique le même principe à la confusion. `BATTLEARMOR` et
+`SHELLARMOR` empêchent enfin le critique avant le tirage RNG, conformément à la
+routine source.
+
+L'autorité et le domaine restent ceux du combat : noyau local en solo, room
+autoritaire en Coop, état tactique partagé et audience limitée aux participants
+et observateurs. Les clients n'envoient aucune intention spécifique à ces
+talents. Statuts, volatiles et niveaux de statistique sont déjà compris dans le
+snapshot de reconnexion ; aucun de ces effets ne crée une nouvelle persistance
+après le règlement du combat.
+
+Après `prepare:local`, l'audit passe de 602 à 591 problèmes globaux et de 176 à
+165 problèmes de talents. Le registre passe de 53 à 65 talents supportés, conserve
+5 talents partiels et descend à 185 absents sur 255. Armumagma est bien supporté
+dans le catalogue mais ne retire pas de problème supplémentaire, car aucun scope
+jouable actuel ne le sélectionne. Les tests couvrent chaque statut, la confusion,
+les trois familles de baisse de statistique, les deux protections critiques et
+Intimidation en simple et en double.
+
+## Lot offensif contrecoup et effets secondaires — 2026-10-20
+
+Cinq talents supplémentaires sont portés dans le noyau commun. `SHEERFORCE`
+augmente de 30 % les dégâts d'une capacité qui possède une chance d'effet
+additionnel, supprime cet effet sans consommer son tirage RNG et empêche le recul
+de l'Orbe Vie associé, comme dans `pbEffectsAfterHit` du jeu source. `RECKLESS`
+augmente de 20 % les fonctions de contrecoup `0FA` à `0FE` ainsi que les attaques
+à chute `10B`. `ROCKHEAD` bloque le contrecoup proportionnel, mais pas la chute
+d'une attaque ratée ; Garde Magik bloque les deux. Les fractions source sont
+respectivement 1/4, 1/3, 1/2, 1/3 et 1/3 des dégâts réellement infligés, tandis
+que la chute retire la moitié des PV maximaux.
+
+`SKILLLINK` fixe à cinq le nombre de frappes des capacités `0C0`, sans tirage de
+compte, et chaque frappe conserve son calcul, son impact et son palier de PV.
+`SUPERLUCK` ajoute un niveau au taux de critique avant le tirage. Les effets
+additionnels paralysant de `0FD` et brûlant de `0FE` rejoignent le pipeline de
+statut partagé. Un événement `recoilDamage` porte les PV autoritaires jusqu'à la
+présentation au lieu de recalculer le contrecoup côté client.
+
+Autorité et état : le calcul, le RNG, les PV, statuts et événements appartiennent
+au noyau local en solo et à la room autoritaire en Coop. Les clients envoient
+uniquement l'intention d'attaque ; participants et observateurs voient les mêmes
+paliers. Le snapshot tactique suffit à restaurer hôte ou invité après reconnexion,
+et aucun effet de ce lot ne persiste après le règlement du combat. Les mêmes
+fonctions sont appelées en combat simple et double.
+
+Après `prepare:local`, l'audit passe de 591 à 574 problèmes globaux. Les problèmes
+de talents passent de 165 à 160 ; le registre compte 70 talents supportés, 5
+partiels et 180 absents sur 255. Les six nouvelles fonctions pleinement exécutées
+font passer les fonctions supportées de 56 à 62 sur 353 ; les problèmes de
+mécaniques d'attaque descendent à 368. Les tests couvrent puissance, trace,
+critique, cinq frappes, suppression des effets et de l'Orbe Vie, fractions de
+contrecoup, chute, Garde Magik, Tête de Roc et présentation des PV.
+
+## Lot de réactions statistiques — 2026-10-20
+
+Neuf talents supplémentaires passent par deux hooks communs. Le premier s'exécute
+après chaque impact qui inflige des dégâts : `STAMINA` monte la Défense d'un cran,
+`WATERCOMPACTION` la monte de deux après une attaque Eau, `RATTLED` monte la
+Vitesse après Insecte, Ténèbres ou Spectre, et `WEAKARMOR` baisse la Défense puis
+monte la Vitesse d'un cran après une attaque physique. `STEAMENGINE` monte la
+Vitesse de six crans après Eau ou Feu. `BERSERK` monte l'Attaque Spéciale lorsque
+les PV passent strictement d'au-dessus à en dessous de la moitié. `ANGERPOINT`
+place enfin l'Attaque à +6 après un critique. Les valeurs suivent les scripts de
+Z, y compris le +1 Vitesse d'Armure Fragile propre à cette version et les seuils
+stricts de Colère.
+
+Le second hook suit toute baisse de statistique réellement appliquée par un
+adversaire. `DEFIANT` gagne alors deux crans d'Attaque et `COMPETITIVE` deux crans
+d'Attaque Spéciale. Le raccord couvre les effets de capacité, Poisseux et les
+entrées d'Intimidation : état initial, changement simple et chaque cible active en
+double utilisent la même réaction. Une baisse personnelle ne la déclenche pas.
+
+Autorité et réplication : dégâts, critique, seuil de PV, niveaux de statistique et
+événements de talent sont calculés dans `resolveSelectedMoves`, utilisé localement
+en solo et par la room en Coop. L'hôte et l'invité n'envoient que leur intention ;
+le snapshot autoritaire réplique le résultat au rendu distant. Un test de room
+vérifie aussi qu'un niveau gagné par Endurance reste présent après déconnexion et
+reconnexion de l'invité. Ces niveaux restent tactiques et ne persistent pas après
+le combat.
+
+Après `prepare:local`, l'audit passe de 574 à 565 problèmes globaux et de 160 à
+151 problèmes de talents. Le registre passe de 70 à 79 talents supportés, conserve
+5 talents partiels et descend à 171 absents sur 255. Les 62 fonctions d'attaque et
+les 368 mécaniques d'attaque manquantes ne changent pas dans ce lot centré sur les
+talents. Les tests couvrent chaque déclencheur, les limites de crans, le critique,
+les seuils stricts, les frappes multiples, Intimidation simple/double, l'entrée par
+changement et la reconnexion Coop.

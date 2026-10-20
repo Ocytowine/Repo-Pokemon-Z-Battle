@@ -720,6 +720,16 @@ function sourceShiny(personalId: number, trainerId: number): boolean {
   return ((mixed & 0xffff) ^ (mixed >>> 16)) < 100;
 }
 
+/**
+ * Resolves an unforced source ability once from the Pokemon's persistent identity.
+ * Hidden abilities are deliberately absent from this pool: they require an explicit
+ * source path (for example a forced Trainer ability index or breeding inheritance).
+ */
+export function sourcePokemonAbility(abilities: readonly string[], personalId: number): string | null {
+  if (!integer(personalId, 0, 0xffffffff)) throw new Error("Identifiant personnel Pokemon invalide.");
+  return abilities.length === 0 ? null : abilities[personalId % abilities.length] ?? null;
+}
+
 function createdPokemonMetadata(instanceId: string, species: string, level: number,
   definition: PlayerCreationCatalog["pokemon"][number], context: PokemonCreationContext | undefined): PersistentPokemonMetadata {
   const metadata = createPersistentPokemonMetadata(instanceId, species, level);
@@ -760,7 +770,7 @@ export function createPersistentPokemon(instanceId: string, species: string, lev
   const metadata = createdPokemonMetadata(instanceId, species, level, definition, context);
   const stats = calculatePokemonStats(definition, level, metadata);
   return { id: instanceId, species, nickname: null, level, experience: experienceAtLevel(level, definition.growthRate), stats, hp: stats.maxHp, majorStatus: null,
-    ability: definition.abilities[0] ?? null, heldItem: null, moves,
+    ability: sourcePokemonAbility(definition.abilities, metadata.personalId), heldItem: null, moves,
     metadata };
 }
 
@@ -1276,7 +1286,7 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
 
 /** Restores only the Pokémon owned by one participant from a shared camp battle. */
 export function storeOwnedBattleResults(party: PlayerPartyState, participation: SharedBattleParticipation,
-  state: TeamBattleState, ownerId: string): PlayerPartyState {
+  state: TeamBattleState, ownerId: string, restoreTransferredItems = false): PlayerPartyState {
   const owned = new Map<string, { readonly side: BattleSide; readonly battler: BattlerState }>();
   for (const side of ["player", "opponent"] as const) {
     const teamById = new Map(state.teams[side].members.map((battler) => [battler.id, battler]));
@@ -1288,6 +1298,9 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
       owned.set(battler.id, { side, battler });
     }
   }
+  const transferredMemberIds = restoreTransferredItems
+    ? new Set((state.effects?.itemTransfers ?? []).flatMap((transfer) => [transfer.sourceId, transfer.targetId]))
+    : new Set<string>();
   const members = party.members.map((pokemon) => {
     const result = owned.get(pokemon.id)?.battler;
     if (result === undefined) return pokemon;
@@ -1296,7 +1309,7 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? pokemon.metadata
         : { ...pokemon.metadata, happiness: result.happiness },
-      heldItem: preserveSourceHeldItem ? pokemon.heldItem : result.heldItem,
+      heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem : result.heldItem,
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])

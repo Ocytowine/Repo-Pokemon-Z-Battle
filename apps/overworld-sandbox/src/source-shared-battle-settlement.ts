@@ -26,7 +26,8 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   if (state.appliedBattleSettlementIds.includes(settlement.settlementId)) {
     return { state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null };
   }
-  let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId);
+  let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId,
+    settlement.experience.trainerBattle);
   const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
     evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
@@ -38,6 +39,7 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
     const source = captured.battler;
     let pokemon = createPersistentPokemon(crypto.randomUUID(), source.species, source.level, catalog, captureContext);
     pokemon = { ...pokemon,
+      ability: source.ability,
       hp: captured.ballId === "HEALBALL" ? pokemon.stats.maxHp : Math.min(source.hp, pokemon.stats.maxHp),
       majorStatus: captured.ballId === "HEALBALL" ? null : source.majorStatus,
       moves: source.moves.map((slot) => ({ internalName: slot.move.internalName, pp: slot.pp, maxPp: slot.move.pp })),

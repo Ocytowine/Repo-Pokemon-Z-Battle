@@ -156,6 +156,16 @@ describe("source encounter bridge", () => {
       pokemon: [{ species: "BIDOOF", level: 3, moves: ["TACKLE", null, null, null] }] }, catalog);
     expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 3,
       moves: [{ move: { internalName: "TACKLE" }, pp: 35 }] });
+    expect(["SIMPLE", "MOODY"]).toContain(battle.teams.opponent.members[0]?.ability);
+  });
+
+  it("rolls an unforced Trainer ability from each battle-specific identity", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const abilities = new Set(Array.from({ length: 16 }, (_, roll) => createSourceTrainerBattle(party,
+      { trainerType: "RIVAL", name: "Crisanto", version: 1,
+        pokemon: [{ species: "BIDOOF", level: 3, moves: ["TACKLE", null, null, null] }] },
+      catalog, "single", () => `trainer-roll-${roll}`).teams.opponent.members[0]?.ability));
+    expect(abilities).toEqual(new Set(["SIMPLE", "MOODY"]));
   });
 
   it("preserves the source trainer held item and forced ability slot", () => {

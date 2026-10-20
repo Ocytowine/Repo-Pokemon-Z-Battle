@@ -1,6 +1,9 @@
 import { calculateDamage } from "./damage.js";
+import { damageAbilityStatReaction, opposingStatDropReaction } from "./ability-stat-reactions.js";
+import { cureStatusBlockedByAbility, statDropProtectionAbility, statusProtectionAbility } from "./ability-protection.js";
+import { recoilDivisor } from "./move-properties.js";
 import { isKnownType } from "./type-chart.js";
-import type { BattleEffects, BattleEvent, BattleMove, BattleSide, BattleState, BattleStat, BattleTrace, BattlerState, MajorStatusState, MoveAction, RandomSource, TurnActions, TurnResult } from "./types.js";
+import type { BattleEffects, BattleEvent, BattleMove, BattleSide, BattleState, BattleStat, BattleTrace, BattlerState, ImplementedBattleAbility, MajorStatusState, MoveAction, RandomSource, TurnActions, TurnResult } from "./types.js";
 
 const SIDES = ["player", "opponent"] as const;
 
@@ -18,13 +21,16 @@ type BattleVolatile = Required<NonNullable<BattlerState["volatile"]>>;
 type MutableBattleEffects = {
   sides: Record<BattleSide, { reflectTurns: number; luckyChantTurns: number }>;
   waterSportTurns: number;
+  itemTransfers: { item: NonNullable<BattlerState["heldItem"]>; sourceId: string;
+    targetId: string; reason: "pickpocket" }[];
 };
 
 function volatileOf(battler: BattlerState): BattleVolatile {
   const neutral = { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
     disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
     bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
-    activeTurns: 0, protected: false, endured: false, protectRate: 1, tauntTurns: 0, rage: false };
+    activeTurns: 0, protected: false, endured: false, protectRate: 1, tauntTurns: 0, rage: false,
+    flashFire: false, entryAbilityResolved: false, traceOriginalAbility: null };
   return { ...neutral, ...(battler.volatile ?? {}) };
 }
 
@@ -32,9 +38,9 @@ function effectsOf(effects: BattleEffects | undefined): MutableBattleEffects {
   return effects === undefined ? { sides: {
     player: { reflectTurns: 0, luckyChantTurns: 0 },
     opponent: { reflectTurns: 0, luckyChantTurns: 0 },
-  }, waterSportTurns: 0 } : { sides: {
+  }, waterSportTurns: 0, itemTransfers: [] } : { sides: {
     player: { ...effects.sides.player }, opponent: { ...effects.sides.opponent },
-  }, waterSportTurns: effects.waterSportTurns };
+  }, waterSportTurns: effects.waterSportTurns, itemTransfers: [...(effects.itemTransfers ?? [])] };
 }
 
 function withVolatile(battler: BattlerState, volatile: BattleVolatile): BattlerState {
@@ -71,6 +77,8 @@ function statusKind(move: BattleMove): MajorStatusState["kind"] | null {
   if (move.functionCode === "007" || move.functionCode === "009") return "paralysis";
   if (move.functionCode === "00A") return "burn";
   if (move.functionCode === "00C") return "frozen";
+  if (move.functionCode === "0FD") return "paralysis";
+  if (move.functionCode === "0FE") return "burn";
   if (move.functionCode === "159") return "caduco";
   if (move.functionCode === "906") return "hemorrhage";
   return null;
@@ -79,7 +87,7 @@ function statusKind(move: BattleMove): MajorStatusState["kind"] | null {
 interface StatChangeEffect {
   readonly target: "self" | "opponent";
   readonly stat: BattleStat;
-  readonly delta: -2 | -1 | 1 | 2;
+  readonly delta: number;
 }
 
 function applySelfStatChanges(source: BattleSide, changes: readonly { readonly stat: BattleStat; readonly delta: 1 | 2 }[],
@@ -116,25 +124,93 @@ function applyStatChange(
   effect: StatChangeEffect,
   battlers: Record<BattleSide, BattlerState>,
   events: BattleEvent[],
-): void {
+): boolean {
   const target = effect.target === "self" ? source : opponent;
   const battler = battlers[target];
-  const preventingAbility = effect.delta < 0 && effect.stat === "defense" && battler.ability === "BIGPECKS"
-    ? "BIGPECKS" : effect.delta < 0 && effect.stat === "accuracy" && battler.ability === "KEENEYE"
-      ? "KEENEYE" : null;
+  const preventingAbility = effect.delta < 0 && target !== source
+    ? statDropProtectionAbility(battler, effect.stat) : null;
   if (preventingAbility !== null) {
     events.push({ type: "abilityActivated", side: target, ability: preventingAbility, effect: "prevent-stat-drop" });
-    return;
+    return false;
   }
   const current = battler.stages[effect.stat];
   const delta = battler.ability === "SIMPLE" ? effect.delta * 2 : effect.delta;
   const stage = Math.max(-6, Math.min(6, current + delta));
   if (stage === current) {
     events.push({ type: "statStageChangeFailed", source, target, stat: effect.stat, reason: "limit" });
-    return;
+    return false;
   }
   battlers[target] = { ...battler, stages: { ...battler.stages, [effect.stat]: stage } };
   events.push({ type: "statStageChanged", source, target, stat: effect.stat, delta: stage - current, stage });
+  if (effect.delta < 0 && target !== source) {
+    const reaction = opposingStatDropReaction(battlers[target]);
+    if (reaction !== null) {
+      const reactionStart = events.length;
+      if (applyStatChange(target, source, { target: "self", ...reaction }, battlers, events)) {
+        events.splice(reactionStart, 0, { type: "abilityActivated", side: target,
+          ability: battlers[target].ability as "COMPETITIVE" | "DEFIANT", effect: "raise-stat" });
+      }
+    }
+  }
+  return true;
+}
+
+function applyDamageAbilityStatReaction(
+  target: BattleSide,
+  source: BattleSide,
+  move: BattleMove,
+  hit: { readonly hpBefore: number; readonly hpAfter: number; readonly critical: boolean },
+  battlers: Record<BattleSide, BattlerState>,
+  events: BattleEvent[],
+): void {
+  const reaction = damageAbilityStatReaction(battlers[target], move, hit.hpBefore, hit.hpAfter, hit.critical);
+  if (reaction === null) return;
+  const reactionStart = events.length;
+  let changed = false;
+  for (const change of reaction.changes) {
+    changed = applyStatChange(target, source, { target: "self", ...change }, battlers, events) || changed;
+  }
+  if (reaction.maximize !== null) {
+    const battler = battlers[target];
+    const current = battler.stages[reaction.maximize];
+    if (current < 6) {
+      battlers[target] = { ...battler, stages: { ...battler.stages, [reaction.maximize]: 6 } };
+      events.push({ type: "statStageChanged", source: target, target, stat: reaction.maximize,
+        delta: 6 - current, stage: 6 });
+      changed = true;
+    }
+  }
+  if (changed) events.splice(reactionStart, 0, { type: "abilityActivated", side: target,
+    ability: reaction.ability, effect: "raise-stat" });
+}
+
+function applyTypeAbsorption(source: BattleSide, target: BattleSide, move: BattleMove,
+  battlers: Record<BattleSide, BattlerState>, events: BattleEvent[]): boolean {
+  if (source === target) return false;
+  const defender = battlers[target];
+  const ability = defender.ability;
+  const heals = (ability === "DRYSKIN" || ability === "WATERABSORB") && move.type === "WATER"
+    || ability === "VOLTABSORB" && move.type === "ELECTRIC";
+  const raisedStat = ability === "SAPSIPPER" && move.type === "GRASS" ? "attack"
+    : (ability === "STORMDRAIN" && move.type === "WATER")
+      || (ability === "LIGHTNINGROD" && move.type === "ELECTRIC") ? "specialAttack"
+      : ability === "MOTORDRIVE" && move.type === "ELECTRIC" ? "speed" : null;
+  const flashFire = ability === "FLASHFIRE" && move.type === "FIRE";
+  const levitate = ability === "LEVITATE" && move.type === "GROUND" && move.category !== "Status";
+  if (!heals && raisedStat === null && !flashFire && !levitate) return false;
+  events.push({ type: "abilityActivated", side: target, ability: ability as ImplementedBattleAbility,
+    effect: "absorb-type" });
+  if (heals) {
+    const amount = Math.min(defender.stats.maxHp - defender.hp, Math.max(1, Math.floor(defender.stats.maxHp / 4)));
+    battlers[target] = { ...defender, hp: defender.hp + amount };
+    if (amount > 0) events.push({ type: "hpRestored", side: target, source: "move",
+      move: move.internalName, amount, hp: defender.hp + amount });
+  } else if (raisedStat !== null) {
+    applyStatChange(target, source, { target: "self", stat: raisedStat, delta: 1 }, battlers, events);
+  } else if (flashFire) {
+    battlers[target] = withVolatile(defender, { ...volatileOf(defender), flashFire: true });
+  }
+  return true;
 }
 
 function applyMoveEffect(
@@ -160,6 +236,10 @@ function applyMoveEffect(
     const defender = battlers[target];
     const current = volatileOf(defender);
     if (current.confusionTurns > 0) return;
+    if (defender.ability === "OWNTEMPO") {
+      events.push({ type: "abilityActivated", side: target, ability: "OWNTEMPO", effect: "prevent-confusion" });
+      return;
+    }
     const turns = 2 + draw(rng, trace, "confusion-duration", 4);
     battlers[target] = withVolatile(defender, { ...current, confusionTurns: turns });
     events.push({ type: "volatileApplied", source, target, effect: "confusion", turns, move: move.internalName });
@@ -295,6 +375,26 @@ function typePreventsStatus(battler: BattlerState, status: MajorStatusState["kin
   return false;
 }
 
+function applyAbilityStatus(source: BattleSide, target: BattleSide, ability: ImplementedBattleAbility,
+  status: "poison" | "burn" | "paralysis" | "sleep", battlers: Record<BattleSide, BattlerState>,
+  rng: RandomSource, events: BattleEvent[], trace: BattleTrace[]): boolean {
+  const battler = battlers[target];
+  if (battler.hp <= 0 || battler.majorStatus !== null || typePreventsStatus(battler, status)) return false;
+  const protection = statusProtectionAbility(battler, status);
+  if (protection !== null) {
+    events.push({ type: "abilityActivated", side: target, ability: protection, effect: "prevent-status" });
+    return false;
+  }
+  const majorStatus: MajorStatusState = status === "sleep"
+    ? { kind: status, turnsRemaining: 2 + draw(rng, trace, "sleep-duration", 3) }
+    : status === "poison" ? { kind: status, toxicCounter: null } : { kind: status };
+  battlers[target] = { ...battler, majorStatus };
+  events.push({ type: "abilityActivated", side: source, ability,
+    effect: ability === "STATIC" ? "inflict-paralysis" : "inflict-status" });
+  events.push({ type: "statusApplied", source, target, status });
+  return true;
+}
+
 function applyStatusMove(
   source: BattleSide,
   target: BattleSide,
@@ -315,6 +415,12 @@ function applyStatusMove(
     events.push({ type: "statusApplicationFailed", source, target, status: kind, reason: "type-immune" });
     return;
   }
+  const protection = statusProtectionAbility(defender, kind);
+  if (protection !== null) {
+    events.push({ type: "abilityActivated", side: target, ability: protection, effect: "prevent-status" },
+      { type: "statusApplicationFailed", source, target, status: kind, reason: "ability-immune" });
+    return;
+  }
   const majorStatus: MajorStatusState = kind === "sleep"
     ? { kind, turnsRemaining: 2 + draw(rng, trace, "sleep-duration", 3) }
     : kind === "poison"
@@ -325,7 +431,7 @@ function applyStatusMove(
   const attacker = battlers[source];
   if (defender.ability === "SYNCHRONIZE" && attacker.majorStatus === null
     && ["poison", "burn", "paralysis", "caduco", "hemorrhage"].includes(kind)
-    && !typePreventsStatus(attacker, kind)) {
+    && !typePreventsStatus(attacker, kind) && statusProtectionAbility(attacker, kind) === null) {
     battlers[source] = { ...attacker, majorStatus: kind === "poison"
       ? { kind: "poison", toxicCounter: null } : { kind } as MajorStatusState };
     events.push({ type: "statusApplied", source: target, target: source, status: kind });
@@ -604,8 +710,12 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
   return draw(rng, trace, "speed-tie", 2) === 0 ? [opponent.side, player.side] : [player.side, opponent.side];
 }
 
-function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: BattlerState, accuracy: number, rng: RandomSource, trace: BattleTrace[]): boolean {
-  if (accuracy === 0) {
+function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: BattlerState, move: BattleMove,
+  rng: RandomSource, trace: BattleTrace[]): boolean {
+  const accuracy = move.accuracy;
+  const drawnIn = defender.ability === "STORMDRAIN" && move.type === "WATER"
+    || defender.ability === "LIGHTNINGROD" && move.type === "ELECTRIC";
+  if (accuracy === 0 || drawnIn) {
     trace.push({ type: "accuracy", side, base: 0, accuracyStage: attacker.stages.accuracy, evasionStage: defender.stages.evasion, threshold: Number.POSITIVE_INFINITY, hit: true });
     return true;
   }
@@ -615,9 +725,10 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
     return true;
   }
   const itemModifier = attacker.heldItem === "WIDELENS" ? 1.1 : 1;
+  const abilityModifier = attacker.ability === "COMPOUNDEYES" ? 1.3 : 1;
   const evasionStage = defender.volatile?.identified === true
     || (attacker.ability === "KEENEYE" && defender.stages.evasion > 0) ? 0 : defender.stages.evasion;
-  const threshold = accuracy * itemModifier * accuracyFactor(attacker.stages.accuracy)
+  const threshold = accuracy * itemModifier * abilityModifier * accuracyFactor(attacker.stages.accuracy)
     / accuracyFactor(evasionStage);
   const roll = draw(rng, trace, "accuracy", 100);
   const hit = roll < threshold;
@@ -633,7 +744,8 @@ function blocksAdditionalEffects(battler: BattlerState): boolean {
 export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveActions, rng: RandomSource,
   options: { readonly endOfTurn?: boolean; readonly damageMultiplier?: number;
     readonly attackerHeldItemAfterDamage?: boolean; readonly switchingTarget?: BattleSide | null;
-    readonly targetPlannedAction?: MoveAction; readonly targetAlreadyMoved?: boolean } = {}): TurnResult {
+    readonly targetPlannedAction?: MoveAction; readonly targetAlreadyMoved?: boolean;
+    readonly opponentItemTheft?: boolean } = {}): TurnResult {
   validateState(state, actions);
   const battlers: Record<BattleSide, BattlerState> = {
     player: cloneBattler(state.battlers.player),
@@ -641,6 +753,20 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
   };
   const events: BattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
   const trace: BattleTrace[] = [];
+  for (const side of SIDES) {
+    const cured = cureStatusBlockedByAbility(battlers[side]);
+    if (cured !== null) {
+      battlers[side] = cured.battler;
+      events.push({ type: "abilityActivated", side, ability: cured.ability, effect: "prevent-status" },
+        { type: "statusCured", side, status: cured.status });
+    }
+    const battler = battlers[side];
+    if (battler.ability === "OWNTEMPO" && volatileOf(battler).confusionTurns > 0) {
+      battlers[side] = withVolatile(battler, { ...volatileOf(battler), confusionTurns: 0 });
+      events.push({ type: "abilityActivated", side, ability: "OWNTEMPO", effect: "prevent-confusion" },
+        { type: "volatileEnded", side, effect: "confusion" });
+    }
+  }
   const effects = effectsOf(state.effects);
   const moved = new Set<BattleSide>();
   const selectedActions: Partial<Record<BattleSide, MoveAction>> = { ...actions };
@@ -725,10 +851,19 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       events.push({ type: "volatileEnded", side: actualTargetSide, effect: "protect" });
       defender = battlers[actualTargetSide];
     }
-    if (!accuracyCheck(side, battlers[side], defender, slot.move.accuracy, rng, trace)) {
+    if (!accuracyCheck(side, battlers[side], defender, slot.move, rng, trace)) {
       events.push({ type: "moveMissed", side, move: slot.move.internalName });
+      if (slot.move.functionCode === "10B" && battlers[side].ability !== "MAGICGUARD") {
+        const attacker = battlers[side];
+        const amount = Math.min(attacker.hp, Math.floor(attacker.stats.maxHp / 2));
+        battlers[side] = { ...attacker, hp: attacker.hp - amount };
+        if (amount > 0) events.push({ type: "recoilDamage", side, move: slot.move.internalName,
+          reason: "crash", amount, hp: attacker.hp - amount });
+        if (attacker.hp - amount === 0) events.push({ type: "fainted", side });
+      }
       continue;
     }
+    if (applyTypeAbsorption(side, actualTargetSide, slot.move, battlers, events)) continue;
     if (slot.move.category === "Status") {
       applyMoveEffect(side, actualTargetSide, slot.move, battlers, rng, events, trace, effects);
       if (battlers[side].hp === 0) {
@@ -739,13 +874,6 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       }
       continue;
     }
-    if (defender.ability === "DRYSKIN" && slot.move.type === "WATER") {
-      const amount = Math.min(defender.stats.maxHp - defender.hp, Math.max(1, Math.floor(defender.stats.maxHp / 4)));
-      battlers[actualTargetSide] = { ...defender, hp: defender.hp + amount };
-      if (amount > 0) events.push({ type: "hpRestored", side: actualTargetSide, source: "move",
-        move: slot.move.internalName, amount, hp: defender.hp + amount });
-      continue;
-    }
     const traceStart = trace.length;
     const damageContext = { reflect: effects.sides[actualTargetSide].reflectTurns > 0,
       luckyChant: effects.sides[actualTargetSide].luckyChantTurns > 0,
@@ -753,7 +881,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     const damageRolls = [calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext)];
     if (slot.move.functionCode === "0C0" && damageRolls[0]! > 0) {
       const hitTable = [2, 2, 3, 3, 4, 5] as const;
-      const hits = hitTable[draw(rng, trace, "additional-effect", hitTable.length)]!;
+      const hits = battlers[side].ability === "SKILLLINK" ? 5
+        : hitTable[draw(rng, trace, "additional-effect", hitTable.length)]!;
       for (let hit = 1; hit < hits; hit += 1) {
         damageRolls.push(calculateDamage(side, battlers[side], defender, slot.move, rng, trace, damageContext));
       }
@@ -772,25 +901,34 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       && damageTrace.effectiveness > 1;
     let hp = defender.hp;
     let damage = 0;
+    const appliedHits: { hpBefore: number; hpAfter: number; critical: boolean }[] = [];
     let focusSash = false;
+    let sturdy = false;
     for (const [hitIndex, rawDamage] of damageRolls.entries()) {
       if (hp <= 0) break;
       let hitDamage = rawDamage === 0 ? 0 : Math.max(1, Math.floor(rawDamage * (options.damageMultiplier ?? 1)));
       if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) hitDamage *= 2;
       const sashOnThisHit: boolean = !focusSash && defender.heldItem === "FOCUSSASH"
         && hp === defender.stats.maxHp && hitDamage >= hp;
-      if (sashOnThisHit || targetVolatile.endured && hitDamage >= hp) hitDamage = Math.max(0, hp - 1);
+      const sturdyOnThisHit: boolean = !sturdy && defender.ability === "STURDY"
+        && hp === defender.stats.maxHp && hitDamage >= hp;
+      if (sashOnThisHit || sturdyOnThisHit || targetVolatile.endured && hitDamage >= hp) hitDamage = Math.max(0, hp - 1);
       focusSash = focusSash || sashOnThisHit;
+      sturdy = sturdy || sturdyOnThisHit;
       const applied = Math.min(hitDamage, hp);
+      const hpBefore = hp;
       hp -= applied;
       damage += applied;
       const hitTrace = damageTraces[hitIndex] ?? damageTrace;
+      if (applied > 0) appliedHits.push({ hpBefore, hpAfter: hp, critical: hitTrace.critical });
       events.push({ type: "damageApplied", source: side, target: actualTargetSide,
         amount: applied, hp, critical: hitTrace.critical, effectiveness: hitTrace.effectiveness });
     }
     battlers[actualTargetSide] = { ...defender, hp, heldItem: focusSash || payapa ? null : defender.heldItem };
     if (focusSash) events.push({ type: "heldItemConsumed", side: actualTargetSide,
       item: "FOCUSSASH", effect: "survive", hp });
+    if (sturdy) events.push({ type: "abilityActivated", side: actualTargetSide,
+      ability: "STURDY", effect: "survive" });
     if (payapa) events.push({ type: "heldItemConsumed", side: actualTargetSide,
       item: "PAYAPABERRY", effect: "weaken", hp });
     if (payapa) battlers[actualTargetSide] = applyCheekPouch(battlers[actualTargetSide], actualTargetSide, events);
@@ -818,13 +956,14 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       battlers[side] = withVolatile(updated, { ...volatileOf(updated), bindingMove: null, bindingTurns: 0 });
     }
     const effectChance = Math.min(100, slot.move.effectChance * (battlers[side].ability === "SERENEGRACE" ? 2 : 1));
-    if (hp > 0 && effectChance > 0
+    if (hp > 0 && effectChance > 0 && battlers[side].ability !== "SHEERFORCE"
       && draw(rng, trace, "additional-effect", 100) < effectChance) {
       if (blocksAdditionalEffects(battlers[actualTargetSide])) {
         events.push({ type: "abilityActivated", side: actualTargetSide, ability: "SHIELDDUST", effect: "prevent-additional-effect" });
       } else applyMoveEffect(side, actualTargetSide, slot.move, battlers, rng, events, trace, effects);
     }
-    if (hp > 0 && slot.move.functionCode === "009" && !blocksAdditionalEffects(battlers[actualTargetSide])
+    if (hp > 0 && slot.move.functionCode === "009" && battlers[side].ability !== "SHEERFORCE"
+      && !blocksAdditionalEffects(battlers[actualTargetSide])
       && draw(rng, trace, "additional-effect", 10) === 0) {
       const target = battlers[actualTargetSide];
       if (target.ability !== "INNERFOCUS") {
@@ -832,6 +971,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         events.push({ type: "volatileApplied", source: side, target: actualTargetSide,
           effect: "flinch", turns: 1, move: slot.move.internalName });
       }
+    }
+    for (const hit of appliedHits) {
+      applyDamageAbilityStatReaction(actualTargetSide, side, slot.move, hit, battlers, events);
     }
     if (damage > 0 && battlers[actualTargetSide].volatile?.rage === true && battlers[actualTargetSide].hp > 0) {
       applyStatChange(actualTargetSide, side, { target: "self", stat: "attack", delta: 1 }, battlers, events);
@@ -855,13 +997,56 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       }
       battlers[side] = applyCheekPouch(battlers[side], side, events);
     }
-    if (damage > 0 && defender.ability === "STATIC" && slot.move.flags?.includes("a") === true
-      && battlers[side].hp > 0
-      && battlers[side].majorStatus === null && !typePreventsStatus(battlers[side], "paralysis")
-      && draw(rng, trace, "ability", 10) < 3) {
-      battlers[side] = { ...battlers[side], majorStatus: { kind: "paralysis" } };
-      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "STATIC", effect: "inflict-paralysis" });
-      events.push({ type: "statusApplied", source: actualTargetSide, target: side, status: "paralysis" });
+    const pickpocket = battlers[actualTargetSide];
+    const stolenItem = battlers[side].heldItem;
+    const itemTheftAllowed = actualTargetSide !== "opponent" || options.opponentItemTheft !== false;
+    if (damage > 0 && side !== actualTargetSide && slot.move.flags?.includes("a") === true
+      && pickpocket.hp > 0 && pickpocket.ability === "PICKPOCKET" && pickpocket.heldItem === null
+      && stolenItem !== null && itemTheftAllowed) {
+      battlers[side] = { ...battlers[side], heldItem: null };
+      battlers[actualTargetSide] = { ...pickpocket, heldItem: stolenItem };
+      effects.itemTransfers.push({ item: stolenItem, sourceId: battlers[side].id,
+        targetId: battlers[actualTargetSide].id, reason: "pickpocket" });
+      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "PICKPOCKET", effect: "steal-item" },
+        { type: "heldItemTransferred", source: side, target: actualTargetSide, item: stolenItem, reason: "pickpocket" });
+    }
+    const contact = damage > 0 && side !== actualTargetSide && slot.move.flags?.includes("a") === true;
+    if (contact && defender.ability === "EFFECTSPORE" && draw(rng, trace, "ability", 10) < 3) {
+      const attacker = battlers[side];
+      const powderImmune = attacker.types.includes("GRASS") || attacker.ability === "OVERCOAT"
+        || attacker.heldItem === "SAFETYGOGGLES";
+      if (!powderImmune) {
+        const status = (["poison", "sleep", "paralysis"] as const)[draw(rng, trace, "ability", 3)]!;
+        applyAbilityStatus(actualTargetSide, side, "EFFECTSPORE", status, battlers, rng, events, trace);
+      }
+    }
+    if (contact && defender.ability === "FLAMEBODY" && draw(rng, trace, "ability", 10) < 3) {
+      applyAbilityStatus(actualTargetSide, side, "FLAMEBODY", "burn", battlers, rng, events, trace);
+    }
+    if (contact && defender.ability === "POISONPOINT" && draw(rng, trace, "ability", 10) < 3) {
+      applyAbilityStatus(actualTargetSide, side, "POISONPOINT", "poison", battlers, rng, events, trace);
+    }
+    if (contact && (defender.ability === "ROUGHSKIN" || defender.ability === "IRONBARBS")
+      && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
+      const attacker = battlers[side];
+      const amount = Math.min(attacker.hp, Math.max(1, Math.floor(attacker.stats.maxHp / 8)));
+      battlers[side] = { ...attacker, hp: attacker.hp - amount };
+      const ability = defender.ability === "ROUGHSKIN" ? "ROUGHSKIN" : "IRONBARBS";
+      events.push({ type: "abilityActivated", side: actualTargetSide, ability, effect: "damage-attacker" },
+        { type: "abilityDamage", source: actualTargetSide, target: side, ability, amount, hp: attacker.hp - amount });
+      if (attacker.hp - amount === 0) events.push({ type: "fainted", side });
+    }
+    if (contact && defender.ability === "STATIC" && draw(rng, trace, "ability", 10) < 3) {
+      applyAbilityStatus(actualTargetSide, side, "STATIC", "paralysis", battlers, rng, events, trace);
+    }
+    if (contact && defender.ability === "GOOEY" && battlers[side].hp > 0) {
+      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "GOOEY", effect: "lower-speed" });
+      applyStatChange(actualTargetSide, side, { target: "opponent", stat: "speed", delta: -1 }, battlers, events);
+    }
+    if (contact && battlers[side].ability === "POISONTOUCH" && battlers[actualTargetSide].hp > 0
+      && battlers[actualTargetSide].majorStatus === null
+      && !typePreventsStatus(battlers[actualTargetSide], "poison") && draw(rng, trace, "ability", 10) < 3) {
+      applyAbilityStatus(side, actualTargetSide, "POISONTOUCH", "poison", battlers, rng, events, trace);
     }
     if (damage > 0 && slot.move.flags?.includes("a") === true && defender.heldItem === "ROCKYHELMET"
       && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
@@ -872,9 +1057,20 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         amount, hp: current.hp - amount });
       if (current.hp - amount === 0) events.push({ type: "fainted", side });
     }
+    const divisor = recoilDivisor(slot.move);
+    if (damage > 0 && divisor !== null && battlers[side].hp > 0
+      && battlers[side].ability !== "ROCKHEAD" && battlers[side].ability !== "MAGICGUARD") {
+      const attacker = battlers[side];
+      const amount = Math.min(attacker.hp, Math.round(damage / divisor));
+      battlers[side] = { ...attacker, hp: attacker.hp - amount };
+      if (amount > 0) events.push({ type: "recoilDamage", side, move: slot.move.internalName,
+        reason: "recoil", amount, hp: attacker.hp - amount });
+      if (attacker.hp - amount === 0) events.push({ type: "fainted", side });
+    }
     if (options.attackerHeldItemAfterDamage !== false && damage > 0
       && battlers[side].heldItem === "LIFEORB" && battlers[side].hp > 0
-      && battlers[side].ability !== "MAGICGUARD") {
+      && battlers[side].ability !== "MAGICGUARD"
+      && !(battlers[side].ability === "SHEERFORCE" && slot.move.effectChance > 0)) {
       const current = battlers[side];
       const amount = Math.min(current.hp, Math.max(1, Math.floor(current.stats.maxHp / 10)));
       battlers[side] = { ...current, hp: current.hp - amount };
@@ -889,6 +1085,14 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     }
   }
 
+  if (options.endOfTurn !== false && winner === null) {
+    const playerFainted = battlers.player.hp === 0;
+    const opponentFainted = battlers.opponent.hp === 0;
+    if (playerFainted !== opponentFainted) {
+      winner = playerFainted ? "opponent" : "player";
+      events.push({ type: "battleEnded", winner });
+    }
+  }
   if (options.endOfTurn === false) winner = null;
   else {
     if (winner === null) winner = applyResidualStatus(battlers, events);

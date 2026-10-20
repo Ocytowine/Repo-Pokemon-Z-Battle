@@ -34,6 +34,14 @@ interface TrainerRecord {
 
 interface Dataset<T> { readonly records: readonly T[] }
 
+interface AbilitySelectionAudit {
+  readonly species: string;
+  readonly memberIndex: number | null;
+  readonly policy: "random-normal" | "forced-index";
+  readonly abilityIndex: number | null;
+  readonly candidates: readonly string[];
+}
+
 export interface BattleIntegrationAnimationCatalog {
   readonly mappings: readonly {
     readonly internalName: string;
@@ -82,35 +90,42 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     .map((entry) => [entry.key, entry.engineSupport] as const));
   const moveUsage = new Map<string, Set<string>>();
   const abilityUsage = new Map<string, Set<string>>();
-  const scopes: { kind: "pokemon" | "trainer"; id: string; moves: string[]; abilities: string[] }[] = [];
+  const scopes: { kind: "pokemon" | "trainer"; id: string; moves: string[]; abilities: string[];
+    abilitySelections: AbilitySelectionAudit[] }[] = [];
 
   for (const record of pokemonData.records) {
     const scope = `pokemon:${record.internalName}`;
     const scopeMoves = [...new Set(record.levelUpMoves.map((entry) => entry.move))];
-    const scopeAbilities = [...new Set([...record.abilities, ...(record.hiddenAbilities ?? [])])];
+    const scopeAbilities = [...new Set(record.abilities)];
     scopeMoves.forEach((move) => addUsage(moveUsage, move, scope));
     scopeAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
-    scopes.push({ kind: "pokemon", id: record.internalName, moves: scopeMoves, abilities: scopeAbilities });
+    scopes.push({ kind: "pokemon", id: record.internalName, moves: scopeMoves, abilities: scopeAbilities,
+      abilitySelections: [{ species: record.internalName, memberIndex: null, policy: "random-normal",
+        abilityIndex: null, candidates: scopeAbilities }] });
   }
   for (const trainer of trainersData.records) {
     const scope = `trainer:${trainer.trainerType}:${trainer.name}:${trainer.version}`;
     const scopeMoves = new Set<string>();
     const scopeAbilities = new Set<string>();
-    for (const member of trainer.pokemon) {
+    const abilitySelections: AbilitySelectionAudit[] = [];
+    for (const [memberIndex, member] of trainer.pokemon.entries()) {
       const definition = pokemon.get(member.species);
       const explicitMoves = member.moves.filter((move): move is string => move !== null);
       (explicitMoves.length > 0 ? explicitMoves : defaultMoves(definition, member.level)).forEach((move) => scopeMoves.add(move));
-      const availableAbilities = [...(definition?.abilities ?? []), ...(definition?.hiddenAbilities ?? [])];
-      if (member.abilityIndex === null) availableAbilities.forEach((ability) => scopeAbilities.add(ability));
-      else {
-        const forced = availableAbilities[member.abilityIndex];
-        if (forced !== undefined) scopeAbilities.add(forced);
-      }
+      const normalAbilities = definition?.abilities ?? [];
+      const indexedAbilities = [...normalAbilities, ...(definition?.hiddenAbilities ?? [])];
+      const candidates = member.abilityIndex === null
+        ? [...new Set(normalAbilities)]
+        : indexedAbilities[member.abilityIndex] === undefined ? [] : [indexedAbilities[member.abilityIndex]!];
+      candidates.forEach((ability) => scopeAbilities.add(ability));
+      abilitySelections.push({ species: member.species, memberIndex,
+        policy: member.abilityIndex === null ? "random-normal" : "forced-index",
+        abilityIndex: member.abilityIndex, candidates });
     }
     scopeMoves.forEach((move) => addUsage(moveUsage, move, scope));
     scopeAbilities.forEach((ability) => addUsage(abilityUsage, ability, scope));
     scopes.push({ kind: "trainer", id: `${trainer.trainerType}:${trainer.name}:${trainer.version}`,
-      moves: [...scopeMoves], abilities: [...scopeAbilities] });
+      moves: [...scopeMoves], abilities: [...scopeAbilities], abilitySelections });
   }
 
   const importedAnimationIndices = new Set(animationCatalog.animations.map((animation) => animation.index));
@@ -153,7 +168,7 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     })),
   ];
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     policy: "Toute nouvelle espèce ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
     summary: {
       pokemon: pokemonData.records.length, trainers: trainersData.records.length,

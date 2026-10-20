@@ -88,15 +88,28 @@ async function main(): Promise<void> {
     const report = JSON.parse(await readFile(path.join(paths.outputDirectory,
       "battle-integration-report.json"), "utf8")) as {
       readonly summary: Record<string, number>;
-      readonly scopes: readonly { readonly kind: string; readonly id: string }[];
+      readonly scopes: readonly { readonly kind: string; readonly id: string;
+        readonly abilitySelections?: readonly { readonly species: string; readonly memberIndex: number | null;
+          readonly policy: "random-normal" | "forced-index"; readonly abilityIndex: number | null;
+          readonly candidates: readonly string[] }[] }[];
       readonly issues: readonly { readonly kind: string; readonly key: string;
         readonly support: string; readonly usedBy: readonly string[] }[];
     };
     const issues = scope === undefined ? report.issues : report.issues.filter((issue) => issue.usedBy.includes(scope));
-    if (scope !== undefined && !report.scopes.some((entry) => `${entry.kind}:${entry.id}` === scope)) {
+    const selectedScope = scope === undefined
+      ? undefined
+      : report.scopes.find((entry) => `${entry.kind}:${entry.id}` === scope);
+    if (scope !== undefined && selectedScope === undefined) {
       throw new Error(`Périmètre de combat inconnu : ${scope}`);
     }
     process.stdout.write(`Combat audit${scope === undefined ? " global" : ` ${scope}`}: ${issues.length} issue(s)\n`);
+    for (const selection of selectedScope?.abilitySelections ?? []) {
+      const policy = selection.policy === "random-normal"
+        ? "tirage normal"
+        : `index forcé ${selection.abilityIndex ?? "?"}`;
+      const target = selection.memberIndex === null ? "talent espèce" : `talent membre ${selection.memberIndex + 1}`;
+      process.stdout.write(`- ${target} · ${selection.species} · ${policy} · ${selection.candidates.join(", ") || "aucun"}\n`);
+    }
     for (const issue of issues.slice(0, 100)) {
       process.stdout.write(`- ${issue.kind} · ${issue.key} · ${issue.support}\n`);
     }

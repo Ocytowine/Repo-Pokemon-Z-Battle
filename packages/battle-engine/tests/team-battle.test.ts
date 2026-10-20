@@ -48,6 +48,137 @@ function pokemon(id: string, side: BattleSide, overrides: Partial<BattlerState> 
 }
 
 describe("team battles", () => {
+  it("resolves Download once on entry and Natural Cure when leaving", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("download", "player", { ability: "DOWNLOAD",
+        majorStatus: { kind: "burn" } }), pokemon("reserve", "player")],
+      opponent: [pokemon("wall", "opponent", { stats: { maxHp: 100, attack: 100, defense: 80,
+        specialAttack: 100, specialDefense: 120, speed: 90 } })],
+    });
+    const entered = resolveTeamTurn(state, { player: { kind: "wait" }, opponent: { kind: "wait" } },
+      new ScriptedRandom([]));
+    expect(entered.state.teams.player.members[0]!.stages.attack).toBe(1);
+    expect(entered.events).toContainEqual({ type: "abilityActivated", side: "player",
+      ability: "DOWNLOAD", effect: "raise-stat" });
+    const unchanged = resolveTeamTurn(entered.state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(unchanged.state.teams.player.members[0]!.stages.attack).toBe(1);
+
+    const natural = createTeamBattleState({
+      player: [pokemon("cure", "player", { ability: "NATURALCURE", majorStatus: { kind: "burn" } }),
+        pokemon("reserve", "player")], opponent: [pokemon("foe", "opponent")],
+    });
+    const switched = resolveTeamTurn(natural,
+      { player: { kind: "switch", teamIndex: 1 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(switched.state.teams.player.members[0]!.majorStatus).toBeNull();
+    expect(switched.events).toContainEqual({ type: "abilityActivated", side: "player",
+      ability: "NATURALCURE", effect: "cure-on-switch" });
+  });
+
+  it("copies a valid entry talent with Trace, triggers it, then restores Trace on switch", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("tracer", "player", { ability: "TRACE" }), pokemon("reserve", "player")],
+      opponent: [pokemon("download", "opponent", { ability: "DOWNLOAD", stats: { maxHp: 100, attack: 100,
+        defense: 80, specialAttack: 100, specialDefense: 120, speed: 90 } })],
+    });
+    const entered = resolveTeamTurn(state, { player: { kind: "wait" }, opponent: { kind: "wait" } },
+      new ScriptedRandom([0]));
+    expect(entered.state.teams.player.members[0]!.ability).toBe("DOWNLOAD");
+    expect(entered.state.teams.player.members[0]!.stages.attack).toBe(1);
+    expect(entered.events).toContainEqual({ type: "abilityObserved", side: "player", ability: "TRACE",
+      observation: { kind: "copied-ability", targetId: "download", ability: "DOWNLOAD" } });
+    expect(entered.trace).toContainEqual({ type: "rng", purpose: "ability", maxExclusive: 1, value: 0 });
+    const switched = resolveTeamTurn(entered.state,
+      { player: { kind: "switch", teamIndex: 1 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(switched.state.teams.player.members[0]!.ability).toBe("TRACE");
+  });
+
+  it("reports Frisk, Anticipation and Forewarn observations only on entry", () => {
+    const held = pokemon("held", "opponent", { heldItem: "ORANBERRY" });
+    const frisk = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("frisk", "player", { ability: "FRISK" })], opponent: [held],
+    }), { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(frisk.events).toContainEqual({ type: "abilityObserved", side: "player", ability: "FRISK",
+      observation: { kind: "held-item", targetId: "held", item: "ORANBERRY" } });
+
+    const fireMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FIREHIT", type: "FIRE", power: 60 };
+    const anticipation = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("warning", "player", { ability: "ANTICIPATION", types: ["GRASS"] })],
+      opponent: [pokemon("fire", "opponent", { moves: [{ move: fireMove, pp: fireMove.pp }] })],
+    }), { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(anticipation.events).toContainEqual({ type: "abilityObserved", side: "player",
+      ability: "ANTICIPATION", observation: { kind: "danger" } });
+
+    const forewarn = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("forewarn", "player", { ability: "FOREWARN" })],
+      opponent: [pokemon("moves", "opponent", { moves: [
+        { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 10 }, { move: fireMove, pp: 10 },
+      ] })],
+    }), { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([0]));
+    expect(forewarn.events).toContainEqual({ type: "abilityObserved", side: "player", ability: "FOREWARN",
+      observation: { kind: "move", targetId: "moves", move: "FIREHIT" } });
+  });
+
+  it("lets Hyper Cutter block Intimidate when an opponent switches in", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("lead", "player"), pokemon("intimidator", "player", { ability: "INTIMIDATE" })],
+      opponent: [pokemon("protected", "opponent", { ability: "HYPERCUTTER" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "switch", teamIndex: 1 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.stages.attack).toBe(0);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "HYPERCUTTER",
+      effect: "prevent-stat-drop" });
+  });
+
+  it("lets Competitive react when an opponent switches in with Intimidate", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("lead", "player"), pokemon("intimidator", "player", { ability: "INTIMIDATE" })],
+      opponent: [pokemon("competitive", "opponent", { ability: "COMPETITIVE" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "switch", teamIndex: 1 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.stages).toMatchObject({ attack: -1, specialAttack: 2 });
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent",
+      ability: "COMPETITIVE", effect: "raise-stat" });
+  });
+
+  it("applies Pickpocket while protecting player items from wild opponents", () => {
+    const contactMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, flags: "a" };
+    const trainerState = createTeamBattleState({
+      player: [pokemon("hero", "player", { heldItem: "ORANBERRY", moves: [{ move: contactMove, pp: contactMove.pp }] })],
+      opponent: [pokemon("thief", "opponent", { ability: "PICKPOCKET" })],
+    });
+    const actions = { player: { kind: "move" as const, moveIndex: 0 }, opponent: { kind: "wait" as const } };
+    const trainerResult = resolveTeamTurn(trainerState, actions, new ScriptedRandom([0, 0, 0, 0, 0]));
+
+    expect(trainerResult.state.teams.player.members[0]?.heldItem).toBeNull();
+    expect(trainerResult.state.teams.opponent.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(trainerResult.events).toContainEqual({ type: "heldItemTransferred", source: "player",
+      target: "opponent", item: "ORANBERRY", reason: "pickpocket" });
+    expect(trainerResult.state.effects?.itemTransfers).toEqual([
+      { item: "ORANBERRY", sourceId: "hero", targetId: "thief", reason: "pickpocket" },
+    ]);
+
+    const wildResult = resolveTeamTurn(trainerState, actions, new ScriptedRandom([0, 0, 0, 0, 0]),
+      { context: "battle", revivalAllowed: true }, { opponentItemTheft: false });
+    expect(wildResult.state.teams.player.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(wildResult.state.teams.opponent.members[0]?.heldItem).toBeNull();
+    expect(wildResult.events).not.toContainEqual(expect.objectContaining({ type: "heldItemTransferred" }));
+
+    const playerThief = createTeamBattleState({
+      player: [pokemon("hero", "player", { ability: "PICKPOCKET" })],
+      opponent: [pokemon("wild", "opponent", { heldItem: "ORANBERRY",
+        moves: [{ move: contactMove, pp: contactMove.pp }] })],
+    });
+    const playerSteals = resolveTeamTurn(playerThief,
+      { player: { kind: "wait" }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([0, 0, 0, 0, 0]), { context: "battle", revivalAllowed: true },
+      { opponentItemTheft: false });
+    expect(playerSteals.state.teams.player.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(playerSteals.state.teams.opponent.members[0]?.heldItem).toBeNull();
+  });
+
   it("shares source AI and escape decisions between adapters", () => {
     const scratch = MINIMAL_MOVE_CATALOG.SCRATCH;
     const tackle = MINIMAL_MOVE_CATALOG.TACKLE;

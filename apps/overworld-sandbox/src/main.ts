@@ -1139,6 +1139,7 @@ const sourceBattleVisuals = new SourceBattleVisuals({
   onBattleAudioEnd: () => sourcePresentation.resumeAfterBattle(),
   abilityName: (internalName) => importedAssets?.battleCatalog.abilities
     .find((ability) => ability.internalName === internalName)?.name ?? internalName,
+  itemName: (internalName) => importedAssets?.items.get(internalName)?.name ?? internalName,
   caughtSpecies: () => sourceEventState.pokedex.caughtSpecies,
 });
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {

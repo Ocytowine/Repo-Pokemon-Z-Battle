@@ -205,7 +205,7 @@ export class SourceBattleController {
     if (encounter === null || resources === null || this.active) return false;
     try {
       const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
-        `wild-${encounter.species.toLowerCase()}`);
+        crypto.randomUUID());
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
@@ -262,7 +262,8 @@ export class SourceBattleController {
       return false;
     }
     try {
-      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single");
+      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single",
+        () => crypto.randomUUID());
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
@@ -496,6 +497,7 @@ export class SourceBattleController {
       const before = this.battle;
       const itemPolicy = { context: "battle" as const, revivalAllowed: true,
         battleHealingAllowed: eventState.switches["666"] !== true };
+      const resolutionRules = { opponentItemTheft: this.localSession?.origin !== "source-wild" };
       const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
       let opponentItemChosen = false;
       const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent).map((_, slot) => {
@@ -507,9 +509,9 @@ export class SourceBattleController {
       let reportedActions: readonly PositionedTeamBattleAction[];
       if (before.format === "double") {
         reportedActions = [...this.localDoubleActions, ...automaticOpponentActions];
-        result = resolveDoubleTeamTurn(before, reportedActions, this.rng, itemPolicy);
+        result = resolveDoubleTeamTurn(before, reportedActions, this.rng, itemPolicy, resolutionRules);
       } else {
-        const singleResult = resolveSourceEncounterAction(before, action, this.rng, itemPolicy);
+        const singleResult = resolveSourceEncounterAction(before, action, this.rng, itemPolicy, resolutionRules);
         result = singleResult;
         reportedActions = [
           { actor: { side: "player", slot: 0 }, action: singleResult.actions.player },
@@ -553,6 +555,7 @@ export class SourceBattleController {
           let pokemon = createPersistentPokemon(crypto.randomUUID(), target.species, target.level, resources.catalog,
             this.callbacks.getPokemonCreationContext(resources.mapId, captureEvent.ballId));
           pokemon = { ...pokemon,
+            ability: target.ability,
             hp: captureEvent.ballId === "HEALBALL" ? pokemon.stats.maxHp : Math.min(target.hp, pokemon.stats.maxHp),
             majorStatus: captureEvent.ballId === "HEALBALL" ? null : target.majorStatus,
             moves: target.moves.map((slot) => ({ internalName: slot.move.internalName, pp: slot.pp, maxPp: slot.move.pp })),

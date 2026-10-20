@@ -54,7 +54,7 @@ describe("shared source battle settlement", () => {
   it("adds a captured Pokemon only to its owner and consumes the Ball idempotently", () => {
     const pokemon = createPersistentPokemon("host-mon", "PIKACHU", 5, catalog);
     const team = playerPartyToBattleTeam({ schemaVersion: 1, activeIndex: 0, members: [pokemon] }, catalog);
-    const wild = { ...team.members[0]!, id: "wild-pikachu", hp: 3, majorStatus: { kind: "sleep" as const,
+    const wild = { ...team.members[0]!, id: "wild-pikachu", ability: "COMPOUNDEYES", hp: 3, majorStatus: { kind: "sleep" as const,
       turnsRemaining: 2 } };
     const finalState = { ...createTeamBattleState({ player: team.members, opponent: [wild] }),
       status: "finished" as const, winner: "player" as const };
@@ -78,7 +78,8 @@ describe("shared source battle settlement", () => {
     expect(applied.state.inventory).toEqual({});
     expect(applied.state.party.members).toHaveLength(1);
     expect(applied.state.ranch.members).toHaveLength(1);
-    expect(applied.state.ranch.members[0]).toMatchObject({ id: applied.capturedPokemonId, species: "PIKACHU", hp: 3,
+    expect(applied.state.ranch.members[0]).toMatchObject({ id: applied.capturedPokemonId, species: "PIKACHU",
+      ability: "COMPOUNDEYES", hp: 3,
       majorStatus: { kind: "sleep" }, metadata: { owner: { trainerId: 123 }, origin: { ball: "MASTERBALL" } } });
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog, context).applied).toBe(false);
   });

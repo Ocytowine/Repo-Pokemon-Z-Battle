@@ -4,7 +4,10 @@ import {
   IMPLEMENTED_BATTLE_ABILITIES,
   SeededRandom,
   calculateDamage,
+  createDoubleTeamBattleState,
+  createTeamBattleState,
   resolveBattleVolatileEndOfTurn,
+  resolveTeamTurn,
   resolveTurn,
   typeEffectiveness,
   type BattleMove,
@@ -14,6 +17,7 @@ import {
   type BattlerState,
   type RandomSource,
 } from "../src/index.js";
+import { damageAbilityStatReaction } from "../src/ability-stat-reactions.js";
 
 class ScriptedRandom implements RandomSource {
   private index = 0;
@@ -627,18 +631,226 @@ describe("stat stages, power abilities and held battle items", () => {
 describe("ability conformance regressions", () => {
   it("keeps an explicit audit entry for every ability advertised by the battle core", () => {
     const audited: Record<(typeof IMPLEMENTED_BATTLE_ABILITIES)[number], string> = {
-      ACOMETIDA: "first active turn speed", BIGPECKS: "defense drop immunity", BLAZE: "low HP fire power",
-      CHEEKPOUCH: "berry consumption healing", CONTRAGUARDIA: "flying redirection", DRYSKIN: "water absorption",
-      FLORACION: "final grass damage", GUTS: "status attack", HUGEPOWER: "physical attack",
-      INNERFOCUS: "flinch immunity", INTIMIDATE: "entry attack drop", KEENEYE: "accuracy and evasion",
-      MAGICGUARD: "indirect damage", NOGUARD: "accuracy bypass", OVERGROW: "low HP grass power",
-      PUREPOWER: "physical attack", QUICKFEET: "status speed", REGENERATOR: "switch healing",
-      RIVALRY: "source gender damage", SERENEGRACE: "secondary chance", SHEDSKIN: "status cure",
-      SHIELDDUST: "secondary prevention", SIMPLE: "stat stage multiplier", STATIC: "contact paralysis",
-      STEADFAST: "flinch speed", SWARM: "low HP bug power", SYNCHRONIZE: "status reflection",
-      TORRENT: "low HP water power",
+      ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type damage", ANGERPOINT: "critical attack maximum",
+      BATTLEARMOR: "critical immunity", BERSERK: "half HP special attack", BIGPECKS: "defense drop immunity",
+      BLAZE: "low HP fire power", CLEARBODY: "stat drop immunity", CHEEKPOUCH: "berry consumption healing",
+      COMPETITIVE: "opposing stat drop special attack", COMPOUNDEYES: "accuracy multiplier",
+      CONTRAGUARDIA: "flying redirection", DEFIANT: "opposing stat drop attack",
+      DOWNLOAD: "entry defensive comparison", DRYSKIN: "water absorption", EFFECTSPORE: "contact random status",
+      FILTER: "super-effective reduction", FLAMEBODY: "contact burn", FLASHFIRE: "fire immunity and boost",
+      FLORACION: "final grass damage", FOREWARN: "entry move warning", FRISK: "entry held-item observation",
+      GOOEY: "contact speed drop", GUTS: "status attack", HUGEPOWER: "physical attack", HYPERCUTTER: "attack drop immunity",
+      IMMUNITY: "poison immunity", INNERFOCUS: "flinch immunity", INSOMNIA: "sleep immunity",
+      INTIMIDATE: "entry attack drop", IRONBARBS: "contact damage",
+      IRONFIST: "punch damage",
+      KEENEYE: "accuracy and evasion", LEVITATE: "ground immunity", LIGHTNINGROD: "electric absorption",
+      LIMBER: "paralysis immunity", MAGICGUARD: "indirect damage", MAGMAARMOR: "freeze immunity",
+      MOTORDRIVE: "electric speed absorption", MULTISCALE: "full HP damage reduction",
+      NATURALCURE: "status cure on switch", NOGUARD: "accuracy bypass", OWNTEMPO: "confusion immunity", OVERGROW: "low HP grass power",
+      PICKPOCKET: "contact item theft", POISONPOINT: "contact poison", POISONTOUCH: "attacking contact poison",
+      PUREPOWER: "physical attack", QUICKFEET: "status speed", RATTLED: "bug dark ghost hit speed",
+      RECKLESS: "recoil and crash move damage",
+      REGENERATOR: "switch healing", RIVALRY: "source gender damage", ROCKHEAD: "recoil immunity",
+      ROUGHSKIN: "contact damage", SAPSIPPER: "grass attack absorption",
+      SERENEGRACE: "secondary chance", SHEDSKIN: "status cure", SHEERFORCE: "secondary tradeoff damage",
+      SHELLARMOR: "critical immunity", SHIELDDUST: "secondary prevention", SIMPLE: "stat stage multiplier",
+      SKILLLINK: "maximum multi-hit count", SNIPER: "critical damage", STAMINA: "damaging hit defense",
+      SOLIDROCK: "super-effective reduction", STATIC: "contact paralysis", STEADFAST: "flinch speed",
+      STEAMENGINE: "water or fire hit speed", STORMDRAIN: "water absorption", STRONGJAW: "bite damage", STURDY: "full HP survival",
+      SUPERLUCK: "critical stage", SWARM: "low HP bug power",
+      SYNCHRONIZE: "status reflection", TECHNICIAN: "low-power damage", THICKFAT: "fire and ice reduction",
+      TINTEDLENS: "resisted damage", TORRENT: "low HP water power", TOUGHCLAWS: "contact damage", TRACE: "entry ability copy",
+      ANTICIPATION: "entry dangerous move warning",
+      VITALSPIRIT: "sleep immunity", VOLTABSORB: "electric healing", WATERABSORB: "water healing",
+      WATERCOMPACTION: "water hit defense", WATERVEIL: "burn immunity", WEAKARMOR: "physical hit defense speed",
+      WHITESMOKE: "stat drop immunity",
     };
     expect(Object.keys(audited).sort()).toEqual([...IMPLEMENTED_BATTLE_ABILITIES].sort());
+  });
+
+  it("ports Sheer Force's power, secondary suppression and Life Orb exception together", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, accuracy: 0, effectChance: 100 };
+    const trace: BattleTrace[] = [];
+    const neutral = calculateDamage("player", battler("player", { heldItem: "LIFEORB" }),
+      battler("opponent"), move, new ScriptedRandom([1, 15]), []);
+    const boosted = calculateDamage("player", battler("player", { ability: "SHEERFORCE", heldItem: "LIFEORB" }),
+      battler("opponent"), move, new ScriptedRandom([1, 15]), trace);
+    expect(boosted).toBeGreaterThan(neutral);
+    expect(trace).toContainEqual(expect.objectContaining({ type: "damage",
+      abilityModifiers: [{ ability: "SHEERFORCE", multiplier: 1.3 }] }));
+
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { ability: "SHEERFORCE", heldItem: "LIFEORB",
+        moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { stats: { ...battler("opponent").stats, maxHp: 300 }, hp: 300 })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    expect(result.state.teams.opponent.members[0]?.majorStatus).toBeNull();
+    expect(result.state.teams.player.members[0]?.hp).toBe(100);
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: "itemActivated", item: "LIFEORB" }));
+  });
+
+  it("uses Reckless for recoil and crash moves and Super Luck for the critical stage", () => {
+    const recoil: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DOUBLEEDGE",
+      functionCode: "0FB" };
+    const neutral = calculateDamage("player", battler("player"), battler("opponent"), recoil,
+      new ScriptedRandom([1, 15]), []);
+    const trace: BattleTrace[] = [];
+    const reckless = calculateDamage("player", battler("player", { ability: "RECKLESS" }),
+      battler("opponent"), recoil, new ScriptedRandom([1, 15]), trace);
+    expect(reckless).toBeGreaterThan(neutral);
+    expect(trace).toContainEqual(expect.objectContaining({ type: "damage",
+      abilityModifiers: [{ ability: "RECKLESS", multiplier: 1.2 }] }));
+
+    const criticalTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player", { ability: "SUPERLUCK" }), battler("opponent"),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([7, 15]), criticalTrace);
+    expect(criticalTrace).toContainEqual({ type: "rng", purpose: "critical", maxExclusive: 8, value: 7 });
+  });
+
+  it("makes Skill Link force five hits without drawing a hit count", () => {
+    const move: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FURYATTACK",
+      functionCode: "0C0", accuracy: 0 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { ability: "SKILLLINK", moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { stats: { ...battler("opponent").stats, maxHp: 500 }, hp: 500 })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15, 1, 15, 1, 15, 1, 15, 1, 15]));
+    expect(result.events.filter((event) => event.type === "damageApplied")).toHaveLength(5);
+    expect(result.trace).not.toContainEqual(expect.objectContaining({ type: "rng", purpose: "additional-effect" }));
+  });
+
+  it("applies source recoil fractions, lets Rock Head block recoil but not crash damage", () => {
+    const recoil: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DOUBLEEDGE",
+      functionCode: "0FB", accuracy: 0 };
+    const recoilResult = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move: recoil, pp: recoil.pp }] })],
+      opponent: [battler("opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    const damage = recoilResult.events.find((event) => event.type === "damageApplied")?.amount ?? 0;
+    expect(recoilResult.events).toContainEqual({ type: "recoilDamage", side: "player", move: "DOUBLEEDGE",
+      reason: "recoil", amount: Math.round(damage / 3), hp: 100 - Math.round(damage / 3) });
+
+    const protectedResult = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { ability: "ROCKHEAD", moves: [{ move: recoil, pp: recoil.pp }] })],
+      opponent: [battler("opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    expect(protectedResult.state.teams.player.members[0]?.hp).toBe(100);
+
+    const crash: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "HIJUMPKICK",
+      functionCode: "10B", accuracy: 50 };
+    const crashResult = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { ability: "ROCKHEAD", moves: [{ move: crash, pp: crash.pp }] })],
+      opponent: [battler("opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([99]));
+    expect(crashResult.events).toContainEqual({ type: "recoilDamage", side: "player", move: "HIJUMPKICK",
+      reason: "crash", amount: 50, hp: 50 });
+
+    const guardedCrash = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { ability: "MAGICGUARD", moves: [{ move: crash, pp: crash.pp }] })],
+      opponent: [battler("opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([99]));
+    expect(guardedCrash.state.teams.player.members[0]?.hp).toBe(100);
+    expect(guardedCrash.events).not.toContainEqual(expect.objectContaining({ type: "recoilDamage" }));
+  });
+
+  it.each([
+    ["0FD", "paralysis"],
+    ["0FE", "burn"],
+  ] as const)("applies the %s recoil move's secondary %s", (functionCode, status) => {
+    const move: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: `RECOIL${functionCode}`,
+      functionCode, accuracy: 0, effectChance: 100 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15, 0]));
+    expect(result.state.teams.opponent.members[0]?.majorStatus).toMatchObject({ kind: status });
+  });
+
+  it.each([
+    ["STAMINA", "NORMAL", "Physical", 100, { defense: 1 }],
+    ["WATERCOMPACTION", "WATER", "Physical", 100, { defense: 2 }],
+    ["RATTLED", "DARK", "Special", 100, { speed: 1 }],
+    ["WEAKARMOR", "NORMAL", "Physical", 100, { defense: -1, speed: 1 }],
+    ["STEAMENGINE", "FIRE", "Special", 100, { speed: 6 }],
+    ["BERSERK", "NORMAL", "Physical", 60, { specialAttack: 1 }],
+  ] as const)("applies %s after each qualifying damaging hit", (ability, type, category, hp, expected) => {
+    const move: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, type, category, accuracy: 0 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability, hp })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    expect(result.state.teams.opponent.members[0]?.stages).toMatchObject(expected);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "raise-stat" });
+  });
+
+  it("sets Attack to +6 with Anger Point and applies Stamina once per multi-hit impact", () => {
+    const critical = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0 };
+    const anger = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move: critical, pp: critical.pp }] })],
+      opponent: [battler("opponent", { ability: "ANGERPOINT" })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([0, 15]));
+    expect(anger.state.teams.opponent.members[0]?.stages.attack).toBe(6);
+
+    const multi: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FURYATTACK",
+      functionCode: "0C0", accuracy: 0 };
+    const stamina = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move: multi, pp: multi.pp }] })],
+      opponent: [battler("opponent", { ability: "STAMINA" })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15, 0, 1, 15]));
+    expect(stamina.state.teams.opponent.members[0]?.stages.defense).toBe(2);
+    expect(stamina.events.filter((event) => event.type === "abilityActivated"
+      && event.ability === "STAMINA")).toHaveLength(2);
+  });
+
+  it("uses Pokemon Z's strict Berserk half-HP thresholds", () => {
+    const target = battler("opponent", { ability: "BERSERK" });
+    expect(damageAbilityStatReaction(target, MINIMAL_MOVE_CATALOG.TACKLE, 80, 50, false)).toBeNull();
+    expect(damageAbilityStatReaction(target, MINIMAL_MOVE_CATALOG.TACKLE, 50, 40, false)).toBeNull();
+    expect(damageAbilityStatReaction(target, MINIMAL_MOVE_CATALOG.TACKLE, 80, 49, false))
+      .toMatchObject({ ability: "BERSERK", changes: [{ stat: "specialAttack", delta: 1 }] });
+    const oddHp = { ...target, stats: { ...target.stats, maxHp: 101 }, hp: 101 };
+    expect(damageAbilityStatReaction(oddHp, MINIMAL_MOVE_CATALOG.TACKLE, 51, 50, false)).toBeNull();
+  });
+
+  it.each([
+    ["COMPETITIVE", "specialAttack"],
+    ["DEFIANT", "attack"],
+  ] as const)("lets %s react only to a successful opposing stat drop", (ability, raisedStat) => {
+    const growl = { ...MINIMAL_MOVE_CATALOG.GROWL, accuracy: 0 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [battler("player", { moves: [{ move: growl, pp: growl.pp }] })],
+      opponent: [battler("opponent", { ability })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.stages.attack).toBe(ability === "DEFIANT" ? 1 : -1);
+    expect(result.state.teams.opponent.members[0]?.stages[raisedStat]).toBe(ability === "DEFIANT" ? 1 : 2);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "raise-stat" });
+  });
+
+  it("applies Competitive and Defiant after Intimidate in simple and double entry state", () => {
+    const simple = createTeamBattleState({
+      player: [battler("player", { ability: "INTIMIDATE" })],
+      opponent: [battler("opponent", { ability: "COMPETITIVE" })],
+    });
+    expect(simple.teams.opponent.members[0]?.stages).toMatchObject({ attack: -1, specialAttack: 2 });
+
+    const double = createDoubleTeamBattleState({
+      player: [battler("player", { ability: "INTIMIDATE" })],
+      opponent: [battler("opponent", { ability: "COMPETITIVE" }),
+        battler("opponent", { id: "opponent-2", ability: "DEFIANT" })],
+    });
+    expect(double.teams.opponent.members[0]?.stages).toMatchObject({ attack: -1, specialAttack: 2 });
+    expect(double.teams.opponent.members[1]?.stages.attack).toBe(1);
   });
 
   it("lets Magic Guard block binding and curse while their lifecycle still advances", () => {
@@ -662,6 +874,80 @@ describe("ability conformance regressions", () => {
       effect: "prevent-stat-drop" });
   });
 
+  it.each([
+    ["CLEARBODY", MINIMAL_MOVE_CATALOG.TAILWHIP, "defense"],
+    ["WHITESMOKE", MINIMAL_MOVE_CATALOG.SANDATTACK, "accuracy"],
+    ["HYPERCUTTER", MINIMAL_MOVE_CATALOG.GROWL, "attack"],
+  ] as const)("lets %s prevent an opposing %s drop", (ability, sourceMove, stat) => {
+    const move = { ...sourceMove, accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.stages[stat]).toBe(0);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "prevent-stat-drop" });
+  });
+
+  it.each([
+    ["IMMUNITY", MINIMAL_MOVE_CATALOG.POISONPOWDER, "poison"],
+    ["LIMBER", MINIMAL_MOVE_CATALOG.THUNDERWAVE, "paralysis"],
+    ["INSOMNIA", MINIMAL_MOVE_CATALOG.SLEEPPOWDER, "sleep"],
+    ["VITALSPIRIT", MINIMAL_MOVE_CATALOG.SLEEPPOWDER, "sleep"],
+    ["WATERVEIL", MINIMAL_MOVE_CATALOG.WILLOWISP, "burn"],
+  ] as const)("lets %s prevent the %s status", (ability, sourceMove, status) => {
+    const move = { ...sourceMove, accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.majorStatus).toBeNull();
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "prevent-status" });
+    expect(result.events).toContainEqual({ type: "statusApplicationFailed", source: "player", target: "opponent",
+      status, reason: "ability-immune" });
+  });
+
+  it("lets Magma Armor prevent Ice Beam's freeze additional effect", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, accuracy: 0, effectChance: 100 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability: "MAGMAARMOR" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([1, 15, 0]));
+    expect(result.state.teams.opponent.members[0]?.majorStatus).toBeNull();
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "MAGMAARMOR",
+      effect: "prevent-status" });
+  });
+
+  it("lets Own Tempo prevent confusion without consuming its duration draw", () => {
+    const move: BattleMove = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "CONFUSERAY",
+      functionCode: "013", accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability: "OWNTEMPO" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.volatile?.confusionTurns ?? 0).toBe(0);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "OWNTEMPO",
+      effect: "prevent-confusion" });
+  });
+
+  it.each(["BATTLEARMOR", "SHELLARMOR"] as const)("lets %s prevent critical hits", (ability) => {
+    const trace: BattleTrace[] = [];
+    const damage = calculateDamage("player", battler("player"), battler("opponent", { ability }),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([15]), trace);
+    expect(damage).toBe(29);
+    expect(trace).toContainEqual(expect.objectContaining({ type: "damage", critical: false }));
+    expect(trace).not.toContainEqual(expect.objectContaining({ type: "rng", purpose: "critical" }));
+  });
+
   it("lets Keen Eye ignore only a target's positive evasion", () => {
     const evasive = battler("opponent", { stages: { ...battler("opponent").stages, evasion: 6 } });
     const accurate = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 100 };
@@ -674,6 +960,94 @@ describe("ability conformance regressions", () => {
       evasionStage: 0, threshold: 100, hit: true }));
   });
 
+  it("applies Pokemon Z's 1.3 Compound Eyes accuracy multiplier", () => {
+    const inaccurate = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 75 };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const withoutAbility = resolveTurn(battle(battler("player", { moves: [{ move: inaccurate, pp: inaccurate.pp }] })),
+      actions, new ScriptedRandom([90, 99, 1, 15]));
+    const withAbility = resolveTurn(battle(battler("player", { ability: "COMPOUNDEYES",
+      moves: [{ move: inaccurate, pp: inaccurate.pp }] })), actions,
+    new ScriptedRandom([90, 1, 15, 99, 1, 15]));
+
+    expect(withoutAbility.events).toContainEqual(expect.objectContaining({ type: "moveMissed", side: "player" }));
+    expect(withAbility.events).not.toContainEqual(expect.objectContaining({ type: "moveMissed", side: "player" }));
+    expect(withAbility.trace).toContainEqual(expect.objectContaining({ type: "accuracy", side: "player",
+      base: 75, threshold: 97.5, hit: true }));
+  });
+
+  it("doubles resisted damage with Tinted Lens", () => {
+    const resisted = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "BUG" };
+    const defender = battler("opponent", { types: ["FIRE"] });
+    const neutralDamage = calculateDamage("player", battler("player"), defender, resisted,
+      new ScriptedRandom([1, 15]), []);
+    const trace: BattleTrace[] = [];
+    const tintedDamage = calculateDamage("player", battler("player", { ability: "TINTEDLENS" }), defender,
+      resisted, new ScriptedRandom([1, 15]), trace);
+
+    expect(tintedDamage).toBe(neutralDamage * 2);
+    expect(trace).toContainEqual(expect.objectContaining({ type: "damage", effectiveness: 0.5,
+      abilityModifier: { ability: "TINTEDLENS", multiplier: 2 } }));
+  });
+
+  it("applies the shared family of offensive and defensive damage talents", () => {
+    const tackle = MINIMAL_MOVE_CATALOG.TACKLE;
+    const fireMove = { ...tackle, internalName: "TESTFIRE", type: "FIRE" };
+    const fightingMove = { ...tackle, internalName: "TESTFIGHTING", type: "FIGHTING" };
+    const cases = [
+      { ability: "TECHNICIAN", owner: "attacker", move: tackle, multiplier: 1.5, rng: [1, 15] },
+      { ability: "IRONFIST", owner: "attacker", move: { ...tackle, flags: "j" }, multiplier: 1.2, rng: [1, 15] },
+      { ability: "STRONGJAW", owner: "attacker", move: { ...tackle, flags: "i" }, multiplier: 1.5, rng: [1, 15] },
+      { ability: "TOUGHCLAWS", owner: "attacker", move: { ...tackle, flags: "a" }, multiplier: 4 / 3, rng: [1, 15] },
+      { ability: "ADAPTABILITY", owner: "attacker", move: tackle, multiplier: 4 / 3, rng: [1, 15] },
+      { ability: "SNIPER", owner: "attacker", move: tackle, multiplier: 1.5, rng: [0, 15] },
+      { ability: "THICKFAT", owner: "defender", move: fireMove, multiplier: 0.5, rng: [1, 15] },
+      { ability: "FILTER", owner: "defender", move: fightingMove, multiplier: 0.75, rng: [1, 15] },
+      { ability: "SOLIDROCK", owner: "defender", move: fightingMove, multiplier: 0.75, rng: [1, 15] },
+      { ability: "MULTISCALE", owner: "defender", move: tackle, multiplier: 0.5, rng: [1, 15] },
+    ] as const;
+
+    for (const entry of cases) {
+      const attacker = battler("player", entry.owner === "attacker" ? { ability: entry.ability } : {});
+      const defender = battler("opponent", entry.owner === "defender" ? { ability: entry.ability } : {});
+      const trace: BattleTrace[] = [];
+      const modified = calculateDamage("player", attacker, defender, entry.move,
+        new ScriptedRandom(entry.rng), trace);
+      const neutral = calculateDamage("player", battler("player"), battler("opponent"), entry.move,
+        new ScriptedRandom(entry.rng), []);
+
+      expect(trace.at(-1)).toMatchObject({ type: "damage",
+        abilityModifiers: [{ ability: entry.ability, multiplier: entry.multiplier }] });
+      expect(entry.multiplier > 1 ? modified > neutral : modified < neutral).toBe(true);
+    }
+  });
+
+  it("records and combines an offensive and defensive damage talent", () => {
+    const trace: BattleTrace[] = [];
+    calculateDamage("player", battler("player", { ability: "TECHNICIAN" }),
+      battler("opponent", { ability: "MULTISCALE" }), MINIMAL_MOVE_CATALOG.TACKLE,
+      new ScriptedRandom([1, 15]), trace);
+    expect(trace.at(-1)).toMatchObject({ type: "damage", statusModifier: 0.75,
+      abilityModifier: { ability: "TECHNICIAN", multiplier: 1.5 },
+      abilityModifiers: [
+        { ability: "TECHNICIAN", multiplier: 1.5 },
+        { ability: "MULTISCALE", multiplier: 0.5 },
+      ] });
+  });
+
+  it("lets Sturdy survive lethal damage only from full HP", () => {
+    const lethal = { ...MINIMAL_MOVE_CATALOG.TACKLE, power: 1_000, accuracy: 0 };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const fullHp = resolveTurn(battle(battler("player", { moves: [{ move: lethal, pp: lethal.pp }] }),
+      battler("opponent", { ability: "STURDY" })), actions, new ScriptedRandom([1, 15, 99, 1, 15]));
+    const damaged = resolveTurn(battle(battler("player", { moves: [{ move: lethal, pp: lethal.pp }] }),
+      battler("opponent", { ability: "STURDY", hp: 99 })), actions, new ScriptedRandom([1, 15]));
+
+    expect(fullHp.state.battlers.opponent.hp).toBe(1);
+    expect(fullHp.events).toContainEqual({ type: "abilityActivated", side: "opponent",
+      ability: "STURDY", effect: "survive" });
+    expect(damaged.state.battlers.opponent.hp).toBe(0);
+  });
+
   it("can trigger Static even when the contacted defender is knocked out", () => {
     const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
     const result = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }),
@@ -684,6 +1058,152 @@ describe("ability conformance regressions", () => {
     expect(result.state.battlers.player.majorStatus).toEqual({ kind: "paralysis" });
     expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "STATIC",
       effect: "inflict-paralysis" });
+  });
+
+  it.each([
+    ["FLAMEBODY", "burn"],
+    ["POISONPOINT", "poison"],
+  ] as const)("lets %s inflict %s after damaging contact", (ability, status) => {
+    const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }),
+      battler("opponent", { hp: 1, ability })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 0]));
+
+    expect(result.state.battlers.player.majorStatus).toMatchObject({ kind: status });
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "inflict-status" });
+  });
+
+  it("uses Effect Spore's source status draw and powder immunities", () => {
+    const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const defender = battler("opponent", { hp: 1, ability: "EFFECTSPORE" });
+    const statuses = [
+      { rolls: [1, 15, 0, 0], kind: "poison" },
+      { rolls: [1, 15, 0, 1, 0], kind: "sleep" },
+      { rolls: [1, 15, 0, 2], kind: "paralysis" },
+    ] as const;
+    for (const candidate of statuses) {
+      const result = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }), defender),
+        actions, new ScriptedRandom(candidate.rolls));
+      expect(result.state.battlers.player.majorStatus).toMatchObject({ kind: candidate.kind });
+    }
+    for (const immune of [battler("player", { types: ["GRASS"] }),
+      battler("player", { heldItem: "SAFETYGOGGLES" }), battler("player", { ability: "OVERCOAT" })]) {
+      const result = resolveTurn(battle({ ...immune, moves: [{ move: contact, pp: contact.pp }] }, defender),
+        actions, new ScriptedRandom([1, 15, 0]));
+      expect(result.state.battlers.player.majorStatus).toBeNull();
+    }
+  });
+
+  it.each(["ROUGHSKIN", "IRONBARBS"] as const)("damages a contact attacker with %s", (ability) => {
+    const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+    const result = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }),
+      battler("opponent", { hp: 1, ability })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15]));
+    expect(result.state.battlers.player.hp).toBe(88);
+    expect(result.events).toContainEqual({ type: "abilityDamage", source: "opponent", target: "player",
+      ability, amount: 12, hp: 88 });
+  });
+
+  it("lowers contact Speed with Gooey and poisons the target with Poison Touch", () => {
+    const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+    const gooey = resolveTurn(battle(battler("player", { moves: [{ move: contact, pp: contact.pp }] }),
+      battler("opponent", { hp: 1, ability: "GOOEY" })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15]));
+    expect(gooey.state.battlers.player.stages.speed).toBe(-1);
+    expect(gooey.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "GOOEY",
+      effect: "lower-speed" });
+
+    const opposingMove = { ...MINIMAL_MOVE_CATALOG.SCRATCH, accuracy: 0 };
+    const poisonTouch = resolveTurn(battle(battler("player", { ability: "POISONTOUCH",
+      moves: [{ move: contact, pp: contact.pp }] }), battler("opponent", {
+      moves: [{ move: opposingMove, pp: opposingMove.pp }] })),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 0, 1, 15]));
+    expect(poisonTouch.state.battlers.opponent.majorStatus).toEqual({ kind: "poison", toxicCounter: null });
+    expect(poisonTouch.events).toContainEqual({ type: "abilityActivated", side: "player", ability: "POISONTOUCH",
+      effect: "inflict-status" });
+  });
+
+  it.each([
+    ["WATERABSORB", "WATER"],
+    ["VOLTABSORB", "ELECTRIC"],
+    ["DRYSKIN", "WATER"],
+  ] as const)("lets %s absorb %s and heal a quarter of maximum HP", (ability, type) => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: `TEST${type}`, type, accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { hp: 50, ability })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.hp).toBe(75);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability,
+      effect: "absorb-type" });
+  });
+
+  it.each([
+    ["SAPSIPPER", "GRASS", "attack"],
+    ["STORMDRAIN", "WATER", "specialAttack"],
+    ["LIGHTNINGROD", "ELECTRIC", "specialAttack"],
+    ["MOTORDRIVE", "ELECTRIC", "speed"],
+  ] as const)("lets %s absorb %s and raise %s", (ability, type, stat) => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: `TEST${type}`, type, accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.stages[stat]).toBe(1);
+    expect(result.state.teams.opponent.members[0]?.hp).toBe(100);
+  });
+
+  it.each([
+    ["STORMDRAIN", "WATER"],
+    ["LIGHTNINGROD", "ELECTRIC"],
+  ] as const)("makes a %s target draw in an inaccurate %s move", (ability, type) => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: `INACCURATE${type}`, type, accuracy: 1 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [battler("opponent", { ability })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: "moveMissed" }));
+    expect(result.state.teams.opponent.members[0]?.stages.specialAttack).toBe(1);
+  });
+
+  it("makes Levitate immune to damaging Ground moves", () => {
+    const ground = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "TESTGROUND", type: "GROUND", accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move: ground, pp: ground.pp }] })],
+      opponent: [battler("opponent", { ability: "LEVITATE" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]?.hp).toBe(100);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "opponent", ability: "LEVITATE",
+      effect: "absorb-type" });
+  });
+
+  it("arms Flash Fire on immunity and boosts later Fire damage", () => {
+    const fire = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "TESTFIRE", type: "FIRE", accuracy: 0 };
+    const state = createTeamBattleState({
+      player: [battler("player", { moves: [{ move: fire, pp: fire.pp }] })],
+      opponent: [battler("opponent", { ability: "FLASHFIRE", moves: [{ move: fire, pp: fire.pp }] })],
+    });
+    const armed = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(armed.state.teams.opponent.members[0]?.volatile?.flashFire).toBe(true);
+    const boosted = resolveTeamTurn(armed.state,
+      { player: { kind: "wait" }, opponent: { kind: "move", moveIndex: 0 } }, new ScriptedRandom([1, 15]));
+    expect(boosted.trace).toContainEqual(expect.objectContaining({ type: "damage",
+      abilityModifiers: expect.arrayContaining([{ ability: "FLASHFIRE", multiplier: 1.5 }]) }));
   });
 
   it("applies Cheek Pouch after a Payapa Berry is consumed", () => {

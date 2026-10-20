@@ -1829,9 +1829,10 @@ autonomes sur une même carte.
 
 ### Phase 11 - Mecanismes solo structurants
 
-L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les
-donnees importees masquent encore un ecart de comportement important : 24/353
-fonctions d'attaque et 14/255 talents sont executes. Les objets sont avances mais
+L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
+donnees importees masquent encore un ecart de comportement important : 62/353
+fonctions d'attaque sont executees et 4 partielles ; 79/255 talents sont executes
+et 5 partiels. Les objets sont avances mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots
@@ -2131,7 +2132,7 @@ Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de
 deux crans comme dans les scripts de Z et vise les deux adversaires en double via
 son ciblage source `04`. Projection personnelle, validation Coop et resolution
-autoritaire partagent le meme code ; le registre passe a 56 fonctions pleinement
+autoritaire partagent le meme code ; le registre passe alors a 56 fonctions pleinement
 supportees. Son utilisation hors combat pour declencher une rencontre reste a
 porter avec les mecanismes d'overworld et ne fait pas partie de ce jalon.
 

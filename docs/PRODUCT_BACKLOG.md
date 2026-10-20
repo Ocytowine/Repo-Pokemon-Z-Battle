@@ -50,15 +50,17 @@ Les extensions Coop, la plateforme et les interfaces secondaires reprennent apre
 ces cinq portes. Les ajouts de combat restent des lots generiques bornes par le
 parcours ; ils ne doivent pas devenir des correctifs propres a Jean ou Sapereau.
 
-## Audit cible du jeu source — 2026-10-05, actualise le 2026-10-09
+## Audit cible du jeu source — 2026-10-05, actualise le 2026-10-20
 
 Cet inventaire est derive des rapports locaux de la distribution v2.12 FR et des
 262 scripts Ruby extraits. Il mesure le support reel du moteur, pas seulement la
 presence des donnees dans les JSON :
 
 - les 19 interactions de types sont supportees ;
-- seulement 24 codes de fonction d'attaque sur 353 sont portes ;
-- seulement 14 talents sur 255 ont un effet execute ;
+- 62 codes de fonction d'attaque sur 353 sont portes et 4 sont partiels ;
+- 79 talents sur 255 ont un effet execute et 5 sont partiels ; l'audit de
+  dependances en rencontre 229 dans le perimetre jouable, dont 151 restent
+  absents ou partiels ;
 - aucune des six familles d'objets n'est completement supportee ; la famille
   generique est seulement partielle ;
 - 17 des 18 methodes d'evolution rencontrees sont maintenant resolues ; la
@@ -353,7 +355,9 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 ### CORE-BATTLE-RULES-1 — Fidelite des regles de combat
 
 - Priorite/statut : `P0` continu / `A planifier par lots verticaux`.
-- Constat source : 24/353 fonctions d'attaque et 14/255 talents sont executes.
+- Constat source : 62/353 fonctions d'attaque sont executees et 4 sont partielles ;
+  79/255 talents sont executes et 5 sont partiels. Le rapport de dependances
+  courant porte sur 229 talents reellement candidats, dont 151 absents ou partiels.
   Une attaque extraite avec nom, puissance et animation n'est donc pas forcement
   fidele a Z ; meme constat pour un talent seulement affiche.
 - Strategie : registres explicites et lots bornes par rencontres/dresseurs du

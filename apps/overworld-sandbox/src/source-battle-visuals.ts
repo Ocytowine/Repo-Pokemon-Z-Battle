@@ -173,6 +173,7 @@ export interface SourceBattleVisualOptions {
   readonly onBattleAudioStart?: () => void;
   readonly onBattleAudioEnd?: () => void;
   readonly abilityName?: (internalName: string) => string;
+  readonly itemName?: (internalName: string) => string;
   /** Personal Pokédex history, read locally and never projected into shared battle state. */
   readonly caughtSpecies?: () => readonly string[];
 }
@@ -542,8 +543,10 @@ export class SourceBattleVisuals {
 
   async playTurn(before: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]): Promise<void> {
     const session = this.#audioSession;
-    const presentationOptions = this.options.abilityName === undefined
-      ? {} : { abilityName: this.options.abilityName };
+    const presentationOptions = {
+      ...(this.options.abilityName === undefined ? {} : { abilityName: this.options.abilityName }),
+      ...(this.options.itemName === undefined ? {} : { itemName: this.options.itemName }),
+    };
     for (const step of buildSourceBattlePresentationSequence(before, events, presentationOptions)) {
       const stepSide = "side" in step ? step.side : null;
       const active = stepSide === null ? null : step.state.teams[stepSide];

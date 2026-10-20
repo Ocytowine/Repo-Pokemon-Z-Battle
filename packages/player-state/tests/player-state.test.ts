@@ -13,7 +13,7 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   pokemonZParticipantExperienceCalculation, publicPokemonIdentity, recalculatePersistentPokemonStats,
   reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
   transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
-  type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
+  sourcePokemonAbility, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 import { createTeamBattleState, type SharedBattleOwnerSettlement, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
@@ -247,6 +247,24 @@ describe("persistent player party", () => {
     expect(addPokemonToParty(createEmptyPlayerParty(), pokemon)).toMatchObject({ activeIndex: 0, members: [{ species: "PIKACHU" }] });
   });
 
+  it("selects an unforced normal ability from persistent identity without using hidden abilities", () => {
+    const abilities = ["FIRST", "SECOND"] as const;
+    const first = sourcePokemonAbility(abilities, 2);
+    const second = sourcePokemonAbility(abilities, 3);
+    expect([first, second]).toEqual(["FIRST", "SECOND"]);
+    expect(sourcePokemonAbility([], 3)).toBeNull();
+
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities, hiddenAbilities: ["HIDDEN"], growthRate: "Medium", baseExperience: 112,
+      genderRate: "Female50Percent", happiness: 70, eggGroups: ["Field"],
+      levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
+    const created = createPersistentPokemon("starter-1", "PIKACHU", 5, creationCatalog);
+    expect(created.ability).toBe(abilities[created.metadata.personalId % abilities.length]);
+    expect(created.ability).not.toBe("HIDDEN");
+    expect(createPersistentPokemon("starter-1", "PIKACHU", 5, creationCatalog).ability).toBe(created.ability);
+  });
+
   it("projects a detailed move catalog to the strict public battle shape", () => {
     const detailedCatalog = { ...catalog, moves: [{ ...catalog.moves[0]!, flags: "ab",
       targetCode: "SingleNonUser", description: "Une description locale." }] };
@@ -309,6 +327,27 @@ describe("persistent player party", () => {
 
     expect(storeOwnedBattleResults(sourceParty, participation, state, "host").members[0]?.heldItem)
       .toBe("FUTUREITEM");
+  });
+
+  it("restores tactical item transfers only when the settlement requests it", () => {
+    const sourceParty = { ...party, members: [{ ...party.members[0]!, heldItem: "ORANBERRY" }] };
+    const projected = playerPartyToBattleTeam(sourceParty, catalog);
+    const opponent = { ...projected.members[0]!, id: "trainer-mon", heldItem: "ORANBERRY" };
+    const state = { ...createTeamBattleState({
+      player: [{ ...projected.members[0]!, heldItem: null }], opponent: [opponent],
+    }), effects: { sides: { player: { reflectTurns: 0, luckyChantTurns: 0 },
+      opponent: { reflectTurns: 0, luckyChantTurns: 0 } }, waterSportTurns: 0,
+      itemTransfers: [{ item: "ORANBERRY", sourceId: "starter", targetId: "trainer-mon", reason: "pickpocket" as const }] } };
+    const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["host"], activeMemberId: "starter",
+        members: [{ ownerId: "host", battler: state.teams.player.members[0]! }] },
+      opponent: { trainerIds: [], activeMemberId: "trainer-mon",
+        members: [{ ownerId: null, battler: state.teams.opponent.members[0]! }] },
+    } };
+
+    expect(storeOwnedBattleResults(sourceParty, participation, state, "host").members[0]?.heldItem).toBeNull();
+    expect(storeOwnedBattleResults(sourceParty, participation, state, "host", true).members[0]?.heldItem)
+      .toBe("ORANBERRY");
   });
 
   it("matches the source IV, EV and nature formulas in source stat order", () => {

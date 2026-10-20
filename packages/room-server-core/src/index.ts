@@ -854,6 +854,7 @@ export class AuthoritativeBattleRoom {
     const beforeState = this.#battleState;
     const itemPolicy = { context: "battle" as const, revivalAllowed: true,
       battleHealingAllowed: source?.healingItemsAllowed ?? true };
+    const resolutionRules = { opponentItemTheft: source?.origin !== "source-wild" };
     const resolvedActions: readonly PositionedTeamBattleAction[] = double
       ? [...this.#pendingDoubleActions.values()]
       : [
@@ -861,8 +862,9 @@ export class AuthoritativeBattleRoom {
         { actor: { side: "opponent", slot: 0 }, action: opponentAction! },
       ];
     const result = double
-      ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy)
-      : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy);
+      ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy, resolutionRules)
+      : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy,
+        resolutionRules);
     this.#battleState = result.state;
     const captureEvent = result.events.flatMap((event) => event.type === "positionedActionResolved"
       ? [...event.events] : event.type === "captureAttempted" ? [event] : [])
@@ -1714,7 +1716,7 @@ export class AuthoritativeBattleRoom {
       }
       const before = this.#battleState;
       const fromIndex = activeTeamIndices(before.teams[position.side])[position.slot]!;
-      try { this.#battleState = replaceFaintedDoublePokemon(before, position, message.teamIndex); }
+      try { this.#battleState = replaceFaintedDoublePokemon(before, position, message.teamIndex, this.#rng); }
       catch (error) { return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
         error instanceof Error ? error.message : "Remplacement double invalide.")]; }
       this.synchronizeBattleParticipation();
@@ -1764,7 +1766,7 @@ export class AuthoritativeBattleRoom {
     if (!this.#battleState.replacementRequired.every((side) => this.#pendingReplacements.has(side))) return;
     const replacements = Object.fromEntries(this.#pendingReplacements) as Partial<Record<BattleSide, number>>;
     const beforeState = this.#battleState;
-    const result = replaceFaintedPokemon(beforeState, replacements);
+    const result = replaceFaintedPokemon(beforeState, replacements, this.#rng);
     this.#battleState = result.state;
     if (this.#battleLedger !== null) {
       this.#battleLedger = recordSharedBattleTurn(this.#battleLedger, beforeState, result.state, result.events);
@@ -1791,7 +1793,7 @@ export class AuthoritativeBattleRoom {
       const fromIndex = active[position.slot]!;
       events.push({ type: "pokemonSwitched", side: position.side, fromIndex, toIndex: eligible,
         from: team.members[fromIndex]!.id, to: team.members[eligible]!.id, reason: "replacement" });
-      state = replaceFaintedDoublePokemon(state, position, eligible);
+      state = replaceFaintedDoublePokemon(state, position, eligible, this.#rng);
     }
     if (events.length === 0) return;
     this.#battleState = state;

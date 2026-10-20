@@ -28,6 +28,7 @@ export type {
   BattleEvent,
   BattleMove,
   BattlePosition,
+  BattleResolutionRules,
   BattleSide,
   BattleState,
   BattleStat,

@@ -45,6 +45,11 @@ function initialBattle(): TeamBattleState {
   return createTeamBattleState({ player: [battler("player")], opponent: [battler("opponent")] });
 }
 
+function reactiveBattle(): TeamBattleState {
+  return createTeamBattleState({ player: [battler("player")],
+    opponent: [{ ...battler("opponent"), ability: "STAMINA" }] });
+}
+
 function battleWithReserve(): TeamBattleState {
   return createTeamBattleState({
     player: [battler("player")],
@@ -560,6 +565,25 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().battle?.state.turn).toBe(2);
   });
 
+  it("replicates a reactive ability stage and restores it after guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", reactiveBattle, new SeededRandom(24_302), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("reactive-ready-a"));
+    room.receive("bob", ready("reactive-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "reactive-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "reactive-move-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "STAMINA", effect: "raise-stat" })]) });
+    expect(room.snapshot().battle?.state.teams.opponent.members[0]?.stages.defense).toBe(1);
+    room.disconnect("bob");
+    const reconnected = room.connect("bob");
+    expect(reconnected.snapshot.battle?.state.teams.opponent.members[0]?.stages.defense).toBe(1);
+  });
+
   it("deduplicates requests and rejects stale or duplicate turn actions", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(7), world);
     room.connect("alice");
@@ -703,6 +727,41 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().battle).toMatchObject({ state: { status: "finished", winner: "player" },
       session: { lifecycle: "settling", settlementId: `${battle.id}:settlement` },
       sourceContext: { origin: "source-wild" } });
+  });
+
+  it("enforces the source Pickpocket theft rule in the authoritative room", () => {
+    const contactMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, flags: "a" };
+    const sourceState = createTeamBattleState({
+      player: [{ ...battler("player"), heldItem: "ORANBERRY",
+        moves: [{ move: contactMove, pp: contactMove.pp }] }],
+      opponent: [{ ...battler("opponent"), ability: "PICKPOCKET" }],
+    });
+    const run = (origin: "source-wild" | "source-trainer") => {
+      const room = new AuthoritativeBattleRoom(`PICK-${origin}`, initialBattle, new SeededRandom(9), worldWithSource);
+      room.connect("alice");
+      room.connect("bob");
+      const context = origin === "source-wild" ? sourceBattleContext("alice") : sourceTrainerBattleContext("alice");
+      room.receive("alice", { type: "openSourceBattle", version: 15, requestId: `open-${origin}`, context,
+        playerTeam: sourceState.teams.player, opponentTeam: sourceState.teams.opponent });
+      const battle = room.snapshot().battle!;
+      room.receive("alice", { type: "closeBattleJoinWindow", version: 15, requestId: `close-${origin}`,
+        battleId: battle.id });
+      const output = room.receive("alice", { type: "submitAction", version: 15, requestId: `turn-${origin}`,
+        battleId: battle.id, turn: 1, action: { kind: "move", moveIndex: 0 } });
+      return { room, output };
+    };
+
+    const wild = run("source-wild");
+    expect(wild.room.snapshot().battle?.state.teams.player.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(wild.room.snapshot().battle?.state.teams.opponent.members[0]?.heldItem).toBeNull();
+
+    const trainer = run("source-trainer");
+    expect(trainer.room.snapshot().battle?.state.teams.player.members[0]?.heldItem).toBeNull();
+    expect(trainer.room.snapshot().battle?.state.teams.opponent.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(trainer.output).toEqual(expect.arrayContaining([expect.objectContaining({ message: expect.objectContaining({
+      type: "turnResolved", events: expect.arrayContaining([expect.objectContaining({ type: "heldItemTransferred",
+        source: "player", target: "opponent", item: "ORANBERRY" })]),
+    }) })]));
   });
 
   it("lets the host help a shared wild encounter opened by the guest", () => {

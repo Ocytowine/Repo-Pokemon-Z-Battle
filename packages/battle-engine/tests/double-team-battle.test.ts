@@ -14,6 +14,105 @@ function pokemon(id: string, side: BattleSide, speed: number, targetCode = "00")
 }
 
 describe("double team battles", () => {
+  it("shares entry talents across both opposing slots and preserves Download's source comparison", () => {
+    const download = { ...pokemon("download", "player", 100), ability: "DOWNLOAD" };
+    const ally = { ...pokemon("frisk", "player", 90), ability: "FRISK" };
+    const first = { ...pokemon("o1", "opponent", 80), heldItem: "ORANBERRY" as const,
+      stats: { ...pokemon("o1", "opponent", 80).stats, defense: 50, specialDefense: 100 } };
+    const second = { ...pokemon("o2", "opponent", 70), heldItem: "FOCUSSASH" as const,
+      stats: { ...pokemon("o2", "opponent", 70).stats, defense: 100, specialDefense: 1 } };
+    const state = createDoubleTeamBattleState({ player: [download, ally], opponent: [first, second] });
+    const result = resolveDoubleTeamTurn(state, activeBattlePositions(state).map((actor) =>
+      ({ actor, action: { kind: "wait" as const } })), rng);
+    expect(result.state.teams.player.members[0]!.stages.attack).toBe(1);
+    const observations = result.events.flatMap((event) => event.type === "positionedActionResolved" ? event.events : [])
+      .filter((event) => event.type === "abilityObserved" && event.ability === "FRISK");
+    expect(observations).toHaveLength(2);
+  });
+
+  it("lets Clear Body protect both active targets from an entering Intimidate", () => {
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("p1", "player", 100), pokemon("p2", "player", 90),
+        { ...pokemon("p3", "player", 60), ability: "INTIMIDATE" }],
+      opponent: [{ ...pokemon("o1", "opponent", 80), ability: "CLEARBODY" },
+        { ...pokemon("o2", "opponent", 70), ability: "CLEARBODY" }],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "switch", teamIndex: 2 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.state.teams.opponent.members.slice(0, 2).map((member) => member.stages.attack)).toEqual([0, 0]);
+    expect(result.events.filter((event) => event.type === "abilityActivated"
+      && event.ability === "CLEARBODY")).toHaveLength(2);
+  });
+
+  it.each([
+    ["WATER", "STORMDRAIN"],
+    ["ELECTRIC", "LIGHTNINGROD"],
+  ] as const)("redirects a single-target %s move to %s", (type, ability) => {
+    const attacker = pokemon("p1", "player", 100);
+    const move = { ...attacker.moves[0]!.move, type };
+    const state = createDoubleTeamBattleState({
+      player: [{ ...attacker, moves: [{ move, pp: move.pp }] }, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80), { ...pokemon("o2", "opponent", 70), ability }],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, targets: [{ side: "opponent", slot: 1 }] }));
+    expect(result.state.teams.opponent.members[0]?.hp).toBe(120);
+    expect(result.state.teams.opponent.members[1]?.stages.specialAttack).toBe(1);
+  });
+
+  it("lets Storm Drain redirect an ally's Water move, as in the source priority scan", () => {
+    const attacker = pokemon("p1", "player", 100);
+    const move = { ...attacker.moves[0]!.move, type: "WATER" };
+    const state = createDoubleTeamBattleState({
+      player: [{ ...attacker, moves: [{ move, pp: move.pp }] },
+        { ...pokemon("p2", "player", 90), ability: "STORMDRAIN" }],
+      opponent: [pokemon("o1", "opponent", 80), pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, targets: [{ side: "player", slot: 1 }] }));
+    expect(result.state.teams.player.members[1]?.stages.specialAttack).toBe(1);
+    expect(result.state.teams.opponent.members[0]?.hp).toBe(120);
+  });
+
+  it("propagates the wild opponent item-theft rule to positioned actions", () => {
+    const attacker = pokemon("p1", "player", 100);
+    const contact = { ...attacker.moves[0]!.move, flags: "a" };
+    const state = createDoubleTeamBattleState({
+      player: [{ ...attacker, heldItem: "ORANBERRY", moves: [{ move: contact, pp: contact.pp }] },
+        pokemon("p2", "player", 90)],
+      opponent: [{ ...pokemon("o1", "opponent", 80), ability: "PICKPOCKET" },
+        pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng, { context: "battle", revivalAllowed: true }, { opponentItemTheft: false });
+
+    expect(result.state.teams.player.members[0]?.heldItem).toBe("ORANBERRY");
+    expect(result.state.teams.opponent.members[0]?.heldItem).toBeNull();
+  });
+
   it("applies Acometida's first-turn speed bonus when ordering double-battle slots", () => {
     const charger = { ...pokemon("p1", "player", 60), ability: "ACOMETIDA" as const };
     const state = createDoubleTeamBattleState({

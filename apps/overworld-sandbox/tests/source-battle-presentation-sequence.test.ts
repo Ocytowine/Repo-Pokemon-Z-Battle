@@ -12,6 +12,46 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("presents and projects a Pickpocket item transfer", () => {
+    const state = createTeamBattleState({
+      player: [{ ...battler("Héros"), heldItem: "ORANBERRY" }],
+      opponent: [{ ...battler("Voleur"), ability: "PICKPOCKET" }],
+    });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "abilityActivated", side: "opponent", ability: "PICKPOCKET", effect: "steal-item" },
+      { type: "heldItemTransferred", source: "player", target: "opponent", item: "ORANBERRY", reason: "pickpocket" },
+    ], { abilityName: () => "Pickpocket", itemName: () => "Baie Oran" });
+
+    expect(sequence.map((step) => step.message)).toEqual([
+      "Le talent Pickpocket de Voleur s'active !",
+      "Voleur vole Baie Oran à Héros !",
+    ]);
+    expect(sequence.at(-1)?.state.teams.player.members[0]?.heldItem).toBeNull();
+    expect(sequence.at(-1)?.state.teams.opponent.members[0]?.heldItem).toBe("ORANBERRY");
+  });
+
+  it("presents ability recoil damage and its intermediate HP", () => {
+    const state = createTeamBattleState({ player: [battler("Attaquant")], opponent: [battler("Défenseur")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "abilityActivated", side: "opponent", ability: "ROUGHSKIN", effect: "damage-attacker" },
+      { type: "abilityDamage", source: "opponent", target: "player", ability: "ROUGHSKIN", amount: 2, hp: 18 },
+    ], { abilityName: () => "Peau Dure" });
+    expect(sequence.map((step) => step.kind)).toEqual(["status", "health"]);
+    expect(sequence[1]).toMatchObject({ from: 20, to: 18,
+      message: "Attaquant perd 2 PV à cause de Peau Dure." });
+  });
+
+  it("presents move recoil and crash damage through authoritative HP", () => {
+    const state = createTeamBattleState({ player: [battler("Attaquant")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "recoilDamage", side: "player", move: "DOUBLEEDGE", reason: "recoil", amount: 4, hp: 16 },
+      { type: "recoilDamage", side: "player", move: "HIJUMPKICK", reason: "crash", amount: 10, hp: 6 },
+    ]);
+    expect(sequence.map((step) => step.kind)).toEqual(["health", "health"]);
+    expect(sequence[0]).toMatchObject({ from: 20, to: 16 });
+    expect(sequence[1]).toMatchObject({ from: 16, to: 6 });
+  });
+
   it("shows impact and zero HP before effectiveness and fainting", () => {
     const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible", 4)] });
     const events: TeamBattleEvent[] = [

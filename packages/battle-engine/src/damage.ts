@@ -1,5 +1,7 @@
 import { typeEffectiveness } from "./type-chart.js";
-import type { BattleMove, BattlerState, BattleSide, BattleTrace, RandomSource } from "./types.js";
+import { preventsCriticalHit } from "./ability-protection.js";
+import { isRecklessBoostedMove } from "./move-properties.js";
+import type { BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
 
 export interface BattleDamageContext {
   readonly reflect: boolean;
@@ -32,7 +34,8 @@ export function calculateDamage(
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
     const result = Math.max(1, Math.floor((attacker.level * variance) / 100));
     trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
-      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, abilityModifier: null, result });
+      critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, abilityModifier: null,
+      abilityModifiers: [], result });
     return result;
   }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
@@ -40,8 +43,10 @@ export function calculateDamage(
   const criticalStage = Math.min(4,
     (defender.majorStatus?.kind === "hemorrhage" ? 2 : 0)
     + (attacker.volatile?.focusEnergy ?? 0)
-    + (attacker.heldItem === "SCOPELENS" ? 1 : 0));
-  const critical = !context.luckyChant && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
+    + (attacker.heldItem === "SCOPELENS" ? 1 : 0)
+    + (attacker.ability === "SUPERLUCK" ? 1 : 0));
+  const critical = !context.luckyChant && !preventsCriticalHit(defender)
+    && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
   const defenseStage = critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
   const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
@@ -91,18 +96,39 @@ export function calculateDamage(
   if (defender.heldItem === "PAYAPABERRY" && move.type === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
   const defenderGender = defender.appearance?.gender;
-  const abilityModifier = attacker.ability === "FLORACION" && move.type === "GRASS"
-    ? { ability: "FLORACION" as const, multiplier: 1.5 }
-    : attacker.ability === "RIVALRY"
+  const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];
+  const addAbilityModifier = (ability: ImplementedBattleAbility, multiplier: number): void => {
+    abilityModifiers.push({ ability, multiplier });
+    statusModifier *= multiplier;
+  };
+  if (attacker.ability === "FLORACION" && move.type === "GRASS") addAbilityModifier("FLORACION", 1.5);
+  if (attacker.ability === "SHEERFORCE" && move.effectChance > 0) addAbilityModifier("SHEERFORCE", 1.3);
+  if (attacker.ability === "RECKLESS" && isRecklessBoostedMove(move)) addAbilityModifier("RECKLESS", 1.2);
+  if (attacker.ability === "TINTEDLENS" && effectiveness < 1) addAbilityModifier("TINTEDLENS", 2);
+  if (attacker.ability === "RIVALRY"
     && (attackerGender === "male" || attackerGender === "female")
-    && (defenderGender === "male" || defenderGender === "female")
-    ? { ability: "RIVALRY" as const, multiplier: attackerGender === defenderGender ? 1.25 : 1 }
-    : null;
-  if (abilityModifier !== null) statusModifier *= abilityModifier.multiplier;
+    && (defenderGender === "male" || defenderGender === "female")) {
+    addAbilityModifier("RIVALRY", attackerGender === defenderGender ? 1.25 : 1);
+  }
+  if (attacker.ability === "TECHNICIAN" && power <= 60 && move.id > 0) addAbilityModifier("TECHNICIAN", 1.5);
+  if (attacker.ability === "IRONFIST" && move.flags?.includes("j") === true) addAbilityModifier("IRONFIST", 1.2);
+  if (attacker.ability === "STRONGJAW" && move.flags?.includes("i") === true) addAbilityModifier("STRONGJAW", 1.5);
+  if (attacker.ability === "TOUGHCLAWS" && move.flags?.includes("a") === true) addAbilityModifier("TOUGHCLAWS", 4 / 3);
+  if (attacker.ability === "ADAPTABILITY" && attacker.types.includes(move.type)) addAbilityModifier("ADAPTABILITY", 4 / 3);
+  if (attacker.ability === "SNIPER" && critical) addAbilityModifier("SNIPER", 1.5);
+  if (attacker.ability === "FLASHFIRE" && attacker.volatile?.flashFire === true && move.type === "FIRE") {
+    addAbilityModifier("FLASHFIRE", 1.5);
+  }
+  if (defender.ability === "THICKFAT" && (move.type === "FIRE" || move.type === "ICE")) addAbilityModifier("THICKFAT", 0.5);
+  if ((defender.ability === "FILTER" || defender.ability === "SOLIDROCK") && effectiveness > 1) {
+    addAbilityModifier(defender.ability === "FILTER" ? "FILTER" : "SOLIDROCK", 0.75);
+  }
+  if (defender.ability === "MULTISCALE" && defender.hp === defender.stats.maxHp) addAbilityModifier("MULTISCALE", 0.5);
+  const abilityModifier = abilityModifiers[0] ?? null;
   result = Math.round(result * statusModifier);
   if (effectiveness !== 0) result = Math.max(1, result);
 
   trace.push({ type: "damage", side, move: move.internalName, attack, defense, baseDamage, critical, variance, stab, effectiveness, statusModifier,
-    abilityModifier, result });
+    abilityModifier, abilityModifiers, result });
   return result;
 }

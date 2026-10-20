@@ -2,6 +2,8 @@ import type { BattleSide, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } 
 
 export interface SourceBattlePresentationOptions {
   readonly abilityName?: (internalName: string) => string;
+  readonly itemName?: (internalName: string) => string;
+  readonly moveName?: (internalName: string) => string;
 }
 
 export type SourceBattleStatusVisual = "burn" | "caduco" | "confusion" | "cured" | "flinch" | "frozen"
@@ -49,10 +51,20 @@ function activeName(state: TeamBattleState, side: BattleSide): string {
     ?? (side === "player" ? "Votre Pokémon" : "Le Pokémon adverse");
 }
 
+function battlerName(state: TeamBattleState, id: string): string {
+  return Object.values(state.teams).flatMap((team) => team.members).find((member) => member.id === id)?.name ?? id;
+}
+
 function withActiveHp(state: TeamBattleState, side: BattleSide, hp: number): TeamBattleState {
   const team = state.teams[side];
   return { ...state, teams: { ...state.teams, [side]: { ...team,
     members: team.members.map((member, index) => index === team.activeIndex ? { ...member, hp } : member) } } };
+}
+
+function withActiveHeldItem(state: TeamBattleState, side: BattleSide, heldItem: string | null): TeamBattleState {
+  const team = state.teams[side];
+  return { ...state, teams: { ...state.teams, [side]: { ...team,
+    members: team.members.map((member, index) => index === team.activeIndex ? { ...member, heldItem } : member) } } };
 }
 
 function withActiveIndex(state: TeamBattleState, side: BattleSide, activeIndex: number): TeamBattleState {
@@ -203,8 +215,21 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
+    } else if (event.type === "abilityDamage") {
+      const ability = options.abilityName?.(event.ability) ?? event.ability;
+      health(event.target, event.hp,
+        `${activeName(state, event.target)} perd ${event.amount} PV à cause de ${ability}.`);
+    } else if (event.type === "recoilDamage") {
+      health(event.side, event.hp, event.reason === "crash"
+        ? `${activeName(state, event.side)} rate son attaque et s'écrase au sol !`
+        : `${activeName(state, event.side)} perd ${event.amount} PV à cause du contrecoup.`);
     } else if (event.type === "heldItemConsumed") {
       message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
+    } else if (event.type === "heldItemTransferred") {
+      const sourceName = activeName(state, event.source);
+      const targetName = activeName(state, event.target);
+      state = withActiveHeldItem(withActiveHeldItem(state, event.source, null), event.target, event.item);
+      message(`${targetName} vole ${options.itemName?.(event.item) ?? event.item} à ${sourceName} !`, "status");
     } else if (event.type === "trainerItemUsed") {
       const team = state.teams[event.side];
       const target = team.members[event.targetIndex];
@@ -228,6 +253,18 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       steps.push({ kind: "capture", ballId: event.ballId, targetId: event.target,
         targetName: target?.name ?? "Le Pokémon sauvage", shakes: event.shakes,
         critical: event.critical, success: event.success, state });
+    } else if (event.type === "abilityObserved") {
+      const pokemon = activeName(state, event.side);
+      const ability = options.abilityName?.(event.ability) ?? event.ability;
+      const observation = event.observation;
+      const text = observation.kind === "copied-ability"
+        ? `${pokemon} copie le talent ${options.abilityName?.(observation.ability) ?? observation.ability} de ${battlerName(state, observation.targetId)} !`
+        : observation.kind === "held-item"
+          ? `${ability} de ${pokemon} détecte ${options.itemName?.(observation.item) ?? observation.item} tenu par ${battlerName(state, observation.targetId)} !`
+          : observation.kind === "move"
+            ? `${ability} de ${pokemon} détecte ${options.moveName?.(observation.move) ?? observation.move} !`
+            : `${pokemon} frémit grâce à ${ability} !`;
+      message(text, "status");
     } else if (event.type === "abilityActivated") {
       const pokemon = activeName(state, event.side);
       const ability = options.abilityName?.(event.ability) ?? event.ability;
