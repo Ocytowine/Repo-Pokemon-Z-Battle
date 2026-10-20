@@ -3,7 +3,7 @@ import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALO
   type BattlerState } from "@pokemon-z-battle/battle-engine";
 import { sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
   selectSourceCommonBattleAnimation, sourceHealthAnimationDuration,
-  sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
+  sourceBattleAnimationPlaneState, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
 import type { BattleAnimationsManifest } from "@pokemon-z-battle/local-assets";
 
 function battler(id: string): BattlerState {
@@ -31,6 +31,26 @@ describe("source common battle animations", () => {
       mappings: [], animations: [sleep] } satisfies BattleAnimationsManifest;
     expect(selectSourceCommonBattleAnimation(manifest, "Common:Sleep")).toBe(sleep);
     expect(selectSourceCommonBattleAnimation(manifest, "Common:Unknown")).toBeNull();
+  });
+
+  it("interpolates source background and foreground plane timings", () => {
+    const animation = { index: 12, name: "Common:MegaEvolution",
+      graphicPath: "Graphics/Animations/mega.png", hue: 0, position: 4, frames: [], timings: [
+        { frame: 0, type: 1, name: "ebMegaBg.png", volume: 80, pitch: 100,
+          x: 0, y: 0, opacity: 0, duration: 5 },
+        { frame: 0, type: 2, name: "", volume: 80, pitch: 100,
+          x: null, y: null, opacity: 255, duration: 10 },
+        { frame: 0, type: 2, name: "", volume: 80, pitch: 100,
+          x: 500, y: null, opacity: null, duration: 10 },
+        { frame: 37, type: 3, name: "flash.png", volume: 80, pitch: 100,
+          x: 0, y: 0, opacity: 0, duration: 5 },
+        { frame: 37, type: 4, name: "", volume: 80, pitch: 100,
+          x: null, y: null, opacity: 255, duration: 2 },
+      ] } satisfies BattleAnimationsManifest["animations"][number];
+    expect(sourceBattleAnimationPlaneState(animation, 5, "background"))
+      .toMatchObject({ path: "Graphics/Animations/ebMegaBg.png", x: 250, opacity: 127.5 });
+    expect(sourceBattleAnimationPlaneState(animation, 38, "foreground"))
+      .toMatchObject({ path: "Graphics/Animations/flash.png", opacity: 127.5 });
   });
 });
 

@@ -631,6 +631,7 @@ describe("stat stages, power abilities and held battle items", () => {
 describe("ability conformance regressions", () => {
   it("keeps an explicit audit entry for every ability advertised by the battle core", () => {
     const audited: Record<(typeof IMPLEMENTED_BATTLE_ABILITIES)[number], string> = {
+<<<<<<< HEAD
       ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type damage", ANGERPOINT: "critical attack maximum",
       BATTLEARMOR: "critical immunity", BERSERK: "half HP special attack", BIGPECKS: "defense drop immunity",
       BLAZE: "low HP fire power", CLEARBODY: "stat drop immunity", CHEEKPOUCH: "berry consumption healing",
@@ -664,10 +665,44 @@ describe("ability conformance regressions", () => {
       VITALSPIRIT: "sleep immunity", VOLTABSORB: "electric healing", WATERABSORB: "water healing",
       WATERCOMPACTION: "water hit defense", WATERVEIL: "burn immunity", WEAKARMOR: "physical hit defense speed",
       WHITESMOKE: "stat drop immunity",
+=======
+      ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type attack bonus", AERILATE: "normal-to-flying conversion",
+      ALQUIMIAVIL: "double opposing poison damage",
+      BATTLEARMOR: "critical immunity",
+      BIGPECKS: "defense drop immunity", BLAZE: "low HP fire power", CHLOROPHYLL: "sun speed",
+      COMPOUNDEYES: "accuracy multiplier",
+      CHEEKPOUCH: "berry consumption healing", CONTRAGUARDIA: "flying redirection", CORROSION: "poison type immunity bypass",
+      DRYSKIN: "water absorption",
+      COMPETITIVE: "opponent stat-drop special attack boost",
+      FILTER: "super-effective damage reduction", FLAMEBODY: "contact burn", FLORACION: "final grass damage",
+      GLUTTONY: "pinch berry threshold", GOOEY: "contact speed drop", GRASSYSURGE: "entry grassy terrain",
+      GUTS: "status attack", HEATPROOF: "fire damage reduction", HUGEPOWER: "physical attack",
+      IMMUNITY: "poison immunity", IMPOSTER: "entry transformation",
+      INNERFOCUS: "flinch immunity", INTIMIDATE: "entry attack drop", KEENEYE: "accuracy and evasion",
+      IRONFIST: "punch move power", LEVITATE: "ground immunity", LIQUIDVOICE: "source normal-to-water conversion",
+      LEAFGUARD: "sun status immunity", MAGICGUARD: "indirect damage", MEGALAUNCHER: "pulse move power",
+      MOLDBREAKER: "defensive ability bypass",
+      MULTISCALE: "full HP damage reduction", NEUROFORCE: "super-effective power", NOGUARD: "accuracy bypass", OVERGROW: "low HP grass power",
+      NATURALCURE: "status cure on switch", OWNTEMPO: "confusion immunity", PIELHELADA: "normal-to-ice conversion",
+      PIELHERBACEA: "normal-to-grass conversion", PIXILATE: "normal-to-fairy conversion", PRANKSTER: "status priority",
+      PROTEAN: "type change before move", PUREPOWER: "physical attack", QUICKFEET: "status speed", REGENERATOR: "switch healing",
+      RATTLED: "contact speed boost", RIVALRY: "source gender damage", ROCKHEAD: "recoil immunity",
+      ROUGHSKIN: "contact damage", RUNAWAY: "guaranteed wild escape", SAPSIPPER: "grass immunity and attack boost",
+      SCRAPPY: "ghost immunity bypass", SERENEGRACE: "secondary chance",
+      SHEERFORCE: "secondary suppression and power", SHELLARMOR: "critical immunity",
+      SHEDSKIN: "status cure", SHIELDDUST: "secondary prevention", SIMPLE: "stat stage multiplier",
+      SKILLLINK: "maximum multi-hit count", SNIPER: "critical damage", SOLIDROCK: "super-effective damage reduction",
+      SOUNDPROOF: "sound move immunity",
+      STATIC: "contact paralysis", STEADFAST: "flinch speed", STICKYHOLD: "held-item theft immunity", STRONGJAW: "biting move power",
+      SWARM: "low HP bug power", SWIFTSWIM: "rain speed", SYNCHRONIZE: "status reflection", TECHNICIAN: "low-power move boost",
+      THICKFAT: "fire and ice resistance", TORRENT: "low HP water power", TOUGHCLAWS: "contact move power",
+      UNAWARE: "ignore opposing stat stages", WATERABSORB: "water absorption",
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     };
     expect(Object.keys(audited).sort()).toEqual([...IMPLEMENTED_BATTLE_ABILITIES].sort());
   });
 
+<<<<<<< HEAD
   it("ports Sheer Force's power, secondary suppression and Life Orb exception together", () => {
     const move = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, accuracy: 0, effectChance: 100 };
     const trace: BattleTrace[] = [];
@@ -851,6 +886,118 @@ describe("ability conformance regressions", () => {
     });
     expect(double.teams.opponent.members[0]?.stages).toMatchObject({ attack: -1, specialAttack: 2 });
     expect(double.teams.opponent.members[1]?.stages.attack).toBe(1);
+=======
+  it("changes a Protean user's type before its selected move", () => {
+    const user = battler("player", { ability: "PROTEAN", types: ["NORMAL"],
+      moves: [{ move: MINIMAL_MOVE_CATALOG.WATERGUN, pp: MINIMAL_MOVE_CATALOG.WATERGUN.pp }] });
+    const result = resolveTurn(battle(user),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } }, new SeededRandom(5));
+    expect(result.state.battlers.player.types).toEqual(["WATER"]);
+    expect(result.events).toContainEqual({ type: "abilityActivated", side: "player",
+      ability: "PROTEAN", effect: "change-type" });
+  });
+
+  it("applies the deterministic Mega ability damage modifiers in the shared core", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, flags: "aijm" };
+    const neutral = calculateDamage("player", battler("player"), battler("opponent"), move,
+      new ScriptedRandom([1, 15]), []);
+    const boosted = ["IRONFIST", "MEGALAUNCHER", "STRONGJAW", "TECHNICIAN", "TOUGHCLAWS"]
+      .map((ability) => calculateDamage("player", battler("player", { ability }), battler("opponent"), move,
+        new ScriptedRandom([1, 15]), []));
+    expect(boosted.every((damage) => damage > neutral)).toBe(true);
+
+    const superEffective = { ...MINIMAL_MOVE_CATALOG.WATERGUN, accuracy: 0 };
+    const fireTarget = battler("opponent", { types: ["FIRE"] });
+    const ordinary = calculateDamage("player", battler("player", { types: ["WATER"] }), fireTarget,
+      superEffective, new ScriptedRandom([1, 15]), []);
+    const filtered = calculateDamage("player", battler("player", { types: ["WATER"] }),
+      { ...fireTarget, ability: "FILTER" }, superEffective, new ScriptedRandom([1, 15]), []);
+    expect(filtered).toBeLessThan(ordinary);
+  });
+
+  it("blocks critical hits with Battle Armor and makes Skill Link hit five times", () => {
+    const armoredTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player"), battler("opponent", { ability: "BATTLEARMOR" }),
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([15]), armoredTrace);
+    expect(armoredTrace).toContainEqual(expect.objectContaining({ type: "damage", critical: false }));
+
+    const multiHit = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FURYATTACK",
+      functionCode: "0C0" as const, accuracy: 0 };
+    const result = resolveTurn(battle(battler("player", { ability: "SKILLLINK",
+      moves: [{ move: multiHit, pp: multiHit.pp }] }), battler("opponent", {
+      stats: { ...battler("opponent").stats, maxHp: 500 }, hp: 500,
+    })), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([1, 15, 1, 15, 1, 15, 1, 15, 1, 15, 99, 1, 15]));
+    expect(result.events.filter((event) => event.type === "damageApplied" && event.source === "player")).toHaveLength(5);
+  });
+
+  it("uses Compound Eyes in the authoritative accuracy calculation", () => {
+    const inaccurate = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 75 };
+    const result = resolveTurn(battle(battler("player", { ability: "COMPOUNDEYES",
+      moves: [{ move: inaccurate, pp: inaccurate.pp }] }), battler("opponent")),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+    new ScriptedRandom([90, 1, 15, 99, 1, 15]));
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: "moveMissed", side: "player" }));
+    expect(result.trace).toContainEqual(expect.objectContaining({ type: "accuracy", side: "player", threshold: 97.5 }));
+  });
+
+  it("uses Pokemon Z's converted move type for damage, STAB and effectiveness", () => {
+    const normalMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0 };
+    const aerilateTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player", { ability: "AERILATE", types: ["FLYING"] }),
+      battler("opponent", { types: ["GRASS"] }), normalMove, new ScriptedRandom([1, 15]), aerilateTrace);
+    expect(aerilateTrace).toContainEqual(expect.objectContaining({ type: "damage", stab: 1.5,
+      effectiveness: 2, abilityModifier: { ability: "AERILATE", multiplier: 1.2 } }));
+
+    const liquidVoiceTrace: BattleTrace[] = [];
+    calculateDamage("player", battler("player", { ability: "LIQUIDVOICE" }),
+      battler("opponent", { types: ["FIRE"] }), normalMove, new ScriptedRandom([1, 15]), liquidVoiceTrace);
+    expect(liquidVoiceTrace).toContainEqual(expect.objectContaining({ type: "damage", effectiveness: 2,
+      abilityModifier: { ability: "LIQUIDVOICE", multiplier: 1.2 } }));
+  });
+
+  it("applies Levitate and Scrappy while Mold Breaker bypasses defensive abilities", () => {
+    const groundMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "GROUND", accuracy: 0 };
+    const levitateTrace: BattleTrace[] = [];
+    expect(calculateDamage("player", battler("player"), battler("opponent", { ability: "LEVITATE" }),
+      groundMove, new ScriptedRandom([1, 15]), levitateTrace)).toBe(0);
+    expect(levitateTrace).toContainEqual(expect.objectContaining({ type: "damage", effectiveness: 0 }));
+    expect(calculateDamage("player", battler("player", { ability: "MOLDBREAKER" }),
+      battler("opponent", { ability: "LEVITATE" }), groundMove, new ScriptedRandom([1, 15]), [])).toBeGreaterThan(0);
+
+    const ghost = battler("opponent", { types: ["GHOST"] });
+    expect(calculateDamage("player", battler("player"), ghost, MINIMAL_MOVE_CATALOG.TACKLE,
+      new ScriptedRandom([1, 15]), [])).toBe(0);
+    expect(calculateDamage("player", battler("player", { ability: "SCRAPPY" }), ghost,
+      MINIMAL_MOVE_CATALOG.TACKLE, new ScriptedRandom([1, 15]), [])).toBeGreaterThan(0);
+  });
+
+  it("blocks sound moves and lets Mold Breaker pass through Soundproof", () => {
+    const soundMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "ROUND", flags: "k", accuracy: 0 };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const blocked = resolveTurn(battle(battler("player", { moves: [{ move: soundMove, pp: soundMove.pp }] }),
+      battler("opponent", { ability: "SOUNDPROOF" })), actions, new SeededRandom(30));
+    expect(blocked.events).toContainEqual({ type: "abilityActivated", side: "opponent",
+      ability: "SOUNDPROOF", effect: "block-move" });
+    expect(blocked.state.battlers.opponent.hp).toBe(100);
+
+    const bypassed = resolveTurn(battle(battler("player", { ability: "MOLDBREAKER",
+      moves: [{ move: soundMove, pp: soundMove.pp }] }), battler("opponent", { ability: "SOUNDPROOF" })),
+    actions, new SeededRandom(30));
+    expect(bypassed.state.battlers.opponent.hp).toBeLessThan(100);
+  });
+
+  it("boosts Sheer Force moves while suppressing their effect and Life Orb recoil", () => {
+    const flameCharge = { ...MINIMAL_MOVE_CATALOG.FLAMECHARGE, power: 20, accuracy: 0, effectChance: 100 };
+    const actions = { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } } as const;
+    const result = resolveTurn(battle(battler("player", { ability: "SHEERFORCE", heldItem: "LIFEORB",
+      moves: [{ move: flameCharge, pp: flameCharge.pp }] }), battler("opponent")), actions, new SeededRandom(31));
+    expect(result.state.battlers.player.stages.speed).toBe(0);
+    expect(result.events).not.toContainEqual(expect.objectContaining({ type: "itemActivated", side: "player",
+      item: "LIFEORB" }));
+    expect(result.trace).toContainEqual(expect.objectContaining({ type: "damage",
+      abilityModifier: { ability: "SHEERFORCE", multiplier: 1.3 } }));
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   });
 
   it("lets Magic Guard block binding and curse while their lifecycle still advances", () => {

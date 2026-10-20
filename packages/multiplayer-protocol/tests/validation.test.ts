@@ -49,6 +49,14 @@ describe("multiplayer protocol", () => {
     expect(() => parseClientMessage(JSON.stringify({ ...message, damage: 999 }))).toThrow("submitAction mal formé");
   });
 
+  it("transports only an explicit Mega Evolution intent with a move", () => {
+    const message: ClientMessage = { type: "submitAction", version: 15, requestId: "mega-1",
+      battleId: "battle-1", turn: 3, action: { kind: "move", moveIndex: 1, megaEvolution: true } };
+    expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    expect(() => parseClientMessage(JSON.stringify({ ...message,
+      action: { kind: "move", moveIndex: 1, megaEvolution: false } }))).toThrow("submitAction mal formé");
+  });
+
   it("validates every client message shape strictly", () => {
     expect(parseClientMessage('{"type":"setReady","version":15,"requestId":"r1","ready":true}')).toMatchObject({ type: "setReady", ready: true });
     expect(parseClientMessage('{"type":"requestSnapshot","version":15,"requestId":"r2"}')).toMatchObject({ type: "requestSnapshot" });
@@ -144,6 +152,21 @@ describe("multiplayer protocol", () => {
       .toMatchObject({ type: "openSourceBattle", opponentTeam: { members: [{ capture: { weight: 69 } }] } });
   });
 
+  it("accepts bounded Mega Evolution metadata in battle teams", () => {
+    const megaTeam = { ...duelTeam, members: [{ ...duelTeam.members[0],
+      megaEvolution: { heldItem: "EEVEEITE", form: 1,
+        stats: { maxHp: 40, attack: 30, defense: 30, specialAttack: 30, specialDefense: 30, speed: 30 },
+        types: ["NORMAL"], ability: "RUNAWAY", activationAvailable: true } }] };
+    expect(parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+      requestId: "duel-mega", team: megaTeam })))
+      .toMatchObject({ team: { members: [{ megaEvolution: { heldItem: "EEVEEITE", form: 1,
+        activationAvailable: true } }] } });
+    expect(() => parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+      requestId: "duel-mega-invalid", team: { ...duelTeam, members: [{ ...duelTeam.members[0],
+        megaEvolution: { ...megaTeam.members[0]!.megaEvolution, form: 0 } }] } })))
+      .toThrow("challengePlayer mal forme");
+  });
+
   it("accepts every engine-supported held item in PvP responses and shared battle openings", () => {
     const context = { origin: "source-wild", mapId: 3, format: "single", escapable: true,
       healingItemsAllowed: true, narrativeOwnerId: "host-1", presentation: { battlebackId: "forest",
@@ -199,7 +222,7 @@ describe("multiplayer protocol", () => {
           boostTenPercent: false, boostTwentyPercent: false } }, continuation: "trainer-sequence" } as const;
     for (const functionCode of ["00F", "009", "012", "013", "01E", "022", "023", "027", "028", "048", "049",
       "04B", "04D", "077", "07B", "088", "093", "09A", "09E", "0A1", "0A2", "0A7", "0AA", "0AD",
-      "0B9", "0BA", "0BC", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
+      "0B9", "0BA", "0BC", "0BE", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
       const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, functionCode };
       const team = { ...duelTeam, items: ["SUPERPOTION"], members: [{ ...duelTeam.members[0],
         heldItem: "EVIOLITE" as const, canEvolve: true,
@@ -336,13 +359,16 @@ describe("multiplayer protocol", () => {
   it("validates a read-only source scene without accepting arbitrary presentation commands", () => {
     const scene = { mapId: 3, sequenceActive: true,
       dialogue: { label: "Crisanto", text: "Regarde !", choices: [] },
-      actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255 }],
+      actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255,
+        renderOffsetY: -12 }],
       presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
     expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
     const message: ClientMessage = { type: "setSourceScene", version: 15, requestId: "scene-1", scene };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseSourceSceneSnapshot({ ...scene,
       presentation: { id: 2, kind: "execute-ruby", data: {} } })).toThrow("Commande visuelle");
+    expect(() => parseSourceSceneSnapshot({ ...scene,
+      actors: [{ ...scene.actors[0]!, renderOffsetY: -256 }] })).toThrow("Acteur de cinematique");
   });
 
   it("rejects malformed and oversized payloads", () => {

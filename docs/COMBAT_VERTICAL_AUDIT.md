@@ -139,6 +139,7 @@ au calculateur `pokemon-z-participant` deja utilise en Coop. Bonus Dresseur,
 partage, gains multiples et details d'arrondi sont couverts par les tests. Le cas
 Remi/Fluvetin passe ainsi de 143 EXP sauvages a 142 EXP Dresseur pour Feunnec.
 
+<<<<<<< HEAD
 Extension Pickpocket du 2026-10-20 : après une attaque de contact qui inflige des
 dégâts, un porteur sans objet vole l'objet tenu de l'attaquant. Le transfert, son
 talent et sa provenance font partie du snapshot tactique commun. La room applique
@@ -204,3 +205,130 @@ par l'adversaire, y compris Intimidation à la création, au changement et sur l
 deux emplacements d'un combat double. Le snapshot de room conserve les crans après
 reconnexion. L'audit local atteint désormais 565 problèmes, dont 151 talents ; le
 registre compte 79 talents pleinement supportés, 5 partiels et 171 absents.
+=======
+## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
+
+Frontière automatisée le 2026-10-19 : Maps 023 à 029, soit Rena, Gerard,
+Amarna, Fibo, Hector et Zaida, Maya, Asta et les trois variantes de Crisanto,
+ainsi que les rencontres terrestres et de pêche déclarées jusqu'au niveau 18.
+Le prédicat source `$Trainer.ablePokemonCount == 1` est évalué depuis l'équipe
+personnelle consciente et non depuis un numéro d'événement. Il choisit le combat
+simple ou double avant que l'hôte n'ouvre le combat autoritaire ; l'invité reçoit
+le snapshot et la présentation habituels.
+
+Le registre commun porte désormais les fonctions nécessaires à l'ouverture de
+ces équipes et rencontres : Paralysie garantie (`008`), Amnésie (`033`),
+Grincement (`04C`), Croco Larme (`04F`), Double Pied (`0BD`), Soin (`0D5`),
+Lance-Boue (`09D`) et Mur Lumière (`0A3`). Les capacités de bas niveau
+Bâillement, Attraction, Chargeur, Lilliput, Fléau, Assistance et les attaques
+dont l'effet secondaire reste incomplet sont acceptées par le même protocole.
+Les talents déterministes Battant, Médic Nature, Farceur, Peau Herbée,
+Herbivore, Inconscient et Absorb Eau sont exécutés par le noyau partagé.
+
+Les combats de nid `pbBossFight` sont convertis en rencontres scénarisées
+incontournables. Une liste d'espèces indexée par une variable narrative est
+résolue par l'hôte, jamais par le client. Les récompenses aléatoires sont tirées
+avec l'état RNG persistant puis stockées dans la rencontre en attente ; objets et
+switches ne sont validés qu'après la victoire. Ce contrat couvre solo, hôte,
+invité observateur et reconnexion sans dupliquer la règle métier.
+
+Correction narrative du 2026-10-19 : le Couafarel du nid est créé pendant que le
+switch source 482 est actif. Le hook `onWildPokemonCreate` lui applique alors
+`CADUCO`, nommé `Exténuation` (`EXT`) dans la version française. Cette condition
+est maintenant extraite dans `encounter-modifiers.json` et appliquée avant
+l'ouverture du snapshot autoritaire. Le même mécanisme couvre les statuts de zone
+des Maps 138 à 140 sans règle propre à cet événement. Formes, capacités forcées,
+objets, IV/EV, shiny et surnoms des autres branches statiques du hook utilisent
+désormais ce même catalogue. Les deux conditions shiny dépendant d'un contexte
+dynamique non porté restent listées dans son audit. Le niveau aléatoire de Map999
+et les profils de statistiques de boss de la variable 300 sont portés et persistés
+avant l'ouverture du snapshot autoritaire.
+
+Fermeture P0 du 2026-10-19 : `pbBossFight` reproduit maintenant le format source
+asymétrique deux contre un lorsque l'équipe préparée contient au moins deux
+Pokémon. Le boss reste seul sur son camp et l'hôte commande ses deux emplacements.
+Comme le combat est déjà double, un invité Coop reste observateur et ne peut pas
+s'ajouter au terrain. Le profil de rangs préparé par la variable 300 est appliqué
+au combattant adverse, annoncé par la présentation commune, persisté dans la
+rencontre et restauré sans reroll après reconnexion.
+
+Le nid insecte de Map028 utilise également l'opérande aléatoire natif de RPG Maker
+pour la variable 183. Le tirage est fait une fois par le RNG autoritaire persistant ;
+l'espèce et la récompense restent donc stables pendant toute la séquence. La scène
+post-combat de Couafarel peut repositionner ses acteurs grâce à la commande
+générique `set-event-location`, publiée comme les autres poses de PNJ aux joueurs
+présents. Deux téléportations neutres sont disponibles dans Test dev pour la
+recette des nids de Map024 et Map028 ; elles ne modifient aucun switch narratif.
+Le tirage Dardargnan niveau 17 est maintenant constructible : `TWINEEDLE` (`0BE`)
+résout ses deux impacts et sa chance d'empoisonnement par impact dans le noyau
+commun, et traverse le même validateur en solo et dans la room Coop.
+
+Fermeture des mécaniques partielles du 2026-10-19 : `CHARGE`, `DEFOG`,
+`ASSURANCE`, `ROUND`, `RAGE`, `FLAIL`/`REVERSAL`, `HELPINGHAND`, `LEECHSEED`,
+`COVET`/`THIEF`, `BUGBITE`/`PLUCK`, la famille `TAKEDOWN` et `RAPIDSPIN` sont
+désormais exécutées complètement par le noyau commun simple/double. Cela couvre
+les seuils exacts de Fléau, les combos de tour et d'allié, le drain lié à la
+position en double, le recul et ses immunités, ainsi que le nettoyage des écrans,
+terrains, pièges et graines. Le transfert d'objet est temporaire contre un
+Dresseur et conservé après un combat sauvage, y compris au règlement Coop.
+
+Le catalogue des objets tenus continue d'être étendu par lots : Picore/Piqûre
+appliquent l'effet des Baies déjà admises par ce contrat, sans inventer l'effet
+d'une Baie encore absente du moteur. L'absence de mapping source de l'animation
+de `THIEF` conserve le fallback prévu par l'audit.
+
+Validation manuelle du 2026-10-19 : le porteur a validé avec ses assets locaux
+le parcours complet Maps 023 à 029 ainsi que les nids de Couafarel et insecte.
+La recette couvre le déclenchement, les combats, leurs fins et les suites de
+scène ; ce lot vertical est donc fermé fonctionnellement.
+
+## Lot 5 — Route 5, Maps 055–056 — portage automatisé terminé, recette manuelle attendue
+
+Le pipeline accepte désormais un périmètre `map:ID`. Il réunit les rencontres de
+la carte, les combats de Dresseurs et les combats sauvages scénarisés extraits de
+ses événements. Les capacités par niveau sont arrêtées au niveau réel de chaque
+Pokémon et un Dresseur sans index de talent forcé utilise son premier talent
+normal, comme la construction runtime. Ce périmètre évite de bloquer une zone sur
+des apprentissages futurs ou des talents cachés qu'elle ne peut pas rencontrer.
+
+Premier sous-lot porté dans le noyau partagé : Écrasement (`010`), Pouvoir Antique
+(`02D`), Soucigraine (`064`), Ombre Nocturne (`06D`), Acrobatie (`086`) et Sabotage
+(`0F0`). Les dégâts fixes respectent les immunités de type ; Soucigraine conserve
+la liste de talents non remplaçables de Z ; Sabotage applique son multiplicateur,
+Viscosité et la restitution de l'objet après le combat. Les événements tactiques
+de changement de talent et de perte d'objet traversent le même snapshot validé et
+la même présentation en solo et en Coop.
+
+Le second sous-lot ferme Taillade (`091`), Ampleur (`095`), Force Nature (`0B3`),
+Roulade (`0D3`), Morphing (`069`), Brouhaha (`0D1`) et Embargo (`0F8`). Les
+compteurs de verrouillage, leur remise à zéro, les PP, le réveil et le blocage des
+objets font partie du snapshot tactique partagé. Force Nature reçoit un contexte
+générique d'environnement (`grass`, `cave`, eau, sable, neige, etc.) depuis la
+rencontre, sans condition liée à une carte.
+
+Les talents requis sont raccordés au même noyau simple/double : Chlorophylle,
+Glissade, Corps Ardent, Gloutonnerie pour les Baies actuellement supportées,
+Poisseux, Créa-Herbe, Vaccin, Imposteur, Feuille Garde, Brise Moule, Tempo Perso,
+Phobique, Peau Dure et Fuite. Intimidation est également sortie du statut partiel.
+Morphing conserve l'identité originale et la restaure au retrait ; Imposteur et
+Créa-Herbe s'appliquent à l'entrée, y compris après remplacement. Les effets
+persistants sont communs au solo, à l'hôte et à la room autoritaire, donc restaurés
+depuis le snapshot après reconnexion.
+
+Après `prepare:local` du 2026-10-19, `map:55` ne remonte plus aucune alerte et
+`map:56` ne remonte que l'animation `FAINTATTACK`. Cette capacité n'a réellement
+aucune correspondance dans `move2anim.dat` : le fallback reste volontairement
+actif conformément à la règle d'import, sans animation inventée. Le code du lot
+est terminé ; la fermeture fonctionnelle attend encore la recette manuelle des
+cinq Dresseurs et rencontres en solo, hôte, invité puis après reconnexion.
+
+## Correctif transversal — Clairière Collinaire, Map046
+
+Le combat narratif contre `NUBILA1:Núbila:0` dispose maintenant de toutes ses
+dépendances bloquantes : convention Essentials des index de talents, Acidarmure,
+Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii/Gloutonnerie. Le test du pont
+source reconstruit l'équipe réelle de trois Pokémon. Son audit ciblé ne conserve
+que l'animation de `LUZDECADENTE`, absente de la table source et donc rendue par
+le fallback. Une recette manuelle du déclenchement et de la reprise de scène sur
+Map046 reste requise.
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e

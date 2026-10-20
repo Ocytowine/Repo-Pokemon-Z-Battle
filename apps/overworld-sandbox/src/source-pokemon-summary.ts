@@ -204,7 +204,7 @@ function genderSymbol(gender: SourcePokemonSummaryModel["entry"]["pokemon"]["met
 
 function readableStatus(status: string): string {
   const labels: Readonly<Record<string, string>> = { sleep: "Sommeil", poison: "Poison", burn: "Brûlure",
-    paralysis: "Paralysie", frozen: "Gel", caduco: "Caduco", hemorrhage: "Hémorragie" };
+    paralysis: "Paralysie", frozen: "Gel", caduco: "Exténuation", hemorrhage: "Hémorragie" };
   return labels[status] ?? status;
 }
 

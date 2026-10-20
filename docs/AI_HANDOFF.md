@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-15.
+Derniere mise a jour : 2026-10-19.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -13,6 +13,17 @@ consulter ce backlog qu'apres avoir compris l'etat reel decrit ici.
 Pokemon Z-Battle est un moteur web TypeScript qui interprete les donnees locales de
 Pokemon Z v2.12 FR sans executer son Ruby et sans versionner ses assets. Les donnees
 extraites vivent dans `.pokemon-z/`, qui reste local et ignore par Git.
+
+Jalon narratif du 2026-10-19 : `encounter-modifiers.json` couvre maintenant les
+profils de rangs places dans la variable source 300 avant les boss sauvages. La
+commande `set-next-wild-battle-stages` conserve ce profil one-shot, le transfere
+dans la rencontre persistante puis le noyau commun l'applique au snapshot tactique
+utilise en solo et en Coop. La Map999 extrait aussi sa politique exacte
+`pbBalancedLevel(equipe) - 4 + rand(5)` ; le niveau et l'etat du RNG sont memorises
+avant l'ouverture du combat, donc une reconnexion ne relance pas le tirage. La
+creation au niveau final recalcule naturellement statistiques et capacites. L'audit
+des modificateurs ne garde plus que deux conditions dynamiques non portees : le
+switch de debug shiny nomme et la case brillante du Poke Radar.
 
 Une correction doit autant que possible profiter a toutes les cartes. Ne pas coder
 une regle metier a partir de `Map002`, `EV017`, du switch 67 ou de Keunotor si la
@@ -3656,6 +3667,7 @@ Tests : développement d'événements communs et détection des cycles, projecti
 fabrication, portage des deux hooks, traduction du contexte commun et effacement
 temporaire Coop.
 
+<<<<<<< HEAD
 ## Tirage des talents non forcés et audit de dépendances — 2026-10-20
 
 La règle retenue avec le porteur est maintenant explicite : lorsqu'une rencontre
@@ -3920,3 +3932,671 @@ les 368 mécaniques d'attaque manquantes ne changent pas dans ce lot centré sur
 talents. Les tests couvrent chaque déclencheur, les limites de crans, le critique,
 les seuils stricts, les frappes multiples, Intimidation simple/double, l'entrée par
 changement et la reconnexion Coop.
+=======
+## Arbustes Coupe et Hachuela Endeble — 2026-10-16
+
+Coupe propre à Pokémon Z est raccordée au même noyau d'obstacles destructibles que
+les rochers. L'audit de la v2.12 FR trouve 30 arbustes sur 19 cartes, tous liés à
+l'événement commun `TenerCorte` (59). Si le joueur ne possède pas de
+`HACHAENDEBLE`, cet événement peut fabriquer une hache avec une `MADERA` et une
+`VIRUTASFERREAS`. La recette du menu Alchimie est débloquée au niveau 10, mais la
+fabrication contextuelle source vérifie la variable 926 au niveau 12 : cette
+incohérence du jeu original est conservée et testée, pas corrigée arbitrairement.
+
+Une hache déjà possédée fonctionne sans cette vérification. L'interaction joue
+`PRSFX- Cut`, rend l'animation de carte 19 `Corte`, exécute la courte oscillation
+de l'arbuste, applique ses récompenses éventuelles puis retire exactement une
+hache avec le message de casse source. Vingt-neuf arbustes emploient un
+self-switch persistant ; Map046/EV028 emploie `pbEraseThisEvent` et revient au
+rechargement de la carte. Les gains possibles restent lus dans chaque événement,
+sans table de récompenses codée à la main.
+
+Autorité et Coop : ingrédients, hache et récompenses appartiennent au joueur ; la
+mutation du monde partagé reste exécutée par l'hôte. Le self-switch rejoint
+l'histoire de l'hôte et la disparition temporaire passe par la liste d'acteurs
+autoritaire déjà restaurée par la room. Son, animation et disparition sont publiés
+aux joueurs présents ; une excursion personnelle de l'invité réutilise le même
+noyau local. Aucun message réseau ni état parallèle propre à Coupe n'a été ajouté.
+
+Tests : fabrication contextuelle complète, recette personnelle au niveau 10,
+utilisation d'une hache déjà possédée sous le niveau 12, son/animation source,
+récompenses, casse, self-switch et détection Coop de l'effacement temporaire.
+
+## Objets de terrain, amulettes et énigme ETERNO — 2026-10-16
+
+Les 18 amulettes de type de Z utilisent maintenant un état personnel persistant
+`typeAmulet`. L'usage depuis le Sac consomme une unité, refuse tout cumul et lance
+un compteur de 500 pas ; les déplacements sur glace (terrain 12) ne le réduisent
+pas. Le filtre est appliqué dans le noyau commun de tirage, donc aux rencontres de
+marche, grotte, pêche et Éclate-Roc. Le Ruby source place l'effet sous un tirage à
+50 % : une rencontre sur deux tente de limiter les slots aux espèces du type, puis
+revient à la table normale si aucun slot ne correspond. Ce comportement parfois
+moins fort que sa description est conservé volontairement.
+
+Cet état, l'objet consommé et le compteur restent privés au joueur en solo, hôte,
+invité ou excursion. Seule la rencontre déjà obtenue suit le contrat de combat
+Coop existant ; aucune équipe, table filtrée ou amulette n'est publiée à la room.
+La migration des anciennes sauvegardes initialise l'effet à `null`.
+
+Le premier registre générique d'objets de terrain sensibles au lieu couvre aussi
+`TALISMANMALVO`. Il ne se consomme pas : hors cible il affiche l'échec source ; en
+Map190 `(74,25)` il active le switch 412. Sur le monde partagé, cette mutation est
+réservée à l'hôte puis publiée avec le monde et les acteurs. Un invité en excursion
+utilise le même noyau sur sa progression locale.
+
+La chaîne de la `REGADERAMAGICA` n'est pas un handler du Sac dans Z : elle reste
+portée par les fleurs de Map192/Map215. Le lecteur générique résout la possession,
+le choix, l'animation 28, l'attente, la consommation, l'obtention du Talisman et le
+switch 400. Son obtention en Map191 passe par le self-switch et `grant-item` déjà
+communs.
+
+Enfin, la condition Ruby `unown_check` est évaluée génériquement depuis l'équipe
+persistante. Elle exige exactement six `UNOWN` dans l'ordre avec les formes
+`[4,19,4,17,13,14]` (ETERNO). Les formes étaient déjà transportées par
+`PersistentPokemon.metadata.form`; aucun état parallèle n'a été créé.
+
+## Mini-jeu de fouilles — 2026-10-16
+
+`pbMiningGame` est porté comme une vraie scène personnelle et non comme un tirage
+d'objet. Le noyau reprend la grille source de 13 × 10 cases, les profondeurs de
+roche de 2 à 6, les 61 variantes graphiques pondérées de trésors, les 13 formes de
+métal, les règles anti-chevauchement et anti-doublon, ainsi que les 2 à 4 trésors
+et 4 à 6 obstacles d'une paroi. Le burin frappe en croix et ajoute une fissure ; le
+marteau frappe les neuf cases et en ajoute deux. Une pièce métallique exposée
+arrête le coup central. À 49 fissures, la paroi s'effondre avant le verdict de fin.
+
+La scène réutilise les feuilles `Mining/*` et les onze sons source. Elle accepte
+clavier, souris et tactile : toucher une case la sélectionne et frappe, tandis que
+les boutons de changement d'outil, de frappe et de sortie gardent une cible
+tactile. Un compteur indique les trésors dégagés et leur éclat de découverte ne
+se rejoue pas lors des coups suivants. Les trésors entièrement dégagés sont remis une seule fois au Sac, y
+compris après un abandon ou un effondrement. L'entrée `Test dev > Mini-jeux >
+Tester les fouilles` crée une paroi neuve sans exiger Marteau/Ciseau afin de rendre
+le lot testable avant d'atteindre la Grotte de Las-Eau.
+
+Le port Ruby transforme génériquement `pbMiningGame` en commande auditée
+`open-mining`. Les événements réels de Map024 et Map132 utilisent donc la même
+scène une fois leurs conditions source satisfaites. Autorité : plateau, commandes
+et récompenses sont personnels en solo, chez l'hôte et chez l'invité ; aucune
+mutation narrative ou donnée du Sac n'est publiée. Une séquence source est mise en
+pause pendant la scène puis reprend après le règlement, sans seconde
+implémentation Coop.
+
+Tests : validité intégrale du catalogue, bornes de génération, absence de
+chevauchement, révélation atomique, blocage par le métal, priorité de
+l'effondrement et conversion/audit de `pbMiningGame`.
+
+Restent explicitement hors de ce jalon : les interfaces Guide des
+personnages/PokéObjectif, Succès et Méga-Évolution.
+
+## Guide des personnages et audit PokéObjectif — 2026-10-16
+
+Le Sac sait maintenant ouvrir le Guide des personnages depuis l'objet
+`PERSONAJES`. Le catalogue reprend exactement les 30 entrées de
+`guia-personajes.rb`, leurs noms, leurs chemins `infog_*.png` et la variable source
+240. La v2.12 ne définit toutefois que deux seuils : Olivier au niveau 0, puis les
+29 autres fiches dès le niveau 1. Le moteur conserve le seuil sur chaque entrée
+pour accueillir une progression source corrigée sans refaire l'interface.
+
+Les 30 images `Graphics/Pictures/infog_*.png` référencées par le Ruby ne sont pas
+présentes dans l'installation française auditée. La vue responsive les charge si
+elles deviennent disponibles, puis utilise automatiquement une illustration ou
+une pose officielle déjà présente dans les dossiers `Pictures`/`Characters` du
+jeu source. Olivier emploie ainsi `olivierPres.png` au lieu d'aboutir sur un
+message d'asset absent. Chaque entrée possède une liste ordonnée de replis et la
+fiche textuelle n'apparaît que si aucun de ces fichiers n'est disponible. Ne pas
+copier ces images dans Git : elles restent servies depuis l'installation locale.
+Autorité : catalogue source et variable narrative de
+l'hôte dans un monde partagé ; domaine : lecture seule ; persistance : aucune
+donnée supplémentaire ; réplication : aucune, chaque client projette la variable
+narrative déjà synchronisée. En excursion, la progression locale est utilisée.
+
+`POKEOBJETIVO` est bien déclaré comme objet important à usage terrain, mais aucun
+`ItemHandlers`, appel Ruby, événement commun, catalogue d'objectifs ou illustration
+associée n'existe dans les scripts, cartes ou assets de la v2.12 FR. Sa roue le
+signale donc comme indisponible avec cette cause précise. Ne pas inventer une table
+d'étapes à partir de numéros de cartes ou de switches : raccorder le même composant
+de lecture lorsque des données source fiables seront fournies.
+
+Restent hors de ce jalon : PokéObjectif faute de données source, Succès et
+Méga-Évolution.
+
+## Recherche globale du Sac — 2026-10-16
+
+Le Sac possède une recherche instantanée placée au-dessus des poches. Une requête
+non vide parcourt tous les objets possédés, même hors de la poche sélectionnée, et
+présente directement les cartes d'objets sans recréer leurs dossiers virtuels. La
+recherche est insensible aux accents et accepte plusieurs termes cumulés ; elle
+porte sur le nom affiché, la description, l'identifiant interne et le nom français
+de la capacité associée à une CT/CS. Les résultats conservent la roue d'actions
+normale. Effacer la requête restaure la poche précédente ; choisir explicitement
+une poche efface la recherche afin que la navigation reste compréhensible.
+
+Cette fonction est une projection purement locale de l'inventaire personnel : elle
+ne modifie aucune sauvegarde, n'envoie aucun message Coop et se comporte de la même
+façon en solo, chez l'hôte et chez l'invité.
+
+Le catalogue `Test dev > Gestion du Sac` possède également sa propre recherche
+instantanée. Contrairement à celle du Sac, elle parcourt tous les objets du jeu,
+y compris ceux que le joueur ne possède pas encore. Elle reprend les mêmes champs
+(nom, description, identifiant et capacité de CT/CS), affiche la catégorie de
+chaque résultat et sélectionne automatiquement la bonne poche avant le don. Une
+recherche sans résultat ne peut jamais déclencher par erreur le don de toute une
+catégorie. La quantité choisie reste mémorisée pendant le filtrage.
+
+## Méga-Évolution — catalogue et contrat partagé, lot 1 — 2026-10-16
+
+Le portage de la Méga-Évolution a commencé par les données et la règle métier,
+avant toute commande d'interface. `prepare:local` produit désormais
+`mega-evolutions.json` directement depuis `Pokemon_MegaEvolution` sans exécuter
+le Ruby. L'installation v2.12 FR contient 106 espèces et 114 couples
+espèce/Méga-Gemme/forme ; Charizard, Chesnaught, Delphox, Greninja et plusieurs
+autres espèces ont plusieurs branches qui ne doivent donc jamais être ramenées à
+une table « une espèce = une forme ».
+
+Le même catalogue extrait également le contrat global : le joueur doit posséder
+`BRAZALESPIRITUAL`, le switch 34 peut interdire la mécanique, une seule
+Méga-Évolution est permise par propriétaire et par combat, les adversaires PNJ
+n'ont pas besoin de l'objet d'activation, et Sky Drop bloque l'activation. Le
+noyau pur `megaEvolutionEligibility` représente ces décisions sans dépendance au
+DOM ou au client ; il est destiné à être appelé aussi bien par l'adaptateur solo
+que par la room Coop autoritaire.
+
+Contrairement à l'ancienne note de débogage, aucune capacité à connaître n'est
+exigée par le code de Pokémon Z 2.12 : la branche est choisie par l'espèce et la
+Méga-Gemme tenue. L'audit signale une anomalie source : `GROUDONITE` est utilisée
+par la définition de Groudon mais absente d'`items.txt`. Ne pas inventer cet
+objet ; garder cette branche indisponible tant qu'une donnée source corrigée n'est
+pas fournie.
+
+## Méga-Évolution — transport et intention de tour, lot 2 — 2026-10-16
+
+Le catalogue `mega-evolutions.json` est maintenant chargé avec chaque carte. La
+préparation d'équipe reconnaît une Méga-Gemme compatible, la conserve dans la
+sauvegarde personnelle et projette dans le combattant uniquement le couple
+`heldItem/form` requis par le combat. Elle ne fait plus passer cette gemme pour
+un objet tenu non pris en charge. Le même chemin prépare les équipes locales,
+les défis PvP, les participations Coop et les équipes de Dresseurs ; le repli de
+compatibilité conserve également les réservistes KO au lieu de les écarter.
+
+Le menu Attaque propose une commande Méga uniquement au porteur d'une gemme
+compatible, si le Bracelet Spirituel est présent et si le switch source 34 ne
+bloque pas la mécanique. Le choix est attaché à l'action de capacité sous la
+forme stricte `megaEvolution: true` et traverse le même contrat de protocole en
+solo et en room autoritaire. Les métadonnées de l'équipe et l'intention sont
+validées par le protocole ; aucune donnée de sauvegarde privée n'est répliquée.
+
+Ce lot ne transformait pas encore le Pokémon ; cette dette de résolution est
+désormais couverte par le lot 3 ci-dessous. Les animations communes restent à
+porter séparément.
+
+## Méga-Évolution — résolution autoritaire, lot 3 — 2026-10-17
+
+L'extracteur lit désormais, pour chacune des 114 branches, les statistiques de
+base, types et talent déclarés dans `Pokemon_MegaEvolution`. La préparation du
+combat recalcule les caractéristiques finales avec le niveau, les IV, les EV et
+la nature du Pokémon. Au moment de résoudre le tour, le noyau commun applique la
+forme avant le calcul de priorité et de dégâts, conserve les dégâts déjà subis
+comme le `calcStats` source, puis produit l'événement autoritaire `megaEvolved`.
+La présentation change immédiatement le sprite de forme et affiche le message ;
+les animations communes source restent le lot suivant.
+
+L'usage unique n'est pas attaché au camp mais au propriétaire. Le solo utilise
+un propriétaire par côté ; le PvP lie chaque camp à son joueur ; une composition
+Coop conserve l'identité du propriétaire de chaque Pokémon. Deux partenaires du
+même camp peuvent donc chacun Méga-Évoluer une fois, mais un même joueur ne peut
+pas transformer deux de ses Pokémon. Cet état est inclus dans le snapshot de
+combat, survit aux changements de Pokémon et à une participation Coop tardive.
+L'IA des Dresseurs utilise le même noyau et demande automatiquement sa
+Méga-Évolution lorsqu'une branche compatible est disponible.
+
+La transformation reste strictement temporaire : le règlement persistant ne
+recopie que PV, statut, PP, bonheur et objets pertinents depuis la projection de
+combat. Les statistiques, le talent et la forme Méga ne sont jamais inscrits dans
+la sauvegarde personnelle.
+
+Audit source : la branche `MAGEARNA:1` demande la forme 1, tandis que ses
+remplacements de statistiques et de talent sont conditionnés par `form >= 2`.
+Le catalogue signale cette incohérence dans `audit.fallbackCombatData` et reprend
+les données de base pour la forme 1, sans corriger arbitrairement le Ruby. La
+branche Groudon/GROUDONITE reste parallèlement indisponible faute d'objet source.
+
+Le déroulé visuel et sonore des animations communes est couvert par le lot 4
+ci-dessous. La dette restante concerne les effets des talents ou climats spéciaux
+qui ne sont pas encore pris en charge par le moteur de combat général.
+
+Correctif de chargement du 2026-10-17 : le premier rendu de l'application précède
+volontairement le chargement asynchrone des données source. Le calcul de
+disponibilité Méga accepte donc explicitement un catalogue absent et répond
+`false` jusqu'à son arrivée. Ne pas réintroduire dans `renderEncounter()` un accès
+direct à `importedAssets.megaEvolutions`, sous peine de bloquer l'écran initial et
+le chargement du profil actif.
+
+## Méga-Évolution — présentation source, lot 4 — 2026-10-17
+
+La présentation solo et Coop consomme désormais le même événement autoritaire
+`megaEvolved` et rejoue l'ordre observé dans `pbMegaEvolve` : message d'activation,
+`Common:MegaEvolution` sur l'ancienne forme, changement de sprite et de profil de
+combat, `Common:MegaEvolution2`, puis message final. Le lecteur commun restitue les
+cellules de l'animation, le fond mobile `ebMegaBg.png`, le flash avant-plan
+`PRAS- Flash FG.png`, les deux sons `PRSFX- Mega Evolution1/2` et le cri source
+ralenti. La cible d'une animation commune sans cible explicite est correctement
+ramenée sur son utilisateur, y compris pour un combattant adverse ou un second
+slot de combat double.
+
+L'extracteur conserve maintenant dans chaque timing de combat les coordonnées,
+l'opacité, la couleur et la durée des plans avant/arrière. Cette brique est
+générique et pourra servir aux autres animations `Common:*`; aucun frame Méga ni
+nom de ressource n'est codé dans le moteur de présentation. Les références audio
+sans extension sont résolues par le manifeste local afin d'éviter les 404.
+
+Correctif de rendu du 2026-10-18 : plusieurs transitions d'un même plan peuvent
+commencer à la même frame et ne modifier qu'une propriété chacune. Le lecteur
+doit alors composer leurs effets propriété par propriété, sans réappliquer les
+valeurs initiales des propriétés absentes. Ce défaut maintenait notamment
+`ebMegaBg.png` transparent : sa transition horizontale annulait à chaque frame
+la montée d'opacité du fond bleu ciel de la Méga-Évolution. Le fond mobile, son
+fondu et les autres plans de l'animation sont désormais cumulés correctement.
+
+## Cartes de l'équipe — identité et conditions — 2026-10-18
+
+La variante utilisée par l'onglet Équipe du menu regroupe désormais sur une même
+ligne le nom, le niveau mis en évidence et les seules icônes de type. Le statut et
+l'objet tenu occupent une seconde ligne bornée, avant les PV. Cette structure
+empêche ces informations optionnelles de repousser ou recouvrir les quatre cases
+de capacités. Le composant partagé conserve sa présentation historique dans le
+Ranch, la Pension et les sélections de combat grâce à l'option `teamLayout`.
+
+## Méga-Évolution — audit de fermeture et talents déterministes, lot 5 — 2026-10-18
+
+Le pipeline de combat crée désormais un périmètre ciblable pour chacune des 114
+formes, sous la forme `mega:ESPECE:FORME`. `corepack pnpm audit:combat -- --scope
+mega:CHARIZARD:1` contrôle donc automatiquement les capacités apprises, leurs
+animations et le talent de la forme, avec le même rapport que pour une espèce ou
+une équipe de Dresseur. Il n'existe plus de liste manuelle réservée aux Méga.
+
+Le noyau autoritaire commun porte seize talents déterministes utilisés par ces
+formes : Adaptabilité, Armurbaston, Œil Composé, Filtre, Poing de Fer,
+Méga Blaster, Multiécaille, Neuroforce, Coque Armure, Multi-Coups, Sniper,
+Solide Roc, Prognathe, Technicien, Isograisse et Griffe Dure. Les multiplicateurs
+de dégâts, immunités aux critiques, précision et nombre de coups sont calculés
+dans le même moteur en solo, chez l'hôte, chez l'invité et en PvP. Avec les
+talents déjà portés, 40 des 114 formes ont maintenant leur talent intégralement
+actif ; 74 formes correspondant à 46 talents distincts restent explicitement
+auditées. Ce solde concerne le moteur de combat général (climats, terrains,
+immunités, changements de type, réactions au contact ou au K.O.), pas un second
+chemin spécifique aux Méga.
+
+`prepare:local` produit aussi `mega-integration-report.json` après l'extraction
+des événements. Le rapport relie les 112 Méga-Gemmes distinctes aux événements
+qui les mentionnent et vérifie leur présence dans `items.json`, sans inventer de
+don ni de boutique. Sur la v2.12 FR auditée, `BRAZALESPIRITUAL` est bien référencé
+sur Map252. Trois gemmes n'ont aucune référence d'acquisition dans les événements :
+`DURALUDONITA`, `GROUDONITE` et `RAYQUAZITE`; `GROUDONITE` est en plus absente du
+catalogue d'objets. Elles doivent rester des anomalies source visibles et ne pas
+être distribuées arbitrairement par le moteur.
+
+La fermeture totale de la ligne de roadmap demande encore la résorption des
+talents généraux signalés par l'audit et une recette manuelle des variantes de
+forme. La transformation, son autorité Coop, sa restauration temporaire, ses
+sprites et sa séquence audiovisuelle sont déjà couverts par les lots 1 à 5.
+
+## Méga-Évolution — types, immunités et Sans Limite, lot 6 — 2026-10-18
+
+Le type réellement utilisé par une capacité est maintenant résolu une seule fois
+par le noyau partagé. Aéilate, Peau Féérique, Peau Gelée et Hydrata-Son
+convertissent les capacités Normal dans l'ordre exact de `pbModifyType`, puis leur
+bonus source de 20 % alimente dégâts, STAB, table des types, objets et ciblage.
+Particularité confirmée dans Z 2.12 : Hydrata-Son ne vérifie pas le drapeau sonore
+et convertit toute capacité Normal ; ne pas le remplacer silencieusement par la
+règle des jeux officiels.
+
+Lévitation annule les capacités Sol, Querelleur traverse l'immunité Spectre et
+Anti-Bruit bloque les capacités portant le drapeau sonore avant leur jet de
+précision. Sans Limite applique son bonus de 30 %, supprime l'effet secondaire et
+le recul de l'Orbe Vie conformément au Ruby source. Brise Moule traverse déjà ces
+immunités, Peau Sèche, Contraguardia, les immunités aux critiques, Filtre,
+Solide Roc, Multiécaille, Isograisse et la combinaison Écran Poudre/Cape Obscure.
+Il reste classé `partial`, car son contrat devra automatiquement englober les
+prochains talents défensifs ajoutés au moteur.
+
+Après régénération, 59 des 114 formes Méga ont un talent totalement pris en
+charge. Les 55 formes restantes dépendent de 38 talents distincts encore absents
+ou partiels. L'audit global passe de 628 à 620 problèmes ; les nombreuses lignes
+de capacités concernent aussi les attaques apprises par niveau et doivent être
+résorbées par lots verticaux, sans inventer de comportement propre aux Méga.
+
+## Lot vertical Route 3 → Bois-en-Tronc — P0 automatisé — 2026-10-19
+
+Le périmètre Maps 023 à 029 est raccordé au pipeline de combat : Rena, Gerard,
+Amarna, Fibo, Hector et Zaida, Maya, Asta, les trois variantes de Crisanto et les
+rencontres naturelles jusqu'au niveau 18 sont constructibles sans suppression de
+capacité. La condition Ruby `$Trainer.ablePokemonCount == 1` possède un parseur
+strict et compte uniquement les membres conscients non-Œufs. Elle choisit donc
+génériquement le combat simple/double de Route 4 et de la Clairière sans règle de
+carte ni d'événement.
+
+Le noyau partagé ajoute les fonctions `008`, `033`, `04C`, `04F`, `0BD`, `0D5`,
+`09D` et `0A3`, plus les supports nécessaires aux capacités de bas niveau des
+rencontres. Mur Lumière et Lance-Boue résident dans le snapshot tactique et sont
+décrémentés en simple comme en double. Battant, Médic Nature, Farceur, Peau
+Herbée, Herbivore, Inconscient et Absorb Eau sont actifs dans le même calcul
+autoritaire. Le protocole accepte exactement les mêmes fonctions ; aucune voie
+locale parallèle n'a été créée.
+
+`pbBossFight` est maintenant porté comme rencontre scénarisée hôte-autoritaire,
+y compris la forme dont l'espèce vient d'une liste indexée par `pbGet(variable)`.
+Les affectations source de musique/fond sont acceptées comme dette de
+présentation, sans exécuter Ruby. Une récompense `pbReceiveItem([...][rand(n)])`
+reste tirée par l'autorité à partir du RNG persistant, puis est stockée avec les
+switches dans `pendingEncounter` et n'entre dans l'inventaire qu'après victoire.
+Une reconnexion avant le combat ne peut donc ni reroll ni accorder la récompense
+en avance. L'invité voit le combat via le snapshot partagé mais ne peut déclencher
+la narration ni recevoir le Sac de l'hôte.
+
+Les anciennes dettes de mécanique partielle et de deux-contre-un ont été fermées
+par les sous-lots suivants. `THIEF` reste seulement dépourvu de mapping visuel
+source et emploie son fallback. Les profils de statistiques de boss de la
+variable 300 sont portés par la rencontre persistante. La recette Maps 023 à 029,
+les deux nids compris, a été validée manuellement avec les assets locaux le
+2026-10-19 ; ce parcours peut désormais être annoncé comme fonctionnellement clos.
+
+## Modificateurs narratifs initiaux de rencontre — Exténuation — 2026-10-19
+
+Le retour manuel sur le badge français `EXT` a révélé une séparation incomplète :
+le noyau portait bien le statut interne `caduco`, mais les rencontres créaient
+toujours un adversaire sain. `prepare:local` extrait désormais
+`encounter-modifiers.json` depuis les hooks `Events.onWildPokemonCreate`, sans
+exécuter leur Ruby. Les règles conservent leurs conditions de carte, d'espèce et
+de switch narratif avec leur provenance source.
+
+Les deux règles de statut présentes dans Z 2.12 FR sont raccordées : tous les
+Pokémon sauvages des Maps 138 à 140 commencent exténués, et Couafarel commence
+exténué lorsque le switch source 482 arme son combat scénarisé à Nouvelle
+Réunion. Le résolveur ne contient ni numéro de carte, ni switch, ni espèce codés
+à la main : il applique le catalogue extrait avant de construire l'équipe adverse.
+Le statut entre ainsi dans le snapshot tactique autoritaire commun au solo et à
+la room Coop, est visible par tous les participants et survit à une reconnexion.
+S'il s'agit d'une rencontre capturable, le règlement personnel conserve le statut
+du Pokémon comme les autres altérations majeures.
+
+Le nom interne reste `caduco` pour correspondre au Ruby et à l'animation
+`Common:Caduco`, mais toutes les surfaces françaises doivent afficher
+`Exténuation` ou le badge source `EXT`. Son effet est celui de Z : sous la moitié
+des PV, la cible reçoit 50 % de dégâts supplémentaires.
+
+Règle de reprise issue de ce défaut : un combat narratif n'est pas validé par la
+seule construction de son espèce et de ses capacités. L'audit vertical doit aussi
+contrôler les hooks de création et les préparatifs de l'événement : statut, forme,
+PV, niveau, capacités forcées, talent, objet, IV/EV, profils de statistiques,
+capture/fuite et effets post-combat.
+
+Extension du même jalon : le catalogue transporte maintenant toutes les mutations
+statiques trouvées dans `onWildPokemonCreate` : forme, apprentissages silencieux
+dans l'ordre exact de `pbLearnMove`, IV, EV, objet tenu, shiny et surnom. Dix-neuf
+règles sont extraites pour Z 2.12 FR. Elles couvrent notamment les préparations de
+Hoopa, Noadkoko, Zygarde et les boss armés par le switch 482 (Auretosk, Tortank,
+Sulfura, Artikodin, MissingNo, Lugia, Monthracite, M. Mime, Ursaring, Xerneas et
+Yveltal). Les statistiques sont recalculées avant projection et l'équipe adverse
+déjà modifiée devient l'unique donnée envoyée à la room.
+
+`encounter-modifiers.json.audit.unsupported` conserve deux effets non appliqués :
+les shiny conditionnés par des contextes runtime non encore répliqués (switch nommé
+de debug et case de Poké Radar). Ces cas ne doivent jamais devenir des règles
+globales par défaut. Le niveau dynamique de la Map999 et les profils de statistiques
+de boss préparés par la variable source 300 sont maintenant portés avec leur RNG,
+leur consommation one-shot et leur snapshot tactique persistants.
+
+## Lot vertical Route 3 → Bois-en-Tronc — fidélité des nids — 2026-10-19
+
+Les deux nids du lot Maps 023 à 029 ont maintenant leur contrat complet de départ.
+Une rencontre issue de `pbBossFight` ouvre un vrai combat asymétrique double quand
+l'équipe préparée contient au moins deux Pokémon : deux actifs du joueur contre
+le seul boss. Le même `TeamBattleState` alimente le contrôleur local et la room
+autoritaire. Un invité déjà présent reçoit donc le snapshot et la présentation,
+mais ne peut rejoindre un combat qui occupe déjà le format double. L'état tactique,
+les PV, les rangs et l'espèce sélectionnée restent restaurables après reconnexion.
+
+Les rangs positifs préparés par `$game_variables[300]` sont appliqués au seul boss
+et déclenchent au démarrage le message et l'effet commun de hausse de statistiques.
+L'opérande RPG Maker `random` de `change-variables` est exécuté par le RNG persistant
+de l'état narratif : la variable 183 du nid insecte est choisie une seule fois par
+l'autorité, avant la création de la rencontre. Les récompenses restent différées
+jusqu'à la victoire et personnelles à l'hôte.
+
+La commande source `set-event-location` appartient désormais au registre comme
+mouvement exécuté. Elle repositionne instantanément l'acteur de scène, annule son
+mouvement précédent, puis republie poses et scène aux joueurs de la carte. Cela
+débloque notamment la suite narrative de Couafarel sans règle liée à Map024 ou à
+un numéro d'événement particulier. L'audit régénéré reconnaît les 317 occurrences
+de cette commande dans le jeu source.
+
+Test dev expose `TP nid de Couafarel` (Map024) et `TP nid insecte` (Map028). Ces
+raccourcis ne touchent ni aux switches, ni aux variables, ni aux self-switches :
+ils exigent une sauvegarde dont la page narrative du nid est encore active. La
+recette manuelle solo/hôte/invité de ces raccourcis et du parcours a été validée
+avec les assets locaux le 2026-10-19.
+
+### Correctif du nid insecte — Dardargnan et Dard-Venin (`0BE`) — 2026-10-19
+
+La sélection aléatoire de Dardargnan niveau 17 atteignait correctement le moteur,
+mais la construction de son équipe échouait sur `TWINEEDLE` (`0BE`). La fonction
+est désormais portée dans le noyau partagé : deux impacts exacts et une tentative
+d'empoisonnement de 20 % après chaque impact réussi. Sérénité, Sans Limite,
+Écran Poudre/Cape Obscure et Corrosion suivent les contrats déjà utilisés par les
+autres effets secondaires. Le type, la projection personnelle, le validateur du
+protocole Coop et l'audit de l'extracteur reconnaissent tous le même code ; il
+n'existe donc pas de contournement propre au nid ou à Dardargnan.
+
+Après `prepare:local`, l'audit `pokemon:BEEDRILL` ne signale plus `TWINEEDLE` et
+le set calculé au niveau 17 est constructible. Les autres alertes du périmètre
+complet de l'espèce concernent des apprentissages ultérieurs et ne bloquent pas
+cette rencontre.
+
+### Correctif de cycle des combats doubles scénarisés — 2026-10-19
+
+Le rapport manuel `local-28-1` a montré qu'un actif K.O. restait sélectionnable :
+son sprite pouvait revenir après l'animation et l'interface acceptait encore une
+action inopérante pour son ancien slot. Les emplacements visuels restent désormais
+stables pendant tout le combat : un K.O. sans réserve laisse un slot vide afin que
+son allié ne glisse pas de droite à gauche. Le contrôleur, l'interface et le
+validateur du noyau excluent toutefois ce slot des actions attendues. Cette règle
+appartient au `TeamBattleState` partagé et couvre donc solo, hôte, invité et
+reconnexion.
+
+La présentation respecte aussi les combats asymétriques : chaque camp choisit son
+propre placement. Deux Pokémon du joueur utilisent les positions doubles tandis
+qu'un boss sauvage unique reste centré sur son support. Les animations de capacité
+et de statut reçoivent le slot de leur véritable acteur au lieu de retomber sur le
+slot gauche par défaut.
+
+La victoire d'une rencontre lancée depuis une séquence source ne déclenche plus
+l'audit d'autorun intermédiaire du contrôleur de combat. La séquence propriétaire
+reprend d'abord ses commandes post-combat, consomme la rencontre, puis effectue
+elle-même l'audit à sa finalisation. Cela empêche une page nouvellement active de
+s'intercaler et de relancer le combat avant les récompenses ou le self-switch.
+
+### Stabilisation Coop des combats doubles scénarisés — 2026-10-19
+
+Un combat source qui est déjà double n'ouvre plus de fenêtre de jonction : ses
+deux emplacements tactiques sont déjà occupés par la scène. Il reste masqué à
+l'autre joueur, qui poursuit librement son exploration. Celui-ci doit se placer à
+côté du meneur et interagir avec lui pour devenir spectateur et recevoir le
+snapshot autoritaire ; toute intention de participation reste refusée par le
+noyau et par la room.
+
+Pour les combats simples encore rejoignables, une proposition est désormais
+bloquée dès qu'une action simple/double ou un remplacement est en attente. La
+conversion en double conserve le tour, les effets de terrain et de camp, les
+objets de Dresseur et l'utilisation de la Méga-Évolution. Les talents d'entrée des
+combattants déjà sur le terrain ne sont pas rejoués ; seuls les nouveaux entrants
+peuvent les déclencher.
+
+Le client compare maintenant la structure complète des camps (format, identités
+et nombre de slots actifs), y compris lorsqu'elle était déjà double. Il invalide
+les actions locales soumises puis rejoue une seule présentation de jonction. Le
+rendu des battlers est sérialisé afin qu'un ancien chargement d'image ne puisse
+plus terminer après le nouveau snapshot et réafficher une mauvaise composition.
+Les remplacements ordinaires à nombre de slots constant restent traités par leur
+événement dédié et ne sont pas confondus avec une jonction.
+
+La recette dédiée du vrai combat duo utilise Hector et Zaida sur la Route 4
+(Map027, événement 12). Le jeu source les déclare comme `DUOMOSQUETERO` et lance
+nativement le format double quand le joueur possède au moins deux Pokémon. Le
+raccourci `TP duo Hector et Zaida` place le joueur devant eux sans modifier
+l'histoire. En Coop, l'hôte peut appeler l'invité avant le premier tour : le
+Pokémon actif de l'invité remplace alors le second actif de l'hôte, qui reste en
+réserve, et les deux adversaires du duo demeurent actifs. Le camp reste donc
+strictement limité à deux combattants simultanés. Les combats sauvages déjà
+doubles, dont le nid insecte, restent non rejoignables et seulement observables.
+L'audit de dépendances de ce duo a aussi conduit au port générique de `PROTEAN` :
+le Pokémon adopte le type de sa capacité juste avant son exécution, dans le même
+noyau autoritaire pour le solo, l'hôte et l'invité.
+
+Le Worker multijoueur possède désormais une frontière d'erreur CORS au niveau de
+l'adaptateur HTTP et de chaque Durable Object. Une exception de production ne se
+présente donc plus au client comme un faux blocage CORS : elle renvoie
+`WORKER_INTERNAL_ERROR` ou `ROOM_INTERNAL_ERROR`, un détail borné affiché dans le
+menu Coop, et écrit la trace complète dans l'observabilité Cloudflare.
+
+Correctif quota Durable Objects du 2026-10-19 : le Worker ne persiste plus la
+room entière après chaque paquet WebSocket. `moveAvatar` et `setSourceActors`
+sont regroupés en un checkpoint 1,5 seconde après la fin d'une rafale, avec un
+plafond de 30 secondes pendant un mouvement continu. `emitSourceSound`, `ping`
+et `requestSnapshot` ne déclenchent aucune écriture. Les mutations de gameplay,
+de narration et de combat restent write-through. Cette frontière conserve la
+reconnexion autoritaire tout en supprimant l'écriture SQLite par pas, mouvement
+de PNJ ou effet sonore qui épuisait les 100 000 rows written du niveau gratuit.
+
+## Priorité produit — portage fonctionnel des Pokémon — 2026-10-19
+
+Le porteur demande de faire passer le portage complet des Pokémon et de leurs
+mécaniques avant les améliorations de qualité de vie UI/UX. Ne pas reprendre le
+Multi-EXP, le renommage, le rangement avancé de l'équipe ou une refonte visuelle
+tant qu'ils ne bloquent pas une recette fonctionnelle.
+
+La reprise doit continuer par lots verticaux du parcours avec
+`battle-integration-report.json` : espèces sauvages et équipes de Dresseurs,
+puis capacités, talents, objets tenus, statuts, formes/évolutions et animations
+dont elles dépendent. La règle reste générique et partagée par le solo et la room
+Coop ; ne jamais créer une implémentation propre à une espèce ou à un Dresseur.
+Avant de fermer un lot, relancer `prepare:local`, auditer ses scopes, couvrir les
+dépendances signalées et consigner honnêtement tout support partiel.
+
+## Route 3–Route 4 — fermeture des mécaniques partielles — 2026-10-19
+
+Les douze codes encore classés `partial` dans le lot Route 3–Bois-en-Tronc sont
+fermés dans le noyau de combat partagé : `021`, `049`, `082`, `083`, `093`,
+`098`, `09C`, `0DC`, `0F1`, `0F4`, `0FA` et `110`. Les règles ont été relues
+dans `083-81220597-pokebattle-moveeffects.rb` puis portées génériquement : durée
+et consommation de Chargeur, nettoyage complet d'Anti-Brume/Tour Rapide,
+Assurance après dégât, enchaînement de Chant Canon, paliers exacts de Fléau,
+Coup d'Main, drain de Vampigraine vers la position source, vol/consommation
+d'objet et recul avec immunités.
+
+Autorité et état : le resolveur local en solo et la room autoritaire en Coop
+emploient le même `BattleState`. Les compteurs volatils, effets de camp, terrain,
+pièges et provenance positionnelle de Vampigraine font partie du snapshot
+tactique minimal et sont donc restaurés après reconnexion. Les événements de
+présentation sont adressés aux participants du combat. Les objets personnels ne
+sont réglés qu'à la fin : un transfert par Larcin/Implore est annulé contre un
+Dresseur et conservé dans un combat sauvage ; ce choix est partagé par les
+adaptateurs solo et Coop, sans seconde implémentation métier.
+
+`prepare:local` régénère maintenant un rapport à 81/353 fonctions supportées et
+zéro fonction `partial`. Les douze codes ne produisent plus d'issue mécanique.
+Toutes leurs animations mappées sont importées ; seule `THIEF` reste sans mapping
+dans `move2anim.dat` et utilise donc le fallback, sans animation inventée. Le
+catalogue des objets tenus demeure une frontière explicite : Piqûre/Picore sait
+consommer les Baies admises par le moteur, et les familles de Baies futures
+seront ajoutées avec leur propre lot d'objets.
+
+Validation du porteur le 2026-10-19 : Maps 023 à 029 et les deux nids fonctionnent
+avec les assets locaux. Le lot Route 3–Route 4/Bois-en-Tronc est donc clos côté
+automatisation, fidélité mécanique et recette manuelle.
+
+## Route 5 — premier sous-lot et audit par carte — 2026-10-19
+
+La reprise suivante est engagée sur Maps 055–056. `audit:combat` accepte le scope
+`map:55` ou `map:56`, construit depuis `encounters.json` et les événements extraits.
+Il tient compte du niveau réellement rencontré, des capacités explicites des
+Dresseurs et de leur index de talent ; il ne remonte donc plus arbitrairement les
+attaques de niveau 99 ou les talents cachés d'une espèce de bas niveau.
+
+Six fonctions requises sont terminées dans le noyau commun : `010`, `02D`, `064`,
+`06D`, `086` et `0F0`. Elles couvrent peur d'Écrasement, cinq hausses de Pouvoir
+Antique, remplacement prudent du talent par Soucigraine, dégâts fixes et immunité
+d'Ombre Nocturne, puissance sans objet d'Acrobatie, puis puissance et perte
+temporaire d'objet de Sabotage. Les nouveaux événements `abilityChanged` et
+`heldItemRemoved`, ainsi que la provenance de l'objet, sont validés par le
+protocole et présentés à tous les participants. L'objet personnel est restauré au
+règlement ; le noyau et l'état tactique sont identiques en solo et dans la room.
+
+### Route 5 — fermeture automatisée des dépendances — 2026-10-19
+
+Le noyau commun porte maintenant `091`, `095`, `069`, `0B3`, `0D1`, `0D3` et
+`0F8` : Taillade/Roulade conservent et réinitialisent leurs compteurs, Ampleur
+utilise la distribution source, Brouhaha verrouille l'action et réveille les
+Pokémon, Embargo bloque objets tenus et objets de Dresseur, et Morphing copie le
+combattant puis restaure l'identité originale au retrait. Force Nature choisit
+sa capacité depuis un champ `environment` générique alimenté par les rencontres
+terrestres, grottes et pêche ; ce champ voyage avec le snapshot autoritaire.
+
+Les talents de Map055–056 sont actifs dans les chemins simple et double : entrée
+(Imposteur, Créa-Herbe, Intimidation), contact (Corps Ardent, Peau Dure, Poisseux),
+statut (Vaccin, Feuille Garde, Tempo Perso), vitesse météo (Chlorophylle,
+Glissade), Phobique et Fuite. Les remplacements restaurent Morphing et rejouent
+les talents d'entrée ; la room Coop emploie ces mêmes fonctions sans logique
+cliente parallèle. Le protocole accepte les nouveaux codes et compteurs.
+
+Validation automatique : `prepare:local` réussit, `audit:combat -- --scope map:55`
+retourne 0 alerte et `map:56` conserve uniquement `FAINTATTACK · not-mapped`.
+Cette dernière absence est présente dans la source `move2anim.dat` et doit rester
+signalée avec le fallback visuel, jamais être masquée ou inventée. Les tests et le
+build du monorepo passent. Le lot est terminé côté code mais ne doit être coché
+comme fermé qu'après validation manuelle des cinq Dresseurs/rencontres en solo,
+hôte, invité et après reconnexion.
+
+## Clairière Collinaire — combat narratif de Núbila — 2026-10-19
+
+Le combat de Map046/EV020 atteignait bien `request-trainer-battle`, mais la
+construction de l'équipe de `NUBILA1:Núbila:0` était refusée avant l'ouverture du
+combat. Deux causes se cumulaient : l'index de talent source suivait la convention
+Essentials (slots normaux 0/1, talents cachés à partir de 2), tandis que le pont
+runtime décalait les talents cachés selon le nombre réel de talents normaux ; puis
+plusieurs dépendances tactiques de l'équipe n'étaient pas encore portées.
+
+Le pont interprète désormais correctement le slot caché `2`, même lorsqu'une
+espèce ne possède qu'un seul talent normal. Le noyau partagé porte Acidarmure
+(`02F`, Défense +2), Gyroballe (`08D`, puissance issue du rapport des Vitesses),
+Ignifugé (`HEATPROOF`, dégâts Feu divisés par deux), Alchimie Vil
+(`ALQUIMIAVIL`, dégâts de poison adverses doublés) et la Baie Lichii, avec le
+seuil à la moitié des PV sous Gloutonnerie. Ces états et événements utilisent le
+même contrat en solo et dans la room autoritaire.
+
+Un test d'intégration reconstruit les trois Pokémon et l'inventaire exacts de
+Núbila afin d'empêcher toute régression du déclenchement. Après `prepare:local`,
+`audit:combat -- --scope trainer:NUBILA1:Núbila:0` ne conserve que
+`LUZDECADENTE · not-mapped` : cette absence vient de `move2anim.dat`, n'empêche
+pas le combat et doit employer le fallback visuel existant sans animation
+inventée. La reprise narrative doit être validée manuellement sur Map046, puis
+en hôte et invité si la scène est jouée en Coop.
+
+## Bois-en-Tronc — sauts scénarisés des PNJ — 2026-10-19
+
+Le retour `Map030 · EV026 crisanto · étape 155/188` correspond à la scène source
+de Map029/EV026 : après le remède, l'ancienne (`event 32`, sprite `anciana`)
+effectue des sauts horizontaux de 2, 2 puis 4 cases. Le moteur traitait jusque-là
+la commande de route `jump` comme un pas au sol, avec la durée fixe d'une case ;
+le dernier saut ressemblait donc à une téléportation/glissade et aucun arc
+vertical n'était rendu.
+
+Les routes exposent désormais explicitement la nature `jump` du déplacement. Le
+contrôleur de PNJ emploie la même interpolation en arc que les autres transitions
+aériennes et dimensionne la durée selon la distance réelle, y compris pour un
+saut sur place. Le décalage vertical fait partie de la pose de cinématique
+répliquée : l'hôte et l'invité voient donc le même arc, sans seconde logique
+cliente. Les tests couvrent la commande, un saut scénarisé de quatre cases et la
+réception du décalage vertical par un invité Coop. La scène Map029/EV026 reste à
+rejouer manuellement depuis une sauvegarde antérieure à la démonstration.
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createPersistentPokemon, type PlayerCreationCatalog, type PlayerPartyState } from "@pokemon-z-battle/player-state";
 import { prepareSourceBattleJoinTeam, prepareSourcePlayerBattleTeam }
   from "../src/source-battle-team-preparation.js";
+import type { SourceMegaEvolutionCatalog } from "../src/source-mega-evolution.js";
 
 const catalog: PlayerCreationCatalog = {
   pokemon: [
@@ -20,6 +21,14 @@ const catalog: PlayerCreationCatalog = {
     { id: 2, internalName: "FUTUREMOVE", name: "Capacité future", functionCode: "FFF", power: 40,
       type: "NORMAL", category: "Physical", accuracy: 100, pp: 10, priority: 0, effectChance: 0 },
   ],
+};
+
+const megaCatalog: SourceMegaEvolutionCatalog = {
+  activationItems: ["BRAZALESPIRITUAL"],
+  disableSwitchId: 34,
+  definitions: [{ species: "READY", heldItem: "READYITE", form: 1,
+    baseStats: { hp: 60, attack: 80, defense: 70, speed: 90, specialAttack: 100, specialDefense: 75 },
+    types: ["NORMAL"], ability: "HUGEPOWER" }],
 };
 
 function party(species: readonly string[]): PlayerPartyState {
@@ -60,6 +69,28 @@ describe("Coop battle team preparation", () => {
     expect(result.team?.members[0]?.heldItem).toBeNull();
     expect(result.notice).toContain("objet tenu a été neutralisé");
     expect(withItem.members[0]?.heldItem).toBe("AMULETCOIN");
+  });
+
+  it("projects a compatible Mega Stone without consuming or neutralizing it", () => {
+    const ready = party(["READY"]);
+    const withStone = { ...ready, members: ready.members.map((member) => ({ ...member,
+      heldItem: "READYITE" })) };
+    const result = prepareSourcePlayerBattleTeam(withStone, catalog, megaCatalog, true);
+    expect(result.team?.members[0]).toMatchObject({ heldItem: null,
+      megaEvolution: { heldItem: "READYITE", form: 1, types: ["NORMAL"], ability: "HUGEPOWER",
+        activationAvailable: true } });
+    expect(result.notice).toBeNull();
+    expect(withStone.members[0]?.heldItem).toBe("READYITE");
+  });
+
+  it("keeps a fainted reserve while projecting a team through the compatibility fallback", () => {
+    const ready = party(["READY", "READY"]);
+    const projected = { ...ready, members: ready.members.map((member, index) => ({ ...member,
+      hp: index === 1 ? 0 : member.hp, heldItem: index === 0 ? "READYITE" : null })) };
+    const result = prepareSourcePlayerBattleTeam(projected, catalog, megaCatalog);
+    expect(result.team?.members).toHaveLength(2);
+    expect(result.team?.members[1]?.hp).toBe(0);
+    expect(result.team?.activeIndex).toBe(0);
   });
 
   it("reserves the healing advice for a genuinely fainted party", () => {

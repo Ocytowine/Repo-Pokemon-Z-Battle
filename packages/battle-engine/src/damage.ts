@@ -1,12 +1,20 @@
 import { typeEffectiveness } from "./type-chart.js";
+<<<<<<< HEAD
 import { preventsCriticalHit } from "./ability-protection.js";
 import { isRecklessBoostedMove } from "./move-properties.js";
 import type { BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
+=======
+import { effectiveMoveType, hasMoldBreaker, hasMoveFlag } from "./move-properties.js";
+import type { BattleMove, BattlerState, BattleSide, BattleTrace, RandomSource } from "./types.js";
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 
 export interface BattleDamageContext {
   readonly reflect: boolean;
+  readonly lightScreen: boolean;
   readonly luckyChant: boolean;
+  readonly mudSport: boolean;
   readonly waterSport: boolean;
+  readonly weather?: "sun" | "rain" | "sand" | "hail" | null;
 }
 
 function stagedStat(value: number, stage: number): number {
@@ -28,14 +36,33 @@ export function calculateDamage(
   move: BattleMove,
   rng: RandomSource,
   trace: BattleTrace[],
-  context: BattleDamageContext = { reflect: false, luckyChant: false, waterSport: false },
+  context: BattleDamageContext = { reflect: false, lightScreen: false, luckyChant: false, mudSport: false, waterSport: false },
 ): number {
+  const effectiveMove = effectiveMoveType(attacker, move);
+  const moveType = effectiveMove.type;
+  const ignoresDefenderAbility = hasMoldBreaker(attacker);
+  const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
+    && (moveType === "NORMAL" || moveType === "FIGHTING")
+    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
+  const typeEffect = defenderTypes.length === 0 ? 1 : typeEffectiveness(moveType, defenderTypes);
+  const effectiveness = !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND"
+    ? 0 : typeEffect;
   if (move.functionCode === "06F") {
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
-    const result = Math.max(1, Math.floor((attacker.level * variance) / 100));
+    const result = effectiveness === 0 ? 0 : Math.max(1, Math.floor((attacker.level * variance) / 100));
     trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
+<<<<<<< HEAD
       critical: false, variance, stab: 1, effectiveness: 1, statusModifier: 1, abilityModifier: null,
       abilityModifiers: [], result });
+=======
+      critical: false, variance, stab: 1, effectiveness, statusModifier: 1, abilityModifier: null, result });
+    return result;
+  }
+  if (move.functionCode === "06D") {
+    const result = effectiveness === 0 ? 0 : attacker.level;
+    trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0, baseDamage: result,
+      critical: false, variance: 100, stab: 1, effectiveness, statusModifier: 1, abilityModifier: null, result });
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     return result;
   }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
@@ -43,38 +70,64 @@ export function calculateDamage(
   const criticalStage = Math.min(4,
     (defender.majorStatus?.kind === "hemorrhage" ? 2 : 0)
     + (attacker.volatile?.focusEnergy ?? 0)
+<<<<<<< HEAD
     + (attacker.heldItem === "SCOPELENS" ? 1 : 0)
     + (attacker.ability === "SUPERLUCK" ? 1 : 0));
   const critical = !context.luckyChant && !preventsCriticalHit(defender)
     && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
   const defenseStage = critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
+=======
+    + (attacker.heldItem === "SCOPELENS" ? 1 : 0));
+  const criticalBlocked = context.luckyChant || !ignoresDefenderAbility
+    && (defender.ability === "BATTLEARMOR" || defender.ability === "SHELLARMOR");
+  const critical = !criticalBlocked && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
+  const attackStage = defender.ability === "UNAWARE" && !ignoresDefenderAbility ? 0
+    : critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
+  const defenseStage = attacker.ability === "UNAWARE" ? 0
+    : critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
   let attack = stagedAttack;
   if (attacker.ability === "GUTS" && attacker.majorStatus !== null && move.category === "Physical") attack = Math.round(attack * 1.5);
   if ((attacker.ability === "HUGEPOWER" || attacker.ability === "PUREPOWER") && move.category === "Physical") attack = Math.round(attack * 2);
   const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
     : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
-  if (lowHpAbilityType === move.type && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
-  if (attacker.ability === "SWARM" && move.type === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
+  if (lowHpAbilityType === moveType && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
+  if (attacker.ability === "SWARM" && moveType === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = defender.capture?.weight ?? 0;
-  let power = move.functionCode !== "09A" ? move.power
+  const flailRatio = Math.floor((48 * attacker.hp) / attacker.stats.maxHp);
+  let power = move.functionCode === "098"
+    ? flailRatio < 2 ? 200 : flailRatio < 5 ? 150 : flailRatio < 10 ? 100
+      : flailRatio < 17 ? 80 : flailRatio < 33 ? 40 : 20
+    : move.functionCode !== "09A" ? move.power
     : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
       : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
+  if (move.functionCode === "08D") {
+    const speed = (battler: BattlerState): number => {
+      let value = stagedStat(battler.stats.speed, battler.stages.speed);
+      if (battler.ability === "QUICKFEET" && battler.majorStatus !== null) value = Math.max(1, Math.round(value * 1.5));
+      else if (battler.majorStatus?.kind === "paralysis") value = Math.max(1, Math.round(value / 4));
+      if (battler.ability === "CHLOROPHYLL" && context.weather === "sun"
+        || battler.ability === "SWIFTSWIM" && context.weather === "rain") value *= 2;
+      return Math.max(1, value);
+    };
+    power = Math.max(1, Math.min(150, Math.floor((25 * speed(defender)) / speed(attacker))));
+  }
   if (move.functionCode === "07B" && defender.majorStatus?.kind === "poison") power *= 2;
+  if (move.functionCode === "091") power *= 2 ** Math.max(0, (attacker.volatile?.furyCutterCount ?? 1) - 1);
+  if (move.functionCode === "0D3") power *= 2 ** Math.max(0, 4 - (attacker.volatile?.rolloutTurns ?? 4));
+  if (move.functionCode === "086" && attacker.heldItem === null) power *= 2;
+  if (move.functionCode === "0F0" && defender.heldItem !== null) power = Math.floor(power * 1.5);
   const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
   const variance = 85 + draw(rng, trace, "damage-variance", 16);
-  const stab = attacker.types.includes(move.type) ? 1.5 : 1;
-  const defenderTypes = defender.volatile?.identified === true && (move.type === "NORMAL" || move.type === "FIGHTING")
-    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
-  const effectiveness = defenderTypes.length === 0 ? 1 : typeEffectiveness(move.type, defenderTypes);
-
+  const stab = attacker.types.includes(moveType) ? attacker.ability === "ADAPTABILITY" ? 2 : 1.5 : 1;
   let result = baseDamage;
-  if (critical) result = Math.round(result * 1.5);
+  if (critical) result = Math.round(result * (attacker.ability === "SNIPER" ? 2.25 : 1.5));
   result = Math.floor((result * variance) / 100);
   result = Math.round(result * stab);
   result = Math.round(result * effectiveness);
@@ -88,14 +141,18 @@ export function calculateDamage(
   if (attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
   if (attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
-  if (defender.ability === "DRYSKIN" && move.type === "FIRE") statusModifier *= 1.25;
+  if (!ignoresDefenderAbility && defender.ability === "DRYSKIN" && moveType === "FIRE") statusModifier *= 1.25;
+  if (!ignoresDefenderAbility && defender.ability === "HEATPROOF" && moveType === "FIRE") statusModifier *= 0.5;
   if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;
-  if (context.waterSport && move.type === "FIRE") statusModifier /= 3;
-  if ((attacker.heldItem === "FIGHTINGGEM" && move.type === "FIGHTING")
-    || (attacker.heldItem === "BUGGEM" && move.type === "BUG")) statusModifier *= 1.3;
-  if (defender.heldItem === "PAYAPABERRY" && move.type === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
+  if (context.lightScreen && move.category === "Special" && !critical) statusModifier *= 0.5;
+  if (context.mudSport && moveType === "ELECTRIC") statusModifier /= 3;
+  if (context.waterSport && moveType === "FIRE") statusModifier /= 3;
+  if ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
+    || (attacker.heldItem === "BUGGEM" && moveType === "BUG")) statusModifier *= 1.3;
+  if (defender.heldItem === "PAYAPABERRY" && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
   const defenderGender = defender.appearance?.gender;
+<<<<<<< HEAD
   const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];
   const addAbilityModifier = (ability: ImplementedBattleAbility, multiplier: number): void => {
     abilityModifiers.push({ ability, multiplier });
@@ -125,6 +182,47 @@ export function calculateDamage(
   }
   if (defender.ability === "MULTISCALE" && defender.hp === defender.stats.maxHp) addAbilityModifier("MULTISCALE", 0.5);
   const abilityModifier = abilityModifiers[0] ?? null;
+=======
+  const offensiveAbilityModifier = attacker.ability === "IRONFIST" && hasMoveFlag(move, "j")
+    ? { ability: "IRONFIST" as const, multiplier: 1.2 }
+    : attacker.ability === "MEGALAUNCHER" && hasMoveFlag(move, "m")
+    ? { ability: "MEGALAUNCHER" as const, multiplier: 1.5 }
+    : attacker.ability === "NEUROFORCE" && effectiveness > 1
+    ? { ability: "NEUROFORCE" as const, multiplier: 1.25 }
+    : attacker.ability === "STRONGJAW" && hasMoveFlag(move, "i")
+    ? { ability: "STRONGJAW" as const, multiplier: 1.5 }
+    : attacker.ability === "TECHNICIAN" && power <= 60
+    ? { ability: "TECHNICIAN" as const, multiplier: 1.5 }
+    : attacker.ability === "SHEERFORCE" && move.effectChance > 0
+    ? { ability: "SHEERFORCE" as const, multiplier: 1.3 }
+    : attacker.ability === "TOUGHCLAWS" && hasMoveFlag(move, "a")
+    ? { ability: "TOUGHCLAWS" as const, multiplier: 4 / 3 }
+    : effectiveMove.abilityBoost !== 1
+    ? { ability: attacker.ability as "AERILATE" | "LIQUIDVOICE" | "PIELHELADA" | "PIELHERBACEA" | "PIXILATE",
+      multiplier: effectiveMove.abilityBoost }
+    : null;
+  const defensiveAbilityModifier = !ignoresDefenderAbility && defender.ability === "FILTER" && effectiveness > 1
+    ? { ability: "FILTER" as const, multiplier: 0.75 }
+    : !ignoresDefenderAbility && defender.ability === "SOLIDROCK" && effectiveness > 1
+    ? { ability: "SOLIDROCK" as const, multiplier: 0.75 }
+    : !ignoresDefenderAbility && defender.ability === "MULTISCALE" && defender.hp === defender.stats.maxHp
+    ? { ability: "MULTISCALE" as const, multiplier: 0.5 }
+    : !ignoresDefenderAbility && defender.ability === "THICKFAT" && (moveType === "FIRE" || moveType === "ICE")
+    ? { ability: "THICKFAT" as const, multiplier: 0.5 }
+    : null;
+  const abilityModifier = offensiveAbilityModifier ?? defensiveAbilityModifier ?? (attacker.ability === "FLORACION" && moveType === "GRASS"
+    ? { ability: "FLORACION" as const, multiplier: 1.5 }
+    : attacker.ability === "RIVALRY"
+    && (attackerGender === "male" || attackerGender === "female")
+    && (defenderGender === "male" || defenderGender === "female")
+    ? { ability: "RIVALRY" as const, multiplier: attackerGender === defenderGender ? 1.25 : 1 }
+    : null);
+  if (offensiveAbilityModifier !== null) statusModifier *= offensiveAbilityModifier.multiplier;
+  if (defensiveAbilityModifier !== null) statusModifier *= defensiveAbilityModifier.multiplier;
+  if (offensiveAbilityModifier === null && defensiveAbilityModifier === null && abilityModifier !== null) {
+    statusModifier *= abilityModifier.multiplier;
+  }
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   result = Math.round(result * statusModifier);
   if (effectiveness !== 0) result = Math.max(1, result);
 

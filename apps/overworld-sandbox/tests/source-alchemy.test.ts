@@ -7,6 +7,9 @@ const catalog = parseSourceAlchemyCatalog({ schemaVersion: "1.0.0", unlockVariab
   { unlockLevel: 3, output: { itemId: "POLVOEXPLOSIVO", quantity: 1 }, ingredients: [
     { itemId: "BRASACANDENTE", quantity: 1 }, { itemId: "POLVOBRILLANTE", quantity: 1 },
   ] },
+  { unlockLevel: 10, output: { itemId: "HACHAENDEBLE", quantity: 1 }, ingredients: [
+    { itemId: "MADERA", quantity: 1 }, { itemId: "VIRUTASFERREAS", quantity: 1 },
+  ] },
 ] });
 
 describe("source alchemy", () => {
@@ -26,6 +29,18 @@ describe("source alchemy", () => {
     const result = craftSourceAlchemyRecipe(personal, catalog, "POLVOEXPLOSIVO", 1, { "926": 3 });
     expect(result).toMatchObject({ ok: true, state: { variables: { "926": 0 },
       inventory: { POLVOEXPLOSIVO: 1 } } });
+  });
+
+  it("crafts Pokemon Z's weak axe at the source menu unlock level", () => {
+    const state = { ...createSourceEventState(), variables: { "926": 10 },
+      inventory: { MADERA: 1, VIRUTASFERREAS: 1 } };
+    expect(craftSourceAlchemyRecipe(state, catalog, "HACHAENDEBLE", 1)).toMatchObject({
+      ok: true, state: { inventory: { HACHAENDEBLE: 1 } },
+    });
+    const locked = { ...state, variables: { "926": 9 } };
+    expect(craftSourceAlchemyRecipe(locked, catalog, "HACHAENDEBLE", 1)).toEqual({
+      ok: false, state: locked, reason: "locked",
+    });
   });
 
   it("rejects locked recipes, missing ingredients and output overflow without partial mutation", () => {

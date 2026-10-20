@@ -22,6 +22,7 @@ interface NpcRuntime {
   routeIndex: number;
   noticeCooldownUntil: number;
   noticeLatched: boolean;
+  networkRenderOffsetY?: number;
 }
 
 export interface SourceNpcEventContact {
@@ -296,7 +297,8 @@ export class SourceNpcMotionController {
     };
   }
 
-  public applyScriptedActor(eventId: number, actor: SourceRouteActor, destination: GridPoint | null, now: number): number {
+  public applyScriptedActor(eventId: number, actor: SourceRouteActor, destination: GridPoint | null, now: number,
+    movementAction: "step" | "jump" = "step"): number {
     const runtime = this.runtimes.get(eventId);
     if (runtime === undefined) return 0;
     const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
@@ -307,11 +309,23 @@ export class SourceNpcMotionController {
     if (destination === null) return 0;
     runtime.x = destination.x;
     runtime.y = destination.y;
-    const duration = sourceNpcStepDuration(actor.moveSpeed);
+    const distance = Math.max(1, Math.hypot(destination.x - before.x, destination.y - before.y));
+    const duration = Math.round(sourceNpcStepDuration(actor.moveSpeed) * distance);
     runtime.motion = createSourceGridMotion(before, destination, actor.direction, now,
-      { duration, walkingPattern: runtime.walkingPattern });
+      { duration, walkingPattern: runtime.walkingPattern,
+        action: movementAction === "jump" ? "ledge-jump" : "step" });
     runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
     return duration;
+  }
+
+  public setScriptedActorLocation(eventId: number, point: GridPoint, direction?: number): boolean {
+    const runtime = this.runtimes.get(eventId);
+    if (runtime === undefined || !Number.isSafeInteger(point.x) || !Number.isSafeInteger(point.y)) return false;
+    runtime.x = point.x;
+    runtime.y = point.y;
+    runtime.motion = null;
+    if (direction !== undefined && direction !== 0) runtime.direction = directionName(direction);
+    return true;
   }
 
   public applyNetworkActors(actors: readonly SourceSceneActorSnapshot[], now: number): void {
@@ -329,6 +343,8 @@ export class SourceNpcMotionController {
       else runtime.opacity = actor.opacity;
       if (actor.pattern === undefined) delete runtime.pattern;
       else runtime.pattern = actor.pattern;
+      if (actor.renderOffsetY === undefined) delete runtime.networkRenderOffsetY;
+      else runtime.networkRenderOffsetY = actor.renderOffsetY;
       const currentMotion = runtime.motion;
       runtime.motion = moved ? createSourceGridMotion(before, actor, actor.direction, now,
         { duration: this.networkMotionDuration(before, actor, 3), walkingPattern: runtime.walkingPattern })
@@ -381,6 +397,8 @@ export class SourceNpcMotionController {
           : { pattern: sampled.pattern }),
         ...(runtime.characterName === undefined ? {} : { characterName: runtime.characterName }),
         ...(runtime.opacity === undefined ? {} : { opacity: runtime.opacity }),
+        ...((sampled?.renderOffsetY ?? runtime.networkRenderOffsetY) === undefined ? {}
+          : { renderOffsetY: sampled?.renderOffsetY ?? runtime.networkRenderOffsetY }),
       };
       result.set(eventId, pose);
     }

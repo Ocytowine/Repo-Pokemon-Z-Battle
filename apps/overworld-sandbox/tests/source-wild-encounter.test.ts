@@ -52,6 +52,19 @@ describe("source wild encounters", () => {
       .toEqual({ steps: 3, encounter: null });
   });
 
+  it("applies the source 50% type-amulet filter and falls back when no species matches", () => {
+    const types = (species: string): readonly string[] => species === "FLETCHLING"
+      ? ["NORMAL", "FLYING"] : ["NORMAL"];
+    expect(rollStepEncounter(encounters, 2, 3, new ScriptedRandom([0, 0, 0, 1]),
+      { type: "FLYING", speciesTypes: types })).toEqual({
+      steps: 0, encounter: { species: "FLETCHLING", level: 4 },
+    });
+    expect(rollStepEncounter(encounters, 2, 3, new ScriptedRandom([0, 0, 0, 0]),
+      { type: "WATER", speciesTypes: types })).toEqual({
+      steps: 0, encounter: { species: "BIDOOF", level: 3 },
+    });
+  });
+
   it("plans rod timing, bite odds and the weighted encounter from the saved RNG", () => {
     const fishing = { ...encounters, methods: [{ method: "OldRod", slots: [
       { species: "MAGIKARP", minimumLevel: 4, maximumLevel: 6, weight: 100 },

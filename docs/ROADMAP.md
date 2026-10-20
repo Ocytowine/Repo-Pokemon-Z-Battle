@@ -1015,10 +1015,61 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Miroir de la Vérité, la Pêche et Chevroum ;
 - [x] porter les rochers Éclate-Roc propres à Z : événement commun de fabrication,
   Poudre Explosive, disparition persistante ou temporaire et rencontre optionnelle ;
+- [x] porter les arbustes Coupe propres à Z : fabrication contextuelle de la
+  Hachuela Endeble, son et animation 19, récompenses, casse et disparition Coop ;
+- [x] porter les 18 amulettes de type : usage depuis le Sac, effet personnel de
+  500 pas, filtre source à 50 %, persistance et tables marche/grotte/pêche/Éclate-Roc ;
+- [x] porter les objets d’Illysée : chaîne Regadera Mágica, Talisman de Malvo
+  sensible à la position et mutation du monde réservée à l’hôte en Coop ;
+- [x] porter le prédicat de l’énigme Zarbi ETERNO à partir des formes ordonnées de
+  l’équipe persistante ;
+- [x] porter le minijeu de fouilles déclenché par Marteau + Ciseau : plateau 13 × 10,
+  burin/marteau, métal, fissures, trésors source, sons, récompenses personnelles,
+  commande `pbMiningGame` auditée et raccourci Test dev ;
+- [x] porter l'interface Guide des personnages depuis son catalogue Ruby et sa
+  variable de progression 240, avec un repli explicite lorsque les infographies
+  référencées sont absentes de la distribution ;
+- [ ] porter PokéObjectif lorsque sa table d'objectifs ou son gestionnaire source
+  sera disponible : la v2.12 FR ne fournit que l'objet, sans logique d'utilisation ;
 - [x] proposer un prologue condense sur une installation vierge puis reprendre la scene source de Map002 ;
 - [ ] valider le parcours Map002 vers Map003, Map007 puis Map009.
+- [x] automatiser et valider Route 3 → Bois-en-Tronc (Maps 023 à 029) : Dresseurs,
+  branche simple/double selon l'équipe apte, rencontres de nid et récompenses
+  post-victoire autoritaires. Le parcours et les deux nids ont été validés
+  manuellement avec les assets locaux le 2026-10-19. Le rendu générique des
+  commandes `jump` de PNJ a ensuite été corrigé (arc, durée selon la distance et
+  réplication Coop) pour la vieille dame de Map029/EV026 ; cette scène précise
+  attend une nouvelle vérification visuelle.
+- [ ] fermer Route 5 (Maps 055–056) avec l'audit `map:ID`, les rencontres et les
+  cinq Dresseurs. Le portage automatisé est terminé : fonctions à compteur et à
+  contexte, Morphing/Imposteur, climat/terrain, talents de contact et contrats
+  solo/room sont dans le noyau commun. Après `prepare:local`, `map:55` est à zéro
+  alerte et `map:56` ne conserve que `FAINTATTACK`, réellement absent de
+  `move2anim.dat` et rendu par le fallback prévu. Reste uniquement la recette
+  manuelle solo/hôte/invité/reconnexion avant de cocher le lot.
+- [ ] valider manuellement le combat narratif de Núbila à la Clairière Collinaire
+  (Map046/EV020). Le blocage de construction est corrigé : index de talent caché
+  Essentials, Acidarmure, Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii sont
+  portés dans le noyau partagé. L'audit ciblé ne conserve que l'animation source
+  absente de `LUZDECADENTE`, couverte par le fallback prévu.
 - [ ] porter progressivement les effets des talents source encore inertes ; leur
   identite valide est conservee et repliquee sans bloquer les combats.
+- [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
+  106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
+  autoritairement forme, caractéristiques, types et talent avec un usage par
+  propriétaire en solo, PvP et Coop. Les deux animations communes, leurs plans,
+  sons et changement de sprite sont raccordés. Restent les effets des
+  talents/climats que le moteur général ne sait pas encore rendre et la validation
+  manuelle complète des variantes de forme. Le lot 5 ajoute un périmètre d'audit
+  `mega:ESPECE:FORME`, contrôle automatiquement les références d'acquisition des
+  gemmes et porte seize talents déterministes dans le noyau partagé. Le lot 6
+  ajoute les conversions de type, Lévitation, Querelleur, Anti-Bruit et Sans
+  Limite, avec un premier contrat Brise Moule audité comme partiel. 59/114 formes
+  ont désormais leur talent actif ; les 55 autres restent reliées aux 38 talents
+  généraux précisément listés par `battle-integration-report.json`. L'audit source
+  confirme également trois gemmes sans acquisition événementielle
+  (`DURALUDONITA`, `GROUDONITE`, `RAYQUAZITE`), dont `GROUDONITE` absente du
+  catalogue d'objets ; ne pas inventer leur distribution.
 
 Jalon nouvelle partie du 2026-10-05 : l'absence de sauvegarde ouvre un resume
 passable des cartes d'introduction avant trois choix issus des sources (difficulte,
@@ -1829,10 +1880,41 @@ autonomes sur une même carte.
 
 ### Phase 11 - Mecanismes solo structurants
 
+<<<<<<< HEAD
 L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
 donnees importees masquent encore un ecart de comportement important : 62/353
 fonctions d'attaque sont executees et 4 partielles ; 79/255 talents sont executes
 et 5 partiels. Les objets sont avances mais
+=======
+Decision produit du 2026-10-19 : la priorite de cette phase est desormais le
+portage fonctionnel complet des Pokemon et des Dresseurs avant les ameliorations
+de confort UI/UX. Les refontes de navigation, le rangement avance de l'equipe et
+les autres optimisations d'interface restent autorisees uniquement lorsqu'elles
+bloquent le test d'une mecanique portee.
+
+Le travail avance par frontieres verticales du parcours. Pour chaque nouvelle
+espece, rencontre ou equipe de Dresseur, le pipeline controle les capacites, les
+talents, les objets tenus, les statuts, les formes/evolutions et les animations
+source. Toute dependance manquante est portee comme mecanique generique dans le
+noyau commun, puis validee avec le meme contrat en solo, hote et invite. Une
+espece n'est pas consideree terminee parce que ses donnees ou son sprite sont
+charges : toutes les dependances qu'elle peut effectivement employer dans le
+perimetre teste doivent etre executees ou explicitement auditees comme partielles.
+
+Ordre de travail retenu :
+
+1. fermer les dettes fonctionnelles des lots verticaux deja accessibles ;
+2. continuer le parcours narratif par groupes de cartes, rencontres et Dresseurs ;
+3. terminer les mecanismes transverses du cycle Pokemon (capacites, talents,
+   objets tenus, statuts, capture, evolution, formes et apprentissage) rencontres
+   par ces lots ;
+4. seulement apres cette couverture, reprendre les ameliorations UI/UX qui ne
+   conditionnent pas les tests.
+
+L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les
+donnees importees masquent encore un ecart de comportement important : 24/353
+fonctions d'attaque et 14/255 talents sont executes. Les objets sont avances mais
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots
@@ -2127,6 +2209,49 @@ frappes multiples exposent chaque impact/PV a la presentation. `088`, `0AA` et
 `0C0` sont donc pleinement supportees. La validation manuelle de cette frontiere
 rejoint desormais la recette globale de `STAB-BATTLE-1` ; l'IA tactique generale
 sera traitee dans un lot distinct.
+
+Quatrieme lot vertical du 2026-10-19, P0 automatise : Route 3, Nouvelle Reunion,
+Route 4, Clairiere Collinaire et Bois-en-Tronc sont couverts par le pipeline de
+dependances. Le nombre de Pokemon aptes choisit generiquement la branche simple ou
+double ; huit nouvelles fonctions completes, les capacites de bas niveau requises
+et sept talents deterministes utilisent le noyau commun solo/Coop. Les combats de
+nid et leurs recompenses differees sont hote-autoritaires et restaurables apres
+reconnexion. Le sous-lot de fidelite porte maintenant le vrai deux-contre-un des
+boss, leurs rangs initiaux, le tirage persistant du nid insecte et le
+repositionnement replique des acteurs de la scene post-combat. Les mécaniques
+partielles ont ensuite été fermées et la recette manuelle Maps 023 à 029, nids
+compris, a été validée avec les assets locaux. Deux TP neutres de Test dev
+permettent toujours d'atteindre les nids sans modifier les interrupteurs d'histoire.
+
+Stabilisation Coop du 2026-10-19 : les combats de nid déjà doubles restent masqués
+à l'invité jusqu'à ce qu'il interagisse avec l'hôte adjacent pour les observer,
+sans autoriser un troisième combattant. Les
+combats simples rejoignables refusent désormais toute modification de composition
+pendant une action ou un remplacement. Leur passage en double conserve les effets
+tactiques et ne rejoue pas les talents d'entrée des actifs existants. Le client
+réconcilie toute modification structurelle des camps et sérialise le chargement
+des sprites, ce qui supprime les compositions différentes entre hôte et invité.
+Un raccourci Test dev vers Hector et Zaida (Map027, événement 12) fournit le vrai
+combat duo source : deux adversaires sont actifs nativement. En Coop, l'invité
+peut prendre le second poste allié avant le premier tour ; le second Pokémon de
+l'hôte reste en réserve, sans dépasser le format 2 contre 2. Les combats sauvages
+déjà doubles restent non rejoignables et seulement observables.
+La persistance Cloudflare est désormais séparée du flux temps réel : sons et
+transport ne sont pas écrits, tandis que mouvements joueur/PNJ sont consolidés
+en checkpoints au lieu d'un `storage.put()` par message. Les mutations critiques
+restent persistées immédiatement pour préserver combats, narration et reconnexion.
+
+Fermeture des mécaniques partielles Route 3–Route 4 du 2026-10-19 : les douze
+codes auparavant partiels (`021`, `049`, `082`, `083`, `093`, `098`, `09C`,
+`0DC`, `0F1`, `0F4`, `0FA`, `110`) sont maintenant pris en charge dans le noyau
+simple et double. Chargeur, Anti-Brume, Assurance, Chant Canon, Frénésie, Fléau,
+Coup d'Main, Vampigraine, Larcin/Implore, Piqûre/Picore, le recul et Tour Rapide
+partagent le même état autoritaire en solo et Coop. Les transferts d'objets sont
+restaurés après un combat de Dresseur, mais conservés après un sauvage. L'audit
+local passe à 81/353 fonctions supportées et aucune fonction classée `partial` ;
+les 272 fonctions restantes demeurent explicitement non implémentées et seront
+portées avec leurs futurs lots verticaux. Le fallback de Larcin reste nécessaire,
+car le jeu source ne fournit aucun mapping dans `move2anim.dat`.
 
 Correctif de frontiere du 2026-10-13 : `SWEETSCENT` (`048`) ne bloque plus la
 construction d'une equipe de Dresseur. Doux Parfum baisse l'Esquive adverse de
@@ -2464,3 +2589,20 @@ existants et ne creent pas de logique de gameplay parallele.
 - [x] importer et lire les animations communes de statut du jeu source ;
 - [ ] résorber progressivement les dettes signalées par périmètre au moment où les
   nouvelles rencontres deviennent jouables, sans bloquer sur les zones futures.
+
+### Fidélité narrative des rencontres — 2026-10-19
+
+- [x] extraire les statuts initiaux conditionnés par carte, espèce et switch depuis
+  `onWildPokemonCreate` ;
+- [x] appliquer l'Exténuation du Couafarel de Nouvelle Réunion et des zones
+  concernées avant la création du snapshot de combat solo/Coop ;
+- [x] employer le libellé français `Exténuation` tout en conservant l'identifiant
+  source interne `caduco` et l'animation `Common:Caduco` ;
+- [x] étendre le même catalogue aux formes, capacités forcées, objets, IV/EV,
+  shiny et surnoms, puis appliquer ces données avant le snapshot autoritaire ;
+- [x] inscrire toute mutation statique ou condition non comprise dans
+  `encounter-modifiers.json.audit.unsupported` au lieu de l'appliquer globalement ;
+- [x] porter le niveau dynamique de la Map999 et les profils de statistiques de
+  boss de la variable 300 avec leur RNG et leur état tactique autoritaires ;
+- [ ] ajouter à chaque lot de zone une vérification des préparatifs narratifs et
+  des effets post-combat, au-delà du seul audit espèce/capacités/talents.

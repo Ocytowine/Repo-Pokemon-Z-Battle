@@ -2,18 +2,37 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   replaceFaintedDoublePokemon, replaceFaintedPokemon, resolveTeamTurn,
   sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
+<<<<<<< HEAD
   type BattleResolutionRules, type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
   type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
+=======
+  type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
+  type BattleStat, type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
   storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
   type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
+import type { SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
+import { applySourceEncounterInitialEffects, type SourceEncounterInitialEffects } from "./source-encounter-modifiers.js";
 
 export interface SourceEncounterRequest {
   readonly species: string;
   readonly level: number;
+  readonly initialStages?: Readonly<Partial<Record<BattleStat, number>>>;
+  readonly boss?: true;
+  readonly method?: "land" | "cave" | "rock-smash" | "fishing" | "scripted";
+}
+
+type BattleEnvironment = NonNullable<TeamBattleState["effects"]>["environment"];
+
+function withEnvironment(state: TeamBattleState, environment: BattleEnvironment): TeamBattleState {
+  const effects = state.effects ?? { sides: {
+    player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 },
+  }, waterSportTurns: 0 };
+  return { ...state, effects: { ...effects, environment } };
 }
 
 export interface SourceTrainerDefinition {
@@ -26,8 +45,9 @@ export interface SourceTrainerDefinition {
     readonly abilityIndex?: number | null }[];
 }
 
-function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog) {
-  const preparation = prepareSourcePlayerBattleTeam(party, catalog);
+function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreationCatalog,
+  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false) {
+  const preparation = prepareSourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
   if (preparation.team === null) {
     throw new Error(preparation.unavailableReason ?? "L'équipe ne peut pas participer à ce combat.");
   }
@@ -35,31 +55,58 @@ function sourcePlayerBattleTeam(party: PlayerPartyState, catalog: PlayerCreation
 }
 
 export function createSourceEncounterBattle(party: PlayerPartyState, encounter: SourceEncounterRequest,
-  catalog: PlayerCreationCatalog, opponentId: string): TeamBattleState {
-  const player = sourcePlayerBattleTeam(party, catalog);
+  catalog: PlayerCreationCatalog, opponentId: string, megaCatalog?: SourceMegaEvolutionCatalog,
+  megaActivationAvailable = false, initialEffects?: SourceEncounterInitialEffects): TeamBattleState {
+  const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
+  const createdOpponent = createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog);
   const opponentParty = addPokemonToParty(createEmptyPlayerParty(),
-    createPersistentPokemon(opponentId, encounter.species, encounter.level, catalog));
+    initialEffects === undefined ? createdOpponent
+      : applySourceEncounterInitialEffects(createdOpponent, initialEffects, catalog));
   const opponent = playerPartyToBattleTeam(opponentParty, catalog);
-  return createTeamBattleState({ player: player.members, opponent: opponent.members },
-    { player: player.activeIndex, opponent: opponent.activeIndex });
+  const state = encounter.boss === true && player.members.length > 1
+    ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
+    : createTeamBattleState({ player: player.members, opponent: opponent.members },
+      { player: player.activeIndex, opponent: opponent.activeIndex });
+  const environment: BattleEnvironment = encounter.method === "cave" || encounter.method === "rock-smash" ? "cave"
+    : encounter.method === "fishing" ? "moving-water" : encounter.method === "land" ? "grass" : "none";
+  const contextualState = withEnvironment(state, environment);
+  if (encounter.initialStages === undefined) return contextualState;
+  const opponentTeam = contextualState.teams.opponent;
+  const withInitialStages = (member: (typeof opponentTeam.members)[number]) => {
+    const stages = Object.fromEntries(Object.entries(member.stages).map(([stat, stage]) =>
+      [stat, Math.max(-6, Math.min(6, stage + (encounter.initialStages?.[stat as BattleStat] ?? 0)))])
+    ) as unknown as typeof member.stages;
+    return { ...member, stages };
+  };
+  return { ...contextualState, teams: { ...contextualState.teams, opponent: { ...opponentTeam,
+    members: opponentTeam.members.map((member, index) => index !== opponentTeam.activeIndex
+      ? member : withInitialStages(member)) } } };
 }
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
   catalog: PlayerCreationCatalog, format: "single" | "double" = "single",
+<<<<<<< HEAD
   opponentId: (memberIndex: number) => string = (memberIndex) =>
     `trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${memberIndex}`): TeamBattleState {
   const player = sourcePlayerBattleTeam(party, catalog);
+=======
+  megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false,
+  environment: BattleEnvironment = "none"): TeamBattleState {
+  const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
     let pokemon = createPersistentPokemon(opponentId(index), member.species, member.level, catalog);
     const species = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
     if (species === undefined) throw new Error(`Espèce de Dresseur absente du catalogue : ${member.species}.`);
     const abilityIndex = member.abilityIndex ?? null;
+    // Essentials keeps 0/1 for normal slots and starts hidden abilities at 2,
+    // even when the species declares only one normal ability.
     const ability = abilityIndex === null
       ? pokemon.ability
-      : abilityIndex < species.abilities.length
+      : abilityIndex < 2
         ? species.abilities[abilityIndex] ?? null
-        : species.hiddenAbilities?.[abilityIndex - species.abilities.length] ?? null;
+        : species.hiddenAbilities?.[abilityIndex - 2] ?? null;
     if (abilityIndex !== null && ability === null) {
       throw new Error(`Index de talent invalide pour ${member.species} : ${abilityIndex}.`);
     }
@@ -74,13 +121,16 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     }
     opponentParty = addPokemonToParty(opponentParty, pokemon);
   });
-  const opponent = playerPartyToBattleTeam(opponentParty, catalog);
+  const opponentPreparation = prepareSourcePlayerBattleTeam(opponentParty, catalog, megaCatalog, true);
+  if (opponentPreparation.team === null) throw new Error(opponentPreparation.unavailableReason
+    ?? "Équipe du Dresseur incompatible avec le moteur.");
+  const opponent = opponentPreparation.team;
   const state = format === "double"
     ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
     : createTeamBattleState({ player: player.members, opponent: opponent.members },
       { player: player.activeIndex, opponent: opponent.activeIndex });
-  return { ...state, teams: { ...state.teams,
-    opponent: { ...state.teams.opponent, items: [...(trainer.items ?? [])] } } };
+  return withEnvironment({ ...state, teams: { ...state.teams,
+    opponent: { ...state.teams.opponent, items: [...(trainer.items ?? [])] } } }, environment);
 }
 
 export function resolveSourceEncounterAction(state: TeamBattleState, playerAction: TeamBattleAction,
@@ -181,7 +231,7 @@ export function applyAutomaticReplacements(state: TeamBattleState): TeamBattleSt
 }
 
 export function storeSourceEncounterParty(party: PlayerPartyState, state: TeamBattleState): PlayerPartyState {
-  return storeProjectedBattleTeam(party, state.teams.player);
+  return storeProjectedBattleTeam(party, state.teams.player, { retainTransferredHeldItems: true });
 }
 
 export interface SourceEncounterSettlement {

@@ -1,10 +1,11 @@
 import type { ImportedEventPage } from "./imported-map.js";
 import type { SourceEventState } from "./source-event-state.js";
-import { parseSourceInventoryQuantityCondition, portSourceRubyCommand,
+import { parseSourceAblePokemonCountCondition, parseSourceInventoryQuantityCondition, portSourceRubyCommand,
   portSourceRubyCondition, isSourceDayCareEggServicePage, isSourceDayCareServicePage } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 import { portSourcePokeVialCommand } from "./source-poke-vial.js";
+import { sourcePartySpellsUnownEterno } from "./source-unown-puzzle.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -48,6 +49,7 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
   const operands = command.data.operands;
   if (typeof kind !== "string") return null;
   if (kind === "ruby-script" && typeof command.data.script === "string") {
+    if (command.data.script.trim() === "unown_check") return sourcePartySpellsUnownEterno(state.party);
     const condition = parseSourceInventoryQuantityCondition(command.data.script);
     if (condition !== null) {
       const movementItem = condition.itemId === "SURFMONTURA" || /^BICYCLE\d*$/u.test(condition.itemId);
@@ -55,6 +57,11 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
         ? Math.max(state.inventory[condition.itemId] ?? 0, 1)
         : state.inventory[condition.itemId] ?? 0;
       return compareInventoryQuantity(owned, condition.comparator, condition.quantity);
+    }
+    const ablePokemon = parseSourceAblePokemonCountCondition(command.data.script);
+    if (ablePokemon !== null) {
+      const count = state.party.members.filter((pokemon) => pokemon.hp > 0 && pokemon.metadata.eggSteps <= 0).length;
+      return compareInventoryQuantity(count, ablePokemon.comparator, ablePokemon.quantity);
     }
     return null;
   }

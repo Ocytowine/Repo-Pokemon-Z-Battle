@@ -7,6 +7,7 @@ import { isKnownSourceCommand, isSourceStateCommand } from "./source-command-reg
 import { reconcileSourcePokeVial, refillSourcePokeVial, type SourcePokeVialState } from "./source-poke-vial.js";
 import { createEmptySourceDayCare, parseSourceDayCare, type SourceDayCareState } from "./source-day-care.js";
 import { createEmptySourceIncubator, parseSourceIncubator, type SourceIncubatorState } from "./source-incubator.js";
+import type { BattleStat } from "@pokemon-z-battle/battle-engine";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -29,13 +30,23 @@ export interface SourceEventState {
   /** Ordered personal hatch queue. Eggs remain opaque at one step until their blocking scene completes. */
   readonly pendingHatches: readonly string[];
   readonly pendingEncounter: SourceEncounter | null;
+  /** Profil one-shot de la variable source 300, consommé par la prochaine rencontre scénarisée. */
+  readonly nextWildBattleStages: Readonly<Partial<Record<BattleStat, number>>> | null;
   /** Personal Bag shortcut; omitted in legacy saves until the player chooses a rod. */
   readonly preferredFishingRod?: SourceFishingRod;
+  /** Personal and persisted; only the resulting encounter is presented to Coop participants. */
+  readonly typeAmulet: SourceTypeAmuletState | null;
   /** Compteur personnel des pas, restauré après reconnexion, pour les effets périodiques comme le bonheur. */
   readonly happinessSteps: number;
   readonly wildEncounterSteps: number;
   readonly wildEncounterRngState: number;
   readonly appliedBattleSettlementIds: readonly string[];
+}
+
+export interface SourceTypeAmuletState {
+  readonly itemId: string;
+  readonly type: string;
+  readonly stepsRemaining: number;
 }
 
 export type SourceFishingRod = "OLDROD" | "GOODROD" | "SUPERROD";
@@ -61,7 +72,15 @@ export interface SourceEncounter {
   /** Migrated saves may omit it; new encounters preserve the field origin for capture rules and reports. */
   readonly method?: "land" | "cave" | "rock-smash" | "fishing" | "scripted";
   readonly victorySwitches: Readonly<Record<string, boolean>>;
+  /** Personal rewards committed only after the authoritative victory. */
+  readonly victoryItems?: Readonly<Record<string, number>>;
   readonly escapable: boolean;
+  /** Rangs initiaux propres au combat, persistés pour une reprise/connexion Coop déterministe. */
+  readonly initialStages?: Readonly<Partial<Record<BattleStat, number>>>;
+  /** Marks the source dynamic-level policy as already consumed for reconnect safety. */
+  readonly levelPolicyResolved?: true;
+  /** pbBossFight forces a double battle when the prepared player team has more than one member. */
+  readonly boss?: true;
 }
 
 export interface SourceCheckpoint {
@@ -91,6 +110,8 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   incubator: Object.freeze(createEmptySourceIncubator()),
   pendingHatches: Object.freeze([]),
   pendingEncounter: null,
+  nextWildBattleStages: null,
+  typeAmulet: null,
   happinessSteps: 0,
   wildEncounterSteps: 0,
   wildEncounterRngState: 0x9e37_79b9,
@@ -98,8 +119,9 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null,
-    happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] };
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+    typeAmulet: null, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
+    appliedBattleSettlementIds: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -174,23 +196,46 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   let party = state.party;
   let ranch = state.ranch;
   let pendingEncounter = state.pendingEncounter;
+  let nextWildBattleStages = state.nextWildBattleStages;
+  let wildEncounterRngState = state.wildEncounterRngState;
   let encounterQueued = false;
   let appliedCommands = 0;
   for (const command of page.commands) {
     if (!isSourceStateCommand(command.kind)) continue;
     if (encounterQueued) {
-      if (command.kind !== "set-switches" || pendingEncounter === null) {
+      if (pendingEncounter === null) {
         return { state, appliedCommands: 0, safe: false, reason: `commande ${command.kind} après combat non prise en charge` };
       }
-      const ids = range(command.data);
-      if (ids === null || typeof command.data.value !== "boolean") {
-        return { state, appliedCommands: 0, safe: false, reason: "paramètres d'interrupteur de victoire invalides" };
+      if (command.kind === "set-switches") {
+        const ids = range(command.data);
+        if (ids === null || typeof command.data.value !== "boolean") {
+          return { state, appliedCommands: 0, safe: false, reason: "paramètres d'interrupteur de victoire invalides" };
+        }
+        const victorySwitches = { ...pendingEncounter.victorySwitches };
+        ids.forEach((id) => { victorySwitches[String(id)] = command.data.value as boolean; });
+        pendingEncounter = { ...pendingEncounter, victorySwitches };
+        appliedCommands += 1;
+        continue;
       }
-      const victorySwitches = { ...pendingEncounter.victorySwitches };
-      ids.forEach((id) => { victorySwitches[String(id)] = command.data.value as boolean; });
-      pendingEncounter = { ...pendingEncounter, victorySwitches };
-      appliedCommands += 1;
-      continue;
+      if (command.kind === "grant-item" || command.kind === "grant-random-item") {
+        const choices = command.data.itemChoices;
+        const selected = command.kind === "grant-item" ? command.data.itemId
+          : Array.isArray(choices) && choices.every((entry) => typeof entry === "string") && choices.length > 0
+            ? choices[wildEncounterRngState % choices.length] : undefined;
+        const quantity = command.data.quantity;
+        if (typeof selected !== "string" || !finiteInteger(quantity) || quantity < 1) {
+          return { state, appliedCommands: 0, safe: false, reason: "récompense de victoire invalide" };
+        }
+        if (command.kind === "grant-random-item") {
+          wildEncounterRngState = (Math.imul(wildEncounterRngState, 1_664_525) + 1_013_904_223) >>> 0;
+        }
+        const victoryItems = { ...(pendingEncounter.victoryItems ?? {}) };
+        victoryItems[selected] = (victoryItems[selected] ?? 0) + quantity;
+        pendingEncounter = { ...pendingEncounter, victoryItems };
+        appliedCommands += 1;
+        continue;
+      }
+      return { state, appliedCommands: 0, safe: false, reason: `commande ${command.kind} après combat non prise en charge` };
     }
     if (command.kind === "set-switches") {
       const ids = range(command.data);
@@ -201,11 +246,23 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       selfSwitches[selfSwitchKey(mapId, eventId, command.data.id)] = command.data.value;
     } else if (command.kind === "change-variables") {
       const ids = range(command.data);
-      const operand = variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter,
+      const operandData = isRecord(command.data.operand) ? command.data.operand : null;
+      const randomValues = operandData?.kind === "random" && Array.isArray(operandData.values)
+        ? operandData.values : null;
+      const randomMinimum = randomValues?.[0];
+      const randomMaximum = randomValues?.[1];
+      const randomOperand = finiteInteger(randomMinimum) && finiteInteger(randomMaximum)
+        && randomMaximum >= randomMinimum
+        ? randomMinimum + wildEncounterRngState % (randomMaximum - randomMinimum + 1) : null;
+      const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
+        typeAmulet: state.typeAmulet,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
         appliedBattleSettlementIds: state.appliedBattleSettlementIds });
       if (ids === null || operand === null) return { state, appliedCommands: 0, safe: false, reason: "opérande de variable non prise en charge" };
+      if (randomOperand !== null) {
+        wildEncounterRngState = (Math.imul(wildEncounterRngState, 1_664_525) + 1_013_904_223) >>> 0;
+      }
       for (const id of ids) {
         const next = changedVariable(variables[String(id)] ?? 0, command.data.operation, operand);
         if (next === null) return { state, appliedCommands: 0, safe: false, reason: "opération de variable invalide" };
@@ -222,8 +279,12 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
         return { state, appliedCommands: 0, safe: false, reason: "parametres d'argent invalides" };
       }
       money = Math.max(0, Math.min(SOURCE_MAX_MONEY, operation === 0 ? money + operand : money - operand));
-    } else if (command.kind === "grant-item" || command.kind === "remove-item") {
-      const itemId = command.data.itemId;
+    } else if (command.kind === "grant-item" || command.kind === "grant-random-item" || command.kind === "remove-item") {
+      const choices = command.data.itemChoices;
+      const randomItem = command.kind === "grant-random-item"
+        && Array.isArray(choices) && choices.every((entry) => typeof entry === "string") && choices.length > 0
+        ? choices[wildEncounterRngState % choices.length] : undefined;
+      const itemId = command.kind === "grant-random-item" ? randomItem : command.data.itemId;
       const quantity = command.data.quantity;
       if (typeof itemId !== "string" || !finiteInteger(quantity) || quantity < 1) {
         return { state, appliedCommands: 0, safe: false, reason: "paramètres d'objet invalides" };
@@ -232,9 +293,12 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       if (command.kind === "remove-item" && current < quantity) {
         return { state, appliedCommands: 0, safe: false, reason: `objet ${itemId} absent de l'inventaire` };
       }
-      const next = command.kind === "grant-item" ? current + quantity : current - quantity;
+      const next = command.kind === "grant-item" || command.kind === "grant-random-item" ? current + quantity : current - quantity;
       if (!Number.isSafeInteger(next)) return { state, appliedCommands: 0, safe: false, reason: "quantité d'objet invalide" };
       if (next === 0) delete inventory[itemId]; else inventory[itemId] = next;
+      if (command.kind === "grant-random-item") {
+        wildEncounterRngState = (Math.imul(wildEncounterRngState, 1_664_525) + 1_013_904_223) >>> 0;
+      }
     } else if (command.kind === "set-running-shoes") {
       if (typeof command.data.value !== "boolean") {
         return { state, appliedCommands: 0, safe: false, reason: "parametre de chaussures de course invalide" };
@@ -272,29 +336,50 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       } catch (error) {
         return { state, appliedCommands: 0, safe: false, reason: error instanceof Error ? error.message : "ajout du Pokémon impossible" };
       }
+    } else if (command.kind === "set-next-wild-battle-stages") {
+      const value = command.data.stages;
+      const allowed = new Set<BattleStat>(["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"]);
+      if (!isRecord(value) || Object.keys(value).some((key) => !allowed.has(key as BattleStat))
+        || Object.values(value).some((entry) => !finiteInteger(entry) || entry < -6 || entry > 6)) {
+        return { state, appliedCommands: 0, safe: false, reason: "profil de statistiques de boss invalide" };
+      }
+      nextWildBattleStages = { ...value } as Partial<Record<BattleStat, number>>;
     } else if (command.kind === "request-encounter") {
-      const species = command.data.species;
+      const choices = command.data.speciesChoices;
+      const variableId = command.data.speciesVariableId;
+      const selectedSpecies = Array.isArray(choices) && choices.every((entry) => typeof entry === "string")
+        && finiteInteger(variableId) ? choices[variables[String(variableId)] ?? 0] : undefined;
+      const species = typeof command.data.species === "string" ? command.data.species : selectedSpecies;
       const level = command.data.level;
       if (typeof species !== "string" || !finiteInteger(level) || level < 1 || level > 100 || party.members.length === 0) {
         return { state, appliedCommands: 0, safe: false, reason: "rencontre impossible sans équipe valide" };
       }
-      pendingEncounter = { species, level, method: "scripted", victorySwitches: {}, escapable: false };
+      pendingEncounter = { species, level, method: "scripted", victorySwitches: {}, escapable: false,
+        ...(command.data.boss === true ? { boss: true as const } : {}),
+        ...(nextWildBattleStages === null ? {} : { initialStages: nextWildBattleStages }) };
+      nextWildBattleStages = null;
       encounterQueued = true;
     }
     appliedCommands += 1;
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
-    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter,
+    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
+    typeAmulet: state.typeAmulet,
     ...(state.preferredFishingRod === undefined ? {} : { preferredFishingRod: state.preferredFishingRod }),
     happinessSteps: state.happinessSteps,
-    wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
+    wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState,
     appliedBattleSettlementIds: state.appliedBattleSettlementIds };
   return { state: reconcileSourcePokedex(reconcileSourcePokeVial(nextState)), appliedCommands, safe: true, reason: null };
 }
 
 export function completePendingEncounter(state: SourceEventState): SourceEventState {
   if (state.pendingEncounter === null) return state;
-  return { ...state, switches: { ...state.switches, ...state.pendingEncounter.victorySwitches }, pendingEncounter: null };
+  const inventory = { ...state.inventory };
+  for (const [itemId, quantity] of Object.entries(state.pendingEncounter.victoryItems ?? {})) {
+    inventory[itemId] = Math.min(999_999, (inventory[itemId] ?? 0) + quantity);
+  }
+  return { ...state, switches: { ...state.switches, ...state.pendingEncounter.victorySwitches }, inventory,
+    pendingEncounter: null };
 }
 
 function booleanDictionary(value: unknown): Record<string, boolean> | null {
@@ -305,6 +390,20 @@ function booleanDictionary(value: unknown): Record<string, boolean> | null {
 function numberDictionary(value: unknown): Record<string, number> | null {
   if (!isRecord(value) || Object.values(value).some((entry) => !finiteInteger(entry))) return null;
   return { ...value } as Record<string, number>;
+}
+
+const BATTLE_STATS = new Set<BattleStat>([
+  "attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion",
+]);
+
+function battleStages(value: unknown): Partial<Record<BattleStat, number>> | null {
+  if (!isRecord(value)) return null;
+  const result: Partial<Record<BattleStat, number>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!BATTLE_STATS.has(key as BattleStat) || !finiteInteger(entry) || entry < -6 || entry > 6) return null;
+    result[key as BattleStat] = entry;
+  }
+  return result;
 }
 
 function speciesList(value: unknown): string[] | null {
@@ -364,6 +463,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && pokeVialValue.current >= 0 && pokeVialValue.maximum >= pokeVialValue.current && pokeVialValue.maximum <= 5
       ? { current: pokeVialValue.current, maximum: pokeVialValue.maximum } : null;
   const followerValue = value.followerEnabled;
+  const nextWildBattleStages = value.nextWildBattleStages === undefined || value.nextWildBattleStages === null
+    ? null : battleStages(value.nextWildBattleStages);
   const checkpointValue = value.checkpoint;
   const checkpoint = checkpointValue === undefined || checkpointValue === null ? null
     : isRecord(checkpointValue) && finiteInteger(checkpointValue.mapId) && finiteInteger(checkpointValue.x) && finiteInteger(checkpointValue.y)
@@ -400,7 +501,12 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     : isRecord(encounterValue) && typeof encounterValue.species === "string" && finiteInteger(encounterValue.level)
       && encounterValue.level >= 1 && encounterValue.level <= 100
       && (encounterValue.victorySwitches === undefined || booleanDictionary(encounterValue.victorySwitches) !== null)
+      && (encounterValue.victoryItems === undefined || numberDictionary(encounterValue.victoryItems) !== null
+        && Object.values(numberDictionary(encounterValue.victoryItems)!).every((quantity) => quantity > 0))
       && (encounterValue.escapable === undefined || typeof encounterValue.escapable === "boolean")
+      && (encounterValue.initialStages === undefined || battleStages(encounterValue.initialStages) !== null)
+      && (encounterValue.levelPolicyResolved === undefined || encounterValue.levelPolicyResolved === true)
+      && (encounterValue.boss === undefined || encounterValue.boss === true)
       && (encounterValue.method === undefined || ["land", "cave", "rock-smash", "fishing", "scripted"]
         .includes(String(encounterValue.method)))
       ? { species: encounterValue.species, level: encounterValue.level,
@@ -408,6 +514,14 @@ export function parseSourceEventState(value: unknown): SourceEventState {
           method: encounterValue.method as NonNullable<SourceEncounter["method"]>,
         }),
         victorySwitches: encounterValue.victorySwitches === undefined ? {} : booleanDictionary(encounterValue.victorySwitches)!,
+        ...(encounterValue.victoryItems === undefined ? {} : {
+          victoryItems: numberDictionary(encounterValue.victoryItems)!,
+        }),
+        ...(encounterValue.initialStages === undefined ? {} : {
+          initialStages: battleStages(encounterValue.initialStages)!,
+        }),
+        ...(encounterValue.levelPolicyResolved === true ? { levelPolicyResolved: true as const } : {}),
+        ...(encounterValue.boss === true ? { boss: true as const } : {}),
         escapable: encounterValue.escapable === true } : undefined;
   const wildEncounterSteps = value.wildEncounterSteps === undefined ? 0 : value.wildEncounterSteps;
   const happinessSteps = value.happinessSteps === undefined ? 0 : value.happinessSteps;
@@ -415,6 +529,13 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const preferredFishingRod = value.preferredFishingRod === undefined ? undefined
     : ["OLDROD", "GOODROD", "SUPERROD"].includes(String(value.preferredFishingRod))
       ? value.preferredFishingRod as SourceFishingRod : null;
+  const typeAmuletValue = value.typeAmulet;
+  const typeAmulet = typeAmuletValue === undefined || typeAmuletValue === null ? null
+    : isRecord(typeAmuletValue) && typeof typeAmuletValue.itemId === "string"
+      && typeof typeAmuletValue.type === "string" && finiteInteger(typeAmuletValue.stepsRemaining)
+      && typeAmuletValue.stepsRemaining >= 1 && typeAmuletValue.stepsRemaining <= 500
+      ? { itemId: typeAmuletValue.itemId, type: typeAmuletValue.type,
+        stepsRemaining: typeAmuletValue.stepsRemaining } : undefined;
   const appliedBattleSettlementIds = value.appliedBattleSettlementIds === undefined ? []
     : Array.isArray(value.appliedBattleSettlementIds)
       && value.appliedBattleSettlementIds.length <= 128
@@ -445,11 +566,13 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
     || appliedBattleSettlementIds === null || pendingHatches === null || preferredFishingRod === null
+    || typeAmulet === undefined || nextWildBattleStages === null && value.nextWildBattleStages !== undefined
+      && value.nextWildBattleStages !== null
     || pendingHatches.some((id) => !hatchableIds.includes(id)) || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
   return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
     pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
-    party, ranch, dayCare, incubator, pendingHatches, pendingEncounter,
+    party, ranch, dayCare, incubator, pendingHatches, pendingEncounter, nextWildBattleStages, typeAmulet,
     ...(preferredFishingRod === undefined ? {} : { preferredFishingRod }),
     happinessSteps, wildEncounterSteps, wildEncounterRngState,
     appliedBattleSettlementIds });

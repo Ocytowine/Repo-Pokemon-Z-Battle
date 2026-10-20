@@ -18,6 +18,14 @@ function animation(name: string): RubyExtendedValue {
   };
 }
 
+function timing(type: number): RubyMarshalValue {
+  return { kind: "object", className: "PBAnimTiming", ivars: {
+    "@frame": 3, "@timingType": type, "@name": string("effect.png"), "@volume": 90, "@pitch": 110,
+    "@bgX": 12, "@bgY": null, "@opacity": 220, "@colorRed": 10, "@colorGreen": null,
+    "@colorBlue": 30, "@colorAlpha": 40, "@duration": 7,
+  } };
+}
+
 describe("battle animation normalization", () => {
   it("maps supported moves and names sparse cel fields", () => {
     const animations: RubyMarshalValue[] = [];
@@ -49,6 +57,7 @@ describe("battle animation normalization", () => {
   it("always expands common battle effects outside move2anim", () => {
     const common = animation("IGNORED");
     common.ivars["@name"] = string("Common:Sleep");
+    common.ivars["@timing"] = [timing(2)];
     const root: RubyExtendedValue = {
       kind: "user-class", moduleName: "PBAnimations", value: [],
       ivars: { "@array": [common] },
@@ -56,5 +65,8 @@ describe("battle animation normalization", () => {
     const result = normalizeBattleAnimations(root, [[], []], [], new Set());
     expect(result.animations).toHaveLength(1);
     expect(result.animations[0]?.name).toBe("Common:Sleep");
+    expect(result.animations[0]?.timings[0]).toEqual({ frame: 3, type: 2, name: "effect.png",
+      volume: 90, pitch: 110, x: 12, y: null, opacity: 220,
+      color: { red: 10, green: null, blue: 30, alpha: 40 }, duration: 7 });
   });
 });

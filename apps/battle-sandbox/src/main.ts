@@ -234,7 +234,7 @@ function statusName(status: MajorStatusState["kind"]): string {
     burn: "BRÛLURE",
     paralysis: "PARALYSIE",
     frozen: "GEL",
-    caduco: "CADUCO",
+    caduco: "EXTÉNUATION",
     hemorrhage: "HÉMORRAGIE",
   }[status];
 }
@@ -290,7 +290,11 @@ function describeEvent(event: TeamBattleEvent): string {
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
     case "hpRestored": return `${event.side} récupère ${event.amount} PV avec ${moveDisplayName(event.move)} · ${event.hp} PV`;
     case "abilityActivated": return `${event.side} active ${event.ability} (${event.effect})`;
+<<<<<<< HEAD
     case "abilityObserved": return `${event.side} observe ${event.ability} (${event.observation.kind})`;
+=======
+    case "abilityChanged": return `${event.target} reçoit le talent ${event.ability} avec ${event.move}`;
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     case "statusApplied": return `${event.target} subit : ${statusName(event.status)}`;
     case "statusApplicationFailed": return `${statusName(event.status)} sans effet sur ${event.target} (${event.reason})`;
     case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;
@@ -300,9 +304,13 @@ function describeEvent(event: TeamBattleEvent): string {
     case "volatileEnded": return `${event.side} est libéré de ${event.effect}`;
     case "confusionDamage": return `${event.side} se blesse dans sa confusion · ${event.amount} dégâts · ${event.hp} PV`;
     case "bindingDamage": return `${event.side} subit ${event.move} · ${event.amount} dégâts · ${event.hp} PV`;
+    case "leechSeedDamage": return `${event.side} subit Vampigraine · ${event.amount} dégâts · ${event.hp} PV`;
     case "curseDamage": return `${event.side} subit la malédiction · ${event.amount} dégâts · ${event.hp} PV`;
+    case "recoilDamage": return `${event.side} subit ${event.amount} dégâts de recul avec ${event.move} · ${event.hp} PV`;
     case "itemActivated": return `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
     case "heldItemConsumed": return `${event.side} consomme ${event.item} (${event.effect})`;
+    case "heldItemTransferred": return `${event.target} dérobe ${event.item} à ${event.source} avec ${event.move}`;
+    case "heldItemRemoved": return `${event.source} retire ${event.item} à ${event.target} avec ${event.move}`;
     case "statStageChanged": return `${event.target} · ${event.stat} ${event.delta > 0 ? "+" : ""}${event.delta} · niveau ${event.stage}`;
     case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;
     case "fainted": return `${event.side} est K.O.`;
@@ -314,6 +322,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "replacementRequired": return `${event.side} doit choisir un remplaçant`;
     case "trainerItemUsed": return `${event.side} utilise ${event.itemId} sur ${event.target}`;
     case "captureAttempted": return `${event.side} lance ${event.ballId} · ${event.shakes} secousse(s) · ${event.success ? "capture" : "échec"}`;
+    case "megaEvolved": return `${event.side} fait Méga-Évoluer ${event.pokemonId} en forme ${event.toForm}`;
   }
 }
 
@@ -535,6 +544,7 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
         "item-blocked": "La Veste de Combat empêche les capacités de statut.",
         flinch: "Le Pokémon a peur et ne peut pas agir !",
         confusion: "Le Pokémon se blesse dans sa confusion !",
+        infatuation: "Le Pokémon est immobilisé par l'amour !",
         disabled: "Cette capacité est neutralisée.",
         taunted: "Provoc empêche cette capacité de statut.",
       } as const;

@@ -19,6 +19,14 @@ const event: ImportedMapEvent = { id: 6, name: "Promeneur", x: 2, y: 2, pages: [
 }] };
 
 describe("source NPC motion", () => {
+  it("repositions a scene actor immediately for source set-event-location commands", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    expect(controller.setScriptedActorLocation(event.id, { x: 4, y: 1 }, 8)).toBe(true);
+    expect(controller.poses(0).get(event.id)).toMatchObject({ x: 4, y: 1, direction: 8 });
+    expect(controller.setScriptedActorLocation(999, { x: 1, y: 1 })).toBe(false);
+  });
+
   it("converts source speed and frequency to bounded timings", () => {
     expect(sourceNpcStepDuration(3)).toBe(250);
     expect(sourceNpcStepDuration(6)).toBe(80);
@@ -163,6 +171,28 @@ describe("source NPC motion", () => {
     expect(controller.poses(225).get(event.id)).toMatchObject({
       x: 2.5, y: 2, direction: 6, characterName: "npc-revealed", opacity: 128,
     });
+  });
+
+  it("renders a scripted jump as an arc with a duration scaled to its distance", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    const actor = controller.scriptedActor(event.id, map.id, [event], createSourceEventState(), 100)!;
+    const duration = controller.applyScriptedActor(event.id, actor, { x: 6, y: 2 }, 100, "jump");
+
+    expect(duration).toBe(1_000);
+    expect(controller.poses(600).get(event.id)).toMatchObject({ x: 4, y: 2 });
+    expect(controller.poses(600).get(event.id)?.renderOffsetY).toBeLessThan(-10);
+    expect(controller.poses(1_100).get(event.id)).toMatchObject({ x: 6, y: 2, renderOffsetY: 0 });
+  });
+
+  it("replays a narrative actor's vertical jump offset for a Coop guest", () => {
+    const controller = new SourceNpcMotionController();
+    controller.reset(map.id, [event], 0);
+    controller.applyNetworkActors([
+      { eventId: event.id, x: event.x, y: event.y, direction: "down", renderOffsetY: -14 },
+    ], 100);
+
+    expect(controller.poses(100).get(event.id)).toMatchObject({ renderOffsetY: -14 });
   });
 
   it("exports logical world actors and interpolates a host step on a guest", () => {

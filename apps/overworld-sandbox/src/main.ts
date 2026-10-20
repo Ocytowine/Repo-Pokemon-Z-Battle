@@ -36,8 +36,10 @@ import { SourceBattleController, sharedBattleExperiencePresentations,
   type SourceBattleOutcome } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, rollStepEncounter,
-  sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
+  isGrassTerrain, sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
   type SourceEncounterMethod } from "./source-wild-encounter.js";
+import { advanceSourceTypeAmulet } from "./source-type-amulet.js";
+import { useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
@@ -68,6 +70,7 @@ import { SourceBattleOverlay } from "./source-battle-overlay.js";
 import { SourcePlayerDuelView } from "./source-player-duel-view.js";
 import { SourceBattleJoinView } from "./source-battle-join-view.js";
 import { prepareSourcePlayerBattleTeam } from "./source-battle-team-preparation.js";
+import { sourceMegaActivationAvailable } from "./source-mega-evolution.js";
 import { SourceRanchView } from "./source-ranch-view.js";
 import { SourceDayCareView } from "./source-day-care-view.js";
 import { SourceDayCareEggView } from "./source-day-care-egg-view.js";
@@ -79,6 +82,7 @@ import { collectDayCareEggInIncubator, depositPartyEggInIncubator, withdrawIncub
   type SourceIncubatorFailure } from "./source-incubator.js";
 import { SourceEggHatchView } from "./source-egg-hatch-view.js";
 import { SourceFishingView } from "./source-fishing-view.js";
+import { SourceMiningView } from "./source-mining-view.js";
 import { advanceSourceEggIncubation, completeSourceEggHatch, sourcePendingHatch }
   from "./source-egg-incubation.js";
 import { createSourcePokemonCollection } from "./source-pokemon-collection.js";
@@ -134,6 +138,9 @@ const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
 const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
+const SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION = { mapId: 27, x: 28, y: 20, direction: 8 } as const;
+const SOURCE_FURFROU_NEST_DEV_DESTINATION = { mapId: 24, x: 25, y: 15, direction: 8 } as const;
+const SOURCE_INSECT_NEST_DEV_DESTINATION = { mapId: 28, x: 7, y: 40, direction: 8 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
 
 function normalizedSourceAudio(settings: SourceAudioSettings): {
@@ -162,6 +169,7 @@ const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
 let sourceSprintHeld = false;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
+let pendingSourceFieldNotice: string | null = null;
 let coopHudNotice: { readonly text: string; readonly kind: "info" | "error";
   readonly source: "duel" | "general" | "presence" } | null = null;
 let sourceSceneAuditNotice: string | null = null;
@@ -211,6 +219,7 @@ let sourceShop: SourceShopSession | null = null;
 let sourceRanchSequence: SourceSequenceSession | null = null;
 let sourceDayCareSequence: SourceSequenceSession | null = null;
 let sourceDayCareEggSequence: SourceSequenceSession | null = null;
+let sourceMiningSequence: SourceSequenceSession | null = null;
 let sourceDayCareDevOpen = false;
 let sourceIncubatorOpen = false;
 let sourcePokemonSummarySession: { readonly context: SourcePokemonSummaryContext; pokemonId: string } | null = null;
@@ -345,7 +354,8 @@ function currentSourceScene(): SourceSceneSnapshot | null {
     return [{ eventId: event.id, x: pose.x, y: pose.y, direction: sourceActorDirection(pose.direction),
       ...(pose.pattern === undefined ? {} : { pattern: pose.pattern }),
       ...(pose.characterName === undefined ? {} : { characterName: pose.characterName }),
-      ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }) }];
+      ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }),
+      ...(pose.renderOffsetY === undefined ? {} : { renderOffsetY: pose.renderOffsetY }) }];
   });
   return { mapId: importedAssets.map.id, sequenceActive: sourceSequences.current !== null,
     dialogue: dialogue === null ? null : { label: dialogue.label,
@@ -440,7 +450,13 @@ function checkSourceWildEncounter(): boolean {
   if (sourceEventState.pendingEncounter !== null) return resumePendingWildEncounter();
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
   const terrain = terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
-  const roll = rollStepEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng);
+  const typeBias = sourceEventState.typeAmulet === null ? undefined : {
+    type: sourceEventState.typeAmulet.type,
+    speciesTypes: (species: string): readonly string[] => importedAssets!.battleCatalog.pokemon
+      .find((candidate) => candidate.internalName === species)?.types ?? [],
+  };
+  const roll = rollStepEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng,
+    typeBias);
   sourceEventState = { ...sourceEventState, wildEncounterSteps: roll.steps, wildEncounterRngState: rng.snapshot(),
     pendingEncounter: roll.encounter === null ? null : { ...roll.encounter,
       method: importedAssets.encounter?.methods.some((entry) => entry.method === "Cave") === true ? "cave" : "land",
@@ -459,7 +475,12 @@ function startSourceRandomTableEncounter(method: SourceEncounterMethod,
     || sourceEventState.party.members.length === 0) return false;
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
   const triggered = chancePercent >= 100 || rng.nextInt(100) < chancePercent;
-  const encounter = triggered ? rollEncounterForMethod(importedAssets.encounter, method, rng) : null;
+  const typeBias = sourceEventState.typeAmulet === null ? undefined : {
+    type: sourceEventState.typeAmulet.type,
+    speciesTypes: (species: string): readonly string[] => importedAssets!.battleCatalog.pokemon
+      .find((candidate) => candidate.internalName === species)?.types ?? [],
+  };
+  const encounter = triggered ? rollEncounterForMethod(importedAssets.encounter, method, rng, typeBias) : null;
   sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot(),
     pendingEncounter: encounter === null ? null : { ...encounter,
       method: method === "Cave" ? "cave" : method === "RockSmash" ? "rock-smash"
@@ -489,6 +510,10 @@ function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: nu
     completedMotion.action);
   if (feedback.sound !== null) sourcePresentation.playFieldSound(feedback.sound);
   if (feedback.animationId !== null) sourcePresentation.playFieldAnimation(feedback.animationId, -1);
+  const typeAmuletAdvance = advanceSourceTypeAmulet(sourceEventState,
+    sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y));
+  sourceEventState = typeAmuletAdvance.state;
+  if (typeAmuletAdvance.expired) pendingSourceFieldNotice = "L’amulette a cessé de faire effet.";
   const happinessSteps = sourceEventState.happinessSteps + 1;
   if (happinessSteps >= 128) {
     const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
@@ -525,7 +550,8 @@ function finishImportedStep(): void {
       beginSourceSequence(sharedEvent, `Événement personnel ${sharedEvent.event.id} · ${sharedEvent.event.name}`);
       return;
     }
-    importedNotice = `DÃ©placement vers ${importedAvatar.x},${importedAvatar.y}.`;
+    importedNotice = pendingSourceFieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+    pendingSourceFieldNotice = null;
     if ((!sharedGuest || multiplayer.current?.roomBattleActive === false) && checkSourceWildEncounter()) return;
     renderImportedView();
     continueSourceMovement();
@@ -537,7 +563,8 @@ function finishImportedStep(): void {
     return;
   }
   if (checkSourceWildEncounter()) return;
-  importedNotice = `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+  importedNotice = pendingSourceFieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+  pendingSourceFieldNotice = null;
   renderImportedView();
   continueSourceMovement();
 }
@@ -787,7 +814,8 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       }
     } else {
       duration = Math.max(duration,
-        sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now()));
+        sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now(),
+          result.movementAction));
       publishCurrentSourceActors();
     }
     renderImportedView();
@@ -1024,6 +1052,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
     sourceBattleVisuals.setAudioVolumes(settings.music / 100, settings.effects / 100);
     sourceProgressionView.setAudioVolumes(settings.music / 100, settings.effects / 100);
     sourceEggHatchView.setAudioVolumes(settings.music / 100, settings.effects / 100);
+    sourceMiningView.setAudioVolume(settings.effects / 100);
     if (sourcePokemonSummaryCry !== null) sourcePokemonSummaryCry.volume = settings.effects / 100 * 0.8;
   },
   onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
@@ -1037,11 +1066,20 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDevLevelCap: setSourceDevLevelCap,
   onGrantTestPokemon: grantSourceDevPokemon,
   onTeleportToTestDayCare: () => { void requestSourceDevTeleport(SOURCE_DAY_CARE_DEV_DESTINATION); },
+  onTeleportToTestDoubleJoin: () => { void requestSourceDevTeleport(SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION); },
+  onTeleportToTestFurfrouNest: () => { void requestSourceDevTeleport(SOURCE_FURFROU_NEST_DEV_DESTINATION); },
+  onTeleportToTestInsectNest: () => { void requestSourceDevTeleport(SOURCE_INSECT_NEST_DEV_DESTINATION); },
   onAccelerateTestEggs: accelerateSourceDevEggs,
   onOpenTestDayCare: () => {
     sourceScenes.closeMenu();
     sourceDayCareDevOpen = true;
     heldMovementKeys.clear();
+    renderImportedView();
+  },
+  onOpenTestMining: () => {
+    sourceScenes.closeMenu();
+    heldMovementKeys.clear();
+    sourceMiningView.start();
     renderImportedView();
   },
   onOpenIncubator: openSourceIncubator,
@@ -1060,6 +1098,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onUsePokemonItem: useSourcePokemonItem,
   onUseRareCandy: useSourceRareCandy,
   onUsePokemonPartyItem: useSourcePokemonPartyItem,
+  onUseFieldItem: useSourceFieldItem,
   onCraftAlchemy: craftSourceAlchemy,
 });
 const sourceProgressionView = new SourceProgressionView({
@@ -1099,6 +1138,27 @@ const sourceFishingView = new SourceFishingView({
     resumePendingWildEncounter();
   },
 });
+const sourceMiningView = new SourceMiningView({
+  itemName: (itemId) => importedAssets?.itemNames.get(itemId) ?? itemId,
+  onComplete: (items, outcome) => {
+    if (items.length > 0) {
+      const inventory = { ...sourceEventState.inventory };
+      for (const itemId of items) inventory[itemId] = (inventory[itemId] ?? 0) + 1;
+      sourceEventState = { ...sourceEventState, inventory };
+      persistSourceEventState();
+    }
+    const names = items.map((itemId) => importedAssets?.itemNames.get(itemId) ?? itemId);
+    const ending = outcome === "collapsed" ? "La paroi s’est effondrée. "
+      : outcome === "cleared" ? "Tous les trésors ont été dégagés. " : "Fouilles interrompues. ";
+    importedNotice = items.length === 0 ? `${ending}Aucun trésor récupéré.`
+      : `${ending}${names.join(", ")} rangé${items.length > 1 ? "s" : ""} dans le Sac.`;
+    const sequence = sourceMiningSequence;
+    sourceMiningSequence = null;
+    renderImportedView();
+    if (sequence !== null && sourceSequences.isActive(sequence)) void advanceSourceSequence();
+  },
+});
+sourceMiningView.setAudioVolume(sourceAudioPreferences.effects / 100);
 const sourceShopView = new SourceShopView({ onBuy: buySourceShopItem, onClose: closeSourceShop });
 const sourceRanchView = new SourceRanchView(closeSourceRanch, transferSourceRanchPokemon, setSourcePartyLead,
   (pokemonId) => openSourcePokemonSummary("ranch", pokemonId), changeSourcePokemonHeldItem,
@@ -1152,7 +1212,12 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     sourceEventState = nextState;
     persistSourceEventState();
     enqueueAllSourceProgressions();
-    queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
+    // Une séquence scénarisée reprend elle-même après son combat et effectue
+    // l'audit des autoruns à sa finalisation. La relancer ici ferait entrer un
+    // second événement entre la victoire et les commandes post-combat.
+    if (sourceSequences.current === null) {
+      queueMicrotask(() => { beginNewlyActivatedSourceAutorun(previousState, nextState); });
+    }
   },
   getResources: () => importedAssets === null ? null : {
     catalog: importedAssets.battleCatalog,
@@ -1160,6 +1225,11 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
     battleback: importedAssets.battleback ?? "snow",
     battleMusic: importedAssets.wildBattleBgm,
     victoryMusic: importedAssets.wildVictoryMe,
+    megaEvolutions: importedAssets.megaEvolutions,
+    encounterModifiers: importedAssets.encounterModifiers,
+    environment: importedAssets.encounter?.methods.some((method) => method.method === "Cave") === true ? "cave"
+      : isGrassTerrain(terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y))
+        ? "grass" : "none",
   },
   getEvolutionHour: () => new Date().getHours(),
   getPokemonCreationContext: (mapId, ballId) => activePokemonCreationContext(mapId, ballId),
@@ -1213,8 +1283,23 @@ sourceSequenceEffects = new SourceSequenceEffects({
     heldMovementKeys.clear();
     renderImportedView();
   },
+  openMining: (sequence) => {
+    sourceMiningSequence = sequence;
+    heldMovementKeys.clear();
+    sourceMiningView.start();
+    renderImportedView();
+  },
   transferPlayer: executeSourceSequenceTransfer,
   startMoveRoute: startSourceMoveRoute,
+  setEventLocation: (eventId, x, y, direction) => {
+    const moved = sourceNpcMotions.setScriptedActorLocation(eventId, { x, y }, direction);
+    if (moved) {
+      publishCurrentSourceActors();
+      publishCurrentSourceScene();
+      renderImportedView();
+    }
+    return moved;
+  },
   presentTrainerNotice: presentSourceTrainerNotice,
   setMovementMode: applySourceSequenceMovementMode,
   eraseEvent: (mapId, eventId) => {
@@ -1233,9 +1318,11 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     if (local) sourceBattles.renderVisuals();
     else if (!networkBattleAnimating) void sourceBattleVisuals.render(battle, importedAssets?.battleback ?? "snow");
   },
-  onMove: (moveIndex, local, activeSlot, target) => {
-    if (local) void sourceBattles.submitAction(moveIndex, activeSlot, target);
-    else multiplayer.submitBattleAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
+  onMove: (moveIndex, local, activeSlot, megaEvolution, target) => {
+    if (local) void sourceBattles.submitAction(moveIndex, activeSlot, megaEvolution, target);
+    else multiplayer.submitBattleAction({ kind: "move", moveIndex,
+      ...(megaEvolution ? { megaEvolution: true as const } : {}),
+      ...(target === undefined ? {} : { target }) }, activeSlot);
   },
   onSwitch: (teamIndex, local, activeSlot) => {
     if (local) void sourceBattles.switchPokemon(teamIndex, activeSlot);
@@ -1504,6 +1591,9 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
         ?? (visibleBattle?.duel === true ? "Entrenador.ogg" : importedAssets?.wildBattleBgm ?? null),
       victoryMusic: sourceContext?.presentation.victoryMusicId
         ?? (visibleBattle?.duel === true ? "VictoriaEntrenador.ogg" : importedAssets?.wildVictoryMe ?? null),
+      initialOpponentStatBoost: sourceContext?.origin === "source-wild"
+        && Object.values(viewerBattle.teams.opponent.members[viewerBattle.teams.opponent.activeIndex]?.stages ?? {})
+          .some((stage) => stage > 0),
       ...(sourceTrainerFacesViewer
         ? { opponentTrainer: sourceContext.presentation.opponentTrainer ?? { id: 0, name: opponentName } }
         : sourceContext?.origin === "source-trainer" || sourceContext === null
@@ -1939,7 +2029,7 @@ function sourceSceneActivity(): SourceSceneActivity {
       || (multiplayer.current?.snapshot?.duelChallenge ?? null) !== null,
     transition: sourceTransitionInProgress || sourceProgressionView.open || sourceEggHatchView.open
       || sourceCaptureResolutionView.open
-      || sourceFishingView.open,
+      || sourceFishingView.open || sourceMiningView.open,
     sequence: sourceSequences.current !== null,
     movement: importedPlayerMotion !== null };
 }
@@ -2169,7 +2259,13 @@ function requestSourceFishing(rod: SourceFishingRod): void {
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
   const lead = sourceEventState.party.activeIndex === null ? null
     : sourceEventState.party.members[sourceEventState.party.activeIndex] ?? null;
-  const attempt = planFishingAttempt(importedAssets.encounter, method, lead?.ability ?? null, rng, encounterMethod);
+  const typeBias = sourceEventState.typeAmulet === null ? undefined : {
+    type: sourceEventState.typeAmulet.type,
+    speciesTypes: (species: string): readonly string[] => importedAssets!.battleCatalog.pokemon
+      .find((candidate) => candidate.internalName === species)?.types ?? [],
+  };
+  const attempt = planFishingAttempt(importedAssets.encounter, method, lead?.ability ?? null, rng, encounterMethod,
+    typeBias);
   sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot() };
   persistSourceEventState();
   sourceScenes.closeMenu();
@@ -3082,6 +3178,28 @@ function useSourcePokemonPartyItem(itemId: string): {
   return { ok: true, message, eventState: sourceEventState };
 }
 
+function useSourceFieldItem(itemId: string): {
+  readonly ok: boolean; readonly message: string; readonly eventState: SourceEventState;
+} {
+  if (importedAssets === null) return { ok: false, message: "Données du jeu indisponibles.", eventState: sourceEventState };
+  const itemName = importedAssets.items.get(itemId)?.name ?? itemId;
+  if (itemId === "TALISMANMALVO" && isNetworkGuest() && guestUsesSharedSourceWorld()) {
+    return { ok: false, message: "Dans le monde partagé, seul l’hôte peut ouvrir ce passage.",
+      eventState: sourceEventState };
+  }
+  const result = applySourceFieldItem(sourceEventState, itemId, itemName,
+    { mapId: importedAssets.map.id, x: importedAvatar.x, y: importedAvatar.y });
+  if (result.ok) {
+    sourceEventState = result.state;
+    persistSourceEventState();
+    if (result.sharedWorldChanged) {
+      publishCurrentSourceWorld();
+      publishCurrentSourceActors();
+    }
+  }
+  return { ok: result.ok, message: result.message, eventState: result.state };
+}
+
 function setSourcePartyLead(pokemonId: string): void {
   try {
     sourceEventState = { ...sourceEventState, party: movePokemonToPartyFront(sourceEventState.party, pokemonId) };
@@ -3791,6 +3909,8 @@ function renderEncounter(): void {
         && canCaptureSharedBattleTarget(networkBattle.participation, networkBattle.state,
           networkBattle.sourceContext.origin),
     escaped: networkBattle?.escaped === true,
+    megaEvolutionEnabled: sourceMegaActivationAvailable(importedAssets?.megaEvolutions,
+      sourceEventState.inventory, sourceEventState.switches),
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
@@ -3829,7 +3949,9 @@ function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourcePl
   if (importedAssets === null) return { team: null,
     unavailableReason: "Les données de combat ne sont pas encore chargées.",
     requiresHealing: false, notice: null };
-  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog);
+  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog,
+    importedAssets.megaEvolutions, sourceMegaActivationAvailable(importedAssets.megaEvolutions,
+      sourceEventState.inventory, sourceEventState.switches));
 }
 
 function sourceBattleJoinTeamDiagnostic(): string {
@@ -3951,13 +4073,21 @@ function interact(playerId: AvatarId): void {
     if (target === null && trySourceTraversalInteraction()) return;
     const joinableBattle = multiplayer.current?.joinableBattle;
     const remoteAhead = multiplayer.active && !guestSourceExcursion && remotePlayerAhead();
+    const observerOnlyBattle = joinableBattle?.state.format === "double"
+      && joinableBattle.session.lifecycle === "active";
     const battleOwnerAdjacent = joinableBattle !== null && joinableBattle !== undefined
-      && joinableBattle.session.lifecycle === "join-window"
+      && (joinableBattle.session.lifecycle === "join-window" || observerOnlyBattle)
       && multiplayer.active && !guestSourceExcursion && remotePlayerAdjacent();
     const interactionTarget = battleOwnerAdjacent
       ? "player" : sourceInteractionTarget(target !== null, remoteAhead);
     if (interactionTarget === "player") {
       if (joinableBattle !== null && joinableBattle !== undefined) {
+        if (observerOnlyBattle) {
+          multiplayer.observeBattle();
+          importedNotice = "Vous rejoignez le combat comme spectateur…";
+          renderImportedView();
+          return;
+        }
         sourceBattleJoinView.open(joinableBattle.id);
         const preparation = currentPlayerBattleJoinPreparation();
         console.info("[coop-battle-join]", { battleId: joinableBattle.id,
@@ -4120,6 +4250,7 @@ function continueHeldSourceMovement(): void {
 }
 
 window.addEventListener("keydown", (event) => {
+  if (sourceMiningView.open) { event.preventDefault(); return; }
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = true;
   if (event.code === "Escape") {
     if (sourceScenes.compassOpen) { event.preventDefault(); closeSourceCompass(); return; }

@@ -65,10 +65,10 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 7 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
-      happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
-      happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+      typeAmulet: null, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+      typeAmulet: null, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
   });
 
   it("does not partially mutate an event containing unsupported control flow", () => {
@@ -82,8 +82,8 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null,
-        happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+        typeAmulet: null, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9, appliedBattleSettlementIds: [] });
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, pokedexEnabled: true }).pokedexEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {}, followerEnabled: true }).followerEnabled).toBe(true);
     expect(parseSourceEventState({ switches: {}, variables: {}, selfSwitches: {},
@@ -174,6 +174,8 @@ describe("persistent source event state", () => {
       { kind: "add-pokemon", text: null, indent: 0, data: { species: "CHESPIN", level: 5 } },
       { kind: "request-encounter", text: null, indent: 0, data: { species: "BIDOOF", level: 2 } },
       { kind: "set-switches", text: null, indent: 0, data: { firstId: 65, lastId: 65, value: true } },
+      { kind: "grant-random-item", text: null, indent: 0,
+        data: { itemChoices: ["PPUP", "QUICKBALL"], quantity: 1 } },
     ]);
     const result = applySafeStateCommands(createSourceEventState(), eventPage, 2, 9, {
       checkpoint: { mapId: 2, x: 52, y: 22, direction: "up" },
@@ -182,10 +184,39 @@ describe("persistent source event state", () => {
         majorStatus: null, ability: "OVERGROW", heldItem: null, moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }],
         metadata: createPersistentPokemonMetadata("starter", species, level) }),
     });
-    expect(result).toMatchObject({ safe: true, appliedCommands: 3, state: { switches: {},
-      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true }, escapable: false },
+    expect(result).toMatchObject({ safe: true, appliedCommands: 4, state: { switches: {},
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: { 65: true },
+        victoryItems: { QUICKBALL: 1 }, escapable: false },
       party: { activeIndex: 0, members: [{ species: "CHESPIN", level: 5 }] } } });
-    expect(completePendingEncounter(result.state)).toMatchObject({ switches: { 65: true }, pendingEncounter: null });
+    expect(completePendingEncounter(result.state)).toMatchObject({ switches: { 65: true },
+      inventory: { QUICKBALL: 1 }, pendingEncounter: null });
+  });
+
+  it("persists and consumes the source boss stat profile with the scripted encounter", () => {
+    const state = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
+      members: [{ id: "starter", species: "PIKACHU", nickname: null, level: 8, experience: 400,
+        stats: { maxHp: 28, attack: 15, defense: 12, specialAttack: 14, specialDefense: 14, speed: 20 },
+        hp: 28, majorStatus: null, ability: null, heldItem: null, moves: [],
+        metadata: createPersistentPokemonMetadata("starter", "PIKACHU", 8) }] } };
+    const profile = applySafeStateCommands(state, page(unconditional, [{ kind: "set-next-wild-battle-stages",
+      text: null, indent: 0, data: { stages: { speed: 1, defense: 2 } } }]), 24, 13);
+    expect(profile.state.nextWildBattleStages).toEqual({ speed: 1, defense: 2 });
+    const encounter = applySafeStateCommands(profile.state, page(unconditional, [{ kind: "request-encounter",
+      text: null, indent: 0, data: { species: "FURFROU", level: 11 } }]), 24, 13);
+    expect(encounter.state).toMatchObject({ nextWildBattleStages: null,
+      pendingEncounter: { species: "FURFROU", initialStages: { speed: 1, defense: 2 } } });
+    expect(parseSourceEventState(JSON.parse(JSON.stringify({ ...encounter.state, party: emptyParty }))).pendingEncounter)
+      .toMatchObject({ initialStages: { speed: 1, defense: 2 } });
+  });
+
+  it("draws RPG Maker random variable operands from the persisted authoritative RNG", () => {
+    const initial = createSourceEventState();
+    const result = applySafeStateCommands(initial, page(unconditional, [{ kind: "change-variables",
+      text: null, indent: 0, data: { firstId: 183, lastId: 183, operation: "set",
+        operand: { kind: "random", values: [0, 4] } } }]), 28, 8);
+    expect(result.safe).toBe(true);
+    expect(result.state.variables["183"]).toBe(initial.wildEncounterRngState % 5);
+    expect(result.state.wildEncounterRngState).not.toBe(initial.wildEncounterRngState);
   });
 
   it("sends a newly obtained Pokemon to the personal Ranch when the party is full", () => {

@@ -86,7 +86,7 @@ export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEven
   if (commands.some((command) => command.kind === "transfer-player")) return "transfer";
   if (commands.some((command) => command.kind === "heal-party" || command.kind === "recover-all"
     || command.kind === "open-shop" || command.kind === "open-ranch" || command.kind === "open-day-care"
-    || command.kind === "open-day-care-eggs")) return "personal";
+    || command.kind === "open-day-care-eggs" || command.kind === "open-mining")) return "personal";
   return "blocked";
 }
 

@@ -43,6 +43,12 @@ export interface NormalizedBattleAnimation {
     readonly name: string;
     readonly volume: number;
     readonly pitch: number;
+    readonly x: number | null;
+    readonly y: number | null;
+    readonly opacity: number | null;
+    readonly color: { readonly red: number | null; readonly green: number | null;
+      readonly blue: number | null; readonly alpha: number | null };
+    readonly duration: number;
   }[];
 }
 
@@ -53,6 +59,10 @@ function isUserClass(value: RubyMarshalValue, moduleName: string): value is Ruby
 
 function number(value: RubyMarshalValue | undefined, fallback = 0): number {
   return typeof value === "number" ? value : fallback;
+}
+
+function nullableNumber(value: RubyMarshalValue | undefined): number | null {
+  return typeof value === "number" ? value : null;
 }
 
 function objectIvars(value: RubyMarshalValue, className: string): RubyObject["ivars"] | null {
@@ -94,6 +104,11 @@ function normalizeAnimation(value: RubyMarshalValue, index: number): NormalizedB
         frame: number(ivars["@frame"]), type: number(ivars["@timingType"]),
         name: rubyText(ivars["@name"] ?? null) ?? "",
         volume: number(ivars["@volume"], 80), pitch: number(ivars["@pitch"], 100),
+        x: nullableNumber(ivars["@bgX"]), y: nullableNumber(ivars["@bgY"]),
+        opacity: nullableNumber(ivars["@opacity"]),
+        color: { red: nullableNumber(ivars["@colorRed"]), green: nullableNumber(ivars["@colorGreen"]),
+          blue: nullableNumber(ivars["@colorBlue"]), alpha: nullableNumber(ivars["@colorAlpha"]) },
+        duration: number(ivars["@duration"], 5),
       };
     }),
   };

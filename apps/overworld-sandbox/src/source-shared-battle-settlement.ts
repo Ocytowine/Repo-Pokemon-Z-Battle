@@ -27,7 +27,11 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
     return { state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null };
   }
   let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId,
+<<<<<<< HEAD
     settlement.experience.trainerBattle);
+=======
+    { retainTransferredHeldItems: !settlement.experience.trainerBattle });
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
     evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;

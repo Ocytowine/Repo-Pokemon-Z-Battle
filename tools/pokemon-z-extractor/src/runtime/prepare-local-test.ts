@@ -10,6 +10,7 @@ import { extractRuntimeData } from "./extract-runtime.js";
 import { extractWorldMaps } from "./extract-world-maps.js";
 import { extractEvents } from "./extract-events.js";
 import { extractScriptHooks } from "./extract-script-hooks.js";
+import { createMegaIntegrationAudit } from "./mega-integration-audit.js";
 
 export interface LocalTestPreparationResult {
   readonly outputDirectory: string;
@@ -102,10 +103,11 @@ export async function prepareLocalTest(
 ): Promise<LocalTestPreparationResult> {
   const paths = await assertOutputOutsideSource(sourceDirectory, outputDirectory);
   await extractPbsData(paths.source, paths.output);
+  await extractEvents(paths.source, paths.output);
   const runtime = await extractRuntimeData(paths.source, paths.output);
   await extractAssets(paths.source, paths.output);
   await extractWorldMaps(paths.source, paths.output);
-  await extractEvents(paths.source, paths.output);
+  await createMegaIntegrationAudit(paths.output);
   await extractScriptHooks(paths.source, paths.output);
   const manifestPath = await writeLocalDataManifest(paths.output);
   const configPath = await writeLocalTestConfiguration(invocationDirectory,

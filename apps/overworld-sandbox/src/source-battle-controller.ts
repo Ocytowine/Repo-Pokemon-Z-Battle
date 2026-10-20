@@ -25,6 +25,9 @@ import {
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 import type { SourceBattleReportStore } from "./source-battle-report.js";
+import { sourceMegaActivationAvailable, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
+import { hasSourceEncounterDynamicLevel, resolveSourceEncounterInitialEffects, resolveSourceEncounterLevel,
+  type SourceEncounterModifierCatalog } from "./source-encounter-modifiers.js";
 
 export interface SourceBattleResources {
   readonly catalog: PlayerCreationCatalog;
@@ -32,6 +35,9 @@ export interface SourceBattleResources {
   readonly battleback: string;
   readonly battleMusic: string | null;
   readonly victoryMusic: string | null;
+  readonly megaEvolutions?: SourceMegaEvolutionCatalog;
+  readonly encounterModifiers?: SourceEncounterModifierCatalog;
+  readonly environment?: NonNullable<NonNullable<TeamBattleState["effects"]>["environment"]>;
 }
 
 export interface SourceBattlePresentation {
@@ -40,6 +46,7 @@ export interface SourceBattlePresentation {
     readonly victoryMusic?: string | null;
     readonly battleback?: string;
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
+    readonly initialOpponentStatBoost?: boolean;
   }) => Promise<void>;
   readonly playTurn: (before: TeamBattleState, events: readonly (TeamBattleEvent | DoubleBattleEvent)[]) => Promise<void>;
   readonly endBattle: (winner: BattleSide | null, outcome?: SourceBattleOutcome) => Promise<void> | void;
@@ -199,13 +206,33 @@ export class SourceBattleController {
   }
 
   public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null): boolean {
-    const eventState = this.callbacks.getEventState();
-    const encounter = eventState.pendingEncounter;
+    let eventState = this.callbacks.getEventState();
+    let encounter = eventState.pendingEncounter;
     const resources = this.callbacks.getResources();
     if (encounter === null || resources === null || this.active) return false;
     try {
+      const levelContext = { mapId: resources.mapId, species: encounter.species, switches: eventState.switches };
+      if (encounter.levelPolicyResolved !== true
+        && hasSourceEncounterDynamicLevel(resources.encounterModifiers ?? { records: [] }, levelContext)) {
+        const levelRng = new SeededRandom(eventState.wildEncounterRngState);
+        const level = resolveSourceEncounterLevel(resources.encounterModifiers ?? { records: [] }, levelContext,
+          eventState.party.members.map((pokemon) => pokemon.level), encounter.level,
+        (maximum) => levelRng.nextInt(maximum));
+        encounter = { ...encounter, level, levelPolicyResolved: true };
+        eventState = { ...eventState, pendingEncounter: encounter, wildEncounterRngState: levelRng.snapshot() };
+        this.callbacks.updateEventState(eventState);
+      }
       const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
+<<<<<<< HEAD
         crypto.randomUUID());
+=======
+        `wild-${encounter.species.toLowerCase()}`, resources.megaEvolutions,
+        resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
+          eventState.inventory, eventState.switches),
+        resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
+          mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
+        }));
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
@@ -228,7 +255,9 @@ export class SourceBattleController {
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
       void this.presentation.startBattle(this.battle,
-        { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic, battleback: resources.battleback });
+        { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic, battleback: resources.battleback,
+          ...(encounter.initialStages !== undefined && Object.values(encounter.initialStages).some((stage) => stage > 0)
+            ? { initialOpponentStatBoost: true } : {}) });
       this.callbacks.setNotice(`Combat lancé contre ${encounter.species} niveau ${encounter.level}.`);
     } catch (error) {
       this.battle = null;
@@ -262,8 +291,15 @@ export class SourceBattleController {
       return false;
     }
     try {
+<<<<<<< HEAD
       const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single",
         () => crypto.randomUUID());
+=======
+      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog,
+        audio.format ?? "single", resources.megaEvolutions,
+        resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
+          eventState.inventory, eventState.switches), resources.environment ?? "none");
+>>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },
@@ -387,8 +423,11 @@ export class SourceBattleController {
     }
   }
 
-  public async submitAction(moveIndex: number, activeSlot = 0, target?: BattlePosition): Promise<void> {
-    await this.submitTurnAction({ kind: "move", moveIndex, ...(target === undefined ? {} : { target }) }, activeSlot);
+  public async submitAction(moveIndex: number, activeSlot = 0, megaEvolution = false,
+    target?: BattlePosition): Promise<void> {
+    await this.submitTurnAction({ kind: "move", moveIndex,
+      ...(megaEvolution ? { megaEvolution: true as const } : {}),
+      ...(target === undefined ? {} : { target }) }, activeSlot);
   }
 
   public acknowledgeSharedBattleOpened(): void {
@@ -482,9 +521,18 @@ export class SourceBattleController {
     if (this.battle.format === "double") {
       const actor = { side: "player" as const, slot: activeSlot };
       if (!activeBattlePositions(this.battle).some((position) => position.side === actor.side && position.slot === actor.slot)) return;
+      const activeIndex = activeTeamIndices(this.battle.teams.player)[activeSlot];
+      if (activeIndex === undefined || this.battle.teams.player.members[activeIndex]!.hp <= 0) {
+        this.localDoubleActions = this.localDoubleActions.filter((entry) => entry.actor.slot !== activeSlot);
+        this.callbacks.setNotice("Ce Pokemon est K.O. et ne peut plus choisir d'action.");
+        this.callbacks.render();
+        return;
+      }
+      const requiredSlots = activeTeamIndices(this.battle.teams.player).flatMap((index, slot) =>
+        this.battle!.teams.player.members[index]!.hp > 0 ? [slot] : []);
+      this.localDoubleActions = this.localDoubleActions.filter((entry) => requiredSlots.includes(entry.actor.slot));
       this.localDoubleActions = [...this.localDoubleActions.filter((entry) => entry.actor.slot !== activeSlot), { actor, action }];
-      const required = activeTeamIndices(this.battle.teams.player).filter((index) => this.battle!.teams.player.members[index]!.hp > 0).length;
-      if (this.localDoubleActions.length < required) {
+      if (requiredSlots.some((slot) => !this.localDoubleActions.some((entry) => entry.actor.slot === slot))) {
         this.callbacks.setNotice("Action du premier Pokemon enregistree. Choisissez celle du second.");
         this.callbacks.render();
         return;
@@ -500,7 +548,8 @@ export class SourceBattleController {
       const resolutionRules = { opponentItemTheft: this.localSession?.origin !== "source-wild" };
       const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
       let opponentItemChosen = false;
-      const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent).map((_, slot) => {
+      const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent)
+        .flatMap((index, slot) => before.teams.opponent.members[index]!.hp > 0 ? [slot] : []).map((slot) => {
         const action = chooseSourceBattleAction(before, "opponent", this.rng!, slot, !opponentItemChosen);
         if (action.kind === "item") opponentItemChosen = true;
         return { actor: { side: "opponent" as const, slot }, action };
@@ -564,7 +613,8 @@ export class SourceBattleController {
               form: target.appearance?.form ?? pokemon.metadata.form,
               shiny: target.appearance?.shiny ?? pokemon.metadata.shiny,
               gender: target.appearance?.gender ?? pokemon.metadata.gender } };
-          const party = storeProjectedBattleTeam(eventState.party, before.teams.player);
+          const party = storeProjectedBattleTeam(eventState.party, before.teams.player,
+            { retainTransferredHeldItems: true });
           const capturedState = { ...eventState, party,
             ranch: addPokemonToStorage(eventState.ranch, pokemon) };
           const nextState = completePendingEncounter(capturedState);

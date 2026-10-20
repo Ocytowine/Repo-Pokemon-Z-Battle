@@ -25,7 +25,7 @@ describe("source move routes", () => {
     expect(run("step-backward")).toMatchObject({ destination: { x: 5, y: 6 }, actor: { direction: "up" } });
     expect(run("step-toward-player")).toMatchObject({ destination: { x: 6, y: 5 }, actor: { direction: "right" } });
     expect(run("step-random")).toMatchObject({ destination: { x: 4, y: 5 }, actor: { direction: "left" } });
-    expect(run("jump", [2, -1])).toMatchObject({ destination: { x: 7, y: 4 } });
+    expect(run("jump", [2, -1])).toMatchObject({ destination: { x: 7, y: 4 }, movementAction: "jump" });
   });
 
   it("applies waits, orientation and presentation changes", () => {

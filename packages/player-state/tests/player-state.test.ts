@@ -223,6 +223,26 @@ describe("persistent player party", () => {
       heldItem: "AMULETCOIN", moves: [{ internalName: "TACKLE", pp: 1 }, sourceOnlyMove] });
   });
 
+  it("restores temporary trainer-battle theft but retains wild-battle item transfers", () => {
+    const projected = playerPartyToBattleTeam(party, catalog);
+    const stolenResult = { ...projected, members: projected.members.map((member) => ({
+      ...member, heldItem: "ORANBERRY" as const, heldItemTransfer: { originalItem: null },
+    })) };
+
+    expect(storeProjectedBattleTeam(party, stolenResult).members[0]?.heldItem).toBeNull();
+    expect(storeProjectedBattleTeam(party, stolenResult, { retainTransferredHeldItems: true })
+      .members[0]?.heldItem).toBe("ORANBERRY");
+
+    const lostResult = { ...projected, members: projected.members.map((member) => ({
+      ...member, heldItem: null, heldItemTransfer: { originalItem: "ORANBERRY" as const },
+    })) };
+    const originallyHolding = { ...party, members: party.members.map((member) => ({
+      ...member, heldItem: "ORANBERRY",
+    })) } as PlayerPartyState;
+    expect(storeProjectedBattleTeam(originallyHolding, lostResult, { retainTransferredHeldItems: true })
+      .members[0]?.heldItem).toBe("ORANBERRY");
+  });
+
   it("preserves inert source abilities and still blocks malformed or unsupported battle mechanics", () => {
     expect(playerPartyToBattleTeam({ ...party,
       members: [{ ...party.members[0]!, ability: "CHEEKPOUCH" }] }, catalog).members[0]?.ability)

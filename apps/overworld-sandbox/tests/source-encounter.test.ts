@@ -31,6 +31,18 @@ const catalog: PlayerCreationCatalog = {
 };
 
 describe("source encounter bridge", () => {
+  it("applies persisted boss ranks to the wild battler only", () => {
+    let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("hero", "CHESPIN", 8, catalog));
+    party = addPokemonToParty(party, createPersistentPokemon("ally", "BUNNELBY", 8, catalog));
+    const battle = createSourceEncounterBattle(party,
+      { species: "BIDOOF", level: 11, boss: true, initialStages: { speed: 1, defense: 2 } }, catalog, "boss");
+    expect(battle.format).toBe("double");
+    expect(battle.teams.player.activeIndices).toEqual([0, 1]);
+    expect(battle.teams.opponent.activeIndices).toEqual([0]);
+    expect(battle.teams.opponent.members[0]?.stages).toMatchObject({ speed: 1, defense: 2 });
+    expect(battle.teams.player.members[0]?.stages).toMatchObject({ speed: 0, defense: 0 });
+  });
+
   it("selects source battle music, victory music and battler cries", () => {
     const asset = (path: string) => ({ path, category: "audio", mediaType: "audio" as const, image: null });
     const cry = (pokemonId: number, path: string) => ({ pokemonId, kind: "cry" as const, form: null, shiny: false,
@@ -108,6 +120,14 @@ describe("source encounter bridge", () => {
     expect(stored.members[0]?.hp).toBe(battle.teams.player.members[0]?.hp);
   });
 
+  it("projects narrative initial effects into the authoritative opponent team", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    const battle = createSourceEncounterBattle(party, { species: "BIDOOF", level: 2 }, catalog, "wild",
+      undefined, false, { majorStatus: { kind: "caduco" } });
+    expect(battle.teams.opponent.members[0]?.majorStatus).toEqual({ kind: "caduco" });
+  });
+
   it("uses the same turn resolver when the player switches Pokemon in a local battle", () => {
     let party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("first", "CHESPIN", 5, catalog));
     party = addPokemonToParty(party, createPersistentPokemon("second", "CHESPIN", 5, catalog));
@@ -175,6 +195,48 @@ describe("source encounter bridge", () => {
         moves: ["TACKLE", null, null, null] }] }, catalog);
     expect(battle.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", heldItem: "ORANBERRY",
       ability: "MOODY" });
+  });
+
+  it("builds Nubila's narrative team with Essentials hidden-ability slots", () => {
+    const species = catalog.pokemon[0]!;
+    const nubilaCatalog: PlayerCreationCatalog = {
+      ...catalog,
+      pokemon: [
+        ...catalog.pokemon,
+        { ...species, internalName: "WEEPINBELL", name: "Boustiflor", types: ["GRASS", "POISON"],
+          abilities: ["CHLOROPHYLL"], hiddenAbilities: ["GLUTTONY"] },
+        { ...species, internalName: "BRONZOR", name: "Archéomire", types: ["STEEL", "PSYCHIC"],
+          abilities: ["LEVITATE", "HEATPROOF"] },
+        { ...species, internalName: "DUOSION", name: "Méios", types: ["PSYCHIC"],
+          abilities: ["ALQUIMIAVIL", "CORROSION"] },
+      ],
+      moves: [
+        ...catalog.moves,
+        { ...tackle, id: 2, internalName: "ACIDARMOR", name: "Acidarmure", functionCode: "02F", power: 0,
+          category: "Status", pp: 20 },
+        { ...tackle, id: 3, internalName: "GYROBALL", name: "Gyroballe", functionCode: "08D", type: "STEEL",
+          power: 1, pp: 5 },
+        { ...tackle, id: 4, internalName: "LUZDECADENTE", name: "Lumière Décadente", functionCode: "159",
+          type: "PSYCHIC", power: 65, category: "Special", pp: 10 },
+      ],
+    };
+    const party = addPokemonToParty(createEmptyPlayerParty(),
+      createPersistentPokemon("starter", "CHESPIN", 18, nubilaCatalog));
+    const battle = createSourceTrainerBattle(party, { trainerType: "NUBILA1", name: "Núbila", version: 0,
+      items: ["SUPERPOTION"], pokemon: [
+        { species: "WEEPINBELL", level: 18, heldItem: "LIECHIBERRY", abilityIndex: 2,
+          moves: ["TACKLE", null, null, null] },
+        { species: "BRONZOR", level: 18, abilityIndex: 1, moves: ["GYROBALL", null, null, null] },
+        { species: "DUOSION", level: 19, abilityIndex: 0,
+          moves: ["LUZDECADENTE", "ACIDARMOR", null, null] },
+      ] }, nubilaCatalog);
+
+    expect(battle.teams.opponent.items).toEqual(["SUPERPOTION"]);
+    expect(battle.teams.opponent.members).toEqual(expect.arrayContaining([
+      expect.objectContaining({ species: "WEEPINBELL", ability: "GLUTTONY", heldItem: "LIECHIBERRY" }),
+      expect.objectContaining({ species: "BRONZOR", ability: "HEATPROOF" }),
+      expect.objectContaining({ species: "DUOSION", ability: "ALQUIMIAVIL" }),
+    ]));
   });
 
   it("preserves the source Trainer inventory in the authoritative battle state", () => {

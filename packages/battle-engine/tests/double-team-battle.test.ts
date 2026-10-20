@@ -154,6 +154,47 @@ describe("double team battles", () => {
     expect(result.events.filter((event) => event.type === "positionedActionResolved")).toHaveLength(4);
   });
 
+  it("keeps a fainted visual slot stable when no reserve can replace it", () => {
+    const fragile = { ...pokemon("p1", "player", 10), hp: 1 };
+    const state = createDoubleTeamBattleState({
+      player: [fragile, pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 100)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "player", slot: 0 } } },
+    ], rng);
+
+    expect(result.state.status).toBe("active");
+    expect(result.state.teams.player.members[0]?.hp).toBe(0);
+    expect(result.state.teams.player.activeIndices).toEqual([0, 1]);
+    expect(result.state.teams.player.activeIndex).toBe(0);
+    expect(result.state.slotReplacements).toEqual([]);
+
+    const next = resolveDoubleTeamTurn(result.state, [
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+    ], rng);
+    expect(next.state.turn).toBe(result.state.turn + 1);
+  });
+
+  it("rejects an action submitted for a fainted active slot", () => {
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("p1", "player", 100), pokemon("p2", "player", 90)],
+      opponent: [pokemon("o1", "opponent", 80)],
+    });
+    const withFaintedSlot = { ...state, teams: { ...state.teams, player: { ...state.teams.player,
+      members: state.teams.player.members.map((member, index) => index === 0 ? { ...member, hp: 0 } : member) } } };
+
+    expect(() => resolveDoubleTeamTurn(withFaintedSlot, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+    ], rng)).toThrow("Chaque Pokemon actif doit choisir exactement une action.");
+  });
+
   it("applies spread damage to both opposing slots with the double-battle reduction", () => {
     const state = createDoubleTeamBattleState({
       player: [pokemon("p1", "player", 100, "04"), pokemon("p2", "player", 10)],

@@ -2,6 +2,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   activeTeamIndices, applyBattleJoin, approveBattleJoin,
   applyPokemonItemEffect,
   battleMemberIndicesOwnedBy,
+  bindMegaEvolutionOwners,
   canCaptureSharedBattleTarget, canEscapeSourceBattle, chooseSourceBattleAction, chooseSourceBattleReplacement,
   closeSharedBattleSession, createDoubleTeamBattleState, createSharedBattleLedger, createSharedBattleSession,
   createTeamBattleState, openSharedBattleJoinWindow,
@@ -1286,8 +1287,14 @@ export class AuthoritativeBattleRoom {
       || this.#activeEncounter === null && this.#sourceBattleContext === null
       || this.#battleParticipation === null || this.#battleState.status !== "active"
       || this.#battleJoinProposal !== null
-      || this.#activeDuel || this.#pendingActions.size > 0 || !joinableLifecycle) {
+      || this.#activeDuel || this.#pendingActions.size > 0 || this.#pendingDoubleActions.size > 0
+      || this.#pendingReplacements.size > 0 || this.#battleState.replacementRequired.length > 0
+      || (this.#battleState.slotReplacements?.length ?? 0) > 0 || !joinableLifecycle) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce combat n'accepte plus de participant.")];
+    }
+    if (this.#sourceBattleContext?.origin === "source-wild" && this.#battleState.format === "double") {
+      return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
+        "Ce combat sauvage est deja double et ne peut etre rejoint.")];
     }
     if (this.#sourceBattleContext?.origin === "source-wild" && message.side !== "player") {
       return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
@@ -1405,6 +1412,9 @@ export class AuthoritativeBattleRoom {
           ...(this.#battleState.teams.opponent.activeIndices === undefined ? {} : { activeMemberIds: this.#battleState.teams.opponent.activeIndices
             .map((index) => this.#battleState!.teams.opponent.members[index]!.id) }) },
       } };
+      this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+        (["player", "opponent"] as const).flatMap((side) => this.#battleParticipation!.camps[side].members
+          .map((member) => [member.battler.id, member.ownerId ?? `source-${side}`] as const))));
       this.#battleInventories.clear();
       this.#battleConsumedItems.clear();
       this.#battleInventories.set(player.playerId, { ...(message.battleItems ?? {}) });
@@ -1418,9 +1428,11 @@ export class AuthoritativeBattleRoom {
       const guestAvailable = [...this.#players.values()].some((candidate) => candidate.playerId !== player.playerId
         && candidate.connected && (message.context.origin === "source-trainer"
           || world.presence[candidate.side] === "shared"));
+      const trainerJoinAvailable = guestAvailable && message.context.origin === "source-trainer";
       this.#battleSession = createSharedBattleSession({ battleId: this.#battleId,
-        origin: message.context.origin, narrativeOwnerId: player.playerId, allowJoin: guestAvailable,
-        requireInviteChoice: message.context.origin === "source-trainer" });
+        origin: message.context.origin, narrativeOwnerId: player.playerId,
+        allowJoin: trainerJoinAvailable || guestAvailable && message.context.format !== "double",
+        requireInviteChoice: trainerJoinAvailable });
       this.#activeEncounter = null;
       this.#activeDuel = false;
       this.#pendingActions.clear();
@@ -1456,7 +1468,9 @@ export class AuthoritativeBattleRoom {
         ? this.#battleSession?.lifecycle === "join-window" || this.#battleSession?.lifecycle === "active"
         : this.#battleSession?.lifecycle === "join-window";
     if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
-      || !joinableLifecycle
+      || !joinableLifecycle || this.#pendingActions.size > 0 || this.#pendingDoubleActions.size > 0
+      || this.#pendingReplacements.size > 0 || this.#battleState.replacementRequired.length > 0
+      || (this.#battleState.slotReplacements?.length ?? 0) > 0
       || this.#battleJoinProposal === null) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "Aucune proposition de participation active.")];
     }
@@ -1495,13 +1509,36 @@ export class AuthoritativeBattleRoom {
         }
         this.#battleJoinInventory = null;
         if (this.#sourceBattleContext !== null) this.#sourceBattleContext = { ...this.#sourceBattleContext, format: "double" };
-        const joinedState = createDoubleTeamBattleState(teams, activeIndices);
-        this.#battleState = { ...joinedState, turn: previousState.turn, teams: {
+        const previouslyActiveIds = new Set((["player", "opponent"] as const).flatMap((side) =>
+          activeTeamIndices(previousState.teams[side]).map((index) => previousState.teams[side].members[index]!.id)));
+        // La reconstruction initialise uniquement les talents des nouveaux entrants.
+        // Les talents d'entree des combattants deja presents ne doivent pas etre rejoues.
+        const withoutReplayedAbility = (members: readonly BattlerState[]): readonly BattlerState[] => members
+          .map((member) => previouslyActiveIds.has(member.id) ? { ...member, ability: null } : member);
+        const initializationTeams: Record<BattleSide, readonly BattlerState[]> = {
+          player: withoutReplayedAbility(teams.player),
+          opponent: withoutReplayedAbility(teams.opponent),
+        };
+        const initializedState = createDoubleTeamBattleState(initializationTeams, activeIndices);
+        const restoreAbilities = (side: BattleSide): BattleTeam => ({ ...initializedState.teams[side],
+          members: initializedState.teams[side].members.map((member) => ({ ...member,
+            ability: teams[side].find((source) => source.id === member.id)?.ability ?? null })) });
+        const joinedState = { ...initializedState,
+          teams: { player: restoreAbilities("player"), opponent: restoreAbilities("opponent") } };
+        this.#battleState = { ...joinedState, turn: previousState.turn,
+          ...(previousState.effects === undefined ? {} : { effects: previousState.effects }), teams: {
           player: { ...joinedState.teams.player, ...(previousState.teams.player.items === undefined
             ? {} : { items: [...previousState.teams.player.items] }) },
           opponent: { ...joinedState.teams.opponent, ...(previousState.teams.opponent.items === undefined
             ? {} : { items: [...previousState.teams.opponent.items] }) },
         } };
+        this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+          (["player", "opponent"] as const).flatMap((side) => participation.camps[side].members
+            .map((member) => [member.battler.id, member.ownerId ?? `source-${side}`] as const))));
+        if (this.#battleState.megaEvolution !== undefined && previousState.megaEvolution !== undefined) {
+          this.#battleState = { ...this.#battleState, megaEvolution: { ...this.#battleState.megaEvolution,
+            usedOwnerIds: [...previousState.megaEvolution.usedOwnerIds] } };
+        }
         this.synchronizeBattleParticipation();
         if (this.#activeEncounter !== null) this.#battleLedger = createSharedBattleLedger(this.#battleState);
         this.#battleJoinProposal = null;
@@ -1523,11 +1560,13 @@ export class AuthoritativeBattleRoom {
   }
 
   private observeBattle(player: RoomPlayer, requestId: string, battleId: string): readonly RoomDispatch[] {
-    const joinableLifecycle = this.#activeEncounter !== null
+    const nativeDoubleObservation = this.#sourceBattleContext !== null && this.#battleState?.format === "double"
+      && this.#battleSession?.lifecycle === "active";
+    const joinableLifecycle = nativeDoubleObservation || (this.#activeEncounter !== null
       ? this.#battleState?.turn === 1 && this.#battleSession?.lifecycle === "join-window"
       : this.#sourceBattleContext?.origin === "source-wild"
         ? this.#battleSession?.lifecycle === "join-window" || this.#battleSession?.lifecycle === "active"
-        : this.#battleSession?.lifecycle === "join-window";
+        : this.#battleSession?.lifecycle === "join-window");
     if (this.#battleId !== battleId || this.#battleState === null || this.#battleParticipation === null
       || !joinableLifecycle) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE", "La fenetre de participation est fermee.")];
@@ -1545,6 +1584,16 @@ export class AuthoritativeBattleRoom {
       || this.#sourceWorldState.presence[player.side] !== "shared")) {
       return [this.error(player.playerId, requestId, "INVALID_PHASE",
         "L'invite doit etre present sur la carte partagee pour observer ce combat.")];
+    }
+    if (this.#sourceBattleContext !== null && this.#sourceWorldState !== null) {
+      const owner = [...this.#players.values()].find((candidate) =>
+        candidate.playerId === this.#battleParticipation?.battleOwnerId);
+      const avatar = this.#sourceWorldState.avatars[player.side];
+      const target = owner === undefined ? undefined : this.#sourceWorldState.avatars[owner.side];
+      if (target === undefined || Math.abs(avatar.x - target.x) + Math.abs(avatar.y - target.y) !== 1) {
+        return [this.error(player.playerId, requestId, "INTERACTION_UNAVAILABLE",
+          "Placez-vous a cote du meneur du combat pour l'observer.")];
+      }
     }
     if (!this.#battleObserverIds.includes(player.playerId)) {
       this.#battleObserverIds = [...this.#battleObserverIds, player.playerId];
@@ -1618,6 +1667,11 @@ export class AuthoritativeBattleRoom {
         ? { player: challenge.team.activeIndex, opponent: team.activeIndex }
         : { player: team.activeIndex, opponent: challenge.team.activeIndex };
       this.#battleState = createTeamBattleState(teams, activeIndices);
+      this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
+        (["player", "opponent"] as const).flatMap((side) => {
+          const ownerId = [...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? side;
+          return this.#battleState!.teams[side].members.map((member) => [member.id, ownerId] as const);
+        })));
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;
       this.#escapeConfirmations.clear();

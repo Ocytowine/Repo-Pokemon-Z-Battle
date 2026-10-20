@@ -18,9 +18,15 @@ function page(kinds: readonly string[]): ImportedEventPage {
 }
 
 describe("guest source event policy", () => {
-  it("reconstructs erased rocks and roaming encounters from the authoritative actor list", () => {
+  it("reconstructs erased destructible obstacles and roaming encounters from the authoritative actor list", () => {
     const erasedRock = { ...page([]), commands: [
       { kind: "ruby-script", text: null, indent: 0, data: { source: "pbEraseThisEvent" } },
+    ] };
+    const cutShrub = { ...page([]), commands: [
+      { kind: "call-common-event", text: null, indent: 0, data: { parameters: [59] } },
+      { kind: "ruby-script", text: null, indent: 0, data: { source: "Kernel.pbEraseThisEvent" } },
+      { kind: "ruby-script", text: null, indent: 0,
+        data: { source: "$PokemonBag.pbDeleteItem(:HACHAENDEBLE,1)" } },
     ] };
     const roaming = { ...page([]), commands: [
       { kind: "ruby-script", text: null, indent: 0,
@@ -28,6 +34,7 @@ describe("guest source event policy", () => {
     ] };
 
     expect(sourceEventUsesTransientErase(erasedRock)).toBe(true);
+    expect(sourceEventUsesTransientErase(cutShrub)).toBe(true);
     expect(sourceEventUsesTransientErase(roaming)).toBe(true);
     expect(sourceEventUsesTransientErase(page(["show-text"]))).toBe(false);
   });

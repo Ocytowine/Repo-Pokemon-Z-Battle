@@ -46,7 +46,11 @@ export function chooseSourceBattleAction(state: TeamBattleState, side: BattleSid
   if (moves.length === 0) throw new Error("Le Pokémon contrôlé par l'IA n'a plus de capacité disponible.");
   const selected = moves[rng.nextInt(moves.length)];
   if (selected === undefined) throw new Error("Le Pokémon contrôlé par l'IA n'a plus de capacité disponible.");
-  return { kind: "move", moveIndex: selected.moveIndex };
+  const megaOwner = state.megaEvolution?.owners[active.id] ?? side;
+  const megaEvolution = active.megaEvolution !== undefined && active.megaEvolution.activationAvailable
+    && active.appearance?.form !== active.megaEvolution.form
+    && !state.megaEvolution?.usedOwnerIds.includes(megaOwner);
+  return { kind: "move", moveIndex: selected.moveIndex, ...(megaEvolution ? { megaEvolution: true as const } : {}) };
 }
 
 /** Chooses a deterministic valid reserve, optionally restricted to one owner. */
@@ -74,6 +78,7 @@ export function canEscapeSourceBattle(state: TeamBattleState, attempts: number, 
   // garantie : aucun adversaire ne peut attaquer un emplacement déjà K.O.
   if (state.replacementRequired.length > 0 || (state.slotReplacements?.length ?? 0) > 0) return true;
   const battlers = activeBattlers(state);
+  if (battlers.player.ability === "RUNAWAY") return true;
   const rate = battlers.player.stats.speed > battlers.opponent.stats.speed ? 256
     : (Math.floor((battlers.player.stats.speed * 128) / Math.max(1, battlers.opponent.stats.speed))
       + attempts * 30) & 0xff;

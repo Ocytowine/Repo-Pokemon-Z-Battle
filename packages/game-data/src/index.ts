@@ -16,6 +16,7 @@ export const LOCAL_DATA_REQUIRED_FILES = Object.freeze([
   "map-animations.json",
   "map-battle-metadata.json",
   "map-infos.json",
+  "mega-evolutions.json",
   "region-map.json",
   "moves.json",
   "player-avatar-report.json",
