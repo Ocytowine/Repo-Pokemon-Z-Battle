@@ -1,7 +1,7 @@
 import { statDropProtectionAbility } from "./ability-protection.js";
 import { applyOpposingStatDropReaction } from "./ability-stat-reactions.js";
 import { typeEffectiveness } from "./type-chart.js";
-import type { BattleEvent, BattleSide, BattleTrace, BattlerState, RandomSource } from "./types.js";
+import type { BattleEvent, BattleSide, BattleStat, BattleTrace, BattlerState, RandomSource } from "./types.js";
 
 export interface EntryOpponent {
   readonly side: BattleSide;
@@ -41,6 +41,10 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
   let targets = opponents.map((entry) => ({ ...entry }));
   const events: BattleEvent[] = [];
 
+  if (actor.ability === "PRESSURE") {
+    events.push({ type: "abilityActivated", side, ability: "PRESSURE", effect: "pressure" });
+  }
+
   if (actor.ability === "TRACE") {
     const candidates = targets.filter(({ battler: target }) => target.hp > 0 && target.ability !== null
       && !TRACE_EXCLUSIONS.has(target.ability));
@@ -68,21 +72,26 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
       events.push({ type: "abilityActivated", side, ability: "DOWNLOAD", effect: "raise-stat" },
         { type: "statStageChanged", source: side, target: side, stat, delta: 1, stage });
     }
-  } else if (actor.ability === "INTIMIDATE") {
-    events.push({ type: "abilityActivated", side, ability: "INTIMIDATE", effect: "lower-attack" });
+  } else if (actor.ability === "INTIMIDATE" || actor.ability === "ESPANTO" || actor.ability === "ILLUMINATE") {
+    const ability = actor.ability as "INTIMIDATE" | "ESPANTO" | "ILLUMINATE";
+    const stat: BattleStat = ability === "INTIMIDATE" ? "attack"
+      : ability === "ESPANTO" ? "specialAttack" : "accuracy";
+    const effect = ability === "INTIMIDATE" ? "lower-attack" as const
+      : ability === "ESPANTO" ? "lower-special-attack" as const : "lower-accuracy" as const;
+    events.push({ type: "abilityActivated", side, ability, effect });
     targets = targets.map((entry) => {
       if (entry.battler.hp <= 0) return entry;
-      const protection = statDropProtectionAbility(entry.battler, "attack");
+      const protection = statDropProtectionAbility(entry.battler, stat);
       if (protection !== null) {
         events.push({ type: "abilityActivated", side: entry.side, ability: protection, effect: "prevent-stat-drop" });
         return entry;
       }
       const delta = entry.battler.ability === "SIMPLE" ? -2 : -1;
-      const stage = Math.max(-6, entry.battler.stages.attack + delta);
-      if (stage === entry.battler.stages.attack) return entry;
-      let updated = { ...entry.battler, stages: { ...entry.battler.stages, attack: stage } };
-      events.push({ type: "statStageChanged", source: side, target: entry.side, stat: "attack",
-        delta: stage - entry.battler.stages.attack, stage });
+      const stage = Math.max(-6, entry.battler.stages[stat] + delta);
+      if (stage === entry.battler.stages[stat]) return entry;
+      let updated = { ...entry.battler, stages: { ...entry.battler.stages, [stat]: stage } };
+      events.push({ type: "statStageChanged", source: side, target: entry.side, stat,
+        delta: stage - entry.battler.stages[stat], stage });
       const reaction = applyOpposingStatDropReaction(updated);
       if (reaction !== null) {
         updated = reaction.battler;

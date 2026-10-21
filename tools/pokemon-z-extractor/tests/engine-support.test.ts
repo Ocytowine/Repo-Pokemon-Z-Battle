@@ -160,4 +160,48 @@ describe("engine support report", () => {
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
+
+  it("advertises the shared status and end-of-turn talent family as supported", () => {
+    const names = ["BADDREAMS", "EARLYBIRD", "HYDRATION", "POISONHEAL", "SPEEDBOOST"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared PP and held-item control talent family as supported", () => {
+    const names = ["KLUTZ", "PRESSURE", "UNNERVE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the consumed-item lifecycle talent family as supported", () => {
+    const names = ["HARVEST", "PICKUP", "UNBURDEN"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as never);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      expect.objectContaining({ key, engineSupport: "supported" })));
+  });
+
+  it("advertises the action-control talent family as supported", () => {
+    const names = ["CURSEDBODY", "INFILTRATOR", "MAGICBOUNCE", "OBLIVIOUS", "STENCH"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as never);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      expect.objectContaining({ key, engineSupport: "supported" })));
+  });
 });

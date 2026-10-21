@@ -1907,7 +1907,7 @@ Ordre de travail retenu :
 
 L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
 donnees importees masquent encore un ecart de comportement important : 102/353
-fonctions d'attaque sont executees et aucune n'est partielle ; 128/255 talents sont executes
+fonctions d'attaque sont executees et aucune n'est partielle ; 144/255 talents sont executes
 et 1 est partiel. Les objets sont avances mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.

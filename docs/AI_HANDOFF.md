@@ -4671,3 +4671,139 @@ sont annoncés par le moteur mais ne gonflent pas artificiellement ce dénominat
 car ils ne figurent pas dans les 255 définitions extraites. Les fonctions
 d'attaque restent à 102/353, sans fonction partielle. Les tests couvrent le solo,
 le double, l'hôte autoritaire et la restauration d'un invité après reconnexion.
+
+## Passifs de statut et de fin de tour - 2026-10-21
+
+Le noyau partagé porte maintenant `BADDREAMS`, `EARLYBIRD`, `HYDRATION`,
+`POISONHEAL` et `SPEEDBOOST`. Matinal divise immédiatement par deux, avec arrondi
+inférieur et minimum un, la durée de tout sommeil appliqué par une capacité, un
+talent ou Bâillement. Hydratation soigne le statut avant les dégâts résiduels sous
+pluie normale ou pluie extrême ; Air Lock et Ciel Gris la neutralisent comme les
+autres effets météorologiques.
+
+Soin Poison remplace les dégâts de poison simple ou grave par un soin de 1/8 des
+PV maximaux et conserve l'avancement du compteur toxique. Mauvais Rêve retire
+1/6 des PV maximaux à chaque adversaire endormi, respecte Garde Magik et ne se
+cumule pas lorsque les deux adversaires le possèdent en combat double. Impulsion
+augmente la Vitesse d'un cran à la fin de chaque tour entièrement passé sur le
+terrain. Un marqueur volatil répliqué distingue une arrivée volontaire en cours
+de tour afin de ne pas déclencher ce gain trop tôt ; il est effacé au terme du
+tour et n'affecte pas un remplacement effectué entre deux tours.
+
+Ces règles sont utilisées par le résolveur simple et les quatre emplacements du
+résolveur double. En Coop, les intentions restent inchangées : la room applique
+les passifs, publie les événements communs et conserve statut, PV, crans et
+marqueur temporaire dans son snapshot. Un test de reconnexion vérifie notamment
+la restauration du cran accordé par Impulsion.
+
+Après `prepare:local`, le rapport passe de 457 à 452 problèmes globaux et de 105
+à 100 problèmes de talents. Le registre extrait compte 133 talents supportés,
+1 partiel (`STURDY`) et 121 absents sur 255. Les fonctions d'attaque restent à
+102/353, sans fonction partielle.
+
+## Contrôle des PP et des objets par talent - 2026-10-21
+
+Le noyau partagé porte maintenant `PRESSURE`, `UNNERVE` et `KLUTZ`. Pression
+ajoute un PP au coût d'une capacité qui cible un porteur adverse. En combat
+double, le coût est calculé une seule fois pour l'action et ajoute un PP pour
+chaque porteur effectivement ciblé ; une capacité de zone conserve toutes ses
+cibles même si ce coût épuise ses derniers PP. Les capacités personnelles ou
+alliées ne sont pas surtaxées. L'annonce d'entrée de Pression est produite par le
+même noyau que les autres talents d'entrée.
+
+Tension bloque l'activation des baies portées par tous les adversaires actifs,
+y compris lorsque le porteur du talent est le partenaire de l'attaquant. La baie
+reste équipée et peut donc s'activer dès que le dernier porteur de Tension quitte
+le terrain. Maladresse et l'état Embargo passent par le même prédicat générique
+d'activité de l'objet : bonus offensifs et défensifs, soins, dégâts, protection,
+casque et Lunettes sont neutralisés sans supprimer l'objet. La présence brute de
+l'objet reste disponible pour les règles qui l'observent ou le retirent, comme
+Sabotage et Picore/Implore ; une baie volée est consommée, mais son effet est
+neutralisé si le consommateur possède Maladresse ou subit Embargo.
+
+Ces règles sont partagées par le duel, le combat double et la room autoritaire.
+Les intentions réseau ne changent pas : le serveur calcule le coût en PP et les
+activations d'objet, puis réplique les combattants résultants. Un test de room
+vérifie qu'une capacité utilisée contre Pression coûte deux PP et que cette valeur
+est restaurée après reconnexion. Les tests doubles couvrent deux porteurs de
+Pression, le dernier PP disponible et le blocage d'une baie par le partenaire
+doté de Tension.
+
+Après `prepare:local`, le rapport passe de 452 à 449 problèmes globaux et de 100
+à 97 problèmes de talents. Le registre extrait compte 136 talents supportés,
+1 partiel (`STURDY`) et 118 absents sur 255. Les fonctions d'attaque restent à
+102/353, sans fonction partielle ; les 51 animations de capacité manquantes sont
+inchangées.
+
+## Cycle de vie des objets consommés - 2026-10-21
+
+Le noyau partagé porte maintenant `UNBURDEN`, `PICKUP` et `HARVEST`. Toute perte
+d'objet active le marqueur temporaire de Délestage ; le multiplicateur de Vitesse
+x2 ne s'applique que si le porteur n'a toujours aucun objet et le marqueur est
+effacé lorsqu'il quitte le terrain. Les consommations normales enregistrent en
+plus l'objet recyclable et un ordre monotone de consommation. Sabotage, Larcin,
+Picore/Implore et Pickpocket activent bien Délestage, mais seuls les chemins qui
+appellent `pbConsumeItem` avec les options source alimentent Recyclage et
+Ramassage.
+
+Ramassage cherche à la fin du tour le dernier objet consommé par un autre
+combattant actif. Le comportement est partagé entre duel et double ; en double,
+les quatre emplacements participent au même ordre de consommation. Le marqueur
+du donneur et son objet recyclable sont retirés lorsque l'objet est ramassé.
+Cueillette restaure uniquement une baie normalement consommée, avec 50 % de
+chance par tour ou une réussite garantie sous soleil normal ou extrême. Une baie
+récupérée est immédiatement réévaluée comme dans `pbBerryCureCheck`, notamment
+pour les seuils de PV, Tension et Gloutonnerie.
+
+L'objet recyclable appartient à l'état persistant du Pokémon pendant le combat ;
+Délestage et la candidature à Ramassage restent volatils et sont remis à zéro au
+switch. Le compteur global est porté par les effets du combat. Ces trois niveaux
+sont répliqués par la room autoritaire et acceptés par la validation du protocole.
+Un test hôte/invité vérifie qu'une Baie Oran consommée, son état recyclable et le
+marqueur Délestage sont restaurés après reconnexion. Les tests doubles couvrent
+la sélection du dernier objet parmi deux consommations concurrentes.
+
+Après `prepare:local`, le rapport passe de 449 à 447 problèmes globaux et de 97
+à 95 problèmes de talents. `HARVEST` n'est pas encore référencé par les 232
+talents candidats du périmètre jouable, mais il améliore bien le registre source
+complet : 139 talents supportés, 1 partiel (`STURDY`) et 115 absents sur 255. Les
+fonctions d'attaque restent à 102/353 et les 51 animations manquantes sont
+inchangées.
+
+## Contrôle des actions et réflexion - 2026-10-21
+
+Le noyau partagé porte maintenant `OBLIVIOUS`, `STENCH`, `CURSEDBODY`,
+`INFILTRATOR` et `MAGICBOUNCE`. Benêt empêche Attraction et Provoc lorsqu'elles
+sont appliquées sans Brise Moule, puis purge aussi ces deux états si le talent est
+acquis ou restauré alors qu'ils sont déjà présents. Puanteur effectue le tirage
+source après une capacité offensive, respecte Attention ainsi que la combinaison
+Écran Poudre plus Cape Obscure propre à Z, et exclut les codes de fonction qui
+possèdent déjà un effet intrinsèque d'apeurement.
+
+Corps Maudit effectue un tirage à 30 % après des dégâts directs et désactive pour
+trois tours la capacité qui vient de toucher le porteur. Le marqueur Disable est
+le même que celui de la capacité Entrave, donc la sélection, le passage de tour,
+le switch et la réplication ne créent pas une seconde implémentation. Infiltration
+ignore Mur Lumière et Protection dans le calcul commun des dégâts, ainsi que Rune
+Protect lors de l'application d'un statut. Clonage n'étant pas encore une fonction
+d'attaque portée, son contournement reste hors du chemin exécutable actuel plutôt
+que simulé par une exception.
+
+Miroir Magik ne réfléchit que les capacités marquées par le drapeau `c`
+`canMagicCoat?` des données source. Le porteur devient la source de l'effet et
+l'utilisateur initial sa cible ; précision, immunités, Benêt et Rune Protect sont
+donc réévalués dans ce sens. Brise Moule empêche cette réflexion. La règle passe
+par le résolveur partagé utilisé par chaque mini-duel du combat double, ce que
+couvre un test sur cible positionnée.
+
+En Coop, l'hôte ou le serveur reste autoritaire sur les tirages, la cible finale
+et les états volatils. Les invités ne transmettent que leur intention de capacité.
+Un test de room vérifie la présentation de Miroir Magik, l'application de Provoc
+sur l'attaquant et la restauration de ses tours restants après reconnexion. Les
+états concernés sont temporaires et ne survivent pas à un switch, conformément au
+contrat existant des effets volatils.
+
+Après `prepare:local`, le rapport passe de 447 à 442 problèmes globaux et de 95 à
+90 problèmes de talents. Le registre source complet compte 144 talents supportés,
+1 partiel (`STURDY`) et 110 absents sur 255. Les fonctions d'attaque restent à
+102/353 et les 51 animations manquantes sont inchangées.

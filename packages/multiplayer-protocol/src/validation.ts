@@ -116,7 +116,9 @@ function isBattleVolatile(value: unknown): boolean {
     "encoreMove", "encoreTurns", "bindingMove", "bindingTurns", "cursed", "lastMoveUsed"];
   const optional = ["activeTurns", "protected", "endured", "protectRate", "tauntTurns", "rage",
     "leechSeededBy", "leechSeededBySlot", "chargeTurns", "yawnTurns", "infatuated",
-    "furyCutterCount", "rolloutTurns", "uproarTurns", "embargoTurns"];
+    "furyCutterCount", "rolloutTurns", "uproarTurns", "embargoTurns",
+    "unburdened", "pickupItem", "pickupUse", "enteredMidTurn", "flashFire",
+    "entryAbilityResolved", "traceOriginalAbility"];
   if (!isRecord(value) || !legacy.every((key) => key in value)
     || !Object.keys(value).every((key) => legacy.includes(key) || optional.includes(key))) return false;
   return safeInteger(value.confusionTurns, 0, 5) && typeof value.flinched === "boolean"
@@ -142,7 +144,16 @@ function isBattleVolatile(value: unknown): boolean {
     && (value.furyCutterCount === undefined || safeInteger(value.furyCutterCount, 0, 4))
     && (value.rolloutTurns === undefined || safeInteger(value.rolloutTurns, 0, 5))
     && (value.uproarTurns === undefined || safeInteger(value.uproarTurns, 0, 3))
-    && (value.embargoTurns === undefined || safeInteger(value.embargoTurns, 0, 5));
+    && (value.embargoTurns === undefined || safeInteger(value.embargoTurns, 0, 5))
+    && (value.unburdened === undefined || typeof value.unburdened === "boolean")
+    && (value.pickupItem === undefined || value.pickupItem === null
+      || typeof value.pickupItem === "string" && isHeldItemSupported(value.pickupItem))
+    && (value.pickupUse === undefined || safeInteger(value.pickupUse, 0, Number.MAX_SAFE_INTEGER))
+    && (value.enteredMidTurn === undefined || typeof value.enteredMidTurn === "boolean")
+    && (value.flashFire === undefined || typeof value.flashFire === "boolean")
+    && (value.entryAbilityResolved === undefined || typeof value.entryAbilityResolved === "boolean")
+    && (value.traceOriginalAbility === undefined || value.traceOriginalAbility === null
+      || typeof value.traceOriginalAbility === "string" && SOURCE_IDENTIFIER.test(value.traceOriginalAbility));
 }
 
 function isBattleTeam(value: unknown): value is BattleTeam {
@@ -160,7 +171,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile", "megaEvolution", "heldItemTransfer"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -205,6 +216,8 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !isBattleVolatile(member.volatile)
       || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
       || member.heldItem !== null && (typeof member.heldItem !== "string" || !isHeldItemSupported(member.heldItem))
+      || member.recyclableItem !== undefined && member.recyclableItem !== null
+        && (typeof member.recyclableItem !== "string" || !isHeldItemSupported(member.recyclableItem))
     ) return false;
     return member.moves.every((slot) => {
       if (!isRecord(slot) || !hasExactKeys(slot, ["move", "pp"]) || !isRecord(slot.move)) return false;

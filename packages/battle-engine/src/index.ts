@@ -31,6 +31,7 @@ export type {
   BattleAbility,
   ImplementedBattleAbility,
   BattleEvent,
+  BattleEffects,
   BattleMove,
   BattlePosition,
   BattleResolutionRules,

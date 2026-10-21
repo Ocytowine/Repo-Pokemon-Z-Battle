@@ -1,4 +1,5 @@
 import type { BattleEffects, BattleEvent, BattleSide, BattlerState } from "./types.js";
+import { heldItemIsActive } from "./ability-item-control.js";
 
 const ENTRY_WEATHER = {
   DRIZZLE: "rain", DROUGHT: "sun", SANDSTREAM: "sand", SNOWWARNING: "hail",
@@ -104,7 +105,7 @@ export function resolveWeatherEndOfTurn(battler: BattlerState, side: BattleSide,
   else if (weather === "sun" && next.ability === "DRYSKIN") damage("DRYSKIN", 8);
   if (weather === "sand" && next.hp > 0 && !next.types.some((type) => ["GROUND", "ROCK", "STEEL"].includes(type))
     && !["SANDVEIL", "SANDRUSH", "SANDFORCE", "MAGICGUARD", "OVERCOAT"].includes(next.ability ?? "")
-    && next.heldItem !== "SAFETYGOGGLES") {
+    && !(heldItemIsActive(next) && next.heldItem === "SAFETYGOGGLES")) {
     const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
     next = { ...next, hp: next.hp - amount };
     events.push({ type: "weatherDamage", side, weather: "sand", amount, hp: next.hp });

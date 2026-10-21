@@ -1,11 +1,13 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
+import { applyEntryFieldAbility } from "./ability-field-entry.js";
 import { applyEntryWeatherAbility, reconcileExtremeWeather } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import { restoreTransformedBattler, transformBattler } from "./battle-transform.js";
+import { markEnteredMidTurn } from "./ability-end-turn.js";
 import type {
   BattleResolutionRules,
   BattleEvent,
@@ -194,6 +196,10 @@ function switchPokemon(
     index === teams[side].activeIndex ? entry.battler : member) };
   teams[other] = { ...teams[other], members: teams[other].members.map((member, index) =>
     index === teams[other].activeIndex ? entry.opponents[0]!.battler : member) };
+  if (reason === "voluntary") {
+    teams[side] = { ...teams[side], members: teams[side].members.map((member, index) =>
+      index === teams[side].activeIndex ? markEnteredMidTurn(member) : member) };
+  }
   events.push(...entry.events);
   return events;
 }
@@ -212,13 +218,9 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, side: Battle
       events.push({ type: "abilityActivated", side, ability: "IMPOSTER", effect: "transform" });
     }
   }
-  if (active.ability === "GRASSYSURGE") {
-    const current = effects ?? { sides: {
-      player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 },
-    }, waterSportTurns: 0 };
-    effects = { ...current, terrain: "grassy", terrainTurns: 5 };
-    events.push({ type: "abilityActivated", side, ability: "GRASSYSURGE", effect: "set-terrain" });
-  }
+  const field = applyEntryFieldAbility(active, side, effects);
+  effects = field.effects;
+  events.push(...field.events);
   const weather = applyEntryWeatherAbility(active, side, effects);
   effects = weather.effects;
   events.push(...weather.events);
@@ -269,7 +271,7 @@ export function createTeamBattleState(
     },
   };
   for (const side of SIDES) {
-    if (activePokemon(state.teams[side]).ability !== "INTIMIDATE") continue;
+    if (!["INTIMIDATE", "ESPANTO", "ILLUMINATE"].includes(activePokemon(state.teams[side]).ability ?? "")) continue;
     const other = opponentOf(side);
     const entry = resolveEntryAbility(side, activePokemon(state.teams[side]),
       [{ side: other, battler: activePokemon(state.teams[other]) }], { nextInt: () => 0 }, []);
@@ -290,11 +292,8 @@ export function createTeamBattleState(
         [side]: { ...state.teams[side], members: state.teams[side].members.map((member, index) =>
           index === state.teams[side].activeIndex ? transformed : member) } } };
     }
-    if (active.ability === "GRASSYSURGE") state = { ...state, effects: {
-      sides: { player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 } },
-      waterSportTurns: 0, mudSportTurns: 0, terrain: "grassy", terrainTurns: 5,
-      weather: null, weatherTurns: 0, environment: "none",
-    } };
+    const field = applyEntryFieldAbility(active, side, state.effects);
+    if (field.effects !== undefined) state = { ...state, effects: field.effects };
     const weather = applyEntryWeatherAbility(active, side, state.effects);
     if (weather.effects !== undefined) state = { ...state, effects: weather.effects };
   }

@@ -2,6 +2,7 @@ import { typeEffectiveness } from "./type-chart.js";
 import { preventsCriticalHit } from "./ability-protection.js";
 import { effectiveMoveType, hasMoldBreaker, hasMoveFlag, isRecklessBoostedMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
+import { heldItemIsActive } from "./ability-item-control.js";
 import type { BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
 
 export interface BattleDamageContext {
@@ -11,6 +12,8 @@ export interface BattleDamageContext {
   readonly mudSport: boolean;
   readonly waterSport: boolean;
   readonly weather?: BattleEffects["weather"];
+  readonly terrain?: BattleEffects["terrain"];
+  readonly defenderBerriesBlocked?: boolean;
 }
 
 function stagedStat(value: number, stage: number): number {
@@ -35,6 +38,8 @@ export function calculateDamage(
   context: BattleDamageContext = { reflect: false, lightScreen: false, luckyChant: false, mudSport: false, waterSport: false },
 ): number {
   const effectiveMove = effectiveMoveType(attacker, move);
+  const attackerItemActive = heldItemIsActive(attacker);
+  const defenderItemActive = heldItemIsActive(defender);
   const moveType = effectiveMove.type;
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
@@ -66,7 +71,7 @@ export function calculateDamage(
   const criticalStage = Math.min(4,
     (defender.majorStatus?.kind === "hemorrhage" ? 2 : 0)
     + (attacker.volatile?.focusEnergy ?? 0)
-    + (attacker.heldItem === "SCOPELENS" ? 1 : 0)
+    + (attackerItemActive && attacker.heldItem === "SCOPELENS" ? 1 : 0)
     + (attacker.ability === "SUPERLUCK" ? 1 : 0));
   const critical = !context.luckyChant && (ignoresDefenderAbility || !preventsCriticalHit(defender))
     && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
@@ -87,8 +92,8 @@ export function calculateDamage(
   const currentWeather = ordinaryWeather(context.weather);
   if (currentWeather === "sand" && move.category === "Special" && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
   if (currentWeather === "hail" && move.category === "Physical" && defender.types.includes("ICE")) defense = Math.round(defense * 1.5);
-  if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
-  if (defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
+  if (defenderItemActive && defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
+  if (defenderItemActive && defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = defender.capture?.weight ?? 0;
   const flailRatio = Math.floor((48 * attacker.hp) / attacker.stats.maxHp);
   let power = move.functionCode === "098"
@@ -126,21 +131,24 @@ export function calculateDamage(
     if (attacker.majorStatus?.kind === "frozen" && move.category === "Special") statusModifier *= 0.5;
   }
   if (defender.majorStatus?.kind === "caduco" && defender.hp <= Math.floor(defender.stats.maxHp / 2)) statusModifier *= 1.5;
-  if (attacker.heldItem === "MUSCLEBAND" && move.category === "Physical") statusModifier *= 1.1;
-  if (attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
-  if (attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
-  if (attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
+  if (attackerItemActive && attacker.heldItem === "MUSCLEBAND" && move.category === "Physical") statusModifier *= 1.1;
+  if (attackerItemActive && attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
+  if (attackerItemActive && attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
+  if (attackerItemActive && attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
   if (!ignoresDefenderAbility && defender.ability === "DRYSKIN" && moveType === "FIRE") statusModifier *= 1.25;
   if (!ignoresDefenderAbility && defender.ability === "HEATPROOF" && moveType === "FIRE") statusModifier *= 0.5;
   if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;
   if (context.lightScreen && move.category === "Special" && !critical) statusModifier *= 0.5;
   if (context.mudSport && moveType === "ELECTRIC") statusModifier /= 3;
   if (context.waterSport && moveType === "FIRE") statusModifier /= 3;
+  if (context.terrain === "electric" && moveType === "ELECTRIC"
+    && !attacker.types.includes("FLYING") && attacker.ability !== "LEVITATE") statusModifier *= 1.5;
   if (currentWeather === "sun" && moveType === "FIRE" || currentWeather === "rain" && moveType === "WATER") statusModifier *= 1.5;
   if (currentWeather === "sun" && moveType === "WATER" || currentWeather === "rain" && moveType === "FIRE") statusModifier *= 0.5;
-  if ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
-    || (attacker.heldItem === "BUGGEM" && moveType === "BUG")) statusModifier *= 1.3;
-  if (defender.heldItem === "PAYAPABERRY" && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
+  if (attackerItemActive && ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
+    || (attacker.heldItem === "BUGGEM" && moveType === "BUG"))) statusModifier *= 1.3;
+  if (!context.defenderBerriesBlocked && defenderItemActive && defender.heldItem === "PAYAPABERRY"
+    && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
   const defenderGender = defender.appearance?.gender;
   const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];

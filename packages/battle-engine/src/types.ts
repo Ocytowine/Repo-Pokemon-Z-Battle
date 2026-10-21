@@ -41,7 +41,7 @@ export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "ANGER
   "SERENEGRACE", "SHEDSKIN", "SHELLARMOR", "SHIELDDUST", "SIMPLE", "SNIPER", "STAMINA", "STEAMENGINE", "CLEARBODY", "WHITESMOKE",
   "SAPSIPPER", "SHEERFORCE", "SKILLLINK", "SOLIDROCK", "STATIC", "STEADFAST", "STORMDRAIN", "STRONGJAW", "SUPERLUCK", "SWARM", "STURDY", "SYNCHRONIZE", "TECHNICIAN",
   "THICKFAT", "TINTEDLENS", "TORRENT", "TOUGHCLAWS", "TRACE", "ANTICIPATION", "VITALSPIRIT", "VOLTABSORB", "WATERABSORB", "WATERCOMPACTION", "WATERVEIL", "WEAKARMOR",
-  "AERILATE", "AIRLOCK", "ALQUIMIAVIL", "CHLOROPHYLL", "CLOUDNINE", "CORROSION", "DELTASTREAM", "DESOLATELAND", "DRIZZLE", "DROUGHT", "GLUTTONY", "GRASSYSURGE", "HEATPROOF", "ICEBODY", "IMPOSTER", "LEAFGUARD", "LIQUIDVOICE", "MEGALAUNCHER", "MOLDBREAKER", "NEUROFORCE", "OVERCOAT", "PIELHELADA", "PIELHERBACEA", "PIXILATE", "PODERGELIDO", "PRANKSTER", "PRIMORDIALSEA", "PROTEAN", "RAINDISH", "RUNAWAY", "SANDFORCE", "SANDRUSH", "SANDSTREAM", "SANDVEIL", "SCRAPPY", "SLUSHRUSH", "SNOWCLOAK", "SNOWWARNING", "SOLARPOWER", "SOUNDPROOF", "STICKYHOLD", "SWIFTSWIM", "UNAWARE"] as const;
+  "AERILATE", "AIRLOCK", "ALQUIMIAVIL", "BADDREAMS", "CHLOROPHYLL", "CLOUDNINE", "CORROSION", "CURSEDBODY", "DELTASTREAM", "DESOLATELAND", "DRIZZLE", "DROUGHT", "EARLYBIRD", "ELECTRICSURGE", "ESPANTO", "GLUTTONY", "GRASSYSURGE", "HARVEST", "HEATPROOF", "HYDRATION", "ICEBODY", "ILLUMINATE", "IMPOSTER", "INFILTRATOR", "KLUTZ", "LEAFGUARD", "LIQUIDVOICE", "MAGICBOUNCE", "MEGALAUNCHER", "MOLDBREAKER", "NEUROFORCE", "OBLIVIOUS", "OVERCOAT", "PICKUP", "PIELHELADA", "PIELHERBACEA", "PIXILATE", "PODERGELIDO", "POISONHEAL", "PRANKSTER", "PRESENCIARARA", "PRESSURE", "PRIMORDIALSEA", "PROTEAN", "RAINDISH", "RUNAWAY", "SANDFORCE", "SANDRUSH", "SANDSTREAM", "SANDVEIL", "SCRAPPY", "SLUSHRUSH", "SNOWCLOAK", "SNOWWARNING", "SOLARPOWER", "SOUNDPROOF", "SPEEDBOOST", "STENCH", "STICKYHOLD", "SWIFTSWIM", "UNAWARE", "UNBURDEN", "UNNERVE"] as const;
 export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[number];
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});
@@ -134,9 +134,16 @@ export interface BattlerState {
     readonly rolloutTurns?: number;
     readonly uproarTurns?: number;
     readonly embargoTurns?: number;
+    /** Armed after this battler loses its held item; cleared when it leaves the field. */
+    readonly unburdened?: boolean;
+    /** Last consumable item available to an active Pickup user. */
+    readonly pickupItem?: HeldItem | null;
+    readonly pickupUse?: number;
   };
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
+  /** Last normally consumed item. Harvest/Recycle state follows the Pokemon through switches. */
+  readonly recyclableItem?: HeldItem | null;
   /** Battle-only provenance used to restore temporary thefts after Trainer/PvP battles. */
   readonly heldItemTransfer?: { readonly originalItem: HeldItem | null };
   readonly transformOriginal?: {
@@ -196,11 +203,14 @@ export interface BattleEffects {
   /** Tactical transfers retained for owner-scoped persistence at battle settlement. */
   readonly itemTransfers?: readonly { readonly item: HeldItem; readonly sourceId: string;
     readonly targetId: string; readonly reason: "pickpocket" }[];
+  /** Monotonic source ordering used when Pickup has several eligible items. */
+  readonly nextPickupUse?: number;
   /** Optional for backward-compatible snapshots created before Route 3. */
   readonly mudSportTurns?: number;
   /** Defog clears the active source terrain even before terrain-setting moves are ported. */
   readonly terrain?: "electric" | "grassy" | "misty" | "psychic" | null;
   readonly terrainTurns?: number;
+  readonly trickRoomTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
   readonly environment?: "none" | "grass" | "moving-water" | "still-water" | "underwater" | "cave"
@@ -259,7 +269,7 @@ export type BattleEvent =
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
       readonly reason: "recoil" | "crash"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "lower-attack" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" | "set-weather" | "weather-heal" | "weather-damage" | "status-heal" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "prevent-infatuation" | "prevent-taunt" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "inflict-flinch" | "disable-move" | "reflect-move" | "lower-attack" | "lower-special-attack" | "lower-accuracy" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" | "set-trick-room" | "set-weather" | "weather-heal" | "weather-damage" | "status-heal" | "status-damage" | "pressure" | "recover-item" }
   | { readonly type: "abilityObserved"; readonly side: BattleSide; readonly ability: "TRACE" | "FRISK" | "ANTICIPATION" | "FOREWARN";
       readonly observation: { readonly kind: "copied-ability"; readonly targetId: string; readonly ability: BattleAbility }
         | { readonly kind: "held-item"; readonly targetId: string; readonly item: HeldItem }
@@ -270,7 +280,7 @@ export type BattleEvent =
   | { readonly type: "abilityChanged"; readonly source: BattleSide; readonly target: BattleSide;
       readonly ability: BattleAbility; readonly move: string }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
-  | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" | "ability-immune" }
+  | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" | "ability-immune" | "safeguard" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
@@ -278,6 +288,8 @@ export type BattleEvent =
   | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage" | "boost"; readonly amount: number; readonly hp: number }
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
+  | { readonly type: "heldItemRecovered"; readonly side: BattleSide; readonly item: HeldItem;
+      readonly ability: "PICKUP" | "HARVEST" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
       readonly item: HeldItem; readonly reason: "pickpocket" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
@@ -290,7 +302,7 @@ export type BattleEvent =
       readonly move: string; readonly amount: number; readonly pp: number }
   | { readonly type: "battleEffectChanged"; readonly side: BattleSide | null;
       readonly effect: "reflect" | "light-screen" | "lucky-chant" | "mud-sport" | "water-sport"
-        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "terrain" | "weather";
+        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "terrain" | "trick-room" | "weather";
       readonly turns: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
@@ -302,7 +314,7 @@ export type BattleEvent =
       readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "rage" | "protect" | "endure" | "yawn" | "charge" | "helping-hand" | "uproar" | "embargo";
       readonly turns: number | null; readonly move: string | null }
   | { readonly type: "volatileEnded"; readonly side: BattleSide;
-      readonly effect: "confusion" | "disable" | "encore" | "binding" | "leech-seed" | "taunt" | "protect" | "endure" }
+      readonly effect: "confusion" | "disable" | "encore" | "binding" | "infatuation" | "leech-seed" | "taunt" | "protect" | "endure" }
   | { readonly type: "confusionDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
   | { readonly type: "bindingDamage"; readonly side: BattleSide; readonly move: string; readonly amount: number; readonly hp: number }
   | { readonly type: "leechSeedDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }

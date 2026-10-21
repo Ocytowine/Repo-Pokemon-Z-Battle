@@ -1,6 +1,15 @@
 import { ordinaryWeather } from "./ability-weather.js";
 import type { BattleEffects, BattleEvent, BattleSide, BattlerState } from "./types.js";
 
+export function markEnteredMidTurn(battler: BattlerState): BattlerState {
+  return { ...battler, volatile: {
+    confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
+    disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
+    bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
+    ...(battler.volatile ?? {}), enteredMidTurn: true,
+  } };
+}
+
 export function sleepDurationForAbility(battler: BattlerState, duration: number): number {
   return battler.ability === "EARLYBIRD" ? Math.max(1, Math.floor(duration / 2)) : duration;
 }
@@ -46,8 +55,11 @@ export function resolveLateEndOfTurnAbilities(battler: BattlerState, side: Battl
     const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 6)));
     next = { ...next, hp: next.hp - amount };
     const source = side === "player" ? "opponent" : "player";
-    events.push({ type: "abilityActivated", side: source, ability: "BADDREAMS", effect: "weather-damage" },
+    events.push({ type: "abilityActivated", side: source, ability: "BADDREAMS", effect: "status-damage" },
       { type: "abilityDamage", source, target: side, ability: "BADDREAMS", amount, hp: next.hp });
+  }
+  if (next.volatile?.enteredMidTurn === true) {
+    next = { ...next, volatile: { ...next.volatile, enteredMidTurn: false } };
   }
   return { battler: next, events };
 }

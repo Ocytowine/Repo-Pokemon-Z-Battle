@@ -208,8 +208,21 @@ sont dérivées de tous les combattants actifs, y compris en double, sans efface
 la météo autoritaire. Les trois météos extrêmes source (`PRIMORDIALSEA`,
 `DESOLATELAND`, `DELTASTREAM`) sont aussi gérées avec leur durée persistante,
 leurs blocages de types et leur extinction lorsque le dernier porteur quitte le
-terrain. L'audit local atteint désormais 457 problèmes, dont 105 talents ; le
-registre extrait compte 128 talents pleinement supportés, 1 partiel et 126
+terrain. Le lot de passifs du 2026-10-21 ferme aussi `BADDREAMS`, `EARLYBIRD`,
+`HYDRATION`, `POISONHEAL` et `SPEEDBOOST` dans le noyau commun. Il respecte les
+valeurs source de 1/6 pour Mauvais Rêve et 1/8 pour Soin Poison, la pluie extrême
+pour Hydratation et l'absence de gain d'Impulsion lors d'une arrivée en cours de
+tour. Le lot de contrôle des PP et objets du même jour porte `PRESSURE`,
+`UNNERVE` et `KLUTZ` : Pression facture chaque porteur adverse ciblé, Tension
+bloque les baies de toute l'équipe opposée active et Maladresse conserve l'objet
+tout en neutralisant ses effets. L'audit local atteint désormais 449 problèmes,
+dont 97 talents. Le lot suivant porte `UNBURDEN`, `PICKUP` et `HARVEST` autour
+d'un historique commun des objets perdus ou consommés, persistant dans les
+snapshots autoritaires. L'audit atteint ainsi 447 problèmes, dont 95 talents.
+Le lot de contrôle des actions porte ensuite `OBLIVIOUS`, `STENCH`,
+`CURSEDBODY`, `INFILTRATOR` et `MAGICBOUNCE`, avec les mêmes règles en duel et
+en double. L'audit atteint désormais 442 problèmes, dont 90 talents ; le registre
+extrait compte 144 talents pleinement supportés, 1 partiel et 110
 absents.
 ## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
 

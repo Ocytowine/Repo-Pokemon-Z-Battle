@@ -57,9 +57,38 @@ function weatherBattle(): TeamBattleState {
   });
 }
 
+function fieldAbilityBattle(): TeamBattleState {
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "PRESENCIARARA" }],
+    opponent: [{ ...battler("opponent"), ability: "ELECTRICSURGE" }],
+  });
+}
+
 function extremeWeatherBattle(): TeamBattleState {
   return createTeamBattleState({ player: [{ ...battler("player"), ability: "PRIMORDIALSEA" }],
     opponent: [{ ...battler("opponent"), ability: "CLOUDNINE" }] });
+}
+
+function speedBoostBattle(): TeamBattleState {
+  return createTeamBattleState({ player: [{ ...battler("player"), ability: "SPEEDBOOST" }],
+    opponent: [battler("opponent")] });
+}
+
+function pressureBattle(): TeamBattleState {
+  return createTeamBattleState({ player: [battler("player")],
+    opponent: [{ ...battler("opponent"), ability: "PRESSURE" }] });
+}
+
+function unburdenBattle(): TeamBattleState {
+  return createTeamBattleState({ player: [{ ...battler("player"), ability: "UNBURDEN",
+    hp: 40, heldItem: "ORANBERRY" }], opponent: [battler("opponent")] });
+}
+
+function magicBounceBattle(): TeamBattleState {
+  const taunt = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "TAUNT", name: "Provoc",
+    functionCode: "0BA" as const, power: 0, category: "Status" as const, accuracy: 0, flags: "bc" };
+  return createTeamBattleState({ player: [{ ...battler("player"), moves: [{ move: taunt, pp: taunt.pp }] }],
+    opponent: [{ ...battler("opponent"), ability: "MAGICBOUNCE" }] });
 }
 
 function battleWithReserve(): TeamBattleState {
@@ -618,6 +647,28 @@ describe("authoritative battle room", () => {
     });
   });
 
+  it("keeps authoritative Trick Room and Electric Terrain across guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", fieldAbilityBattle, new SeededRandom(24_306), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("field-ready-a"));
+    room.receive("bob", ready("field-ready-b"));
+    expect(room.snapshot().battle?.state.effects).toMatchObject({
+      trickRoomTurns: 5, terrain: "electric", terrainTurns: 5,
+    });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "field-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "field-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(room.snapshot().battle?.state.effects).toMatchObject({
+      trickRoomTurns: 4, terrain: "electric", terrainTurns: 4,
+    });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.effects).toMatchObject({
+      trickRoomTurns: 4, terrain: "electric", terrainTurns: 4,
+    });
+  });
+
   it("restores persistent extreme weather and its active suppressor after reconnect", () => {
     const room = new AuthoritativeBattleRoom("ABC234", extremeWeatherBattle, new SeededRandom(24_304), world);
     room.connect("alice");
@@ -633,6 +684,75 @@ describe("authoritative battle room", () => {
       effects: { weather: "heavy-rain", weatherTurns: -1 },
       teams: { opponent: { members: [{ ability: "CLOUDNINE" }] } },
     });
+  });
+
+  it("replicates an end-of-turn ability stage and restores it after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", speedBoostBattle, new SeededRandom(24_305), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("speed-ready-a"));
+    room.receive("bob", ready("speed-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "speed-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "speed-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "player", ability: "SPEEDBOOST", effect: "raise-stat" })]) });
+    expect(room.snapshot().battle?.state.teams.player.members[0]?.stages.speed).toBe(1);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]?.stages.speed).toBe(1);
+  });
+
+  it("replicates Pressure's PP cost and restores it after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", pressureBattle, new SeededRandom(24_306), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("pressure-ready-a"));
+    room.receive("bob", ready("pressure-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "pressure-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "pressure-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const expected = MINIMAL_MOVE_CATALOG.TACKLE.pp - 2;
+    expect(room.snapshot().battle?.state.teams.player.members[0]?.moves[0]?.pp).toBe(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]?.moves[0]?.pp).toBe(expected);
+  });
+
+  it("replicates consumed-item ability state and restores it after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", unburdenBattle, new SeededRandom(24_307), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("unburden-ready-a"));
+    room.receive("bob", ready("unburden-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "unburden-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "unburden-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(room.snapshot().battle?.state.teams.player.members[0]).toMatchObject({ heldItem: null,
+      recyclableItem: "ORANBERRY", volatile: { unburdened: true, pickupItem: "ORANBERRY" } });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]).toMatchObject({
+      recyclableItem: "ORANBERRY", volatile: { unburdened: true } });
+  });
+
+  it("replicates a reflected control move and restores it after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", magicBounceBattle, new SeededRandom(24_308), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("bounce-ready-a"));
+    room.receive("bob", ready("bounce-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "bounce-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "bounce-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "MAGICBOUNCE", effect: "reflect-move" })]) });
+    expect(room.snapshot().battle?.state.teams.player.members[0]?.volatile?.tauntTurns).toBe(3);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]?.volatile?.tauntTurns).toBe(3);
   });
 
   it("deduplicates requests and rejects stale or duplicate turn actions", () => {
