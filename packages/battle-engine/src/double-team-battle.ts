@@ -1,6 +1,8 @@
 import { resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
+import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather,
+  resolveWeatherEndOfTurn, weatherSpeedMultiplier } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
@@ -60,6 +62,8 @@ export function createDoubleTeamBattleState(members: Readonly<Record<BattleSide,
       sides: { player: { reflectTurns: 0, luckyChantTurns: 0 }, opponent: { reflectTurns: 0, luckyChantTurns: 0 } },
       waterSportTurns: 0, terrain: "grassy", terrainTurns: 5,
     } };
+    const weather = applyEntryWeatherAbility(active, side, state.effects);
+    if (weather.effects !== undefined) state = { ...state, effects: weather.effects };
   }
   state = { ...state, teams };
   return initializeMegaEvolutionState(state);
@@ -89,7 +93,7 @@ function cloneTeam(team: BattleTeam): BattleTeam {
 
 function key(position: BattlePosition): string { return `${position.side}:${position.slot}`; }
 
-function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects"]): number {
+function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects"], weatherSuppressed = false): number {
   const stage = battler.stages.speed;
   const staged = stage >= 0 ? Math.floor((battler.stats.speed * (2 + stage)) / 2)
     : Math.floor((battler.stats.speed * 2) / (2 - stage));
@@ -97,9 +101,12 @@ function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects
     : battler.ability === "ACOMETIDA" && (battler.volatile?.activeTurns ?? 0) === 0
       ? Math.max(1, Math.round(staged * 1.5))
       : battler.majorStatus?.kind === "paralysis" ? Math.max(1, Math.round(staged / 4)) : staged;
-  if (battler.ability === "CHLOROPHYLL" && effects?.weather === "sun"
-    || battler.ability === "SWIFTSWIM" && effects?.weather === "rain") speed *= 2;
+  speed *= weatherSpeedMultiplier(battler, weatherSuppressed ? null : effects?.weather);
   return speed;
+}
+
+function activeBattlerList(state: TeamBattleState, teams = state.teams): BattlerState[] {
+  return SIDES.flatMap((side) => activeTeamIndices(teams[side]).map((index) => teams[side].members[index]!));
 }
 
 function validPosition(state: TeamBattleState, position: BattlePosition): boolean {
@@ -117,8 +124,9 @@ function redirectedElementalTarget(state: TeamBattleState, actor: BattlePosition
       const battler = battlerAtPosition(state, position);
       return (battler?.hp ?? 0) > 0 && battler?.ability === ability;
     })
-    .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!, state.effects)
-      - effectiveSpeed(battlerAtPosition(state, left)!, state.effects));
+    .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!, state.effects,
+      hasWeatherSuppressor(activeBattlerList(state)))
+      - effectiveSpeed(battlerAtPosition(state, left)!, state.effects, hasWeatherSuppressor(activeBattlerList(state))));
   return candidates[0] ?? intended;
 }
 
@@ -195,6 +203,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         targetTookDamageThisTurn: context?.damagedPositions.has(key(target)) ?? false,
         roundMultiplier: context?.roundMultiplier ?? 1,
         helpingHandMultiplier: context?.helpingHandMultiplier ?? 1,
+        weatherSuppressed: hasWeatherSuppressor(activeBattlerList(state, teams)),
         ...(targetAction === undefined ? {} : { targetPlannedAction: targetAction }) });
     if (result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
       damagedTargets.add(key(target));
@@ -219,6 +228,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     trace.push(...result.trace);
     first = false;
   }
+  effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
   return { events, trace, effects, damagedTargets };
 }
 
@@ -302,12 +312,17 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, actor: Battl
     effects = { ...current, terrain: "grassy", terrainTurns: 5 };
     events.push({ type: "abilityActivated", side: actor.side, ability: "GRASSYSURGE", effect: "set-terrain" });
   }
+  const weather = applyEntryWeatherAbility(active, actor.side, effects);
+  effects = weather.effects;
+  events.push(...weather.events);
   return { events, effects };
 }
 
 function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>,
+  effects: TeamBattleState["effects"],
   rng: RandomSource, trace: DoubleTurnResult["trace"][number][]): DoubleBattleEvent[] {
   const output: DoubleBattleEvent[] = [];
+  const weather = effectiveBattleWeather(effects?.weather, activeBattlerList(state, teams));
   for (const position of activeBattlePositions({ ...state, teams })) {
     const index = activeTeamIndices(teams[position.side])[position.slot]!;
     let battler = teams[position.side].members[index]!;
@@ -335,6 +350,11 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       const volatile = resolveBattleVolatileEndOfTurn(battler, position.side);
       battler = volatile.battler;
       inner.push(...volatile.events);
+    }
+    if (battler.hp > 0) {
+      const weatherResult = resolveWeatherEndOfTurn(battler, position.side, weather);
+      battler = weatherResult.battler;
+      inner.push(...weatherResult.events);
     }
     if (battler.hp > 0) {
       const passive = resolveBattlePassiveEndOfTurn(battler, position.side, rng, trace);
@@ -459,6 +479,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     effects = entered.effects;
     events.push(...entered.events);
   }
+  effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
   for (const entry of itemEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "item" }>;
     const team = teams[entry.actor.side];
@@ -483,7 +504,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
       const priority = move.priority + (battler.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0);
-      return { ...entry, priority, speed: effectiveSpeed(battler, effects), tie: rng.nextInt(1_000_000) }; })
+      return { ...entry, priority, speed: effectiveSpeed(battler, effects,
+        hasWeatherSuppressor(activeBattlerList(state, teams))), tie: rng.nextInt(1_000_000) }; })
     .sort((left, right) => right.priority - left.priority || right.speed - left.speed || left.tie - right.tie);
   events.push({ type: "teamActionOrdered", order: [
     ...switchEntries.map((entry) => ({ side: entry.actor.side, kind: "switch" as const })),
@@ -579,7 +601,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     helpedPositions.delete(key(entry.actor));
     resolvedPositions.add(key(entry.actor));
   }
-  events.push(...applyDoubleEndOfTurn(state, teams, rng, trace));
+  events.push(...applyDoubleEndOfTurn(state, teams, effects, rng, trace));
+  effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
   let winner: BattleSide | null = null;
   for (const side of SIDES) {
     if (!teams[side].members.some((member) => member.hp > 0)) winner = otherSide(side);
@@ -616,7 +639,10 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   }, mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
   waterSportTurns: Math.max(0, effects.waterSportTurns - 1),
   terrain: (effects.terrainTurns ?? 0) <= 1 ? null : effects.terrain ?? null,
-  terrainTurns: Math.max(0, (effects.terrainTurns ?? 0) - 1) };
+  terrainTurns: Math.max(0, (effects.terrainTurns ?? 0) - 1),
+  weather: (effects.weatherTurns ?? 0) < 0 ? effects.weather ?? null
+    : (effects.weatherTurns ?? 0) <= 1 ? null : effects.weather ?? null,
+  weatherTurns: (effects.weatherTurns ?? 0) < 0 ? effects.weatherTurns ?? -1 : Math.max(0, (effects.weatherTurns ?? 0) - 1) };
   return { state: { ...state, turn: state.turn + 1, teams, winner,
     status: winner === null ? "active" : "finished", replacementRequired: [],
     slotReplacements: winner === null ? slotReplacements : [], ...(effects === undefined ? {} : { effects }) }, events, trace };
@@ -630,6 +656,7 @@ export function replaceFaintedDoublePokemon(state: TeamBattleState, position: Ba
   const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
   switchAt(teams, position, teamIndex, rng, []);
   const entered = applyEntryAbilities(teams, position, state.effects);
-  return { ...state, teams, ...(entered.effects === undefined ? {} : { effects: entered.effects }),
+  const effects = reconcileExtremeWeather(entered.effects, activeBattlerList(state, teams));
+  return { ...state, teams, ...(effects === undefined ? {} : { effects }),
     slotReplacements: state.slotReplacements.filter((entry) => key(entry) !== key(position)) };
 }

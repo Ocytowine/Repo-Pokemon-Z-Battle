@@ -41,7 +41,7 @@ export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "ANGER
   "SERENEGRACE", "SHEDSKIN", "SHELLARMOR", "SHIELDDUST", "SIMPLE", "SNIPER", "STAMINA", "STEAMENGINE", "CLEARBODY", "WHITESMOKE",
   "SAPSIPPER", "SHEERFORCE", "SKILLLINK", "SOLIDROCK", "STATIC", "STEADFAST", "STORMDRAIN", "STRONGJAW", "SUPERLUCK", "SWARM", "STURDY", "SYNCHRONIZE", "TECHNICIAN",
   "THICKFAT", "TINTEDLENS", "TORRENT", "TOUGHCLAWS", "TRACE", "ANTICIPATION", "VITALSPIRIT", "VOLTABSORB", "WATERABSORB", "WATERCOMPACTION", "WATERVEIL", "WEAKARMOR",
-  "AERILATE", "ALQUIMIAVIL", "CHLOROPHYLL", "CORROSION", "GLUTTONY", "GRASSYSURGE", "HEATPROOF", "IMPOSTER", "LEAFGUARD", "LIQUIDVOICE", "MEGALAUNCHER", "MOLDBREAKER", "NEUROFORCE", "PIELHELADA", "PIELHERBACEA", "PIXILATE", "PRANKSTER", "PROTEAN", "RUNAWAY", "SCRAPPY", "SOUNDPROOF", "STICKYHOLD", "SWIFTSWIM", "UNAWARE"] as const;
+  "AERILATE", "AIRLOCK", "ALQUIMIAVIL", "CHLOROPHYLL", "CLOUDNINE", "CORROSION", "DELTASTREAM", "DESOLATELAND", "DRIZZLE", "DROUGHT", "GLUTTONY", "GRASSYSURGE", "HEATPROOF", "ICEBODY", "IMPOSTER", "LEAFGUARD", "LIQUIDVOICE", "MEGALAUNCHER", "MOLDBREAKER", "NEUROFORCE", "OVERCOAT", "PIELHELADA", "PIELHERBACEA", "PIXILATE", "PODERGELIDO", "PRANKSTER", "PRIMORDIALSEA", "PROTEAN", "RAINDISH", "RUNAWAY", "SANDFORCE", "SANDRUSH", "SANDSTREAM", "SANDVEIL", "SCRAPPY", "SLUSHRUSH", "SNOWCLOAK", "SNOWWARNING", "SOLARPOWER", "SOUNDPROOF", "STICKYHOLD", "SWIFTSWIM", "UNAWARE"] as const;
 export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[number];
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});
@@ -109,6 +109,8 @@ export interface BattlerState {
     readonly lastMoveUsed: string | null;
     /** Added in the Fortress vertical lot; omitted legacy snapshots use the neutral value. */
     readonly activeTurns?: number;
+    /** True only for a battler switched in after the round began; cleared at end of turn. */
+    readonly enteredMidTurn?: boolean;
     readonly protected?: boolean;
     readonly endured?: boolean;
     /** Source ProtectRate: 1 initially, doubled after each consecutive success. */
@@ -199,7 +201,7 @@ export interface BattleEffects {
   /** Defog clears the active source terrain even before terrain-setting moves are ported. */
   readonly terrain?: "electric" | "grassy" | "misty" | "psychic" | null;
   readonly terrainTurns?: number;
-  readonly weather?: "sun" | "rain" | "sand" | "hail" | null;
+  readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
   readonly environment?: "none" | "grass" | "moving-water" | "still-water" | "underwater" | "cave"
     | "rock" | "sand" | "snow" | "volcano" | "graveyard" | "sky" | "space";
@@ -257,7 +259,7 @@ export type BattleEvent =
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
       readonly reason: "recoil" | "crash"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "lower-attack" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "lower-attack" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" | "set-weather" | "weather-heal" | "weather-damage" | "status-heal" }
   | { readonly type: "abilityObserved"; readonly side: BattleSide; readonly ability: "TRACE" | "FRISK" | "ANTICIPATION" | "FOREWARN";
       readonly observation: { readonly kind: "copied-ability"; readonly targetId: string; readonly ability: BattleAbility }
         | { readonly kind: "held-item"; readonly targetId: string; readonly item: HeldItem }
@@ -272,6 +274,7 @@ export type BattleEvent =
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
+  | { readonly type: "weatherDamage"; readonly side: BattleSide; readonly weather: "sand"; readonly amount: number; readonly hp: number }
   | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage" | "boost"; readonly amount: number; readonly hp: number }
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
@@ -287,7 +290,7 @@ export type BattleEvent =
       readonly move: string; readonly amount: number; readonly pp: number }
   | { readonly type: "battleEffectChanged"; readonly side: BattleSide | null;
       readonly effect: "reflect" | "light-screen" | "lucky-chant" | "mud-sport" | "water-sport"
-        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "terrain";
+        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "terrain" | "weather";
       readonly turns: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;

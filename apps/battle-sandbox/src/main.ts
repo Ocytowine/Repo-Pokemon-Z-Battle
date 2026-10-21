@@ -286,7 +286,8 @@ function describeEvent(event: TeamBattleEvent): string {
     case "moveMissed": return `${moveDisplayName(event.move)} échoue`;
     case "moveFailed": return `${moveDisplayName(event.move)} échoue (${event.reason})`;
     case "ppReduced": return `${event.move} perd ${event.amount} PP · ${event.pp} PP`;
-    case "battleEffectChanged": return `${event.effect} · ${event.turns} tour(s) restant(s)`;
+    case "battleEffectChanged": return event.turns < 0
+      ? `${event.effect} · permanent` : `${event.effect} · ${event.turns} tour(s) restant(s)`;
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
     case "hpRestored": return `${event.side} récupère ${event.amount} PV avec ${moveDisplayName(event.move)} · ${event.hp} PV`;
     case "abilityActivated": return `${event.side} active ${event.ability} (${event.effect})`;
@@ -297,6 +298,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;
     case "statusCured": return `${event.side} est libéré de : ${statusName(event.status)}`;
     case "statusDamage": return `${event.side} perd ${event.amount} PV à cause de ${statusName(event.status)} · ${event.hp} PV`;
+    case "weatherDamage": return `${event.side} perd ${event.amount} PV à cause de ${event.weather} · ${event.hp} PV`;
     case "volatileApplied": return `${event.target} subit ${event.effect}${event.move === null ? "" : ` (${event.move})`}`;
     case "volatileEnded": return `${event.side} est libéré de ${event.effect}`;
     case "confusionDamage": return `${event.side} se blesse dans sa confusion · ${event.amount} dégâts · ${event.hp} PV`;
@@ -513,6 +515,9 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
       presenter.message(`${activeState().battlers[event.side].name} n'est plus affecté par ${statusName(event.status)}.`);
       await presenter.pause(420);
     } else if (event.type === "statusDamage") {
+      updateHealth(event.side, event.hp);
+      await presenter.playImpact(event.side, false);
+    } else if (event.type === "weatherDamage") {
       updateHealth(event.side, event.hp);
       await presenter.playImpact(event.side, false);
     } else if (event.type === "itemActivated") {

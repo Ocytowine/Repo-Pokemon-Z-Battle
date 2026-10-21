@@ -1,6 +1,7 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
+import { applyEntryWeatherAbility, reconcileExtremeWeather } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
@@ -218,6 +219,9 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, side: Battle
     effects = { ...current, terrain: "grassy", terrainTurns: 5 };
     events.push({ type: "abilityActivated", side, ability: "GRASSYSURGE", effect: "set-terrain" });
   }
+  const weather = applyEntryWeatherAbility(active, side, effects);
+  effects = weather.effects;
+  events.push(...weather.events);
   return { events, effects };
 }
 
@@ -291,6 +295,8 @@ export function createTeamBattleState(
       waterSportTurns: 0, mudSportTurns: 0, terrain: "grassy", terrainTurns: 5,
       weather: null, weatherTurns: 0, environment: "none",
     } };
+    const weather = applyEntryWeatherAbility(active, side, state.effects);
+    if (weather.effects !== undefined) state = { ...state, effects: weather.effects };
   }
   state = initializeMegaEvolutionState(state);
   validateState(state);
@@ -369,6 +375,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     effects = entered.effects;
     switchEvents.push(...entered.events);
   }
+  effects = reconcileExtremeWeather(effects, [activePokemon(teams.player), activePokemon(teams.opponent)]);
   for (const side of itemOrder) {
     const action = actions[side];
     if (action.kind !== "item") continue;
@@ -448,6 +455,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   if (winner !== null) events.push({ type: "battleEnded", winner });
   events.push({ type: "turnEnded", turn: state.turn });
 
+  const reconciledEffects = reconcileExtremeWeather(result.state.effects,
+    [activePokemon(teams.player), activePokemon(teams.opponent)]);
   return {
     state: {
       turn: nextTurn,
@@ -456,7 +465,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
       teams,
       replacementRequired: winner === null ? replacementRequired : [],
       ...(state.megaEvolution === undefined ? {} : { megaEvolution: state.megaEvolution }),
-      ...(result.state.effects === undefined ? {} : { effects: result.state.effects }),
+      ...(reconciledEffects === undefined ? {} : { effects: reconciledEffects }),
     },
     events,
     trace,
@@ -488,6 +497,7 @@ export function replaceFaintedPokemon(
     effects = entered.effects;
     events.push(...entered.events);
   }
+  effects = reconcileExtremeWeather(effects, [activePokemon(teams.player), activePokemon(teams.opponent)]);
   return {
     state: { ...state, teams, replacementRequired: [], ...(effects === undefined ? {} : { effects }) },
     events,

@@ -1,7 +1,8 @@
 import { typeEffectiveness } from "./type-chart.js";
 import { preventsCriticalHit } from "./ability-protection.js";
 import { effectiveMoveType, hasMoldBreaker, hasMoveFlag, isRecklessBoostedMove } from "./move-properties.js";
-import type { BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
+import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
+import type { BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
 
 export interface BattleDamageContext {
   readonly reflect: boolean;
@@ -9,7 +10,7 @@ export interface BattleDamageContext {
   readonly luckyChant: boolean;
   readonly mudSport: boolean;
   readonly waterSport: boolean;
-  readonly weather?: "sun" | "rain" | "sand" | "hail" | null;
+  readonly weather?: BattleEffects["weather"];
 }
 
 function stagedStat(value: number, stage: number): number {
@@ -39,7 +40,10 @@ export function calculateDamage(
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
     && (moveType === "NORMAL" || moveType === "FIGHTING")
     ? defender.types.filter((type) => type !== "GHOST") : defender.types;
-  const typeEffect = defenderTypes.length === 0 ? 1 : typeEffectiveness(moveType, defenderTypes);
+  const typeEffect = defenderTypes.length === 0 ? 1 : defenderTypes.reduce((multiplier, type) => {
+    const component = typeEffectiveness(moveType, [type]);
+    return multiplier * (context.weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
+  }, 1);
   const effectiveness = !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND"
     ? 0 : typeEffect;
   if (move.functionCode === "06F") {
@@ -80,6 +84,9 @@ export function calculateDamage(
   if (attacker.ability === "SWARM" && moveType === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
+  const currentWeather = ordinaryWeather(context.weather);
+  if (currentWeather === "sand" && move.category === "Special" && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
+  if (currentWeather === "hail" && move.category === "Physical" && defender.types.includes("ICE")) defense = Math.round(defense * 1.5);
   if (defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = defender.capture?.weight ?? 0;
@@ -95,8 +102,7 @@ export function calculateDamage(
       let value = stagedStat(battler.stats.speed, battler.stages.speed);
       if (battler.ability === "QUICKFEET" && battler.majorStatus !== null) value = Math.max(1, Math.round(value * 1.5));
       else if (battler.majorStatus?.kind === "paralysis") value = Math.max(1, Math.round(value / 4));
-      if (battler.ability === "CHLOROPHYLL" && context.weather === "sun"
-        || battler.ability === "SWIFTSWIM" && context.weather === "rain") value *= 2;
+      value *= weatherSpeedMultiplier(battler, context.weather);
       return Math.max(1, value);
     };
     power = Math.max(1, Math.min(150, Math.floor((25 * speed(defender)) / speed(attacker))));
@@ -130,6 +136,8 @@ export function calculateDamage(
   if (context.lightScreen && move.category === "Special" && !critical) statusModifier *= 0.5;
   if (context.mudSport && moveType === "ELECTRIC") statusModifier /= 3;
   if (context.waterSport && moveType === "FIRE") statusModifier /= 3;
+  if (currentWeather === "sun" && moveType === "FIRE" || currentWeather === "rain" && moveType === "WATER") statusModifier *= 1.5;
+  if (currentWeather === "sun" && moveType === "WATER" || currentWeather === "rain" && moveType === "FIRE") statusModifier *= 0.5;
   if ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
     || (attacker.heldItem === "BUGGEM" && moveType === "BUG")) statusModifier *= 1.3;
   if (defender.heldItem === "PAYAPABERRY" && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
@@ -153,6 +161,12 @@ export function calculateDamage(
   if (attacker.ability === "IRONFIST" && hasMoveFlag(move, "j")) addAbilityModifier("IRONFIST", 1.2);
   if (attacker.ability === "MEGALAUNCHER" && hasMoveFlag(move, "m")) addAbilityModifier("MEGALAUNCHER", 1.5);
   if (attacker.ability === "NEUROFORCE" && effectiveness > 1) addAbilityModifier("NEUROFORCE", 1.25);
+  if (attacker.ability === "SOLARPOWER" && currentWeather === "sun" && move.category === "Special") addAbilityModifier("SOLARPOWER", 1.5);
+  if (attacker.ability === "SANDFORCE" && currentWeather === "sand"
+    && ["ROCK", "GROUND", "STEEL"].includes(moveType)) addAbilityModifier("SANDFORCE", 1.3);
+  if (attacker.ability === "PODERGELIDO" && currentWeather === "hail" && moveType === "ICE") {
+    addAbilityModifier("PODERGELIDO", 1.5);
+  }
   if (attacker.ability === "STRONGJAW" && hasMoveFlag(move, "i")) addAbilityModifier("STRONGJAW", 1.5);
   if (attacker.ability === "TOUGHCLAWS" && hasMoveFlag(move, "a")) addAbilityModifier("TOUGHCLAWS", 4 / 3);
   if (attacker.ability === "ADAPTABILITY" && attacker.types.includes(moveType)) {

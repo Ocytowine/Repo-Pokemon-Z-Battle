@@ -4610,3 +4610,64 @@ répliquée : l'hôte et l'invité voient donc le même arc, sans seconde logiqu
 cliente. Les tests couvrent la commande, un saut scénarisé de quatre cases et la
 réception du décalage vertical par un invité Coop. La scène Map029/EV026 reste à
 rejouer manuellement depuis une sauvegarde antérieure à la démonstration.
+
+## Talents météo partagés - 2026-10-21
+
+Le noyau commun porte maintenant les quatre talents d'entrée météo `DRIZZLE`,
+`DROUGHT`, `SANDSTREAM` et `SNOWWARNING`, ainsi que `ICEBODY`, `RAINDISH`,
+`SANDFORCE`, `SANDRUSH`, `SANDVEIL`, `SNOWCLOAK` et `SOLARPOWER`. `DRYSKIN`
+est aussi fermé : son absorption Eau et sa vulnérabilité Feu préexistantes sont
+complétées par le soin sous pluie et les dégâts sous soleil.
+
+La météo, sa durée et ses effets restent dans `BattleEffects`, donc dans le même
+snapshot tactique restauré après reconnexion. En solo l'adaptateur local et en
+Coop la room autoritaire appellent le même noyau ; aucune nouvelle intention
+cliente n'est nécessaire, car le talent se déclenche à l'entrée autoritaire. Les
+événements de changement de météo, soin et dégâts sont présentés aux participants
+du combat. Le calcul commun couvre vitesse, esquive, modificateurs Feu/Eau,
+Force Sable, Force Soleil et les défenses météo propres au jeu source.
+
+La fidélité Z est volontaire : le sable inflige 1/16 aux cibles non immunisées,
+la grêle n'inflige pas de dégâts dans ce projet source, les types Roche gagnent
+1,5 en Défense Spéciale sous sable et les types Glace 1,5 en Défense sous grêle.
+Les roches de prolongation ne sont pas encore dans le catalogue d'objets tenus ;
+les talents posent donc les 5 tours des nouvelles mécaniques.
+
+Après `prepare:local`, le rapport passe de 474 à 462 problèmes globaux et de 122
+à 110 problèmes de talents. Le registre compte 123 talents supportés, 1 partiel
+(`STURDY`) et 131 absents sur 255. Les fonctions d'attaque restent à 102/353,
+sans fonction partielle. Les tests ciblent le simple, le double et l'état
+autoritaire partagé ; la suite complète et le build du monorepo doivent être
+relancés avant livraison.
+
+## Contrôle météo, grêle et météos extrêmes - 2026-10-21
+
+Le second lot météo ferme `SLUSHRUSH`, `PODERGELIDO`, `OVERCOAT`, `AIRLOCK` et
+`CLOUDNINE`. Glissade Neige et Pouvoir Gelé partagent le multiplicateur de
+Vitesse sous grêle ; Pouvoir Gelé ajoute aussi le multiplicateur Glace de 1,5.
+Envelocape protège du sable et des capacités portant le drapeau poudre `l`, avec
+le contournement attendu par Brise Moule. Les types Plante et les Lunettes
+Filtre restent protégés indépendamment du talent.
+
+Air Lock et Ciel Gris n'effacent pas `BattleEffects.weather` : ils en neutralisent
+les effets tant qu'au moins un porteur conscient est actif. En double, cette
+décision est dérivée des quatre emplacements avant l'ordre, les dégâts et les
+passifs de fin de tour. L'état sous-jacent continue donc à perdre ses tours et
+reste restaurable après reconnexion. Il n'existe ni intention cliente ni chemin
+Coop séparé pour cette règle.
+
+Le noyau accepte aussi les trois talents source absents du catalogue de données
+actuel : `PRIMORDIALSEA`, `DESOLATELAND` et `DELTASTREAM`. Leur météo est stockée
+avec `weatherTurns: -1`, bloque respectivement les attaques Feu ou Eau, ou
+neutralise les faiblesses du type Vol. Une météo ordinaire ne peut pas les
+remplacer ; elles prennent fin lorsque leur dernier porteur conscient quitte le
+terrain. Le snapshot autoritaire et la présentation comprennent cette durée
+persistante.
+
+Après `prepare:local`, le rapport passe de 462 à 457 problèmes globaux et de 110
+à 105 problèmes de talents. Le registre extrait compte 128 talents supportés,
+1 partiel (`STURDY`) et 126 absents sur 255. Les trois talents de météo extrême
+sont annoncés par le moteur mais ne gonflent pas artificiellement ce dénominateur,
+car ils ne figurent pas dans les 255 définitions extraites. Les fonctions
+d'attaque restent à 102/353, sans fonction partielle. Les tests couvrent le solo,
+le double, l'hôte autoritaire et la restauration d'un invité après reconnexion.

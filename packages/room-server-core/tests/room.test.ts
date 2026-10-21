@@ -50,6 +50,18 @@ function reactiveBattle(): TeamBattleState {
     opponent: [{ ...battler("opponent"), ability: "STAMINA" }] });
 }
 
+function weatherBattle(): TeamBattleState {
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "SOLARPOWER" }],
+    opponent: [{ ...battler("opponent"), ability: "DROUGHT" }],
+  });
+}
+
+function extremeWeatherBattle(): TeamBattleState {
+  return createTeamBattleState({ player: [{ ...battler("player"), ability: "PRIMORDIALSEA" }],
+    opponent: [{ ...battler("opponent"), ability: "CLOUDNINE" }] });
+}
+
 function battleWithReserve(): TeamBattleState {
   return createTeamBattleState({
     player: [battler("player")],
@@ -582,6 +594,45 @@ describe("authoritative battle room", () => {
     room.disconnect("bob");
     const reconnected = room.connect("bob");
     expect(reconnected.snapshot.battle?.state.teams.opponent.members[0]?.stages.defense).toBe(1);
+  });
+
+  it("keeps authoritative weather and its passive damage across guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", weatherBattle, new SeededRandom(24_303), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("weather-ready-a"));
+    room.receive("bob", ready("weather-ready-b"));
+    expect(room.snapshot().battle?.state.effects).toMatchObject({ weather: "sun", weatherTurns: 5 });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "weather-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "weather-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityDamage",
+        ability: "SOLARPOWER", amount: 12 })]) });
+    expect(room.snapshot().battle?.state).toMatchObject({ effects: { weather: "sun", weatherTurns: 4 },
+      teams: { player: { members: [{ hp: 88 }] } } });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state).toMatchObject({
+      effects: { weather: "sun", weatherTurns: 4 }, teams: { player: { members: [{ hp: 88 }] } },
+    });
+  });
+
+  it("restores persistent extreme weather and its active suppressor after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", extremeWeatherBattle, new SeededRandom(24_304), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("extreme-ready-a"));
+    room.receive("bob", ready("extreme-ready-b"));
+    expect(room.snapshot().battle?.state).toMatchObject({
+      effects: { weather: "heavy-rain", weatherTurns: -1 },
+      teams: { opponent: { members: [{ ability: "CLOUDNINE" }] } },
+    });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state).toMatchObject({
+      effects: { weather: "heavy-rain", weatherTurns: -1 },
+      teams: { opponent: { members: [{ ability: "CLOUDNINE" }] } },
+    });
   });
 
   it("deduplicates requests and rejects stale or duplicate turn actions", () => {

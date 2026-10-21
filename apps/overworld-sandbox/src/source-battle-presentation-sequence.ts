@@ -201,10 +201,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         reflect: "Reflet", "light-screen": "Mur Lumière", "lucky-chant": "Air Veinard",
         "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
         "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
-        mist: "Brume", safeguard: "Rune Protect", terrain: "Le terrain",
+        mist: "Brume", safeguard: "Rune Protect", terrain: "Le terrain", weather: "La météo",
       };
       const label = labels[event.effect];
-      message(event.turns > 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
+      message(event.turns !== 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
     } else if (event.type === "statusApplied") {
       message(`${activeName(state, event.target)} subit ${STATUS_NAMES[event.status]}.`, "status",
         { side: event.target, effect: event.status });
@@ -220,6 +220,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         { side: event.side, effect: "cured" });
     } else if (event.type === "statusDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${STATUS_NAMES[event.status]} et perd ${event.amount} PV.`);
+    } else if (event.type === "weatherDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} est blessé par la tempête de sable et perd ${event.amount} PV.`);
     } else if (event.type === "volatileApplied") {
       const name = activeName(state, event.target);
       const text = event.effect === "confusion" ? `${name} devient confus.`

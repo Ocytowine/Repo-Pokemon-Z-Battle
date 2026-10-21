@@ -202,8 +202,15 @@ par impact réellement subi. Il conserve les valeurs particulières de Z : Défe
 à +6 sur critique. `DEFIANT` et `COMPETITIVE` partagent le hook de baisse causée
 par l'adversaire, y compris Intimidation à la création, au changement et sur les
 deux emplacements d'un combat double. Le snapshot de room conserve les crans après
-reconnexion. L'audit local atteint désormais 565 problèmes, dont 151 talents ; le
-registre compte 79 talents pleinement supportés, 5 partiels et 171 absents.
+reconnexion. Le second lot météo du 2026-10-21 ajoute `SLUSHRUSH`,
+`PODERGELIDO`, `OVERCOAT`, `AIRLOCK` et `CLOUDNINE`. Les suppressions de météo
+sont dérivées de tous les combattants actifs, y compris en double, sans effacer
+la météo autoritaire. Les trois météos extrêmes source (`PRIMORDIALSEA`,
+`DESOLATELAND`, `DELTASTREAM`) sont aussi gérées avec leur durée persistante,
+leurs blocages de types et leur extinction lorsque le dernier porteur quitte le
+terrain. L'audit local atteint désormais 457 problèmes, dont 105 talents ; le
+registre extrait compte 128 talents pleinement supportés, 1 partiel et 126
+absents.
 ## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
 
 Frontière automatisée le 2026-10-19 : Maps 023 à 029, soit Rena, Gerard,

@@ -64,7 +64,7 @@ describe("engine support report", () => {
     expect(report.categories.abilities).toEqual([
       { key: "CHLOROPHYLL", extracted: true, engineSupport: "supported" },
       { key: "COMPOUNDEYES", extracted: true, engineSupport: "supported" },
-      { key: "DRYSKIN", extracted: true, engineSupport: "partial" },
+      { key: "DRYSKIN", extracted: true, engineSupport: "supported" },
       { key: "INTIMIDATE", extracted: true, engineSupport: "supported" },
       { key: "PICKPOCKET", extracted: true, engineSupport: "supported" },
       { key: "RIVALRY", extracted: true, engineSupport: "supported" },
@@ -140,6 +140,18 @@ describe("engine support report", () => {
   it("advertises the shared reactive-stat talent family as supported", () => {
     const names = ["ANGERPOINT", "BERSERK", "COMPETITIVE", "DEFIANT", "RATTLED", "STAMINA",
       "STEAMENGINE", "WATERCOMPACTION", "WEAKARMOR"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the completed weather-control talent family as supported", () => {
+    const names = ["AIRLOCK", "CLOUDNINE", "DELTASTREAM", "DESOLATELAND", "OVERCOAT", "PODERGELIDO",
+      "PRIMORDIALSEA", "SLUSHRUSH"];
     const report = createEngineSupportReport({
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>

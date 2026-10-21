@@ -57,9 +57,9 @@ Cet inventaire est derive des rapports locaux de la distribution v2.12 FR et des
 presence des donnees dans les JSON :
 
 - les 19 interactions de types sont supportees ;
-- 62 codes de fonction d'attaque sur 353 sont portes et 4 sont partiels ;
-- 79 talents sur 255 ont un effet execute et 5 sont partiels ; l'audit de
-  dependances en rencontre 229 dans le perimetre jouable, dont 151 restent
+- 102 codes de fonction d'attaque sur 353 sont portes et aucun n'est partiel ;
+- 128 talents sur 255 ont un effet execute et 1 est partiel ; l'audit de
+  dependances en rencontre 232 dans le perimetre jouable, dont 105 restent
   absents ou partiels ;
 - aucune des six familles d'objets n'est completement supportee ; la famille
   generique est seulement partielle ;
@@ -355,9 +355,9 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 ### CORE-BATTLE-RULES-1 — Fidelite des regles de combat
 
 - Priorite/statut : `P0` continu / `A planifier par lots verticaux`.
-- Constat source : 62/353 fonctions d'attaque sont executees et 4 sont partielles ;
-  79/255 talents sont executes et 5 sont partiels. Le rapport de dependances
-  courant porte sur 229 talents reellement candidats, dont 151 absents ou partiels.
+- Constat source : 102/353 fonctions d'attaque sont executees et aucune n'est partielle ;
+  128/255 talents sont executes et 1 est partiel. Le rapport de dependances
+  courant porte sur 232 talents reellement candidats, dont 105 absents ou partiels.
   Une attaque extraite avec nom, puissance et animation n'est donc pas forcement
   fidele a Z ; meme constat pour un talent seulement affiche.
 - Strategie : registres explicites et lots bornes par rencontres/dresseurs du
