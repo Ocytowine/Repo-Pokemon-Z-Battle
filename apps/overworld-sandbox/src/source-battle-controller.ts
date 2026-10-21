@@ -223,16 +223,12 @@ export class SourceBattleController {
         this.callbacks.updateEventState(eventState);
       }
       const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
-<<<<<<< HEAD
-        crypto.randomUUID());
-=======
-        `wild-${encounter.species.toLowerCase()}`, resources.megaEvolutions,
+        crypto.randomUUID(), resources.megaEvolutions,
         resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
           eventState.inventory, eventState.switches),
         resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
           mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
         }));
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
@@ -291,15 +287,10 @@ export class SourceBattleController {
       return false;
     }
     try {
-<<<<<<< HEAD
       const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single",
-        () => crypto.randomUUID());
-=======
-      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog,
-        audio.format ?? "single", resources.megaEvolutions,
+        () => crypto.randomUUID(), resources.megaEvolutions,
         resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
           eventState.inventory, eventState.switches), resources.environment ?? "none");
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
         trainerBaseMoney: audio.baseMoney, continuation: "trainer-sequence",
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name },

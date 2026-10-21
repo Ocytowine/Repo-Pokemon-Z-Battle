@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-import type { BattleMove } from "./types.js";
+import type { BattleMove, BattlerState } from "./types.js";
 
 const RECOIL_DIVISORS: Readonly<Partial<Record<BattleMove["functionCode"], number>>> = {
   "0FA": 4,
@@ -15,8 +14,7 @@ export function recoilDivisor(move: BattleMove): number | null {
 
 export function isRecklessBoostedMove(move: BattleMove): boolean {
   return recoilDivisor(move) !== null || move.functionCode === "10B";
-=======
-import type { BattleMove, BattlerState } from "./types.js";
+}
 
 const NORMAL_TYPE_CONVERSIONS = {
   AERILATE: "FLYING",
@@ -45,5 +43,4 @@ export function hasMoldBreaker(attacker: BattlerState): boolean {
 
 export function hasMoveFlag(move: BattleMove, flag: string): boolean {
   return move.flags?.includes(flag) === true;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }

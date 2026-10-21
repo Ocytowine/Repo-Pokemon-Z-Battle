@@ -290,11 +290,8 @@ function describeEvent(event: TeamBattleEvent): string {
     case "damageApplied": return `${event.amount} dégâts sur ${event.target} · ${event.hp} PV${event.critical ? " · critique" : ""} · type ×${event.effectiveness}`;
     case "hpRestored": return `${event.side} récupère ${event.amount} PV avec ${moveDisplayName(event.move)} · ${event.hp} PV`;
     case "abilityActivated": return `${event.side} active ${event.ability} (${event.effect})`;
-<<<<<<< HEAD
     case "abilityObserved": return `${event.side} observe ${event.ability} (${event.observation.kind})`;
-=======
     case "abilityChanged": return `${event.target} reçoit le talent ${event.ability} avec ${event.move}`;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     case "statusApplied": return `${event.target} subit : ${statusName(event.status)}`;
     case "statusApplicationFailed": return `${statusName(event.status)} sans effet sur ${event.target} (${event.reason})`;
     case "statusContinued": return `${event.side} subit encore : ${statusName(event.status)}`;
@@ -309,7 +306,9 @@ function describeEvent(event: TeamBattleEvent): string {
     case "recoilDamage": return `${event.side} subit ${event.amount} dégâts de recul avec ${event.move} · ${event.hp} PV`;
     case "itemActivated": return `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
     case "heldItemConsumed": return `${event.side} consomme ${event.item} (${event.effect})`;
-    case "heldItemTransferred": return `${event.target} dérobe ${event.item} à ${event.source} avec ${event.move}`;
+    case "heldItemTransferred": return "move" in event
+      ? `${event.target} dérobe ${event.item} à ${event.source} avec ${event.move}`
+      : `${event.target} vole ${event.item} à ${event.source}`;
     case "heldItemRemoved": return `${event.source} retire ${event.item} à ${event.target} avec ${event.move}`;
     case "statStageChanged": return `${event.target} · ${event.stat} ${event.delta > 0 ? "+" : ""}${event.delta} · niveau ${event.stage}`;
     case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;

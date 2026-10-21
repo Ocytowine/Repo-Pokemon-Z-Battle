@@ -3,13 +3,9 @@ import { damageAbilityStatReaction, opposingStatDropReaction } from "./ability-s
 import { cureStatusBlockedByAbility, statDropProtectionAbility, statusProtectionAbility } from "./ability-protection.js";
 import { recoilDivisor } from "./move-properties.js";
 import { isKnownType } from "./type-chart.js";
-<<<<<<< HEAD
-import type { BattleEffects, BattleEvent, BattleMove, BattleSide, BattleState, BattleStat, BattleTrace, BattlerState, ImplementedBattleAbility, MajorStatusState, MoveAction, RandomSource, TurnActions, TurnResult } from "./types.js";
-=======
 import { effectiveMoveType, hasMoldBreaker, hasMoveFlag } from "./move-properties.js";
 import { transformBattler } from "./battle-transform.js";
-import type { BattleEffects, BattleEvent, BattleMove, BattleSide, BattleState, BattleStat, BattleTrace, BattlerState, MajorStatusState, MoveAction, RandomSource, TurnActions, TurnResult } from "./types.js";
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+import type { BattleEffects, BattleEvent, BattleMove, BattleSide, BattleState, BattleStat, BattleTrace, BattlerState, ImplementedBattleAbility, MajorStatusState, MoveAction, RandomSource, TurnActions, TurnResult } from "./types.js";
 
 const SIDES = ["player", "opponent"] as const;
 
@@ -30,16 +26,13 @@ type MutableBattleEffects = {
     mistTurns: number; safeguardTurns: number }>;
   mudSportTurns: number;
   waterSportTurns: number;
-<<<<<<< HEAD
   itemTransfers: { item: NonNullable<BattlerState["heldItem"]>; sourceId: string;
     targetId: string; reason: "pickpocket" }[];
-=======
   terrain: "electric" | "grassy" | "misty" | "psychic" | null;
   terrainTurns: number;
   weather: "sun" | "rain" | "sand" | "hail" | null;
   weatherTurns: number;
   environment: NonNullable<BattleEffects["environment"]>;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 };
 
 function volatileOf(battler: BattlerState): BattleVolatile {
@@ -47,29 +40,19 @@ function volatileOf(battler: BattlerState): BattleVolatile {
     disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
     bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
     activeTurns: 0, protected: false, endured: false, protectRate: 1, tauntTurns: 0, rage: false,
-<<<<<<< HEAD
-    flashFire: false, entryAbilityResolved: false, traceOriginalAbility: null };
-=======
+    flashFire: false, entryAbilityResolved: false, traceOriginalAbility: null,
     leechSeededBy: null, leechSeededBySlot: null, chargeTurns: 0, yawnTurns: 0, infatuated: false,
     furyCutterCount: 0, rolloutTurns: 0, uproarTurns: 0, embargoTurns: 0 };
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   return { ...neutral, ...(battler.volatile ?? {}) };
 }
 
 function effectsOf(effects: BattleEffects | undefined): MutableBattleEffects {
   return effects === undefined ? { sides: {
-<<<<<<< HEAD
-    player: { reflectTurns: 0, luckyChantTurns: 0 },
-    opponent: { reflectTurns: 0, luckyChantTurns: 0 },
-  }, waterSportTurns: 0, itemTransfers: [] } : { sides: {
-    player: { ...effects.sides.player }, opponent: { ...effects.sides.opponent },
-  }, waterSportTurns: effects.waterSportTurns, itemTransfers: [...(effects.itemTransfers ?? [])] };
-=======
     player: { reflectTurns: 0, lightScreenTurns: 0, luckyChantTurns: 0, spikesLayers: 0,
       toxicSpikesLayers: 0, stealthRock: false, stickyWeb: false, mistTurns: 0, safeguardTurns: 0 },
     opponent: { reflectTurns: 0, lightScreenTurns: 0, luckyChantTurns: 0, spikesLayers: 0,
       toxicSpikesLayers: 0, stealthRock: false, stickyWeb: false, mistTurns: 0, safeguardTurns: 0 },
-  }, mudSportTurns: 0, waterSportTurns: 0, terrain: null, terrainTurns: 0,
+  }, mudSportTurns: 0, waterSportTurns: 0, itemTransfers: [], terrain: null, terrainTurns: 0,
   weather: null, weatherTurns: 0, environment: "none" } : { sides: {
     player: { ...effects.sides.player, lightScreenTurns: effects.sides.player.lightScreenTurns ?? 0,
       spikesLayers: effects.sides.player.spikesLayers ?? 0,
@@ -86,10 +69,10 @@ function effectsOf(effects: BattleEffects | undefined): MutableBattleEffects {
       mistTurns: effects.sides.opponent.mistTurns ?? 0,
       safeguardTurns: effects.sides.opponent.safeguardTurns ?? 0 },
   }, mudSportTurns: effects.mudSportTurns ?? 0, waterSportTurns: effects.waterSportTurns,
+  itemTransfers: [...(effects.itemTransfers ?? [])],
   terrain: effects.terrain ?? null, terrainTurns: effects.terrainTurns ?? 0,
   weather: effects.weather ?? null, weatherTurns: effects.weatherTurns ?? 0,
   environment: effects.environment ?? "none" };
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }
 
 function withVolatile(battler: BattlerState, volatile: BattleVolatile): BattlerState {
@@ -196,7 +179,6 @@ function applyStatChange(
   }
   battlers[target] = { ...battler, stages: { ...battler.stages, [effect.stat]: stage } };
   events.push({ type: "statStageChanged", source, target, stat: effect.stat, delta: stage - current, stage });
-<<<<<<< HEAD
   if (effect.delta < 0 && target !== source) {
     const reaction = opposingStatDropReaction(battlers[target]);
     if (reaction !== null) {
@@ -242,16 +224,19 @@ function applyDamageAbilityStatReaction(
 function applyTypeAbsorption(source: BattleSide, target: BattleSide, move: BattleMove,
   battlers: Record<BattleSide, BattlerState>, events: BattleEvent[]): boolean {
   if (source === target) return false;
+  const attacker = battlers[source];
   const defender = battlers[target];
+  if (hasMoldBreaker(attacker)) return false;
+  const moveType = effectiveMoveType(attacker, move).type;
   const ability = defender.ability;
-  const heals = (ability === "DRYSKIN" || ability === "WATERABSORB") && move.type === "WATER"
-    || ability === "VOLTABSORB" && move.type === "ELECTRIC";
-  const raisedStat = ability === "SAPSIPPER" && move.type === "GRASS" ? "attack"
-    : (ability === "STORMDRAIN" && move.type === "WATER")
-      || (ability === "LIGHTNINGROD" && move.type === "ELECTRIC") ? "specialAttack"
-      : ability === "MOTORDRIVE" && move.type === "ELECTRIC" ? "speed" : null;
-  const flashFire = ability === "FLASHFIRE" && move.type === "FIRE";
-  const levitate = ability === "LEVITATE" && move.type === "GROUND" && move.category !== "Status";
+  const heals = (ability === "DRYSKIN" || ability === "WATERABSORB") && moveType === "WATER"
+    || ability === "VOLTABSORB" && moveType === "ELECTRIC";
+  const raisedStat = ability === "SAPSIPPER" && moveType === "GRASS" ? "attack"
+    : (ability === "STORMDRAIN" && moveType === "WATER")
+      || (ability === "LIGHTNINGROD" && moveType === "ELECTRIC") ? "specialAttack"
+      : ability === "MOTORDRIVE" && moveType === "ELECTRIC" ? "speed" : null;
+  const flashFire = ability === "FLASHFIRE" && moveType === "FIRE";
+  const levitate = ability === "LEVITATE" && moveType === "GROUND" && move.category !== "Status";
   if (!heals && raisedStat === null && !flashFire && !levitate) return false;
   events.push({ type: "abilityActivated", side: target, ability: ability as ImplementedBattleAbility,
     effect: "absorb-type" });
@@ -266,16 +251,6 @@ function applyTypeAbsorption(source: BattleSide, target: BattleSide, move: Battl
     battlers[target] = withVolatile(defender, { ...volatileOf(defender), flashFire: true });
   }
   return true;
-=======
-  if (effect.delta < 0 && source !== target && battlers[target].ability === "COMPETITIVE") {
-    const competitive = battlers[target];
-    const specialAttack = Math.min(6, competitive.stages.specialAttack + 2);
-    battlers[target] = { ...competitive, stages: { ...competitive.stages, specialAttack } };
-    events.push({ type: "abilityActivated", side: target, ability: "COMPETITIVE", effect: "boost-stat" });
-    if (specialAttack !== competitive.stages.specialAttack) events.push({ type: "statStageChanged", source: target,
-      target, stat: "specialAttack", delta: specialAttack - competitive.stages.specialAttack, stage: specialAttack });
-  }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }
 
 function applyMoveEffect(
@@ -360,15 +335,11 @@ function applyMoveEffect(
   if (move.functionCode === "013") {
     const defender = battlers[target];
     const current = volatileOf(defender);
-<<<<<<< HEAD
     if (current.confusionTurns > 0) return;
     if (defender.ability === "OWNTEMPO") {
       events.push({ type: "abilityActivated", side: target, ability: "OWNTEMPO", effect: "prevent-confusion" });
       return;
     }
-=======
-    if (current.confusionTurns > 0 || defender.ability === "OWNTEMPO") return;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     const turns = 2 + draw(rng, trace, "confusion-duration", 4);
     battlers[target] = withVolatile(defender, { ...current, confusionTurns: turns });
     events.push({ type: "volatileApplied", source, target, effect: "confusion", turns, move: move.internalName });
@@ -599,18 +570,18 @@ function applyStatusMove(
     events.push({ type: "statusApplicationFailed", source, target, status: kind, reason: "already-status" });
     return;
   }
-  const blockedByType = typePreventsStatus(defender, kind)
-    && !(kind === "poison" && battlers[source].ability === "CORROSION");
-  if (blockedByType || kind === "poison" && defender.ability === "IMMUNITY"
-    || effects.weather === "sun" && defender.ability === "LEAFGUARD"
-    || kind === "sleep" && SIDES.some((side) => volatileOf(battlers[side]).uproarTurns > 0)) {
-    events.push({ type: "statusApplicationFailed", source, target, status: kind, reason: "type-immune" });
-    return;
-  }
   const protection = statusProtectionAbility(defender, kind);
   if (protection !== null) {
     events.push({ type: "abilityActivated", side: target, ability: protection, effect: "prevent-status" },
       { type: "statusApplicationFailed", source, target, status: kind, reason: "ability-immune" });
+    return;
+  }
+  const blockedByType = typePreventsStatus(defender, kind)
+    && !(kind === "poison" && battlers[source].ability === "CORROSION");
+  if (blockedByType
+    || effects.weather === "sun" && defender.ability === "LEAFGUARD"
+    || kind === "sleep" && SIDES.some((side) => volatileOf(battlers[side]).uproarTurns > 0)) {
+    events.push({ type: "statusApplicationFailed", source, target, status: kind, reason: "type-immune" });
     return;
   }
   const majorStatus: MajorStatusState = kind === "sleep"
@@ -1048,12 +1019,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
   options: { readonly endOfTurn?: boolean; readonly damageMultiplier?: number;
     readonly attackerHeldItemAfterDamage?: boolean; readonly switchingTarget?: BattleSide | null;
     readonly targetPlannedAction?: MoveAction; readonly targetAlreadyMoved?: boolean;
-<<<<<<< HEAD
-    readonly opponentItemTheft?: boolean } = {}): TurnResult {
-=======
     readonly targetTookDamageThisTurn?: boolean; readonly roundMultiplier?: number;
-    readonly helpingHandMultiplier?: number } = {}): TurnResult {
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+    readonly helpingHandMultiplier?: number; readonly opponentItemTheft?: boolean } = {}): TurnResult {
   validateState(state, actions);
   const battlers: Record<BattleSide, BattlerState> = {
     player: cloneBattler(state.battlers.player),
@@ -1189,15 +1156,11 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       events.push({ type: "volatileEnded", side: actualTargetSide, effect: "protect" });
       defender = battlers[actualTargetSide];
     }
-<<<<<<< HEAD
     if (!accuracyCheck(side, battlers[side], defender, slot.move, rng, trace)) {
-=======
-    if (!accuracyCheck(side, battlers[side], defender, slot.move.accuracy, rng, trace)) {
       if (selectedSlot.move.functionCode === "091" || selectedSlot.move.functionCode === "0D3") {
         const current = battlers[side];
         battlers[side] = withVolatile(current, { ...volatileOf(current), furyCutterCount: 0, rolloutTurns: 0 });
       }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       events.push({ type: "moveMissed", side, move: slot.move.internalName });
       if (slot.move.functionCode === "10B" && battlers[side].ability !== "MAGICGUARD") {
         const attacker = battlers[side];
@@ -1220,17 +1183,6 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       }
       continue;
     }
-<<<<<<< HEAD
-=======
-    if ((defender.ability === "DRYSKIN" || defender.ability === "WATERABSORB")
-      && moveType === "WATER" && !hasMoldBreaker(battlers[side])) {
-      const amount = Math.min(defender.stats.maxHp - defender.hp, Math.max(1, Math.floor(defender.stats.maxHp / 4)));
-      battlers[actualTargetSide] = { ...defender, hp: defender.hp + amount };
-      if (amount > 0) events.push({ type: "hpRestored", side: actualTargetSide, source: "move",
-        move: slot.move.internalName, amount, hp: defender.hp + amount });
-      continue;
-    }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     const traceStart = trace.length;
     const damageContext = { reflect: effects.sides[actualTargetSide].reflectTurns > 0,
       lightScreen: effects.sides[actualTargetSide].lightScreenTurns > 0,
@@ -1251,12 +1203,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if ((slot.move.functionCode === "0C0" || slot.move.functionCode === "0BD"
       || slot.move.functionCode === "0BE") && damageRolls[0]! > 0) {
       const hitTable = [2, 2, 3, 3, 4, 5] as const;
-<<<<<<< HEAD
-      const hits = battlers[side].ability === "SKILLLINK" ? 5
-=======
       const hits = slot.move.functionCode === "0BD" || slot.move.functionCode === "0BE" ? 2
         : battlers[side].ability === "SKILLLINK" ? 5
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
         : hitTable[draw(rng, trace, "additional-effect", hitTable.length)]!;
       for (let hit = 1; hit < hits; hit += 1) {
         damageRolls.push(calculateDamage(side, battlers[side], defender, damageMove, rng, trace, damageContext));
@@ -1276,11 +1224,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       && damageTrace.effectiveness > 1;
     let hp = defender.hp;
     let damage = 0;
-<<<<<<< HEAD
     const appliedHits: { hpBefore: number; hpAfter: number; critical: boolean }[] = [];
-=======
     let landedHits = 0;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     let focusSash = false;
     let sturdy = false;
     for (const [hitIndex, rawDamage] of damageRolls.entries()) {
@@ -1364,10 +1309,6 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       effects.sides[side] = { ...own, spikesLayers: 0, toxicSpikesLayers: 0,
         stealthRock: false, stickyWeb: false };
     }
-<<<<<<< HEAD
-    const effectChance = Math.min(100, slot.move.effectChance * (battlers[side].ability === "SERENEGRACE" ? 2 : 1));
-    if (hp > 0 && effectChance > 0 && battlers[side].ability !== "SHEERFORCE"
-=======
     const effectChance = battlers[side].ability === "SHEERFORCE" ? 0
       : Math.min(100, slot.move.effectChance * (battlers[side].ability === "SERENEGRACE" ? 2 : 1));
     if (hp > 0 && slot.move.functionCode === "0BE" && effectChance > 0) {
@@ -1382,18 +1323,13 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       }
     }
     if (hp > 0 && slot.move.functionCode !== "0BE" && effectChance > 0
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       && draw(rng, trace, "additional-effect", 100) < effectChance) {
       if (blocksAdditionalEffects(battlers[side], battlers[actualTargetSide])) {
         events.push({ type: "abilityActivated", side: actualTargetSide, ability: "SHIELDDUST", effect: "prevent-additional-effect" });
       } else applyMoveEffect(side, actualTargetSide, slot.move, battlers, rng, events, trace, effects);
     }
     if (hp > 0 && slot.move.functionCode === "009" && battlers[side].ability !== "SHEERFORCE"
-<<<<<<< HEAD
-      && !blocksAdditionalEffects(battlers[actualTargetSide])
-=======
       && !blocksAdditionalEffects(battlers[side], battlers[actualTargetSide])
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
       && draw(rng, trace, "additional-effect", 10) === 0) {
       const target = battlers[actualTargetSide];
       if (target.ability !== "INNERFOCUS") {
@@ -1519,31 +1455,6 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       && battlers[actualTargetSide].majorStatus === null
       && !typePreventsStatus(battlers[actualTargetSide], "poison") && draw(rng, trace, "ability", 10) < 3) {
       applyAbilityStatus(side, actualTargetSide, "POISONTOUCH", "poison", battlers, rng, events, trace);
-    }
-    if (damage > 0 && defender.ability === "FLAMEBODY" && slot.move.flags?.includes("a") === true
-      && battlers[side].hp > 0 && battlers[side].majorStatus === null
-      && !typePreventsStatus(battlers[side], "burn") && draw(rng, trace, "ability", 10) < 3) {
-      battlers[side] = { ...battlers[side], majorStatus: { kind: "burn" } };
-      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "FLAMEBODY", effect: "inflict-burn" });
-      events.push({ type: "statusApplied", source: actualTargetSide, target: side, status: "burn" });
-    }
-    if (damage > 0 && defender.ability === "ROUGHSKIN" && slot.move.flags?.includes("a") === true
-      && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
-      const current = battlers[side];
-      const amount = Math.min(current.hp, Math.max(1, Math.floor(current.stats.maxHp / 8)));
-      battlers[side] = { ...current, hp: current.hp - amount };
-      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "ROUGHSKIN", effect: "contact-damage" });
-      events.push({ type: "recoilDamage", side, move: "ROUGHSKIN", amount, hp: current.hp - amount });
-    }
-    if (damage > 0 && defender.ability === "GOOEY" && slot.move.flags?.includes("a") === true
-      && battlers[side].hp > 0) {
-      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "GOOEY", effect: "lower-speed" });
-      applyStatChange(actualTargetSide, side, { target: "opponent", stat: "speed", delta: -1 }, battlers, events);
-    }
-    if (damage > 0 && battlers[actualTargetSide].ability === "RATTLED"
-      && ["BUG", "DARK", "GHOST"].includes(moveType) && battlers[actualTargetSide].hp > 0) {
-      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "RATTLED", effect: "boost-stat" });
-      applyStatChange(actualTargetSide, side, { target: "self", stat: "speed", delta: 1 }, battlers, events);
     }
     if (damage > 0 && slot.move.flags?.includes("a") === true && defender.heldItem === "ROCKYHELMET"
       && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {

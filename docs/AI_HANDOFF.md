@@ -1,6 +1,19 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-19.
+Derniere mise a jour : 2026-10-21.
+
+## Reparation du merge du 2026-10-21
+
+Le merge publie `da89cb5` avait conserve des marqueurs de conflit bruts dans 21
+fichiers entre la branche de talents `6695aa3` et la ligne fonctionnelle
+`52b0b91`. La reprise est effectuee sur `repair/merge-da89cb5`, avec le point de
+securite local `backup/pre-repair-da89cb5-20261021`. Les deux familles d'apports
+sont reunies : talents et audit de selection, Mega-Evolution, environnements et
+capacites Route 3/Route 5, identifiants uniques, transferts d'objets et logique
+solo/Coop. Les doubles declenchements issus des deux implementations concurrentes
+(notamment Phobique, Peau Dure et Poisseux) ont ete elimines au profit des hooks
+generiques communs. Aucun historique publie n'a ete reecrit et aucun push n'a ete
+effectue. `corepack pnpm test` et `corepack pnpm build` passent apres reparation.
 
 Ce document est la reference courte pour reprendre Pokemon Z-Battle sans refaire
 l'analyse historique du depot. Il doit etre lu avec la section 9.7 de
@@ -3667,7 +3680,6 @@ Tests : développement d'événements communs et détection des cycles, projecti
 fabrication, portage des deux hooks, traduction du contexte commun et effacement
 temporaire Coop.
 
-<<<<<<< HEAD
 ## Tirage des talents non forcés et audit de dépendances — 2026-10-20
 
 La règle retenue avec le porteur est maintenant explicite : lorsqu'une rencontre
@@ -3932,7 +3944,6 @@ les 368 mécaniques d'attaque manquantes ne changent pas dans ce lot centré sur
 talents. Les tests couvrent chaque déclencheur, les limites de crans, le critique,
 les seuils stricts, les frappes multiples, Intimidation simple/double, l'entrée par
 changement et la reconnexion Coop.
-=======
 ## Arbustes Coupe et Hachuela Endeble — 2026-10-16
 
 Coupe propre à Pokémon Z est raccordée au même noyau d'obstacles destructibles que
@@ -4599,4 +4610,3 @@ répliquée : l'hôte et l'invité voient donc le même arc, sans seconde logiqu
 cliente. Les tests couvrent la commande, un saut scénarisé de quatre cases et la
 réception du décalage vertical par un invité Coop. La scène Map029/EV026 reste à
 rejouer manuellement depuis une sauvegarde antérieure à la démonstration.
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e

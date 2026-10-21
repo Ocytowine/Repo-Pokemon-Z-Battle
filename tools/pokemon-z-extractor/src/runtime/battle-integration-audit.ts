@@ -45,20 +45,19 @@ interface MegaEvolutionCatalog {
 
 interface Dataset<T> { readonly records: readonly T[] }
 
-<<<<<<< HEAD
 interface AbilitySelectionAudit {
   readonly species: string;
   readonly memberIndex: number | null;
   readonly policy: "random-normal" | "forced-index";
   readonly abilityIndex: number | null;
   readonly candidates: readonly string[];
-=======
+}
+
 interface EncounterRecord {
   readonly mapId: number;
   readonly methods: readonly { readonly slots: readonly {
     readonly species: string; readonly minimumLevel: number; readonly maximumLevel: number;
   }[] }[];
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }
 
 export interface BattleIntegrationAnimationCatalog {
@@ -111,7 +110,7 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
   const [movesData, pokemonData, trainersData, megaEvolutionData, engineSupport, encounterData, eventFiles] = await Promise.all([
     read<Dataset<MoveRecord>>("moves.json"), read<Dataset<PokemonRecord>>("pokemon.json"),
     read<Dataset<TrainerRecord>>("trainers.json"),
-    read<MegaEvolutionCatalog>("mega-evolutions.json"),
+    optionalJson<MegaEvolutionCatalog>(path.join(outputDirectory, "mega-evolutions.json"), { records: [] }),
     read<{ readonly categories: {
       readonly moveFunctionCodes: readonly { readonly key: string; readonly engineSupport: Support }[];
       readonly abilities: readonly { readonly key: string; readonly engineSupport: Support }[];
@@ -130,13 +129,9 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     .map((entry) => [entry.key, entry.engineSupport] as const));
   const moveUsage = new Map<string, Set<string>>();
   const abilityUsage = new Map<string, Set<string>>();
-<<<<<<< HEAD
-  const scopes: { kind: "pokemon" | "trainer"; id: string; moves: string[]; abilities: string[];
-    abilitySelections: AbilitySelectionAudit[] }[] = [];
-=======
   const scopes: { kind: "pokemon" | "trainer" | "mega" | "map"; id: string; moves: string[];
-    abilities: string[]; pokemon?: string[]; trainers?: string[] }[] = [];
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+    abilities: string[]; abilitySelections?: AbilitySelectionAudit[];
+    pokemon?: string[]; trainers?: string[] }[] = [];
 
   for (const record of pokemonData.records) {
     const scope = `pokemon:${record.internalName}`;
@@ -284,13 +279,8 @@ export async function createBattleIntegrationAudit(outputDirectory: string,
     })),
   ];
   return {
-<<<<<<< HEAD
     schemaVersion: "1.1.0",
-    policy: "Toute nouvelle espèce ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
-=======
-    schemaVersion: "1.0.0",
     policy: "Toute nouvelle espèce, forme Méga ou équipe de Dresseur hérite automatiquement de cet audit de dépendances.",
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     summary: {
       pokemon: pokemonData.records.length, trainers: trainersData.records.length,
       maps: scopes.filter((scope) => scope.kind === "map").length,

@@ -1880,12 +1880,6 @@ autonomes sur une même carte.
 
 ### Phase 11 - Mecanismes solo structurants
 
-<<<<<<< HEAD
-L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
-donnees importees masquent encore un ecart de comportement important : 62/353
-fonctions d'attaque sont executees et 4 partielles ; 79/255 talents sont executes
-et 5 partiels. Les objets sont avances mais
-=======
 Decision produit du 2026-10-19 : la priorite de cette phase est desormais le
 portage fonctionnel complet des Pokemon et des Dresseurs avant les ameliorations
 de confort UI/UX. Les refontes de navigation, le rangement avance de l'equipe et
@@ -1911,10 +1905,10 @@ Ordre de travail retenu :
 4. seulement apres cette couverture, reprendre les ameliorations UI/UX qui ne
    conditionnent pas les tests.
 
-L'audit source cible du 2026-10-05, actualise le 2026-10-09, confirme que les
-donnees importees masquent encore un ecart de comportement important : 24/353
-fonctions d'attaque et 14/255 talents sont executes. Les objets sont avances mais
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
+donnees importees masquent encore un ecart de comportement important : 62/353
+fonctions d'attaque sont executees et 4 partielles ; 79/255 talents sont executes
+et 5 partiels. Les objets sont avances mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots

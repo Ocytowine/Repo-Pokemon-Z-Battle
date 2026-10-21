@@ -1296,12 +1296,12 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
 
 /** Restores only the Pokémon owned by one participant from a shared camp battle. */
 export function storeOwnedBattleResults(party: PlayerPartyState, participation: SharedBattleParticipation,
-<<<<<<< HEAD
-  state: TeamBattleState, ownerId: string, restoreTransferredItems = false): PlayerPartyState {
-=======
   state: TeamBattleState, ownerId: string,
-  options: { readonly retainTransferredHeldItems?: boolean } = {}): PlayerPartyState {
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+  options: boolean | { readonly retainTransferredHeldItems?: boolean } = {}): PlayerPartyState {
+  const restoreTransferredItems = options === true;
+  const retainTransferredHeldItems = typeof options === "boolean"
+    ? !options
+    : options.retainTransferredHeldItems === true;
   const owned = new Map<string, { readonly side: BattleSide; readonly battler: BattlerState }>();
   for (const side of ["player", "opponent"] as const) {
     const teamById = new Map(state.teams[side].members.map((battler) => [battler.id, battler]));
@@ -1324,12 +1324,8 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? pokemon.metadata
         : { ...pokemon.metadata, happiness: result.happiness },
-<<<<<<< HEAD
-      heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem : result.heldItem,
-=======
-      heldItem: preserveSourceHeldItem ? pokemon.heldItem
-        : settledHeldItem(result, options.retainTransferredHeldItems === true),
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+      heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem
+        : settledHeldItem(result, retainTransferredHeldItems),
       moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])

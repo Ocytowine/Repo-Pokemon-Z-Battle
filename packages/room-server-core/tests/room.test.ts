@@ -729,7 +729,6 @@ describe("authoritative battle room", () => {
       sourceContext: { origin: "source-wild" } });
   });
 
-<<<<<<< HEAD
   it("enforces the source Pickpocket theft rule in the authoritative room", () => {
     const contactMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, flags: "a" };
     const sourceState = createTeamBattleState({
@@ -763,7 +762,8 @@ describe("authoritative battle room", () => {
       type: "turnResolved", events: expect.arrayContaining([expect.objectContaining({ type: "heldItemTransferred",
         source: "player", target: "opponent", item: "ORANBERRY" })]),
     }) })]));
-=======
+  });
+
   it("keeps a native double source battle hidden until the adjacent guest chooses to observe", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");
@@ -795,7 +795,6 @@ describe("authoritative battle room", () => {
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(persisted.rngState),
       worldWithSource, persisted);
     expect(restored.snapshot().battle?.observerIds).toEqual(["bob"]);
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   });
 
   it("lets the host help a shared wild encounter opened by the guest", () => {

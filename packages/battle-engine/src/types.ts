@@ -14,23 +14,13 @@ export interface BattleMove {
   readonly id: number;
   readonly internalName: string;
   readonly name: string;
-<<<<<<< HEAD
-  readonly functionCode: "000" | "003" | "005" | "006" | "007" | "009" | "00A" | "00C"
-    | "00F" | "012" | "013"
-    | "01C" | "01D" | "01E" | "01F" | "020" | "022" | "023" | "027" | "028" | "030"
-    | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04D"
-    | "06F" | "077" | "07B" | "088" | "093" | "09A" | "09E" | "0A1" | "0A2" | "0A5" | "0A7"
-    | "0AA" | "0AD" | "0B9" | "0BA" | "0BC" | "0C0" | "0CF" | "0D8" | "0DD" | "0E8" | "0F4"
-    | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
-=======
   readonly functionCode: "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "027" | "028" | "030"
     | "02D" | "02F" | "033" | "034" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04C" | "04D" | "04F"
     | "064" | "069" | "06D" | "06F" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
-    | "0FA" | "10D" | "10E" | "110" | "116" | "159" | "906";
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+    | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
   readonly type: string;
   readonly category: MoveCategory;
@@ -43,7 +33,6 @@ export interface BattleMove {
   readonly targetCode?: string;
 }
 
-<<<<<<< HEAD
 export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "ANGERPOINT", "BATTLEARMOR", "BERSERK", "BIGPECKS", "BLAZE", "CHEEKPOUCH",
   "COMPETITIVE", "COMPOUNDEYES", "CONTRAGUARDIA", "DEFIANT", "DOWNLOAD", "DRYSKIN", "EFFECTSPORE", "FILTER", "FLAMEBODY", "FLASHFIRE", "FLORACION", "FOREWARN", "FRISK", "GOOEY",
   "GUTS", "HUGEPOWER", "HYPERCUTTER", "IMMUNITY", "INNERFOCUS", "INSOMNIA", "INTIMIDATE", "IRONBARBS", "IRONFIST", "KEENEYE",
@@ -51,25 +40,14 @@ export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "ANGER
   "NATURALCURE", "OVERGROW", "PICKPOCKET", "POISONPOINT", "POISONTOUCH", "PUREPOWER", "QUICKFEET", "RATTLED", "RECKLESS", "REGENERATOR", "RIVALRY", "ROCKHEAD", "ROUGHSKIN",
   "SERENEGRACE", "SHEDSKIN", "SHELLARMOR", "SHIELDDUST", "SIMPLE", "SNIPER", "STAMINA", "STEAMENGINE", "CLEARBODY", "WHITESMOKE",
   "SAPSIPPER", "SHEERFORCE", "SKILLLINK", "SOLIDROCK", "STATIC", "STEADFAST", "STORMDRAIN", "STRONGJAW", "SUPERLUCK", "SWARM", "STURDY", "SYNCHRONIZE", "TECHNICIAN",
-  "THICKFAT", "TINTEDLENS", "TORRENT", "TOUGHCLAWS", "TRACE", "ANTICIPATION", "VITALSPIRIT", "VOLTABSORB", "WATERABSORB", "WATERCOMPACTION", "WATERVEIL", "WEAKARMOR"] as const;
-=======
-export const IMPLEMENTED_BATTLE_ABILITIES = ["ACOMETIDA", "ADAPTABILITY", "AERILATE", "ALQUIMIAVIL", "BATTLEARMOR", "BIGPECKS", "BLAZE", "CHEEKPOUCH", "CHLOROPHYLL", "COMPOUNDEYES", "CORROSION",
-  "CONTRAGUARDIA", "DRYSKIN", "FILTER", "FLORACION", "GUTS", "HUGEPOWER", "INNERFOCUS", "INTIMIDATE",
-  "FLAMEBODY", "GLUTTONY", "GOOEY", "GRASSYSURGE", "HEATPROOF", "IMMUNITY", "IMPOSTER", "IRONFIST", "KEENEYE", "LEAFGUARD", "LEVITATE", "LIQUIDVOICE", "MAGICGUARD", "MEGALAUNCHER", "MOLDBREAKER", "MULTISCALE", "NEUROFORCE", "NOGUARD", "OVERGROW", "OWNTEMPO", "PIELHELADA", "PIXILATE",
-  "NATURALCURE", "PIELHERBACEA", "PRANKSTER", "PROTEAN", "PUREPOWER", "QUICKFEET", "REGENERATOR", "RIVALRY", "SAPSIPPER", "SERENEGRACE", "SHELLARMOR", "SHEDSKIN", "SHIELDDUST",
-  "RATTLED", "ROCKHEAD", "ROUGHSKIN", "RUNAWAY", "SCRAPPY", "SHEERFORCE", "SIMPLE", "SKILLLINK", "SNIPER", "SOLIDROCK", "SOUNDPROOF", "STATIC", "STEADFAST", "STICKYHOLD", "STRONGJAW", "SWARM", "SWIFTSWIM", "SYNCHRONIZE", "TECHNICIAN", "UNAWARE", "WATERABSORB", "COMPETITIVE",
-  "THICKFAT", "TORRENT", "TOUGHCLAWS"] as const;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+  "THICKFAT", "TINTEDLENS", "TORRENT", "TOUGHCLAWS", "TRACE", "ANTICIPATION", "VITALSPIRIT", "VOLTABSORB", "WATERABSORB", "WATERCOMPACTION", "WATERVEIL", "WEAKARMOR",
+  "AERILATE", "ALQUIMIAVIL", "CHLOROPHYLL", "CORROSION", "GLUTTONY", "GRASSYSURGE", "HEATPROOF", "IMPOSTER", "LEAFGUARD", "LIQUIDVOICE", "MEGALAUNCHER", "MOLDBREAKER", "NEUROFORCE", "PIELHELADA", "PIELHERBACEA", "PIXILATE", "PRANKSTER", "PROTEAN", "RUNAWAY", "SCRAPPY", "SOUNDPROOF", "STICKYHOLD", "SWIFTSWIM", "UNAWARE"] as const;
 export type ImplementedBattleAbility = typeof IMPLEMENTED_BATTLE_ABILITIES[number];
 /** Source ability identity. Only ImplementedBattleAbility values currently apply an automatic battle effect. */
 export type BattleAbility = ImplementedBattleAbility | (string & {});
 export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT", "FOCUSSASH",
   "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES",
-<<<<<<< HEAD
-  "BUGGEM", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "ORANBERRY", "PAYAPABERRY", "SAFETYGOGGLES"] as const;
-=======
-  "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "LIECHIBERRY", "ORANBERRY", "PAYAPABERRY"] as const;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+  "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "LIECHIBERRY", "ORANBERRY", "PAYAPABERRY", "SAFETYGOGGLES"] as const;
 export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number];
 
 export function isHeldItemSupported(value: string): value is HeldItem {
@@ -137,13 +115,11 @@ export interface BattlerState {
     readonly protectRate?: number;
     readonly tauntTurns?: number;
     readonly rage?: boolean;
-<<<<<<< HEAD
     /** Fire boost armed by Flash Fire until this battler leaves combat. */
     readonly flashFire?: boolean;
     /** Entry hooks run once per stay on the field. Trace also keeps its source identity here. */
     readonly entryAbilityResolved?: boolean;
     readonly traceOriginalAbility?: BattleAbility | null;
-=======
     /** Source side for Leech Seed; legacy snapshots omit it. */
     readonly leechSeededBy?: BattleSide | null;
     /** Active slot occupied by the Leech Seed user; relevant in double battles. */
@@ -156,7 +132,6 @@ export interface BattlerState {
     readonly rolloutTurns?: number;
     readonly uproarTurns?: number;
     readonly embargoTurns?: number;
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   };
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
@@ -216,11 +191,9 @@ export interface BattleSideEffects {
 export interface BattleEffects {
   readonly sides: Readonly<Record<BattleSide, BattleSideEffects>>;
   readonly waterSportTurns: number;
-<<<<<<< HEAD
   /** Tactical transfers retained for owner-scoped persistence at battle settlement. */
   readonly itemTransfers?: readonly { readonly item: HeldItem; readonly sourceId: string;
     readonly targetId: string; readonly reason: "pickpocket" }[];
-=======
   /** Optional for backward-compatible snapshots created before Route 3. */
   readonly mudSportTurns?: number;
   /** Defog clears the active source terrain even before terrain-setting moves are ported. */
@@ -230,7 +203,6 @@ export interface BattleEffects {
   readonly weatherTurns?: number;
   readonly environment?: "none" | "grass" | "moving-water" | "still-water" | "underwater" | "cave"
     | "rock" | "sand" | "snow" | "volcano" | "graveyard" | "sky" | "space";
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }
 
 export interface PokemonCaptureCalculation {
@@ -285,8 +257,7 @@ export type BattleEvent =
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
       readonly reason: "recoil" | "crash"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
-<<<<<<< HEAD
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-status" | "lower-attack" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" }
+  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "lower-attack" | "lower-speed" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" }
   | { readonly type: "abilityObserved"; readonly side: BattleSide; readonly ability: "TRACE" | "FRISK" | "ANTICIPATION" | "FOREWARN";
       readonly observation: { readonly kind: "copied-ability"; readonly targetId: string; readonly ability: BattleAbility }
         | { readonly kind: "held-item"; readonly targetId: string; readonly item: HeldItem }
@@ -294,11 +265,8 @@ export type BattleEvent =
         | { readonly kind: "move"; readonly targetId: string; readonly move: string } }
   | { readonly type: "abilityDamage"; readonly source: BattleSide; readonly target: BattleSide;
       readonly ability: ImplementedBattleAbility; readonly amount: number; readonly hp: number }
-=======
-  | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "prevent-stat-drop" | "prevent-additional-effect" | "inflict-paralysis" | "inflict-burn" | "lower-attack" | "lower-speed" | "heal-on-switch" | "heal-on-berry" | "block-move" | "boost-stat" | "cure-status" | "change-type" | "contact-damage" | "transform" | "set-terrain" }
   | { readonly type: "abilityChanged"; readonly source: BattleSide; readonly target: BattleSide;
       readonly ability: BattleAbility; readonly move: string }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" | "ability-immune" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
@@ -308,13 +276,11 @@ export type BattleEvent =
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
-<<<<<<< HEAD
       readonly item: HeldItem; readonly reason: "pickpocket" }
-=======
+  | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
       readonly item: HeldItem; readonly move: string }
   | { readonly type: "heldItemRemoved"; readonly source: BattleSide; readonly target: BattleSide;
       readonly item: HeldItem; readonly move: string }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   | { readonly type: "moveFailed"; readonly side: BattleSide; readonly move: string;
       readonly reason: "condition" | "protected" | "taunted" }
   | { readonly type: "ppReduced"; readonly source: BattleSide; readonly target: BattleSide;

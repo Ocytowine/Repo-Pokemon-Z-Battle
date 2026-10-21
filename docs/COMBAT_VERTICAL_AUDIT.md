@@ -139,7 +139,6 @@ au calculateur `pokemon-z-participant` deja utilise en Coop. Bonus Dresseur,
 partage, gains multiples et details d'arrondi sont couverts par les tests. Le cas
 Remi/Fluvetin passe ainsi de 143 EXP sauvages a 142 EXP Dresseur pour Feunnec.
 
-<<<<<<< HEAD
 Extension Pickpocket du 2026-10-20 : après une attaque de contact qui inflige des
 dégâts, un porteur sans objet vole l'objet tenu de l'attaquant. Le transfert, son
 talent et sa provenance font partie du snapshot tactique commun. La room applique
@@ -205,7 +204,6 @@ par l'adversaire, y compris Intimidation à la création, au changement et sur l
 deux emplacements d'un combat double. Le snapshot de room conserve les crans après
 reconnexion. L'audit local atteint désormais 565 problèmes, dont 151 talents ; le
 registre compte 79 talents pleinement supportés, 5 partiels et 171 absents.
-=======
 ## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
 
 Frontière automatisée le 2026-10-19 : Maps 023 à 029, soit Rena, Gerard,
@@ -331,4 +329,3 @@ source reconstruit l'équipe réelle de trois Pokémon. Son audit ciblé ne cons
 que l'animation de `LUZDECADENTE`, absente de la table source et donc rendue par
 le fallback. Une recette manuelle du déclenchement et de la reprise de scène sur
 Map046 reste requise.
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e

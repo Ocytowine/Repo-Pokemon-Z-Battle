@@ -2,13 +2,9 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   replaceFaintedDoublePokemon, replaceFaintedPokemon, resolveTeamTurn,
   sharedBattleOwnerSettlement,
   type PokemonItemUsePolicy,
-<<<<<<< HEAD
-  type BattleResolutionRules, type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
-  type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
-=======
-  type RandomSource, type SharedBattleLedger, type SharedBattleParticipation, type TeamBattleAction,
-  type BattleStat, type TeamBattleEvent, type TeamBattleState, type TeamReplacementResult, type TeamTurnActions,
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+  type BattleResolutionRules, type BattleStat, type RandomSource, type SharedBattleLedger,
+  type SharedBattleParticipation, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState,
+  type TeamReplacementResult, type TeamTurnActions,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
@@ -85,15 +81,11 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
 
 export function createSourceTrainerBattle(party: PlayerPartyState, trainer: SourceTrainerDefinition,
   catalog: PlayerCreationCatalog, format: "single" | "double" = "single",
-<<<<<<< HEAD
   opponentId: (memberIndex: number) => string = (memberIndex) =>
-    `trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${memberIndex}`): TeamBattleState {
-  const player = sourcePlayerBattleTeam(party, catalog);
-=======
+    `trainer-${trainer.trainerType.toLowerCase()}-${trainer.version}-${memberIndex}`,
   megaCatalog?: SourceMegaEvolutionCatalog, megaActivationAvailable = false,
   environment: BattleEnvironment = "none"): TeamBattleState {
   const player = sourcePlayerBattleTeam(party, catalog, megaCatalog, megaActivationAvailable);
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   let opponentParty = createEmptyPlayerParty();
   trainer.pokemon.forEach((member, index) => {
     let pokemon = createPersistentPokemon(opponentId(index), member.species, member.level, catalog);

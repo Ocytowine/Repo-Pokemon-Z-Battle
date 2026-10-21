@@ -270,14 +270,13 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "heldItemConsumed") {
       message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
     } else if (event.type === "heldItemTransferred") {
-<<<<<<< HEAD
       const sourceName = activeName(state, event.source);
       const targetName = activeName(state, event.target);
       state = withActiveHeldItem(withActiveHeldItem(state, event.source, null), event.target, event.item);
-      message(`${targetName} vole ${options.itemName?.(event.item) ?? event.item} à ${sourceName} !`, "status");
-=======
-      message(`${activeName(state, event.target)} dérobe ${event.item} avec ${event.move}.`, "status");
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+      const item = options.itemName?.(event.item) ?? event.item;
+      message("move" in event
+        ? `${targetName} dérobe ${item} avec ${event.move}.`
+        : `${targetName} vole ${item} à ${sourceName} !`, "status");
     } else if (event.type === "trainerItemUsed") {
       const team = state.teams[event.side];
       const target = team.members[event.targetIndex];

@@ -631,7 +631,7 @@ describe("stat stages, power abilities and held battle items", () => {
 describe("ability conformance regressions", () => {
   it("keeps an explicit audit entry for every ability advertised by the battle core", () => {
     const audited: Record<(typeof IMPLEMENTED_BATTLE_ABILITIES)[number], string> = {
-<<<<<<< HEAD
+      ...{
       ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type damage", ANGERPOINT: "critical attack maximum",
       BATTLEARMOR: "critical immunity", BERSERK: "half HP special attack", BIGPECKS: "defense drop immunity",
       BLAZE: "low HP fire power", CLEARBODY: "stat drop immunity", CHEEKPOUCH: "berry consumption healing",
@@ -665,7 +665,8 @@ describe("ability conformance regressions", () => {
       VITALSPIRIT: "sleep immunity", VOLTABSORB: "electric healing", WATERABSORB: "water healing",
       WATERCOMPACTION: "water hit defense", WATERVEIL: "burn immunity", WEAKARMOR: "physical hit defense speed",
       WHITESMOKE: "stat drop immunity",
-=======
+      },
+      ...{
       ACOMETIDA: "first active turn speed", ADAPTABILITY: "same-type attack bonus", AERILATE: "normal-to-flying conversion",
       ALQUIMIAVIL: "double opposing poison damage",
       BATTLEARMOR: "critical immunity",
@@ -697,12 +698,11 @@ describe("ability conformance regressions", () => {
       SWARM: "low HP bug power", SWIFTSWIM: "rain speed", SYNCHRONIZE: "status reflection", TECHNICIAN: "low-power move boost",
       THICKFAT: "fire and ice resistance", TORRENT: "low HP water power", TOUGHCLAWS: "contact move power",
       UNAWARE: "ignore opposing stat stages", WATERABSORB: "water absorption",
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+      },
     };
     expect(Object.keys(audited).sort()).toEqual([...IMPLEMENTED_BATTLE_ABILITIES].sort());
   });
 
-<<<<<<< HEAD
   it("ports Sheer Force's power, secondary suppression and Life Orb exception together", () => {
     const move = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, accuracy: 0, effectChance: 100 };
     const trace: BattleTrace[] = [];
@@ -886,7 +886,8 @@ describe("ability conformance regressions", () => {
     });
     expect(double.teams.opponent.members[0]?.stages).toMatchObject({ attack: -1, specialAttack: 2 });
     expect(double.teams.opponent.members[1]?.stages.attack).toBe(1);
-=======
+  });
+
   it("changes a Protean user's type before its selected move", () => {
     const user = battler("player", { ability: "PROTEAN", types: ["NORMAL"],
       moves: [{ move: MINIMAL_MOVE_CATALOG.WATERGUN, pp: MINIMAL_MOVE_CATALOG.WATERGUN.pp }] });
@@ -997,7 +998,6 @@ describe("ability conformance regressions", () => {
       item: "LIFEORB" }));
     expect(result.trace).toContainEqual(expect.objectContaining({ type: "damage",
       abilityModifier: { ability: "SHEERFORCE", multiplier: 1.3 } }));
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   });
 
   it("lets Magic Guard block binding and curse while their lifecycle still advances", () => {

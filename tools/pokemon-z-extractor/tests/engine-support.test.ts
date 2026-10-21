@@ -62,17 +62,11 @@ describe("engine support report", () => {
         .map((internalName, id) => ({ id, internalName, name: internalName, description: "" })) },
     } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual([
-<<<<<<< HEAD
-      { key: "CHLOROPHYLL", extracted: true, engineSupport: "partial" },
-      { key: "COMPOUNDEYES", extracted: true, engineSupport: "partial" },
-      { key: "DRYSKIN", extracted: true, engineSupport: "partial" },
-      { key: "INTIMIDATE", extracted: true, engineSupport: "partial" },
-      { key: "PICKPOCKET", extracted: true, engineSupport: "supported" },
-=======
       { key: "CHLOROPHYLL", extracted: true, engineSupport: "supported" },
+      { key: "COMPOUNDEYES", extracted: true, engineSupport: "supported" },
       { key: "DRYSKIN", extracted: true, engineSupport: "partial" },
       { key: "INTIMIDATE", extracted: true, engineSupport: "supported" },
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
+      { key: "PICKPOCKET", extracted: true, engineSupport: "supported" },
       { key: "RIVALRY", extracted: true, engineSupport: "supported" },
       { key: "SHIELDDUST", extracted: true, engineSupport: "supported" },
       { key: "STURDY", extracted: true, engineSupport: "partial" },

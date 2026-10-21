@@ -117,8 +117,8 @@ function redirectedElementalTarget(state: TeamBattleState, actor: BattlePosition
       const battler = battlerAtPosition(state, position);
       return (battler?.hp ?? 0) > 0 && battler?.ability === ability;
     })
-    .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!)
-      - effectiveSpeed(battlerAtPosition(state, left)!));
+    .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!, state.effects)
+      - effectiveSpeed(battlerAtPosition(state, left)!, state.effects));
   return candidates[0] ?? intended;
 }
 
@@ -164,15 +164,12 @@ function storeBattler(teams: Record<BattleSide, BattleTeam>, position: BattlePos
 
 function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTeam>, actor: BattlePosition,
   action: Extract<TeamBattleAction, { kind: "move" }>, targets: readonly BattlePosition[], rng: RandomSource,
-<<<<<<< HEAD
   submitted: readonly PositionedTeamBattleAction[], effects: TeamBattleState["effects"], rules: BattleResolutionRules,
-=======
-  submitted: readonly PositionedTeamBattleAction[], effects: TeamBattleState["effects"], context?: {
+  context?: {
     readonly damagedPositions: ReadonlySet<string>;
     readonly roundMultiplier: number;
     readonly helpingHandMultiplier: number;
   },
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 ): { readonly events: readonly BattleEvent[]; readonly trace: DoubleTurnResult["trace"];
   readonly effects: TeamBattleState["effects"]; readonly damagedTargets: ReadonlySet<string> } {
   const events: BattleEvent[] = [];
@@ -194,13 +191,10 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
       { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1,
         attackerHeldItemAfterDamage: targetIndex === targets.length - 1,
         switchingTarget: targetEntry?.action.kind === "switch" ? target.side : null,
-<<<<<<< HEAD
         opponentItemTheft: rules.opponentItemTheft,
-=======
         targetTookDamageThisTurn: context?.damagedPositions.has(key(target)) ?? false,
         roundMultiplier: context?.roundMultiplier ?? 1,
         helpingHandMultiplier: context?.helpingHandMultiplier ?? 1,
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
         ...(targetAction === undefined ? {} : { targetPlannedAction: targetAction }) });
     if (result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
       damagedTargets.add(key(target));
@@ -240,26 +234,17 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   const members = team.members.map((member, index) => {
     if (index !== fromIndex) return member;
     const outgoingAbility = member.ability;
+    const tracedAbility = member.volatile?.traceOriginalAbility;
     member = restoreTransformedBattler(member);
     const { volatile: _volatile, ...persistent } = member;
-<<<<<<< HEAD
-    const ability = member.volatile?.traceOriginalAbility ?? member.ability;
-    const hp = member.ability === "REGENERATOR" && member.hp > 0
-      ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
-    healed = hp - member.hp;
-    return { ...persistent, ability, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
-      speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: member.ability === "NATURALCURE" ? null
-      : member.majorStatus?.kind === "poison"
-      && member.majorStatus.toxicCounter !== null ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
-=======
+    const ability = tracedAbility ?? member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
-    return { ...persistent, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
+    return { ...persistent, ability, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
       speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: outgoingAbility === "NATURALCURE" ? null
       : member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
         ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   });
   teams[actor.side] = { ...team, activeIndex: indices[0]!, activeIndices: indices };
   teams[actor.side] = { ...teams[actor.side], members };
@@ -267,17 +252,10 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   if (healed > 0) output.push({ type: "abilityActivated", side: actor.side,
     ability: "REGENERATOR", effect: "heal-on-switch" }, { type: "hpRestored", side: actor.side,
     source: "move", move: "REGENERATOR", amount: healed, hp: team.members[fromIndex]!.hp + healed });
-<<<<<<< HEAD
   if (team.members[fromIndex]!.ability === "NATURALCURE" && team.members[fromIndex]!.majorStatus !== null) {
     output.push({ type: "abilityActivated", side: actor.side, ability: "NATURALCURE", effect: "cure-on-switch" },
       { type: "statusCured", side: actor.side, status: team.members[fromIndex]!.majorStatus!.kind });
   }
-=======
-  const withdrawn = team.members[fromIndex]!;
-  if (withdrawn.ability === "NATURALCURE" && withdrawn.majorStatus !== null) output.push(
-    { type: "abilityActivated", side: actor.side, ability: "NATURALCURE", effect: "cure-status" },
-    { type: "statusCured", side: actor.side, status: withdrawn.majorStatus.kind });
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   output.push({ type: "pokemonSwitched", side: actor.side, fromIndex, toIndex: teamIndex,
     from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason: "voluntary" });
   const cured = cureStatusBlockedByAbility(teams[actor.side].members[teamIndex]!);
@@ -474,17 +452,13 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     trace.push(...result.trace);
     pursuitKeys.add(key(entry.actor));
   }
-<<<<<<< HEAD
-  for (const entry of switchEntries) events.push(...switchAt(teams, entry.actor,
-    (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex, rng, trace));
-=======
   for (const entry of switchEntries) {
-    events.push(...switchAt(teams, entry.actor, (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex));
+    events.push(...switchAt(teams, entry.actor,
+      (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex, rng, trace));
     const entered = applyEntryAbilities(teams, entry.actor, effects);
     effects = entered.effects;
     events.push(...entered.events);
   }
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
   for (const entry of itemEntries) {
     const action = entry.action as Extract<TeamBattleAction, { kind: "item" }>;
     const team = teams[entry.actor.side];
@@ -552,9 +526,6 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const liveState: TeamBattleState = { ...state, teams };
     if ((battlerAtPosition(liveState, entry.actor)?.hp ?? 0) <= 0) continue;
     const targets = moveTargets(liveState, entry.actor, entry.action, rng);
-<<<<<<< HEAD
-    const result = executeMove(state, teams, entry.actor, entry.action, targets, rng, effectiveSubmitted, effects, rules);
-=======
     const actor = battlerAtPosition(liveState, entry.actor)!;
     const selectedMove = actor.moves[entry.action.moveIndex]!.move;
     if (selectedMove.functionCode === "09C") {
@@ -582,12 +553,11 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       resolvedPositions.add(key(entry.actor));
       continue;
     }
-    const result = executeMove(state, teams, entry.actor, entry.action, targets, rng, effectiveSubmitted, effects, {
+    const result = executeMove(state, teams, entry.actor, entry.action, targets, rng, effectiveSubmitted, effects, rules, {
       damagedPositions,
       roundMultiplier: selectedMove.functionCode === "083" ? 2 ** roundUses[entry.actor.side] : 1,
       helpingHandMultiplier: helpedPositions.has(key(entry.actor)) ? 1.5 : 1,
     });
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
     effects = result.effects;
     events.push({ type: "positionedActionResolved", actor: entry.actor, targets, events: result.events });
     trace.push(...result.trace);
@@ -658,13 +628,8 @@ export function replaceFaintedDoublePokemon(state: TeamBattleState, position: Ba
     throw new Error("Aucun remplacement n'est requis a cet emplacement.");
   }
   const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
-<<<<<<< HEAD
   switchAt(teams, position, teamIndex, rng, []);
-  return { ...state, teams, slotReplacements: state.slotReplacements.filter((entry) => key(entry) !== key(position)) };
-=======
-  switchAt(teams, position, teamIndex);
   const entered = applyEntryAbilities(teams, position, state.effects);
   return { ...state, teams, ...(entered.effects === undefined ? {} : { effects: entered.effects }),
     slotReplacements: state.slotReplacements.filter((entry) => key(entry) !== key(position)) };
->>>>>>> 52b0b9123ed2c596c96a1144d039db8d7777731e
 }
