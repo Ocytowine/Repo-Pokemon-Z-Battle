@@ -6090,3 +6090,133 @@ Prochain lot préparé : les transformations déterministes de statistiques `052
 Attaques physique/spéciale) et `059` (moyenne des Défenses physique/spéciale).
 Vérifier les classes Ruby pour les exceptions de Clonage, la persistance
 temporaire au retrait, la cible en double et les événements nécessaires au rendu.
+
+## Cinquième lot de fonctions d'attaque : échanges et moyennes - 2026-10-22
+
+Les sept fonctions `052`, `053`, `054`, `055`, `057`, `058` et `059` suivent les
+classes Ruby locales. Les trois échanges et la copie de crans affectent directement
+les niveaux concernés, sans passer par Simple, Contestation ni les protections
+contre les baisses. Ils réussissent même si les niveaux sont identiques. `057`
+échange les valeurs effectives d'Attaque et Défense du porteur à chaque usage ;
+`058` et `059` attribuent aux deux combattants la moyenne entière inférieure des
+Attaques ou Défenses concernées. Ces valeurs sont distinctes des crans et sont
+restaurées au retrait, sans altérer durablement les statistiques de l'équipe.
+
+Autorité : le noyau unique résout l'intention de capacité en solo et dans la room
+pour l'hôte et l'invité. Domaine : état tactique partagé ; aucune donnée personnelle
+n'est publiée. Persistance : valeurs modifiées, crans et sauvegarde des valeurs
+avant modification vivent dans le snapshot autoritaire et survivent à la
+reconnexion ou au redémarrage de room. Audience : les événements de crans et de
+statistiques effectives sont présentés aux participants ; le résolveur double
+conserve la cible positionnée. Les tests couvrent les sept codes, Contestation,
+arrondi, bascule de Power Trick, retrait, cible double et restauration Coop.
+
+Dépendances conservées pour le futur : `055` devra consulter Bouclier Rusé quand
+son état existera ; `058` et `059` devront respecter Clonage et ses exceptions
+quand cette mécanique sera portée. Leur absence n'est pas simulée par un état
+inventé. Vérifier aussi l'interaction des statistiques temporaires avec les
+changements de forme successifs lorsque ces scénarios seront audités.
+
+Après `prepare:local` : **140 fonctions couvertes / 213 non couvertes / 353 au
+total** (39,66 %). L'audit courant compte **252 alertes de mécanique d'attaque**,
+55 animations manquantes et 1 talent partiel (`STURDY`) : **308 problèmes
+globaux**. 621 animations sont prêtes.
+
+Prochain lot préparé : `05A` (Divide Douleur : moyenne des PV avec plafonds),
+`060` (Camouflage : type selon terrain et environnement), `061` (Soak :
+changement de type de la cible), `062` (Clonatipo : copie des types), puis `063`,
+`065` et `066` (Onda Simple, Imitation, Danse Amiga : remplacement temporaire des
+talents). Vérifier dans le Ruby les exclusions exactes, les protections Clonage et
+Bouclier Rusé, les réactions d'Illusion/Gaz Réactif, ainsi que la restitution au
+retrait. `05C`-`05F` (Mimic, Sketch et conversions) restent à traiter dans un lot
+dédié car ils requièrent un contrat durable de capacités et un historique de type.
+
+## Sixième lot de fonctions d'attaque : PV, types et talents - 2026-10-22
+
+Les sept fonctions `05A`, `060`, `061`, `062`, `063`, `065` et `066` utilisent le
+noyau partagé. Divide Douleur calcule la moyenne entière inférieure des PV
+actuels, plafonnée séparément aux PV maximaux des deux combattants. Camouflage
+choisit son type selon l'environnement source et laisse le terrain actif primer ;
+Soak remplace les types de la cible par Eau et Clonatipo copie ceux de la cible.
+Les protections Multitype et les échecs de type identique suivent les classes Ruby.
+Les types initiaux sont conservés dans l'état volatil et restaurés au retrait.
+
+Onda Simple, Imitation et Danse Amiga emploient le remplacement temporaire de
+talent existant, avec les listes d'exclusion source et la rupture immédiate
+d'Illusion lorsqu'elle est remplacée. Le talent d'origine revient au retrait.
+Les changements de PV, de types et de talents sont émis vers les participants ;
+la présentation répercute les PV et les types au cours de la séquence. Le
+résolveur double conserve la cible choisie, tandis que la room autoritaire
+résout les intentions hôte et invité. Les snapshots restaurent types, talents,
+PV et provenance des remplacements après reconnexion ou redémarrage de room.
+
+Dépendances à raccorder : les contrôles de Clonage de `05A`, `061`, `063` et
+`066`, et Bouclier Rusé de `065` et `066`, attendent ces mécaniques communes.
+Les transitions de Gaz Réactif provoquées au milieu d'un tour par changement
+de talent demandent un audit complémentaire ; le noyau traite déjà sa suppression
+au début du tour, mais ce lot ne prétend pas couvrir toutes les transitions
+instantanées. Les interactions complexes avec Transform et les formes restent à
+vérifier dans le lot dédié.
+
+Après `prepare:local` : **147 fonctions couvertes / 206 non couvertes / 353 au
+total** (41,64 %). L'audit courant compte **245 alertes de mécanique d'attaque**,
+55 animations manquantes et 1 talent partiel (`STURDY`) : **301 problèmes
+globaux**. 631 animations sont prêtes.
+
+Prochain lot préparé : les dégâts déterministes `06A` (Bomba Sónica : 20 PV),
+`06B` (Furia Dragón : 40 PV), `06C` (Superdiente : moitié des PV actuels),
+`06E` (Esfuerzo : ramener la cible aux PV du porteur) et `070` (capacités K.O.
+en un coup), puis `067` (échange des talents) et `068` (suppression temporaire
+du talent). Vérifier les classes Ruby, immunités, Clonage, précision spéciale,
+garde-fous de talents, réactions Gaz Réactif et restitution avant de classer le
+lot suivant comme terminé. `05C`-`05F` restent planifiées séparément.
+
+## Septième lot de fonctions d'attaque : dégâts fixes et talents - 2026-10-22
+
+Les sept codes `06A`, `06B`, `06C`, `06E`, `070`, `067` et `068` sont raccordés
+au noyau commun. Bomba Sónica inflige 20 PV et Furia Dragón 40 PV ; Superdiente
+retire au moins un PV et au plus la moitié entière des PV courants ; Esfuerzo
+échoue si les PV du porteur ne sont pas strictement inférieurs à ceux de la
+cible. Ces dégâts passent par le même pipeline que `06D` et `06F`, avec
+immunités de type, protection, Ceinture Force, événements de dégâts et K.O.
+Les dégâts fixes ignorent désormais les multiplicateurs de dégâts et le second
+coup de Lien Parental. `070` applique la précision source `précision + différence
+de niveau`, sans crans de précision/esquive ; un niveau inférieur ou Fermeté
+active l'échec avant les dégâts, sauf contournement par Brise Moule.
+
+Échange échange les talents actifs (hors exclusions source) et réexécute les
+hooks d'entrée des deux combattants. Bilis supprime le talent effectif jusqu'au
+retrait, remet la phase de Truant à zéro et rompt Illusion si nécessaire. Les
+deux fonctions utilisent le mécanisme de provenance volatil partagé : les
+talents d'origine sont restaurés au switch. Les événements d'échange et de
+suppression sont publiés aux participants.
+
+Autorité : intentions habituelles, calcul et RNG du noyau local en solo ou de
+la room en Coop. Domaine : état tactique partagé. Persistance : PV, talents
+actifs, suppression et provenance sont dans le snapshot, restaurés après
+reconnexion et redémarrage de room. Audience : les effets et dégâts sont
+présentés à l'hôte, à l'invité et aux observateurs ; le résolveur double garde
+la cible positionnée. Les tests couvrent les cinq dégâts, immunités, arrondi,
+précision, Fermeté, Brise Moule, Lien Parental, échange, suppression, retrait,
+présentation et restauration Coop.
+
+Dépendances à fermer : Clonage pour Bilis et les dégâts fixes, ainsi que les
+transitions instantanées de Gaz Réactif lorsqu'un échange crée ou déplace son
+porteur en cours de tour. Dans un double, les hooks d'entrée déclenchés par
+Échange doivent encore être audités vis-à-vis des deux adversaires ; le noyau
+positionné ne reçoit actuellement que la cible de l'action. Les comportements
+ordinaires solo/Coop sont communs, mais ces interactions transversales ne sont
+pas déclarées validées manuellement.
+
+Après `prepare:local` : **154 fonctions couvertes / 199 non couvertes / 353 au
+total** (43,63 %). L'audit courant compte **235 alertes de mécanique d'attaque**,
+55 animations manquantes et 1 talent partiel (`STURDY`) : **291 problèmes
+globaux**. 643 animations sont prêtes.
+
+Prochain lot préparé : `05C` (Mimic : remplacement temporaire d'une capacité),
+`05D` (Sketch : apprentissage durable dans l'équipe), `05E` (Conversion : type
+d'une capacité du porteur) et `05F` (Conversion 2 : type résistant à la dernière
+capacité adverse). Ce lot doit d'abord préciser la persistance personnelle de
+Sketch, l'historique de capacité/type, le tirage RNG autoritaire, les exclusions
+source et les tests de reconnexion. Les représailles `071`-`073` formeront le
+lot suivant, après ce contrat d'historique.

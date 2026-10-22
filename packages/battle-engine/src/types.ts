@@ -18,8 +18,8 @@ export interface BattleMove {
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
     | "02A" | "02B" | "02C" | "02D" | "02E" | "02F" | "032" | "033" | "034" | "035" | "036" | "037" | "038" | "039" | "03A" | "03B" | "03C" | "03D" | "03E" | "03F"
-    | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "056" | "05B"
-    | "064" | "069" | "06D" | "06F" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
+    | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "052" | "053" | "054" | "055" | "056" | "057" | "058" | "059" | "05B"
+    | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
     | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
@@ -153,6 +153,11 @@ export interface BattlerState {
     readonly choiceLockedMove?: string | null;
     readonly originalForm?: number | null;
     readonly originalStats?: BattleStats | null;
+    /** Base stats before temporary Power Trick/Split changes; restored on withdrawal. */
+    readonly originalMoveStats?: BattleStats | null;
+    readonly powerTrick?: boolean;
+    /** Gastro Acid suppresses the active ability until withdrawal. */
+    readonly gastroAcid?: boolean;
     /** Autotomize's cumulative weight change in hectograms; cleared on switch. */
     readonly weightChange?: number;
   };
@@ -240,7 +245,7 @@ export interface BattleEffects {
   readonly trickRoomTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
-  readonly environment?: "none" | "grass" | "moving-water" | "still-water" | "underwater" | "cave"
+  readonly environment?: "none" | "grass" | "tall-grass" | "forest" | "moving-water" | "still-water" | "underwater" | "cave"
     | "rock" | "sand" | "snow" | "volcano" | "graveyard" | "sky" | "space";
 }
 
@@ -296,6 +301,7 @@ export type BattleEvent =
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
       readonly reason?: "recoil" | "crash" | "self-destruct" | "belly-drum"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
+  | { readonly type: "hpShared"; readonly side: BattleSide; readonly move: string; readonly hp: number }
   | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "announce" | "prevent-stat-drop" | "reflect-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "prevent-infatuation" | "prevent-taunt" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "inflict-flinch" | "disable-move" | "reflect-move" | "lower-attack" | "lower-special-attack" | "lower-accuracy" | "lower-speed" | "lower-evasion" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "charge" | "cure-status" | "change-type" | "change-ability" | "contact-damage" | "set-hazard" | "transform" | "set-terrain" | "set-trick-room" | "set-weather" | "weather-heal" | "weather-damage" | "status-heal" | "status-damage" | "pressure" | "recover-item" | "randomize-stats" | "skip-turn" | "extra-hit" | "request-switch" | "break-disguise" }
   | { readonly type: "abilityObserved"; readonly side: BattleSide; readonly ability: "TRACE" | "FRISK" | "ANTICIPATION" | "FOREWARN";
       readonly observation: { readonly kind: "copied-ability"; readonly targetId: string; readonly ability: BattleAbility }
@@ -306,6 +312,13 @@ export type BattleEvent =
       readonly ability: ImplementedBattleAbility; readonly amount: number; readonly hp: number }
   | { readonly type: "abilityChanged"; readonly source: BattleSide; readonly target: BattleSide;
       readonly ability: BattleAbility; readonly move: string }
+  | { readonly type: "abilitySuppressed"; readonly source: BattleSide; readonly target: BattleSide;
+      readonly move: string }
+  | { readonly type: "abilitiesSwapped"; readonly source: BattleSide; readonly target: BattleSide;
+      readonly sourceAbility: BattleAbility | null; readonly targetAbility: BattleAbility | null;
+      readonly move: string }
+  | { readonly type: "typesChanged"; readonly source: BattleSide; readonly target: BattleSide;
+      readonly types: readonly string[]; readonly move: string }
   | { readonly type: "formChanged"; readonly side: BattleSide; readonly species: string;
       readonly fromForm: number; readonly toForm: number; readonly reason: "ability" }
   | { readonly type: "forcedSwitchRequested"; readonly side: BattleSide; readonly ability: "EMERGENCYEXIT" }
@@ -338,6 +351,8 @@ export type BattleEvent =
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
       readonly calculation: PokemonCaptureCalculation }
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
+  | { readonly type: "battleStatsChanged"; readonly source: BattleSide; readonly target: BattleSide;
+      readonly move: string; readonly stats: readonly ("attack" | "defense" | "specialAttack" | "specialDefense")[] }
   | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" | "mist" }
   | { readonly type: "fainted"; readonly side: BattleSide }
   | { readonly type: "volatileApplied"; readonly source: BattleSide; readonly target: BattleSide;

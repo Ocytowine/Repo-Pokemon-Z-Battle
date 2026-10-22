@@ -26,6 +26,98 @@ function resolvePlayerMove(player: BattlerState, opponent = battler("opponent"))
 }
 
 describe("Pokemon Z stat-stage move functions", () => {
+  it.each([
+    ["052", ["attack", "specialAttack"]],
+    ["053", ["defense", "specialDefense"]],
+    ["054", ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"]],
+  ] as const)("swaps the selected %s stages without applying Contrary", (code, stats) => {
+    const move = statusMove(code, `MOVE${code}`);
+    const user = battler("player", { ability: "CONTRARY", moves: [{ move, pp: 10 }],
+      stages: { attack: 3, defense: 2, specialAttack: 1, specialDefense: -1,
+        speed: 4, accuracy: -2, evasion: 5 } });
+    const target = battler("opponent", { stages: { attack: -3, defense: -2, specialAttack: -1,
+      specialDefense: 1, speed: -4, accuracy: 2, evasion: -5 } });
+    const result = resolvePlayerMove(user, target);
+    for (const stat of stats) {
+      expect(result.state.teams.player.members[0]!.stages[stat]).toBe(target.stages[stat]);
+      expect(result.state.teams.opponent.members[0]!.stages[stat]).toBe(user.stages[stat]);
+    }
+  });
+
+  it("copies all target stages with Psych Up, including through Contrary", () => {
+    const move = statusMove("055", "PSYCHUP");
+    const user = battler("player", { ability: "CONTRARY", moves: [{ move, pp: 10 }] });
+    const target = battler("opponent", { stages: { attack: 4, defense: -3,
+      specialAttack: 1, specialDefense: -2, speed: 5, accuracy: -1, evasion: 6 } });
+    const result = resolvePlayerMove(user, target);
+    expect(result.state.teams.player.members[0]!.stages).toEqual(target.stages);
+    expect(result.state.teams.opponent.members[0]!.stages).toEqual(target.stages);
+  });
+
+  it("toggles Power Trick and restores base stats on withdrawal", () => {
+    const move = { ...statusMove("057", "POWERTRICK"), targetCode: "10" };
+    const user = battler("player", { stats: { ...battler("player").stats,
+      attack: 81, defense: 150 }, moves: [{ move, pp: 10 }] });
+    const state = createTeamBattleState({ player: [user, { ...battler("player"), id: "reserve" }],
+      opponent: [battler("opponent")] });
+    const used = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, zero);
+    expect(used.state.teams.player.members[0]!.stats).toMatchObject({ attack: 150, defense: 81 });
+    expect(used.state.teams.player.members[0]!.volatile?.powerTrick).toBe(true);
+    const toggled = resolveTeamTurn(used.state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, zero);
+    expect(toggled.state.teams.player.members[0]!.stats).toMatchObject({ attack: 81, defense: 150 });
+    const switched = resolveTeamTurn(used.state, { player: { kind: "switch", teamIndex: 1 },
+      opponent: { kind: "wait" } }, zero);
+    expect(switched.state.teams.player.members[0]!.stats).toMatchObject({ attack: 81, defense: 150 });
+    expect(switched.state.teams.player.members[0]!.volatile).toBeUndefined();
+  });
+
+  it.each([
+    ["058", "attack", "specialAttack"], ["059", "defense", "specialDefense"],
+  ] as const)("averages %s actual stats with floor and restores both battlers on switch", (code, first, second) => {
+    const move = statusMove(code, `MOVE${code}`);
+    const user = battler("player", { stats: { ...battler("player").stats,
+      [first]: 81, [second]: 53 }, moves: [{ move, pp: 10 }] });
+    const target = battler("opponent", { stats: { ...battler("opponent").stats,
+      [first]: 140, [second]: 80 } });
+    const state = createTeamBattleState({ player: [user, { ...battler("player"), id: "reserve" }],
+      opponent: [target, { ...battler("opponent"), id: "enemy-reserve" }] });
+    const used = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, zero);
+    for (const side of ["player", "opponent"] as const) {
+      expect(used.state.teams[side].members[0]!.stats[first]).toBe(110);
+      expect(used.state.teams[side].members[0]!.stats[second]).toBe(66);
+    }
+    const switched = resolveTeamTurn(used.state, { player: { kind: "switch", teamIndex: 1 },
+      opponent: { kind: "switch", teamIndex: 1 } }, zero);
+    expect(switched.state.teams.player.members[0]!.stats[first]).toBe(81);
+    expect(switched.state.teams.opponent.members[0]!.stats[first]).toBe(140);
+  });
+
+  it("applies Guard Split only to the selected opponent slot in doubles", () => {
+    const move = statusMove("059", "GUARDSPLIT");
+    const state = createDoubleTeamBattleState({
+      player: [battler("player", { moves: [{ move, pp: 10 }] }),
+        { ...battler("player"), id: "ally" }],
+      opponent: [battler("opponent", { stats: { ...battler("opponent").stats, defense: 200 } }),
+        { ...battler("opponent"), id: "other", stats: { ...battler("opponent").stats, defense: 300 } }],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 1 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], zero);
+    expect(result.state.teams.player.members[0]!.stats.defense).toBe(200);
+    expect(result.state.teams.opponent.members[0]!.stats.defense).toBe(200);
+    expect(result.state.teams.opponent.members[1]!.stats.defense).toBe(200);
+    expect(result.events).toContainEqual(expect.objectContaining({
+      type: "positionedActionResolved", actor: { side: "player", slot: 0 },
+      targets: [{ side: "opponent", slot: 1 }],
+    }));
+  });
   it("draws Acupressure from only eligible stages with an authoritative trace", () => {
     const move = { ...statusMove("037", "ACUPRESSURE"), targetCode: "200" };
     const user = battler("player", { stages: { attack: 6, defense: 6, specialAttack: 6,

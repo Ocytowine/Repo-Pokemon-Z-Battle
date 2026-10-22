@@ -7,7 +7,7 @@ import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor,
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
-import { restoreTransformedBattler, transformBattler } from "./battle-transform.js";
+import { restoreMoveModifiedStats, restoreTransformedBattler, transformBattler } from "./battle-transform.js";
 import { markEnteredMidTurn } from "./ability-end-turn.js";
 import { assertVoluntarySwitchAllowed } from "./ability-switch-trap.js";
 import { reconcileAbilityForm, restoreAbilityForm } from "./ability-form.js";
@@ -167,7 +167,7 @@ function switchPokemon(
       else if (member.volatile?.traceOriginalAbility != null) originalAbility = member.volatile.traceOriginalAbility;
     }
     const originalTypes = member.transformOriginal === undefined ? member.volatile?.originalTypes : undefined;
-    member = restoreAbilityForm(restoreTransformedBattler(member));
+    member = restoreAbilityForm(restoreTransformedBattler(restoreMoveModifiedStats(member)));
     const { volatile: _volatile, illusion: _illusion, ...persistent } = member;
     const ability = originalAbility !== undefined ? originalAbility : member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0

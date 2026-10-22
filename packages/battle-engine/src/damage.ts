@@ -113,6 +113,17 @@ export function calculateDamage(
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const currentWeather = ordinaryWeather(context.weather);
   const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather);
+  if (["06A", "06B", "06C", "06E", "070"].includes(move.functionCode)) {
+    const fixed = move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
+      : move.functionCode === "06C" ? Math.max(1, Math.floor(defender.hp / 2))
+        : move.functionCode === "06E" ? Math.max(0, defender.hp - attacker.hp)
+          : defender.stats.maxHp;
+    const result = effectiveness === 0 ? 0 : fixed;
+    trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0,
+      baseDamage: result, critical: false, variance: 100, stab: 1, effectiveness,
+      statusModifier: 1, abilityModifier: null, abilityModifiers: [], result });
+    return result;
+  }
   if (move.functionCode === "06F") {
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
     const result = effectiveness === 0 ? 0 : Math.max(1, Math.floor((attacker.level * variance) / 100));

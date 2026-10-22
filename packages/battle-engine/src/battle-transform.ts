@@ -1,5 +1,10 @@
 import type { BattlerState } from "./types.js";
 
+export function restoreMoveModifiedStats(battler: BattlerState): BattlerState {
+  const original = battler.volatile?.originalMoveStats;
+  return original == null ? battler : { ...battler, stats: { ...original } };
+}
+
 export function transformBattler(user: BattlerState, target: BattlerState): BattlerState | null {
   if (user.transformOriginal !== undefined || target.transformOriginal !== undefined) return null;
   const original = { species: user.species, name: user.name, types: [...user.types], stats: { ...user.stats },

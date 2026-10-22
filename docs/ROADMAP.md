@@ -1098,9 +1098,27 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   `041`, `050`, `051`, `056`) est terminé avec tirage autoritaire, confusion,
   remise à zéro et Brume commune aux baisses de capacité et d'entrée. Compteur :
   **133 fonctions couvertes / 220 non couvertes sur 353**, 259 alertes de
-  mécanique et 315 problèmes globaux. Le prochain lot préparé traite `052`,
-  `053`, `054`, `055`, `057`, `058` et `059`, soit échanges, copie et moyenne
-  de statistiques.
+  mécanique et 315 problèmes globaux. Le cinquième lot (`052`, `053`, `054`,
+  `055`, `057`, `058`, `059`) est terminé : **140 fonctions couvertes / 213 non
+  couvertes sur 353**, 252 alertes de mécanique et 308 problèmes globaux.
+  Échanges, copie et moyennes agissent sur le noyau partagé ; les valeurs
+  effectives temporaires sont restaurées au retrait et persistées dans le
+  snapshot Coop. Clonage et Bouclier Rusé restent des dépendances non simulées ;
+  l'interaction avec les changements de forme successifs reste à auditer. Le
+  sixième lot (`05A`, `060`, `061`, `062`, `063`, `065`, `066`) est terminé :
+  **147 fonctions couvertes / 206 non couvertes sur 353**, 245 alertes de
+  mécanique et 301 problèmes globaux. Le noyau commun gère moyenne des PV,
+  types et talents temporaires, avec restitution au retrait et snapshots Coop.
+  Clonage, Bouclier Rusé et les transitions instantanées de Gaz Réactif au milieu
+  d'un tour restent des dépendances auditées. Le septième lot (`06A`, `06B`,
+  `06C`, `06E`, `070`, `067`, `068`) est terminé dans le noyau commun : **154
+  fonctions couvertes / 199 non couvertes sur 353**, 235 alertes de mécanique
+  et 291 problèmes globaux. Les dégâts fixes et K.O. en un coup, l'échange et
+  la suppression temporaire des talents ont des tests solo/Coop et de reprise.
+  Clonage, les transitions instantanées de Gaz Réactif et les hooks d'Échange
+  en double contre plusieurs adversaires restent audités séparément. Le
+  prochain lot préparé est `05C`-`05F`, capacités copiées et conversions ;
+  `071`-`073` suivront le contrat d'historique qu'il introduira.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

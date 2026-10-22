@@ -12,6 +12,31 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("projects shared HP and changed types for remote participants", () => {
+    const state = createTeamBattleState({ player: [battler("Héros", 8)],
+      opponent: [battler("Cible", 16)] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "hpShared", side: "player", move: "PAINSPLIT", hp: 12 },
+      { type: "hpShared", side: "opponent", move: "PAINSPLIT", hp: 12 },
+      { type: "typesChanged", source: "player", target: "opponent", types: ["WATER"], move: "SOAK" },
+    ]);
+    expect(sequence.map((step) => step.kind)).toEqual(["health", "health", "status"]);
+    expect(sequence.at(-1)?.state.teams.opponent.members[0]).toMatchObject({ hp: 12, types: ["WATER"] });
+  });
+
+  it("presents swapped and suppressed abilities to participants", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")],
+      opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "abilitiesSwapped", source: "player", target: "opponent",
+        sourceAbility: "PRESSURE", targetAbility: "SIMPLE", move: "SKILLSWAP" },
+      { type: "abilitySuppressed", source: "opponent", target: "player", move: "GASTROACID" },
+    ]);
+    expect(sequence.map((step) => step.message)).toEqual([
+      "Héros et Cible échangent leurs talents.",
+      "Le talent de Héros est supprimé.",
+    ]);
+  });
   it("presents and projects a Pickpocket item transfer", () => {
     const state = createTeamBattleState({
       player: [{ ...battler("Héros"), heldItem: "ORANBERRY" }],

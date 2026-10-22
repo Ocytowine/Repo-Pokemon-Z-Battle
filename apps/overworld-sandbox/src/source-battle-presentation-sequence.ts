@@ -184,6 +184,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       if (effectiveness !== null) message(effectiveness);
     } else if (event.type === "hpRestored") {
       health(event.side, event.hp, `${activeName(state, event.side)} récupère ${event.amount} PV.`);
+    } else if (event.type === "hpShared") {
+      health(event.side, event.hp, `Les PV de ${activeName(state, event.side)} sont rééquilibrés.`);
     } else if (event.type === "moveMissed") {
       message(`${activeName(state, event.side)} rate son attaque.`);
     } else if (event.type === "moveFailed") {
@@ -192,6 +194,16 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
           : "Mais cela échoue !", "status");
     } else if (event.type === "abilityChanged") {
       message(`${activeName(state, event.target)} acquiert le talent ${event.ability}.`, "status");
+    } else if (event.type === "abilitySuppressed") {
+      message(`Le talent de ${activeName(state, event.target)} est supprimé.`, "status");
+    } else if (event.type === "abilitiesSwapped") {
+      message(`${activeName(state, event.source)} et ${activeName(state, event.target)} échangent leurs talents.`, "status");
+    } else if (event.type === "typesChanged") {
+      const team = state.teams[event.target];
+      state = { ...state, teams: { ...state.teams, [event.target]: { ...team,
+        members: team.members.map((member, index) => index === team.activeIndex
+          ? { ...member, types: [...event.types] } : member) } } };
+      message(`Le type de ${activeName(state, event.target)} change.`, "status");
     } else if (event.type === "ppReduced") {
       message(`${event.move} perd ${event.amount} PP.`, "status");
     } else if (event.type === "heldItemRemoved") {
@@ -329,6 +341,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "statStageChanged") {
       message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ${event.delta > 0 ? "augmente" : "baisse"}.`, "status",
         { side: event.target, effect: event.delta > 0 ? "stat-up" : "stat-down" });
+    } else if (event.type === "battleStatsChanged") {
+      message(`Les statistiques de ${activeName(state, event.target)} changent.`, "status");
     } else if (event.type === "statStageChangeFailed") {
       message(event.reason === "mist" ? `La Brume protège ${activeName(state, event.target)} !`
         : `${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ne peut plus changer.`, "status");

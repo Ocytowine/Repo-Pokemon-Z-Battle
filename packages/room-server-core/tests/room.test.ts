@@ -1366,6 +1366,95 @@ describe("authoritative battle room", () => {
     expect(restarted.connect("alice").snapshot.battle?.state.teams.player.members[0]!.stages).toEqual(stages);
   });
 
+  it("replicates Power Split stats to host and guest after reconnect and room restart", () => {
+    const powerSplit = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "POWERSPLIT",
+      name: "Isoforce", functionCode: "058", accuracy: 0 };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), stats: { ...battler("player").stats, attack: 81 },
+        moves: [{ move: powerSplit, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), stats: { ...battler("opponent").stats, attack: 140 } }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_337), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("split-ready-a"));
+    room.receive("bob", ready("split-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "split-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "split-move-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const expected = { player: { members: [{ stats: { attack: 110 } }] },
+      opponent: { members: [{ stats: { attack: 110 } }] } };
+    expect(room.snapshot().battle?.state.teams).toMatchObject(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("replicates temporary type and ability changes through host, guest and room restart", () => {
+    const soak = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "SOAK", name: "Empapar",
+      functionCode: "061", accuracy: 0 };
+    const simpleBeam = { ...soak, internalName: "SIMPLEBEAM", name: "Onda Simple",
+      functionCode: "063" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: soak, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), types: ["FIRE"], ability: "CONTRARY",
+        moves: [{ move: simpleBeam, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_338), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("type-ability-ready-a"));
+    room.receive("bob", ready("type-ability-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "type-ability-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "type-ability-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const expected = { player: { members: [{ ability: "SIMPLE" }] },
+      opponent: { members: [{ types: ["WATER"] }] } };
+    expect(room.snapshot().battle?.state.teams).toMatchObject(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("keeps fixed damage and the guest's Gastro Acid suppression authoritative after restart", () => {
+    const sonicBoom = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "SONICBOOM",
+      name: "Bomba Sónica", functionCode: "06A", power: 1, accuracy: 0 };
+    const gastroAcid = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "GASTROACID",
+      name: "Bilis", functionCode: "068", accuracy: 0 };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), ability: "SIMPLE",
+        moves: [{ move: sonicBoom, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: gastroAcid, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_339), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("fixed-suppress-ready-a"));
+    room.receive("bob", ready("fixed-suppress-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "fixed-suppress-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "fixed-suppress-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const expected = { player: { members: [{ ability: null,
+      volatile: { gastroAcid: true, originalAbility: "SIMPLE" } }] },
+    opponent: { members: [{ hp: 80 }] } };
+    expect(room.snapshot().battle?.state.teams).toMatchObject(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
   it("keeps Emergency Exit's owner choice authoritative across guest reconnect", () => {
     const room = new AuthoritativeBattleRoom("ABC234", formPivotBondAbilityBattle,
       new SeededRandom(24_329), world);

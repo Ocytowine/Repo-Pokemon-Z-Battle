@@ -1,6 +1,7 @@
 import { calculateDamage, effectiveTypeMultiplier } from "./damage.js";
 import { colorChangeType, knockoutAbilityStatReaction } from "./ability-after-hit.js";
 import { activateWindAbility } from "./ability-wind.js";
+import { resolveEntryAbility } from "./ability-entry.js";
 import { damageAbilityStatReaction, opposingStatDropReaction,
   resolveStatStageChange, clearStatStages } from "./ability-stat-reactions.js";
 import { cureStatusBlockedByAbility, statDropProtectionAbility, statusProtectionAbility } from "./ability-protection.js";
@@ -61,7 +62,8 @@ function volatileOf(battler: BattlerState): BattleVolatile {
     yawnBypassesAbility: false, infatuated: false,
     furyCutterCount: 0, rolloutTurns: 0, uproarTurns: 0, embargoTurns: 0,
     unburdened: false, pickupItem: null, pickupUse: 0, truantLoafing: false,
-    choiceLockedMove: null, originalForm: null, originalStats: null, weightChange: 0 };
+    choiceLockedMove: null, originalForm: null, originalStats: null, originalMoveStats: null,
+    powerTrick: false, gastroAcid: false, weightChange: 0 };
   return { ...neutral, ...(battler.volatile ?? {}) };
 }
 
@@ -108,6 +110,25 @@ function withTemporaryAbility(battler: BattlerState, ability: BattlerState["abil
     originalAbility: current.abilityReplacementActive
       ? current.originalAbility : current.traceOriginalAbility ?? battler.ability,
     abilityReplacementActive: true });
+}
+
+function withTemporaryTypes(battler: BattlerState, types: readonly string[]): BattlerState {
+  const current = volatileOf(battler);
+  return withVolatile({ ...battler, types: [...types] }, { ...current,
+    originalTypes: current.originalTypes ?? [...battler.types] });
+}
+
+function applyTemporaryAbility(source: BattleSide, target: BattleSide,
+  ability: NonNullable<BattlerState["ability"]>, move: BattleMove,
+  battlers: Record<BattleSide, BattlerState>, events: BattleEvent[]): void {
+  const previous = battlers[target];
+  const changed = withTemporaryAbility(previous, ability);
+  if (previous.ability === "ILLUSION" && previous.illusion !== undefined) {
+    const { illusion: _illusion, ...revealed } = changed;
+    battlers[target] = revealed;
+    events.push({ type: "abilityActivated", side: target, ability: "ILLUSION", effect: "announce" });
+  } else battlers[target] = changed;
+  events.push({ type: "abilityChanged", source, target, ability, move: move.internalName });
 }
 
 function consumeTrackedItem(battler: BattlerState, item: NonNullable<BattlerState["heldItem"]>,
@@ -384,6 +405,187 @@ function applyMoveEffect(
   weather: BattleEffects["weather"] = effects.weather,
   hazeSelfOnly = false,
 ): void {
+  if (move.functionCode === "067") {
+    const user = battlers[source];
+    const defender = battlers[target];
+    const excluded = ["ILLUSION", "MULTITYPE", "DISGUISE", "STANCECHANGE", "WONDERGUARD"];
+    if (user.ability === null && defender.ability === null
+      || excluded.includes(user.ability ?? "") || excluded.includes(defender.ability ?? "")) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    battlers[source] = withTemporaryAbility(user, defender.ability);
+    battlers[target] = withTemporaryAbility(defender, user.ability);
+    events.push({ type: "abilitiesSwapped", source, target,
+      sourceAbility: defender.ability, targetAbility: user.ability, move: move.internalName });
+    for (const side of [source, target]) {
+      const current = battlers[side];
+      const other = side === source ? target : source;
+      const reset = withVolatile(current, { ...volatileOf(current), entryAbilityResolved: false });
+      const entry = resolveEntryAbility(side, reset, [{ side: other, battler: battlers[other] }],
+        rng, trace, side === "player", false, effects);
+      battlers[side] = entry.battler;
+      battlers[other] = entry.opponents[0]?.battler ?? battlers[other];
+      events.push(...entry.events);
+    }
+    return;
+  }
+  if (move.functionCode === "068") {
+    const defender = battlers[target];
+    if (["MULTITYPE", "DISGUISE", "STANCECHANGE"].includes(defender.ability ?? "")) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const suppressed = withTemporaryAbility(defender, null);
+    const volatile = { ...volatileOf(suppressed), gastroAcid: true, truantLoafing: false };
+    if (defender.ability === "ILLUSION" && defender.illusion !== undefined) {
+      const { illusion: _illusion, ...revealed } = suppressed;
+      battlers[target] = withVolatile(revealed, volatile);
+      events.push({ type: "abilityActivated", side: target, ability: "ILLUSION", effect: "announce" });
+    } else battlers[target] = withVolatile(suppressed, volatile);
+    events.push({ type: "abilitySuppressed", source, target, move: move.internalName });
+    return;
+  }
+  if (move.functionCode === "05A") {
+    const average = Math.floor((battlers[source].hp + battlers[target].hp) / 2);
+    for (const side of [source, target]) {
+      const current = battlers[side];
+      const hp = Math.min(average, current.stats.maxHp);
+      battlers[side] = { ...current, hp };
+      events.push({ type: "hpShared", side, move: move.internalName, hp });
+    }
+    return;
+  }
+  if (["060", "061", "062"].includes(move.functionCode)) {
+    const user = battlers[source];
+    const defender = battlers[target];
+    let changedSide: BattleSide = source;
+    let types: readonly string[];
+    if (move.functionCode === "060") {
+      const environmentTypes: Record<NonNullable<BattleEffects["environment"]>, string> = {
+        none: "NORMAL", grass: "GRASS", "tall-grass": "GRASS", forest: "BUG",
+        "moving-water": "WATER", "still-water": "WATER", underwater: "WATER",
+        cave: "ROCK", rock: "GROUND", sand: "GROUND", snow: "ICE",
+        volcano: "FIRE", graveyard: "GHOST", sky: "FLYING", space: "DRAGON",
+      };
+      const terrainTypes = { electric: "ELECTRIC", grassy: "GRASS", misty: "FAIRY",
+        psychic: "PSYCHIC" } as const;
+      const type = effects.terrain === null ? environmentTypes[effects.environment]
+        : terrainTypes[effects.terrain];
+      types = [type];
+      if (user.ability === "MULTITYPE" || user.types.includes(type)) {
+        events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+        return;
+      }
+    } else if (move.functionCode === "061") {
+      changedSide = target;
+      types = ["WATER"];
+      if (defender.ability === "MULTITYPE" || defender.types.length === 1 && defender.types[0] === "WATER") {
+        events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+        return;
+      }
+    } else {
+      types = [...defender.types];
+      if (user.ability === "MULTITYPE" || user.types.length === types.length
+        && user.types.every((type) => types.includes(type))) {
+        events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+        return;
+      }
+    }
+    battlers[changedSide] = withTemporaryTypes(battlers[changedSide], types);
+    events.push({ type: "typesChanged", source, target: changedSide, types,
+      move: move.internalName });
+    return;
+  }
+  if (["063", "065", "066"].includes(move.functionCode)) {
+    const user = battlers[source];
+    const defender = battlers[target];
+    let changedSide: BattleSide = target;
+    let ability: BattlerState["ability"] = "SIMPLE";
+    let blocked = false;
+    if (move.functionCode === "063") {
+      blocked = ["MULTITYPE", "SIMPLE", "DISGUISE", "STANCECHANGE", "TRUANT"]
+        .includes(defender.ability ?? "");
+    } else if (move.functionCode === "065") {
+      changedSide = source;
+      ability = defender.ability;
+      blocked = ability === null || user.ability === ability
+        || ["MULTITYPE", "STANCECHANGE"].includes(user.ability ?? "")
+        || ["FLOWERGIFT", "FORECAST", "ILLUSION", "IMPOSTER", "MULTITYPE", "DISGUISE",
+          "STANCECHANGE", "TRACE", "WONDERGUARD", "ZENMODE"].includes(ability ?? "");
+    } else {
+      ability = user.ability;
+      blocked = ability === null || ability === defender.ability
+        || ["FLOWERGIFT", "IMPOSTER", "MULTITYPE", "STANCECHANGE", "TRACE", "TRUANT",
+          "ZENMODE", "DISGUISE"].includes(defender.ability ?? "")
+        || ["FLOWERGIFT", "DISGUISE", "FORECAST", "ILLUSION", "IMPOSTER", "MULTITYPE",
+          "STANCECHANGE", "TRACE", "ZENMODE"].includes(ability ?? "");
+    }
+    if (blocked || ability === null) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    applyTemporaryAbility(source, changedSide, ability, move, battlers, events);
+    return;
+  }
+  const stageStats: readonly BattleStat[] = ["attack", "defense", "speed", "specialAttack",
+    "specialDefense", "accuracy", "evasion"];
+  if (["052", "053", "054", "055"].includes(move.functionCode)) {
+    const stats = move.functionCode === "052" ? ["attack", "specialAttack"] as const
+      : move.functionCode === "053" ? ["defense", "specialDefense"] as const : stageStats;
+    const user = battlers[source];
+    const defender = battlers[target];
+    const userStages = { ...user.stages };
+    const targetStages = { ...defender.stages };
+    for (const stat of stats) {
+      userStages[stat] = defender.stages[stat];
+      if (move.functionCode !== "055") targetStages[stat] = user.stages[stat];
+    }
+    battlers[source] = { ...user, stages: userStages };
+    if (move.functionCode !== "055") battlers[target] = { ...defender, stages: targetStages };
+    for (const stat of stats) {
+      const ownDelta = userStages[stat] - user.stages[stat];
+      if (ownDelta !== 0) events.push({ type: "statStageChanged", source, target: source,
+        stat, delta: ownDelta, stage: userStages[stat] });
+      const targetDelta = targetStages[stat] - defender.stages[stat];
+      if (move.functionCode !== "055" && targetDelta !== 0) events.push({
+        type: "statStageChanged", source, target, stat, delta: targetDelta, stage: targetStages[stat],
+      });
+    }
+    return;
+  }
+  if (["057", "058", "059"].includes(move.functionCode)) {
+    const stats = move.functionCode === "059" ? ["defense", "specialDefense"] as const
+      : move.functionCode === "057" ? ["attack", "defense"] as const
+        : ["attack", "specialAttack"] as const;
+    const user = battlers[source];
+    const defender = battlers[target];
+    const ownStats = { ...user.stats };
+    const targetStats = { ...defender.stats };
+    if (move.functionCode === "057") {
+      ownStats.attack = user.stats.defense;
+      ownStats.defense = user.stats.attack;
+    } else {
+      for (const stat of stats) {
+        const average = Math.floor((user.stats[stat] + defender.stats[stat]) / 2);
+        ownStats[stat] = average;
+        targetStats[stat] = average;
+      }
+    }
+    battlers[source] = withVolatile({ ...user, stats: ownStats }, {
+      ...volatileOf(user), originalMoveStats: user.volatile?.originalMoveStats ?? user.stats,
+      powerTrick: move.functionCode === "057" ? !user.volatile?.powerTrick : user.volatile?.powerTrick ?? false,
+    });
+    events.push({ type: "battleStatsChanged", source, target: source,
+      move: move.internalName, stats });
+    if (move.functionCode !== "057") {
+      battlers[target] = withVolatile({ ...defender, stats: targetStats }, {
+        ...volatileOf(defender), originalMoveStats: defender.volatile?.originalMoveStats ?? defender.stats,
+      });
+      events.push({ type: "battleStatsChanged", source, target, move: move.internalName, stats });
+    }
+    return;
+  }
   if (move.functionCode === "037") {
     const stats: readonly BattleStat[] = ["attack", "defense", "speed", "specialAttack",
       "specialDefense", "accuracy", "evasion"];
@@ -544,8 +746,7 @@ function applyMoveEffect(
       events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
       return;
     }
-    battlers[target] = withTemporaryAbility(defender, "INSOMNIA");
-    events.push({ type: "abilityChanged", source, target, ability: "INSOMNIA", move: move.internalName });
+    applyTemporaryAbility(source, target, "INSOMNIA", move, battlers, events);
     return;
   }
   if (move.functionCode === "069") {
@@ -1354,6 +1555,13 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
 function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: BattlerState, move: BattleMove,
   rng: RandomSource, trace: BattleTrace[], weather: BattleEffects["weather"],
   context: { readonly attackerPartnerAbility?: BattlerState["ability"]; readonly hostile?: boolean } = {}): boolean {
+  if (move.functionCode === "070") {
+    const threshold = defender.level > attacker.level ? 0 : move.accuracy + attacker.level - defender.level;
+    const hit = threshold > 0 && draw(rng, trace, "accuracy", 100) < threshold;
+    trace.push({ type: "accuracy", side, base: move.accuracy, accuracyStage: 0,
+      evasionStage: 0, threshold, hit });
+    return hit;
+  }
   const accuracy = move.accuracy;
   const drawnIn = defender.ability === "STORMDRAIN" && move.type === "WATER"
     || defender.ability === "LIGHTNINGROD" && move.type === "ELECTRIC";
@@ -1404,6 +1612,10 @@ const NATURE_POWER_MOVES: Readonly<Record<NonNullable<BattleEffects["environment
   none: { internalName: "TRIATTACK", name: "Triattaque", functionCode: "017", power: 80,
     type: "NORMAL", category: "Special", accuracy: 100, effectChance: 20, flags: "be" },
   grass: { internalName: "ENERGYBALL", name: "Éco-Sphère", functionCode: "046", power: 90,
+    type: "GRASS", category: "Special", accuracy: 100, effectChance: 10, flags: "ben" },
+  "tall-grass": { internalName: "ENERGYBALL", name: "Éco-Sphère", functionCode: "046", power: 90,
+    type: "GRASS", category: "Special", accuracy: 100, effectChance: 10, flags: "ben" },
+  forest: { internalName: "ENERGYBALL", name: "Éco-Sphère", functionCode: "046", power: 90,
     type: "GRASS", category: "Special", accuracy: 100, effectChance: 10, flags: "ben" },
   "moving-water": { internalName: "HYDROPUMP", name: "Hydrocanon", functionCode: "000", power: 110,
     type: "WATER", category: "Special", accuracy: 80, effectChance: 0, flags: "bef" },
@@ -1492,7 +1704,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     neutralizingGas = false;
     for (const side of SIDES) {
       const ability = suppressedAbilities[side];
-      if (ability !== undefined && battlers[side].ability === null) battlers[side] = { ...battlers[side], ability };
+      if (ability !== undefined && battlers[side].ability === null
+        && battlers[side].volatile?.gastroAcid !== true) battlers[side] = { ...battlers[side], ability };
     }
   };
   const events: BattleEvent[] = [{ type: "turnStarted", turn: state.turn }];
@@ -1736,6 +1949,13 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       events.push({ type: "volatileEnded", side: actualTargetSide, effect: "protect" });
       defender = battlers[actualTargetSide];
     }
+    if (slot.move.functionCode === "070" && defender.ability === "STURDY"
+      && !hasMoldBreaker(battlers[side])) {
+      events.push({ type: "abilityActivated", side: options.targetPresentationSide ?? actualTargetSide,
+        ability: "STURDY", effect: "block-move" },
+      { type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
+      continue;
+    }
     if (!accuracyCheck(side, battlers[side], defender, slot.move, rng, trace, effectiveWeather,
       { ...(neutralizingGas || options.attackerPartnerAbility === undefined ? {} : {
         attackerPartnerAbility: options.attackerPartnerAbility }), hostile: hostileTarget })) {
@@ -1764,9 +1984,11 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       continue;
     }
     const targetCode = (slot.move.targetCode ?? "00").toUpperCase().replace(/^0X/u, "");
+    const fixedDamageMove = ["06A", "06B", "06C", "06D", "06E", "06F", "070"].includes(slot.move.functionCode);
     const parentalEligible = battlers[side].ability === "PARENTALBOND" && slot.move.category !== "Status"
       && !["04", "08"].includes(targetCode)
-      && !["0C0", "0BD", "0BE", "06E", "0E0", "0E1", "0F7"].includes(slot.move.functionCode);
+      && !fixedDamageMove
+      && !["0C0", "0BD", "0BE", "0E0", "0E1", "0F7"].includes(slot.move.functionCode);
     if (slot.move.category !== "Status" && defender.ability === "DISGUISE"
       && defender.species === "MIMIKYU" && (defender.appearance?.form ?? 0) === 0
       && !hasMoldBreaker(battlers[side])) {
@@ -1788,12 +2010,24 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (slot.move.category === "Status") {
       applyMoveEffect(side, actualTargetSide, resolvedMove, battlers, rng, events, trace, effects, effectiveWeather,
         slot.move.functionCode === "051" && options.targetPresentationSide === side);
+      if (slot.move.functionCode === "068" && suppressedAbilities[actualTargetSide] !== undefined
+        && battlers[actualTargetSide].volatile?.gastroAcid === true) {
+        const affected = battlers[actualTargetSide];
+        battlers[actualTargetSide] = { ...affected, volatile: { ...affected.volatile!,
+          originalAbility: affected.volatile?.originalAbility ?? suppressedAbilities[actualTargetSide] ?? null } };
+      }
+      refreshNeutralizingGas();
+      effectiveWeather = effectiveBattleWeather(effects.weather, Object.values(battlers), options.weatherSuppressed);
       if (battlers[side].hp === 0) {
         winner = targetSide;
         events.push({ type: "fainted", side });
         if (options.endOfTurn !== false) events.push({ type: "battleEnded", winner });
         break;
       }
+      continue;
+    }
+    if (slot.move.functionCode === "06E" && battlers[side].hp >= defender.hp) {
+      events.push({ type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
       continue;
     }
     const traceStart = trace.length;
@@ -1870,7 +2104,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     let sturdy = false;
     for (const [hitIndex, rawDamage] of damageRolls.entries()) {
       if (hp <= 0) break;
-      const presentationMultiplier = (options.damageMultiplier ?? 1) * (options.helpingHandMultiplier ?? 1);
+      const presentationMultiplier = fixedDamageMove ? 1
+        : (options.damageMultiplier ?? 1) * (options.helpingHandMultiplier ?? 1);
       let hitDamage = rawDamage === 0 ? 0 : Math.max(1, Math.floor(rawDamage * presentationMultiplier
         * (parentalBond && hitIndex === 1 ? 0.5 : 1)));
       if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) hitDamage *= 2;
@@ -2360,7 +2595,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
   events.push({ type: "turnEnded", turn: state.turn });
   for (const side of SIDES) {
     const ability = suppressedAbilities[side];
-    if (ability !== undefined && battlers[side].ability === null) battlers[side] = { ...battlers[side], ability };
+    if (ability !== undefined && battlers[side].ability === null
+      && battlers[side].volatile?.gastroAcid !== true) battlers[side] = { ...battlers[side], ability };
   }
   return {
     state: { turn: state.turn + (options.endOfTurn === false ? 0 : 1),
