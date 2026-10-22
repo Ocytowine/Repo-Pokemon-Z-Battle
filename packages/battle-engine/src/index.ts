@@ -4,6 +4,11 @@ export { activeBattleController, activeBattleControllerAt, applyBattleJoin, appr
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
   restoreSharedBattleLedger, sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
+export { switchTrapAbility } from "./ability-switch-trap.js";
+export type { SwitchTrapAbility } from "./ability-switch-trap.js";
+export { forcedSwitchBlockedByAbility } from "./ability-forced-switch.js";
+export { applyStanceChange, reconcileAbilityForm } from "./ability-form.js";
+export { applyIllusion } from "./ability-illusion.js";
 export { activeBattlePositions, activeTeamIndices, battlerAtPosition, createDoubleTeamBattleState, replaceFaintedDoublePokemon,
   resolveDoubleTeamTurn } from "./double-team-battle.js";
 export { applySourceBattleReplacements, attemptSourceBattleEscape, canEscapeSourceBattle, chooseSourceBattleAction,

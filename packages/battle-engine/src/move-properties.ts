@@ -16,6 +16,12 @@ export function isRecklessBoostedMove(move: BattleMove): boolean {
   return recoilDivisor(move) !== null || move.functionCode === "10B";
 }
 
+/** Pokemon Z PBTargets codes whose only target is the user. */
+export function moveTargetsUser(move: BattleMove): boolean {
+  const code = (move.targetCode ?? "00").toUpperCase().replace(/^0X/u, "");
+  return ["01", "10", "20", "40", "80"].includes(code);
+}
+
 /** Exact Pokemon Z `isCuttingMove?` catalogue. Kept in the shared move-property layer. */
 const CUTTING_MOVES = new Set([
   "AIRCUTTER", "RAZORSHELL", "CUT", "FURYCUTTER", "SOLARBLADE", "SLASH", "SHADOWCLAW",

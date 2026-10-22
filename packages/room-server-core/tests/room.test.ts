@@ -178,6 +178,66 @@ function customSimpleAbilityBattle(): TeamBattleState {
   });
 }
 
+function protectionReflectionAbilityBattle(): TeamBattleState {
+  const growl = { ...MINIMAL_MOVE_CATALOG.GROWL, accuracy: 0, targetCode: "00" };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "GOODASGOLD", moves: [{ move: growl, pp: growl.pp }] },
+    { ...battler("player"), id: "host-liquid-ooze", ability: "LIQUIDOOZE" },
+    { ...battler("player"), id: "host-innards-out", ability: "INNARDSOUT" }],
+    opponent: [{ ...battler("opponent"), ability: "MIRRORARMOR" },
+    { ...battler("opponent"), id: "guest-wonder-guard", ability: "WONDERGUARD" }],
+  });
+}
+
+function contactWeightPartnerAbilityBattle(): TeamBattleState {
+  const poison = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "POISONTEST", name: "Poison",
+    functionCode: "005" as const, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "POISONPUPPETEER",
+      moves: [{ move: poison, pp: poison.pp }] },
+    { ...battler("player"), id: "host-heavy-metal", ability: "HEAVYMETAL" },
+    { ...battler("player"), id: "host-healer", ability: "HEALER" }],
+    opponent: [{ ...battler("opponent"), ability: "CUTECHARM" },
+    { ...battler("opponent"), id: "guest-light-metal", ability: "LIGHTMETAL" }],
+  });
+}
+
+function recoilAbsorbCycleTrapAbilityBattle(): TeamBattleState {
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "MOODY" },
+    { ...battler("player"), id: "host-ice-head", ability: "CABEZAHIELO" },
+    { ...battler("player"), id: "host-awakened-flame", ability: "DESPIERTALLAMA" },
+    { ...battler("player"), id: "host-arena-trap", ability: "ARENATRAP" }],
+    opponent: [{ ...battler("opponent"), ability: "TRUANT" },
+    { ...battler("opponent"), id: "guest-magnet-pull", ability: "MAGNETPULL" },
+    { ...battler("opponent"), id: "guest-shadow-tag", ability: "SHADOWTAG" }],
+  });
+}
+
+function formPivotBondAbilityBattle(): TeamBattleState {
+  const bug = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "BUGHIT", name: "Impact Insecte",
+    type: "BUG", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "EMERGENCYEXIT", moves: [{ move: bug, pp: bug.pp }] },
+    { ...battler("player"), id: "host-sage", ability: "PODERSABIO" },
+    { ...battler("player"), id: "host-parent", ability: "PARENTALBOND" },
+    { ...battler("player"), id: "host-castform", species: "CASTFORM", ability: "FORECAST" }],
+    opponent: [{ ...battler("opponent"), ability: "SUCTIONCUPS" },
+    { ...battler("opponent"), id: "guest-mimikyu", species: "MIMIKYU", ability: "DISGUISE",
+      appearance: { form: 0, shiny: false, gender: null } },
+    { ...battler("opponent"), id: "guest-cherrim", species: "CHERRIM", ability: "FLOWERGIFT",
+      appearance: { form: 0, shiny: false, gender: null } }],
+  });
+}
+
+function authoritativeTrapBattle(): TeamBattleState {
+  return createTeamBattleState({
+    player: [{ ...battler("player"), types: ["STEEL"] },
+      { ...battler("player"), id: "player-reserve" }],
+    opponent: [{ ...battler("opponent"), ability: "MAGNETPULL" }],
+  });
+}
+
 function weatherBattle(): TeamBattleState {
   return createTeamBattleState({
     player: [{ ...battler("player"), ability: "SOLARPOWER" }],
@@ -1079,6 +1139,151 @@ describe("authoritative battle room", () => {
     });
   });
 
+  it("resolves and restores protection, drain and reflection abilities for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", protectionReflectionAbilityBattle,
+      new SeededRandom(24_325), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("protection-reflection-ready-a"));
+    room.receive("bob", ready("protection-reflection-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15,
+      requestId: "protection-reflection-move-a", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "protection-reflection-wait-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "MIRRORARMOR", effect: "reflect-stat-drop" })]),
+    });
+    expect(room.snapshot().battle?.state.teams.player.members[0]!.stages.attack).toBe(-1);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", protectionReflectionAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "GOODASGOLD", stages: { attack: -1 } },
+        { ability: "LIQUIDOOZE" }, { ability: "INNARDSOUT" }] },
+      opponent: { members: [{ ability: "MIRRORARMOR" }, { ability: "WONDERGUARD" }] },
+    });
+  });
+
+  it("resolves and restores contact, weight, partner and poison abilities for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", contactWeightPartnerAbilityBattle,
+      new SeededRandom(24_326), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("contact-weight-ready-a"));
+    room.receive("bob", ready("contact-weight-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15,
+      requestId: "contact-weight-move-a", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "contact-weight-wait-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "player", ability: "POISONPUPPETEER", effect: "inflict-status" })]),
+    });
+    expect(room.snapshot().battle?.state.teams.opponent.members[0]).toMatchObject({
+      ability: "CUTECHARM", majorStatus: { kind: "poison" }, volatile: { confusionTurns: expect.any(Number) },
+    });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", contactWeightPartnerAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "POISONPUPPETEER" },
+        { ability: "HEAVYMETAL" }, { ability: "HEALER" }] },
+      opponent: { members: [{ ability: "CUTECHARM", majorStatus: { kind: "poison" } },
+        { ability: "LIGHTMETAL" }] },
+    });
+  });
+
+  it("replicates recoil, absorption, cycle and trap talents and restores their tactical state", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", recoilAbsorbCycleTrapAbilityBattle,
+      new SeededRandom(24_327), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("cycle-trap-ready-a"));
+    room.receive("bob", ready("cycle-trap-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "cycle-trap-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "cycle-trap-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "player", ability: "MOODY", effect: "randomize-stats" })]),
+      state: { teams: { opponent: { members: expect.arrayContaining([expect.objectContaining({
+        ability: "TRUANT", volatile: expect.objectContaining({ truantLoafing: true }) })]) } } },
+    });
+    room.disconnect("bob");
+    const restored = room.connect("bob").snapshot.battle?.state;
+    expect(restored?.teams).toMatchObject({
+      player: { members: [{ ability: "MOODY" }, { ability: "CABEZAHIELO" },
+        { ability: "DESPIERTALLAMA" }, { ability: "ARENATRAP" }] },
+      opponent: { members: [{ ability: "TRUANT", volatile: { truantLoafing: true } },
+        { ability: "MAGNETPULL" }, { ability: "SHADOWTAG" }] },
+    });
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", recoilAbsorbCycleTrapAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams.opponent.members[0])
+      .toMatchObject({ ability: "TRUANT", volatile: { truantLoafing: true } });
+  });
+
+  it("keeps Emergency Exit's owner choice authoritative across guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", formPivotBondAbilityBattle,
+      new SeededRandom(24_329), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("form-pivot-ready-a"));
+    room.receive("bob", ready("form-pivot-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "form-pivot-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "form-pivot-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ type: "forcedSwitchRequested",
+        side: "player", ability: "EMERGENCYEXIT" })]),
+      state: { replacementRequired: ["player"], pivotRequired: ["player"] },
+    });
+    room.disconnect("alice");
+    expect(room.connect("alice").snapshot.battle?.state).toMatchObject({
+      replacementRequired: ["player"], pivotRequired: ["player"],
+      teams: { player: { activeIndex: 0, members: [{ ability: "EMERGENCYEXIT" },
+        { ability: "PODERSABIO" }, { ability: "PARENTALBOND" }, { ability: "FORECAST" }] },
+      opponent: { members: [{ ability: "SUCTIONCUPS" }, { ability: "DISGUISE" },
+        { ability: "FLOWERGIFT" }] } },
+    });
+    const replacement = room.receive("alice", { type: "submitReplacement", version: 15,
+      requestId: "form-pivot-replace-a", battleId: "ABC234-1", turn: 2, teamIndex: 3 });
+    expect(replacement.find((entry) => entry.message.type === "replacementResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "pokemonSwitched",
+        reason: "forced", to: "host-castform" })]) });
+    expect(room.snapshot().battle?.state).toMatchObject({ replacementRequired: [], pivotRequired: [],
+      teams: { player: { activeIndex: 3 } } });
+  });
+
+  it("rejects a trapped host switch before queuing it in the authoritative room", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", authoritativeTrapBattle,
+      new SeededRandom(24_328), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("trap-authority-ready-a"));
+    room.receive("bob", ready("trap-authority-ready-b"));
+    expect(room.snapshot().battle?.state.teams).toMatchObject({
+      player: { members: expect.arrayContaining([expect.objectContaining({ types: ["STEEL"] })]) },
+      opponent: { members: expect.arrayContaining([expect.objectContaining({ ability: "MAGNETPULL" })]) },
+    });
+    const rejected = room.receive("alice", { type: "submitAction", version: 15,
+      requestId: "trap-authority-switch", battleId: "ABC234-1", turn: 1,
+      action: { kind: "switch", teamIndex: 1 } });
+    expect(rejected).toHaveLength(1);
+    expect(rejected[0]?.message).toMatchObject({ type: "error", code: "INVALID_MESSAGE",
+      message: expect.stringContaining("MAGNETPULL") });
+    expect(room.snapshot().battle?.state).toMatchObject({ turn: 1,
+      teams: { player: { activeIndex: 0 } } });
+  });
+
   it("keeps authoritative weather and its passive damage across guest reconnect", () => {
     const room = new AuthoritativeBattleRoom("ABC234", weatherBattle, new SeededRandom(24_303), world);
     room.connect("alice");
@@ -1910,6 +2115,30 @@ describe("authoritative battle room", () => {
     expect(closed.map((entry) => entry.message.type)).toEqual(["ack", "snapshot"]);
     expect(room.snapshot().battle).toBeNull();
     expect(room.connect("bob").settlement).toMatchObject({ ownerId: "bob", battleId });
+  });
+
+  it("rolls Honey Gather in the authoritative room and restores the owner-scoped result", () => {
+    const deterministic = { nextInt: () => 0, snapshot: () => 0 };
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, deterministic, worldWithSource);
+    room.connect("alice");
+    const initial = initialBattle();
+    const playerTeam = { ...initial.teams.player, members: initial.teams.player.members.map((member) => ({
+      ...member, ability: "HONEYGATHER" as const, heldItem: null, level: 100,
+    })) };
+    const opponentTeam = { ...initial.teams.opponent,
+      members: initial.teams.opponent.members.map((member) => ({ ...member, hp: 1 })) };
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "honey-open",
+      context: sourceBattleContext("alice"), playerTeam, opponentTeam });
+    const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "honey-win",
+      battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    expect(room.connect("alice").settlement).toMatchObject({ ownerId: "alice",
+      honeyGatherPokemonIds: [playerTeam.members[0]!.id] });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, deterministic, worldWithSource, persisted);
+    expect(restored.connect("alice").settlement).toMatchObject({
+      honeyGatherPokemonIds: [playerTeam.members[0]!.id],
+    });
   });
 
   it("keeps battle medicine owner-scoped and settles the consumption exactly for that owner", () => {

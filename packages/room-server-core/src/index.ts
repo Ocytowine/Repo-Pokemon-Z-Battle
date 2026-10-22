@@ -8,6 +8,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   createTeamBattleState, openSharedBattleJoinWindow,
   pokemonItemTargetMode, proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
   resolveDoubleTeamTurn, resolveTeamTurn,
+  switchTrapAbility,
   settleEscapedSharedBattleSession, settleSharedBattleSession,
   sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement,
   type BattleJoinProposal,
@@ -676,6 +677,15 @@ export class AuthoritativeBattleRoom {
     if (this.#pendingActions.has(player.side)) {
       return [this.error(player.playerId, message.requestId, "ACTION_ALREADY_SUBMITTED", "Une action est déjà enregistrée pour ce tour.")];
     }
+    if (message.action.kind === "switch") {
+      const active = this.#battleState.teams[player.side].members[this.#battleState.teams[player.side].activeIndex]!;
+      const otherSide = player.side === "player" ? "opponent" : "player";
+      const opponents = activeTeamIndices(this.#battleState.teams[otherSide])
+        .map((index) => this.#battleState!.teams[otherSide].members[index]!);
+      const trap = switchTrapAbility(active, opponents);
+      if (trap !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        `Changement impossible : ${trap} retient ce Pokemon.`)];
+    }
     this.#pendingActions.set(player.side, message.action);
     this.#revision += 1;
     const output: RoomDispatch[] = [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) }];
@@ -755,6 +765,16 @@ export class AuthoritativeBattleRoom {
           "Un Dresseur ne peut envoyer que l'un de ses propres Pokémon.")];
       }
     }
+    if (message.action.kind === "switch") {
+      const active = this.#battleState.teams[controlledSide].members[
+        this.#battleState.teams[controlledSide].activeIndex]!;
+      const otherSide = controlledSide === "player" ? "opponent" : "player";
+      const opponents = activeTeamIndices(this.#battleState.teams[otherSide])
+        .map((index) => this.#battleState!.teams[otherSide].members[index]!);
+      const trap = switchTrapAbility(active, opponents);
+      if (trap !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        `Changement impossible : ${trap} retient ce Pokemon.`)];
+    }
 
     if (message.action.kind === "item" || message.action.kind === "capture") {
       const itemError = this.reserveBattleItem(player, controlledSide, message.action);
@@ -809,6 +829,14 @@ export class AuthoritativeBattleRoom {
         return [this.error(player.playerId, message.requestId, "UNAUTHORIZED",
           "Un Dresseur ne peut envoyer que l'un de ses propres Pokemon.")];
       }
+      const activeIndex = activeTeamIndices(state.teams[position.side])[position.slot]!;
+      const active = state.teams[position.side].members[activeIndex]!;
+      const otherSide = position.side === "player" ? "opponent" : "player";
+      const opponents = activeTeamIndices(state.teams[otherSide])
+        .map((index) => state.teams[otherSide].members[index]!);
+      const trap = switchTrapAbility(active, opponents);
+      if (trap !== null) return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        `Changement impossible : ${trap} retient ce Pokemon.`)];
     }
     if (message.action.kind === "item" || message.action.kind === "capture") {
       const itemError = this.reserveBattleItem(player, position.side, message.action);
@@ -1770,6 +1798,8 @@ export class AuthoritativeBattleRoom {
       }
       const before = this.#battleState;
       const fromIndex = activeTeamIndices(before.teams[position.side])[position.slot]!;
+      const reason = before.slotPivotReplacements?.some((candidate) => candidate.side === position.side
+        && candidate.slot === position.slot) === true ? "forced" as const : "replacement" as const;
       try { this.#battleState = replaceFaintedDoublePokemon(before, position, message.teamIndex, this.#rng); }
       catch (error) { return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
         error instanceof Error ? error.message : "Remplacement double invalide.")]; }
@@ -1777,7 +1807,7 @@ export class AuthoritativeBattleRoom {
       this.#revision += 1;
       const event = { type: "pokemonSwitched" as const, side: position.side, fromIndex, toIndex: message.teamIndex,
         from: before.teams[position.side].members[fromIndex]!.id,
-        to: before.teams[position.side].members[message.teamIndex]!.id, reason: "replacement" as const };
+        to: before.teams[position.side].members[message.teamIndex]!.id, reason };
       return [
         { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
         { audience: "all", message: { type: "replacementResolved", version: PROTOCOL_VERSION,
@@ -1836,7 +1866,7 @@ export class AuthoritativeBattleRoom {
     if (this.#battleState === null || this.#battleId === null || this.#battleParticipation === null) return;
     let state = this.#battleState;
     const events: { type: "pokemonSwitched"; side: BattleSide; fromIndex: number; toIndex: number;
-      from: string; to: string; reason: "replacement" }[] = [];
+      from: string; to: string; reason: "replacement" | "forced" }[] = [];
     for (const position of [...(state.slotReplacements ?? [])]) {
       if (activeBattleControllerAt(this.#battleParticipation, position) !== null) continue;
       const team = state.teams[position.side];
@@ -1845,8 +1875,10 @@ export class AuthoritativeBattleRoom {
         && this.#battleParticipation!.camps[position.side].members[index]?.ownerId === null);
       if (eligible < 0) continue;
       const fromIndex = active[position.slot]!;
+      const reason = state.slotPivotReplacements?.some((candidate) => candidate.side === position.side
+        && candidate.slot === position.slot) === true ? "forced" as const : "replacement" as const;
       events.push({ type: "pokemonSwitched", side: position.side, fromIndex, toIndex: eligible,
-        from: team.members[fromIndex]!.id, to: team.members[eligible]!.id, reason: "replacement" });
+        from: team.members[fromIndex]!.id, to: team.members[eligible]!.id, reason });
       state = replaceFaintedDoublePokemon(state, position, eligible, this.#rng);
     }
     if (events.length === 0) return;
@@ -1881,6 +1913,16 @@ export class AuthoritativeBattleRoom {
       const money = !ownerIsNarrative || escaped ? { kind: "none" as const }
         : narrativeWon && trainerReward > 0 ? { kind: "fixed" as const, amount: trainerReward }
           : !narrativeWon ? { kind: "source-defeat" as const } : { kind: "none" as const };
+      const ownedMemberIds = new Set(((["player", "opponent"] as const).flatMap((side) =>
+        participation.camps[side].members.filter((member) => member.ownerId === ownerId)
+          .map((member) => member.battler.id))));
+      const honeyGatherPokemonIds = !escaped && tactical.won
+        ? (["player", "opponent"] as const).flatMap((side) => state.teams[side].members)
+          .filter((member) => ownedMemberIds.has(member.id) && member.ability === "HONEYGATHER"
+            && member.heldItem === null)
+          .filter((member) => this.#rng.nextInt(100) < 5 + Math.floor((member.level - 1) / 10) * 5)
+          .map((member) => member.id)
+        : [];
       const settlement: SourceBattleSettlement = {
         settlementId: `${battleId}-${ownerId}`,
         battleId,
@@ -1893,6 +1935,7 @@ export class AuthoritativeBattleRoom {
         experience: { ...context.rewards.experience, trainerBattle: context.origin === "source-trainer" },
         money,
         items: [],
+        ...(honeyGatherPokemonIds.length === 0 ? {} : { honeyGatherPokemonIds }),
         consumedItems: Object.entries(this.#battleConsumedItems.get(ownerId) ?? {})
           .map(([itemId, quantity]) => ({ itemId, quantity })),
         ...(captured?.ownerId === ownerId ? { capturedPokemon: { ballId: captured.ballId, battler: captured.battler } } : {}),

@@ -1,7 +1,7 @@
 import { isHeldItemSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
   type BattleTeam, type BattlerState, type HeldItem,
   type MajorStatusState, type SharedBattleOwnerSettlement, type SharedBattleParticipation,
-  type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+  type RandomSource, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { AbilityDefinition, MoveDefinition, PokemonDefinition } from "@pokemon-z-battle/game-data";
 import type { PlayerPronouns } from "./profile.js";
 
@@ -150,6 +150,36 @@ export interface PlayerPokemonStorageState {
 export interface PlayerPokemonCollectionState {
   readonly party: PlayerPartyState;
   readonly storage: PlayerPokemonStorageState;
+}
+
+/** Source post-victory Honey Gather. The item is held by its owner, never added to a shared inventory. */
+export function applyHoneyGather(party: PlayerPartyState, rng: RandomSource): {
+  readonly party: PlayerPartyState; readonly pokemonIds: readonly string[] } {
+  const pokemonIds: string[] = [];
+  const members = party.members.map((pokemon) => {
+    if (pokemon.ability !== "HONEYGATHER" || pokemon.heldItem !== null || pokemon.metadata.eggSteps > 0) return pokemon;
+    const chance = 5 + Math.floor((pokemon.level - 1) / 10) * 5;
+    if (rng.nextInt(100) >= chance) return pokemon;
+    pokemonIds.push(pokemon.id);
+    return { ...pokemon, heldItem: "HONEY" };
+  });
+  return { party: { ...party, members }, pokemonIds };
+}
+
+/** Replays an authoritative owner-scoped Honey Gather result exactly once at settlement. */
+export function applyHoneyGatherResult(party: PlayerPartyState, pokemonIds: readonly string[]): PlayerPartyState {
+  const selected = new Set(pokemonIds);
+  if (selected.size !== pokemonIds.length) throw new Error("Résultat Honey Gather dupliqué.");
+  const members = party.members.map((pokemon) => {
+    if (!selected.has(pokemon.id)) return pokemon;
+    if (pokemon.ability !== "HONEYGATHER" || pokemon.heldItem !== null) {
+      throw new Error(`Résultat Honey Gather invalide pour ${pokemon.id}.`);
+    }
+    selected.delete(pokemon.id);
+    return { ...pokemon, heldItem: "HONEY" };
+  });
+  if (selected.size > 0) throw new Error("Pokémon Honey Gather absent de l'équipe personnelle.");
+  return { ...party, members };
 }
 
 export interface PlayerBattleCatalog {

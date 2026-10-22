@@ -1,6 +1,13 @@
 import type { BattleMove, BattlerState, HeldItem } from "./types.js";
 
 const BERRIES = new Set<HeldItem>(["LIECHIBERRY", "ORANBERRY", "PAYAPABERRY"]);
+const PLATES = new Set<HeldItem>(["FISTPLATE", "SKYPLATE", "TOXICPLATE", "EARTHPLATE", "STONEPLATE",
+  "INSECTPLATE", "SPOOKYPLATE", "IRONPLATE", "FLAMEPLATE", "SPLASHPLATE", "MEADOWPLATE", "ZAPPLATE",
+  "MINDPLATE", "ICICLEPLATE", "DRACOPLATE", "DREADPLATE", "PIXIEPLATE", "TABLANEUTRA"]);
+
+export function heldItemIsUnlosable(battler: BattlerState): boolean {
+  return battler.ability === "MULTITYPE" && battler.heldItem !== null && PLATES.has(battler.heldItem);
+}
 
 export function heldItemIsActive(battler: BattlerState): boolean {
   return battler.heldItem !== null && battler.ability !== "KLUTZ" && (battler.volatile?.embargoTurns ?? 0) === 0;

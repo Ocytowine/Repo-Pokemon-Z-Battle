@@ -6,6 +6,14 @@ import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
 import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
 
+const PLATE_TYPES: Readonly<Record<string, string>> = {
+  FISTPLATE: "FIGHTING", SKYPLATE: "FLYING", TOXICPLATE: "POISON", EARTHPLATE: "GROUND",
+  STONEPLATE: "ROCK", INSECTPLATE: "BUG", SPOOKYPLATE: "GHOST", IRONPLATE: "STEEL",
+  FLAMEPLATE: "FIRE", SPLASHPLATE: "WATER", MEADOWPLATE: "GRASS", ZAPPLATE: "ELECTRIC",
+  MINDPLATE: "PSYCHIC", ICICLEPLATE: "ICE", DRACOPLATE: "DRAGON", DREADPLATE: "DARK",
+  PIXIEPLATE: "FAIRY", TABLANEUTRA: "NORMAL",
+};
+
 /** Exact non-Normal type list named by Pokemon Z's Realeza branch; QMARKS is intentionally excluded. */
 const REALEZA_TYPES = new Set([
   "FIRE", "BUG", "DARK", "DRAGON", "ELECTRIC", "FAIRY", "FIGHTING", "FLYING", "GHOST",
@@ -50,6 +58,31 @@ export interface BattleDamageContext {
   readonly activeAbilities?: readonly BattleAbility[];
 }
 
+/** Source-faithful type multiplier shared by damage calculation and pre-damage abilities. */
+export function effectiveTypeMultiplier(attacker: BattlerState, defender: BattlerState, move: BattleMove,
+  weather?: BattleEffects["weather"]): number {
+  const moveType = effectiveMoveType(attacker, move).type;
+  const ignoresDefenderAbility = hasMoldBreaker(attacker);
+  const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
+    && (moveType === "NORMAL" || moveType === "FIGHTING")
+    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
+  const typeEffect = defenderTypes.length === 0 ? 1 : defenderTypes.reduce((multiplier, type) => {
+    const component = typeEffectiveness(moveType, [type]);
+    return multiplier * (weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
+  }, 1);
+  return !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND" ? 0 : typeEffect;
+}
+
+/** Pokemon Z effective weight in hectograms, shared by every weight-based move. */
+export function effectiveWeight(battler: BattlerState, attacker?: BattlerState): number {
+  let weight = battler.capture?.weight ?? 0;
+  if (attacker === undefined || !hasMoldBreaker(attacker)) {
+    if (battler.ability === "HEAVYMETAL") weight *= 2;
+    if (battler.ability === "LIGHTMETAL") weight /= 2;
+  }
+  return Math.max(1, Math.floor(weight));
+}
+
 function stagedStat(value: number, stage: number): number {
   return stage >= 0
     ? Math.floor((value * (2 + stage)) / 2)
@@ -78,15 +111,8 @@ export function calculateDamage(
   const activeAbilities = new Set(context.activeAbilities
     ?? [attacker.ability, defender.ability].filter((ability): ability is BattleAbility => ability !== null));
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
-  const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
-    && (moveType === "NORMAL" || moveType === "FIGHTING")
-    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
-  const typeEffect = defenderTypes.length === 0 ? 1 : defenderTypes.reduce((multiplier, type) => {
-    const component = typeEffectiveness(moveType, [type]);
-    return multiplier * (context.weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
-  }, 1);
-  const effectiveness = !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND"
-    ? 0 : typeEffect;
+  const currentWeather = ordinaryWeather(context.weather);
+  const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather);
   if (move.functionCode === "06F") {
     const variance = 50 + draw(rng, trace, "damage-variance", 101);
     const result = effectiveness === 0 ? 0 : Math.max(1, Math.floor((attacker.level * variance) / 100));
@@ -128,6 +154,10 @@ export function calculateDamage(
   if (attacker.ability === "GUTS" && attacker.majorStatus !== null && move.category === "Physical") attack = Math.round(attack * 1.5);
   if (attacker.ability === "HUSTLE" && move.category === "Physical") attack = Math.round(attack * 1.5);
   if ((attacker.ability === "HUGEPOWER" || attacker.ability === "PUREPOWER") && move.category === "Physical") attack = Math.round(attack * 2);
+  if (attacker.ability === "PODERSABIO" && move.category === "Special") {
+    attack = Math.round(attack * 1.5);
+    recordAbilityModifier("PODERSABIO", 1.5);
+  }
   if (attacker.ability === "SLOWSTART" && move.category === "Physical"
     && (attacker.volatile?.activeTurns ?? 0) <= 5) {
     attack = Math.max(1, Math.round(attack * 0.5));
@@ -154,8 +184,12 @@ export function calculateDamage(
     attack = Math.round(attack * 1.5);
     recordAbilityModifier(attacker.ability === "PLUS" ? "PLUS" : "MINUS", 1.5);
   }
+  if (currentWeather === "sun" && move.category === "Physical"
+    && (attacker.ability === "FLOWERGIFT" || context.attackerPartnerAbility === "FLOWERGIFT")) {
+    attack = Math.round(attack * 1.5);
+    recordAbilityModifier("FLOWERGIFT", 1.5);
+  }
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
-  const currentWeather = ordinaryWeather(context.weather);
   if (currentWeather === "sand" && move.category === "Special" && !usesPhysicalDefense
     && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
   if (currentWeather === "hail" && move.category === "Physical" && defender.types.includes("ICE")) defense = Math.round(defense * 1.5);
@@ -168,9 +202,14 @@ export function calculateDamage(
     defense = Math.max(1, Math.round(defense * 1.5));
     recordAbilityModifier("ICESCALES", 2 / 3);
   }
+  if (!ignoresDefenderAbility && currentWeather === "sun" && move.category === "Special"
+    && (defender.ability === "FLOWERGIFT" || context.defenderPartnerAbility === "FLOWERGIFT")) {
+    defense = Math.max(1, Math.round(defense * 1.5));
+    recordAbilityModifier("FLOWERGIFT", 2 / 3);
+  }
   if (defenderItemActive && defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defenderItemActive && defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
-  const targetWeight = defender.capture?.weight ?? 0;
+  const targetWeight = effectiveWeight(defender, attacker);
   const flailRatio = Math.floor((48 * attacker.hp) / attacker.stats.maxHp);
   let power = move.functionCode === "098"
     ? flailRatio < 2 ? 200 : flailRatio < 5 ? 150 : flailRatio < 10 ? 100
@@ -178,6 +217,10 @@ export function calculateDamage(
     : move.functionCode !== "09A" ? move.power
     : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
       : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
+  if (move.functionCode === "09B") {
+    const ratio = Math.floor(effectiveWeight(attacker) / targetWeight);
+    power = ratio >= 5 ? 120 : ratio >= 4 ? 100 : ratio >= 3 ? 80 : ratio >= 2 ? 60 : 40;
+  }
   if (move.functionCode === "08D") {
     const speed = (battler: BattlerState): number => {
       let value = stagedStat(battler.stats.speed, battler.stages.speed);
@@ -211,6 +254,9 @@ export function calculateDamage(
   if (attackerItemActive && attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
   if (attackerItemActive && attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attackerItemActive && attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
+  if (attackerItemActive && attacker.heldItem !== null && PLATE_TYPES[attacker.heldItem] === moveType) {
+    statusModifier *= 1.2;
+  }
   if (!ignoresDefenderAbility && defender.ability === "DRYSKIN" && moveType === "FIRE") statusModifier *= 1.25;
   if (!ignoresDefenderAbility && defender.ability === "HEATPROOF" && moveType === "FIRE") statusModifier *= 0.5;
   if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;

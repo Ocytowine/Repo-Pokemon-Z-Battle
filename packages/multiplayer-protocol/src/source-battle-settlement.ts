@@ -43,6 +43,8 @@ export interface SourceBattleSettlement {
   readonly money: SourceBattleMoneySettlement;
   readonly items: readonly SourceBattleItemSettlement[];
   readonly consumedItems?: readonly SourceBattleItemSettlement[];
+  /** Authoritative successful Honey Gather rolls, applied only to this owner's persistent party. */
+  readonly honeyGatherPokemonIds?: readonly string[];
   /** Present only in the settlement belonging to the trainer who threw the successful Ball. */
   readonly capturedPokemon?: SourceBattleCapturedPokemon;
   readonly healParty: boolean;

@@ -6,7 +6,7 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   type SharedBattleParticipation, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState,
   type TeamReplacementResult, type TeamTurnActions,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
+import { addPokemonToParty, applyHoneyGather, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
   storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
   type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
@@ -243,7 +243,7 @@ export interface SourceTrainerBattleSettlement {
 /** Solo adapter over the same ownership, participation and EXP kernel used by an authoritative room. */
 export function settleSourceTrainerBattle(party: PlayerPartyState, state: TeamBattleState,
   participation: SharedBattleParticipation, ledger: SharedBattleLedger, catalog: PlayerCreationCatalog,
-  policy: Omit<PokemonZExperiencePolicy, "trainerBattle">, evolutionHour?: number,
+  policy: Omit<PokemonZExperiencePolicy, "trainerBattle">, evolutionHour?: number, rng?: RandomSource,
 ): SourceTrainerBattleSettlement {
   if (state.status !== "finished" || state.winner === null) {
     throw new Error("Le combat de Dresseur n'est pas termine.");
@@ -253,7 +253,8 @@ export function settleSourceTrainerBattle(party: PlayerPartyState, state: TeamBa
   const tactical = sharedBattleOwnerSettlement(participation, state, ledger, "local");
   const experience = applySharedBattleExperience(stored, tactical, catalog,
     { ...policy, trainerBattle: true }, evolutionHour === undefined ? {} : { hour: evolutionHour });
-  return { party: experience.party, completed: true, gains: experience.gains };
+  return { party: rng === undefined ? experience.party : applyHoneyGather(experience.party, rng).party,
+    completed: true, gains: experience.gains };
 }
 
 export interface ScaledWildExperienceCalculation {
@@ -287,7 +288,7 @@ export function scaledWildExperienceCalculation(defeatedLevel: number, baseExper
 }
 
 export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattleState,
-  catalog?: PlayerCreationCatalog, evolutionHour?: number): SourceEncounterSettlement {
+  catalog?: PlayerCreationCatalog, evolutionHour?: number, rng?: RandomSource): SourceEncounterSettlement {
   if (state.status !== "finished" || state.winner === null) throw new Error("Le combat source n'est pas terminé.");
   const stored = storeSourceEncounterParty(party, state);
   if (state.winner !== "player") return { party: healPlayerParty(stored), completed: false, experience: null };
@@ -295,7 +296,8 @@ export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattle
   const defeated = state.teams.opponent.members[state.teams.opponent.activeIndex];
   const recipient = activeIndex === null ? undefined : stored.members[activeIndex];
   if (catalog === undefined || defeated === undefined || recipient === undefined || recipient.hp <= 0) {
-    return { party: stored, completed: true, experience: null };
+    return { party: rng === undefined ? stored : applyHoneyGather(stored, rng).party,
+      completed: true, experience: null };
   }
   const definition = catalog.pokemon.find((candidate) => candidate.internalName === defeated.species);
   if (definition === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${defeated.species}.`);
@@ -310,7 +312,9 @@ export function settleSourceEncounter(party: PlayerPartyState, state: TeamBattle
     : undefined;
   const progressedPokemon = evolution === undefined ? reward.pokemon : { ...reward.pokemon, pendingEvolution: evolution };
   const members = progressedParty.members.map((member, index) => index === activeIndex ? progressedPokemon : member);
-  return { party: { ...progressedParty, members }, completed: true, experience: { amount: reward.gained, pokemonId: recipient.id,
+  const finalParty = { ...progressedParty, members };
+  return { party: rng === undefined ? finalParty : applyHoneyGather(finalParty, rng).party,
+    completed: true, experience: { amount: reward.gained, pokemonId: recipient.id,
     levelsGained: reward.levelsGained, learnedMoves: reward.learnedMoves, skippedMoves: reward.skippedMoves,
     calculation } };
 }

@@ -118,7 +118,8 @@ function isBattleVolatile(value: unknown): boolean {
     "leechSeededBy", "leechSeededBySlot", "chargeTurns", "yawnTurns", "infatuated",
     "furyCutterCount", "rolloutTurns", "uproarTurns", "embargoTurns",
     "unburdened", "pickupItem", "pickupUse", "enteredMidTurn", "flashFire",
-    "entryAbilityResolved", "traceOriginalAbility", "originalAbility", "abilityReplacementActive", "originalTypes"];
+    "entryAbilityResolved", "traceOriginalAbility", "originalAbility", "abilityReplacementActive", "originalTypes",
+    "originalForm", "originalStats", "truantLoafing", "choiceLockedMove", "yawnBypassesAbility"];
   if (!isRecord(value) || !legacy.every((key) => key in value)
     || !Object.keys(value).every((key) => legacy.includes(key) || optional.includes(key))) return false;
   return safeInteger(value.confusionTurns, 0, 5) && typeof value.flinched === "boolean"
@@ -158,6 +159,13 @@ function isBattleVolatile(value: unknown): boolean {
     && (value.originalTypes === undefined || value.originalTypes === null
       || Array.isArray(value.originalTypes) && value.originalTypes.length >= 1 && value.originalTypes.length <= 3
         && value.originalTypes.every((type) => typeof type === "string" && SOURCE_IDENTIFIER.test(type)))
+    && (value.originalForm === undefined || value.originalForm === null || safeInteger(value.originalForm, 0, 999))
+    && (value.originalStats === undefined || value.originalStats === null || isRecord(value.originalStats)
+      && hasExactKeys(value.originalStats, BATTLE_STATS)
+      && BATTLE_STATS.every((stat) => safeInteger((value.originalStats as Record<string, unknown>)[stat], 1, 999_999)))
+    && (value.truantLoafing === undefined || typeof value.truantLoafing === "boolean")
+    && (value.choiceLockedMove === undefined || value.choiceLockedMove === null || boundedString(value.choiceLockedMove))
+    && (value.yawnBypassesAbility === undefined || typeof value.yawnBypassesAbility === "boolean")
     && (value.traceOriginalAbility === undefined || value.traceOriginalAbility === null
       || typeof value.traceOriginalAbility === "string" && SOURCE_IDENTIFIER.test(value.traceOriginalAbility));
 }
@@ -177,7 +185,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "capture", "happiness", "canEvolve", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "illusion", "capture", "happiness", "canEvolve", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -187,6 +195,13 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !hasExactKeys(member.appearance, ["form", "shiny", "gender"])
       || !safeInteger(member.appearance.form, 0, 999) || typeof member.appearance.shiny !== "boolean"
       || member.appearance.gender !== null && !["male", "female", "genderless"].includes(String(member.appearance.gender)))) return false;
+    if (member.illusion !== undefined && (!isRecord(member.illusion)
+      || !hasExactKeys(member.illusion, ["species", "name", "types", "form", "shiny", "gender"])
+      || !SOURCE_IDENTIFIER.test(String(member.illusion.species)) || !boundedString(member.illusion.name, 128)
+      || !Array.isArray(member.illusion.types) || member.illusion.types.length < 1
+      || member.illusion.types.length > 2 || !member.illusion.types.every((type) => boundedString(type))
+      || !safeInteger(member.illusion.form, 0, 999) || typeof member.illusion.shiny !== "boolean"
+      || member.illusion.gender !== null && !["male", "female", "genderless"].includes(String(member.illusion.gender)))) return false;
     if (member.capture !== undefined && (!isRecord(member.capture)
       || !hasExactKeys(member.capture, ["rate", "baseSpeed", "weight"])
       || !safeInteger(member.capture.rate, 1, 255) || !safeInteger(member.capture.baseSpeed, 1, 999)

@@ -35,9 +35,11 @@ function entryVolatile(battler: BattlerState): NonNullable<BattlerState["volatil
 }
 
 export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opponents: readonly EntryOpponent[],
-  rng: RandomSource, trace: BattleTrace[], informationEnabled = side === "player",
+  rng: RandomSource, trace: BattleTrace[], informationEnabled = side === "player", abilitySuppressed = false,
 ): { readonly battler: BattlerState; readonly opponents: readonly EntryOpponent[]; readonly events: readonly BattleEvent[] } {
-  if (battler.hp <= 0 || battler.volatile?.entryAbilityResolved === true) return { battler, opponents, events: [] };
+  if (battler.hp <= 0 || battler.volatile?.entryAbilityResolved === true || abilitySuppressed
+    || battler.ability !== "NEUTRALIZINGGAS" && opponents.some(({ battler: target }) =>
+      target.hp > 0 && target.ability === "NEUTRALIZINGGAS")) return { battler, opponents, events: [] };
   let actor: BattlerState = { ...battler, volatile: entryVolatile(battler) };
   let targets = opponents.map((entry) => ({ ...entry }));
   const events: BattleEvent[] = [];
@@ -47,6 +49,9 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
   }
   if (actor.ability === "TINTINEO") {
     events.push({ type: "abilityActivated", side, ability: "TINTINEO", effect: "announce" });
+  }
+  if (actor.ability === "NEUTRALIZINGGAS") {
+    events.push({ type: "abilityActivated", side, ability: "NEUTRALIZINGGAS", effect: "announce" });
   }
 
   if (actor.ability === "TRACE") {
@@ -87,6 +92,32 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
     targets = targets.map((entry) => {
       if (entry.battler.hp <= 0) return entry;
       const ignoresAbility = hasMoldBreaker(actor);
+      if (!ignoresAbility && entry.battler.ability === "MIRRORARMOR") {
+        events.push({ type: "abilityActivated", side: entry.side,
+          ability: "MIRRORARMOR", effect: "reflect-stat-drop" });
+        const reflected = resolveStatStageChange(actor, stat, -1);
+        const effectiveDelta = reflected?.delta ?? (actor.ability === "CONTRARY" ? 1 : -1);
+        const protection = effectiveDelta < 0 ? statDropProtectionAbility(actor, stat) : null;
+        if (protection !== null) {
+          events.push({ type: "abilityActivated", side, ability: protection, effect: "prevent-stat-drop" });
+          return entry;
+        }
+        if (reflected === null) {
+          events.push({ type: "statStageChangeFailed", source: entry.side, target: side, stat, reason: "limit" });
+          return entry;
+        }
+        actor = reflected.battler;
+        events.push({ type: "statStageChanged", source: entry.side, target: side, stat,
+          delta: reflected.delta, stage: reflected.stage });
+        const reaction = reflected.delta < 0 ? applyOpposingStatDropReaction(actor) : null;
+        if (reaction !== null) {
+          actor = reaction.battler;
+          events.push({ type: "abilityActivated", side, ability: reaction.ability, effect: "raise-stat" },
+            { type: "statStageChanged", source: side, target: side, stat: reaction.change.stat,
+              delta: reaction.change.delta, stage: reaction.change.stage });
+        }
+        return entry;
+      }
       const resolved = resolveStatStageChange(entry.battler, stat, -1, ignoresAbility);
       const effectiveDelta = resolved?.delta ?? (entry.battler.ability === "CONTRARY" && !ignoresAbility ? 1 : -1);
       const protection = effectiveDelta < 0 && !ignoresAbility

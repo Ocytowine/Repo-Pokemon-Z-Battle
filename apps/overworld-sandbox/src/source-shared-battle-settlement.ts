@@ -1,4 +1,4 @@
-import { addPokemonToStorage, applySharedBattleExperience, createPersistentPokemon,
+import { addPokemonToStorage, applyHoneyGatherResult, applySharedBattleExperience, createPersistentPokemon,
   healPlayerParty, storeOwnedBattleResults, type PlayerCreationCatalog, type PokemonCreationContext,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
@@ -31,6 +31,9 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
     evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
+  if (settlement.outcome === "won" && (settlement.honeyGatherPokemonIds?.length ?? 0) > 0) {
+    party = applyHoneyGatherResult(party, settlement.honeyGatherPokemonIds!);
+  }
   let next = { ...state, party };
   let capturedPokemonId: string | null = null;
   if (settlement.capturedPokemon !== undefined) {

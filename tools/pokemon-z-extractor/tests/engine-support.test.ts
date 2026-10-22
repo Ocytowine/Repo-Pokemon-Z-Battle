@@ -172,6 +172,41 @@ describe("engine support report", () => {
       ({ key, extracted: true, engineSupport: "supported" })));
   });
 
+  it("advertises recoil, absorption, cycle and switch-trap talents as supported", () => {
+    const names = ["ARENATRAP", "CABEZAHIELO", "DESPIERTALLAMA", "MAGNETPULL", "MOODY", "SHADOWTAG", "TRUANT"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises form, extra-hit and owner-pivot talents as supported", () => {
+    const names = ["DISGUISE", "EMERGENCYEXIT", "FLOWERGIFT", "FORECAST", "PARENTALBOND", "PODERSABIO",
+      "SUCTIONCUPS"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the final form, illusion, suppression and settlement talents as supported", () => {
+    const names = ["FORMAILUSORIA", "HONEYGATHER", "ILLUSION", "MULTITYPE", "NEUTRALIZINGGAS",
+      "STANCECHANGE", "ZENMODE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
   it("advertises the shared calculation-modifier talent family as supported", () => {
     const names = ["CAMORRISTA", "MERCILESS", "REALEZA", "TANGLEDFEET"];
     const report = createEngineSupportReport({
@@ -366,6 +401,32 @@ describe("engine support report", () => {
     } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the protection, drain and reflection talent batch as supported", () => {
+    const names = ["GOODASGOLD", "INNARDSOUT", "LIQUIDOOZE", "MIRRORARMOR", "WONDERGUARD"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises contact, weight, partner and poison talents plus relative-weight moves", () => {
+    const names = ["CUTECHARM", "HEALER", "HEAVYMETAL", "LIGHTMETAL", "POISONPUPPETEER"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: [{ functionCode: "09B" }] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+    expect(report.categories.moveFunctionCodes).toEqual([
+      { key: "09B", extracted: true, engineSupport: "supported" },
+    ]);
   });
 
   it("advertises the shared PP and held-item control talent family as supported", () => {

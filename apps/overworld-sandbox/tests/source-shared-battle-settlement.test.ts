@@ -17,7 +17,7 @@ const catalog: PlayerCreationCatalog = {
 
 describe("shared source battle settlement", () => {
   it("merges owned resources and rewards exactly once without rebuilding the persistent Pokemon", () => {
-    const pokemon = createPersistentPokemon("host-mon", "PIKACHU", 5, catalog);
+    const pokemon = { ...createPersistentPokemon("host-mon", "PIKACHU", 5, catalog), ability: "HONEYGATHER" };
     const team = playerPartyToBattleTeam({ schemaVersion: 1, activeIndex: 0, members: [pokemon] }, catalog);
     const defeated = { ...team.members[0]!, id: "wild-mon" };
     const finalState = { ...createTeamBattleState({ player: team.members, opponent: [defeated] }),
@@ -38,7 +38,7 @@ describe("shared source battle settlement", () => {
       experience: { trainerBattle: false, levelCap: 17, experienceDisabled: false,
         boostTenPercent: false, boostTwentyPercent: false },
       money: { kind: "fixed", amount: 500 }, items: [{ itemId: "POTION", quantity: 2 }],
-      consumedItems: [{ itemId: "POTION", quantity: 1 }], healParty: false };
+      consumedItems: [{ itemId: "POTION", quantity: 1 }], honeyGatherPokemonIds: [pokemon.id], healParty: false };
     const initial = { ...createSourceEventState(), party: { schemaVersion: 1 as const, activeIndex: 0,
       members: [pokemon] }, inventory: { POTION: 1 } };
     const applied = applySourceBattleSettlement(initial, settlement, "host", catalog);
@@ -47,6 +47,7 @@ describe("shared source battle settlement", () => {
         party: { members: [{ id: "host-mon", hp: 7, metadata: { happiness: 60 }, moves: [{ pp: 2 }] }] } } });
     expect(applied.gains[0]).toMatchObject({ recipientMemberId: "host-mon", gained: 113 });
     expect(applied.state.party.members[0]?.metadata).toEqual({ ...pokemon.metadata, happiness: 60 });
+    expect(applied.state.party.members[0]?.heldItem).toBe("HONEY");
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog))
       .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null });
   });

@@ -3,12 +3,15 @@ import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
 import { activateWindAbility } from "./ability-wind.js";
-import { applyEntryWeatherAbility, reconcileExtremeWeather } from "./ability-weather.js";
+import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import { restoreTransformedBattler, transformBattler } from "./battle-transform.js";
 import { markEnteredMidTurn } from "./ability-end-turn.js";
+import { assertVoluntarySwitchAllowed } from "./ability-switch-trap.js";
+import { reconcileAbilityForm, restoreAbilityForm } from "./ability-form.js";
+import { applyIllusion } from "./ability-illusion.js";
 import type {
   BattleResolutionRules,
   BattleEvent,
@@ -121,7 +124,10 @@ function validateState(state: TeamBattleState): void {
   for (const side of SIDES) {
     const active = activePokemon(state.teams[side]);
     if (required.has(side)) {
-      if (active.hp !== 0 || !livingReserve(state.teams[side])) throw new Error(`Invalid replacement state for ${side}.`);
+      const pivot = state.pivotRequired?.includes(side) === true;
+      if ((!pivot && active.hp !== 0) || (pivot && active.hp <= 0) || !livingReserve(state.teams[side])) {
+        throw new Error(`Invalid replacement state for ${side}.`);
+      }
     } else if (active.hp === 0) {
       throw new Error(`Fainted active Pokemon requires replacement for ${side}.`);
     }
@@ -140,7 +146,7 @@ function switchPokemon(
   teams: Record<BattleSide, BattleTeam>,
   side: BattleSide,
   toIndex: number,
-  reason: "voluntary" | "replacement",
+  reason: "voluntary" | "replacement" | "forced",
   rng: RandomSource,
   trace: TeamTurnResult["trace"][number][],
 ): readonly TeamBattleEvent[] {
@@ -160,8 +166,8 @@ function switchPokemon(
       else if (member.volatile?.traceOriginalAbility != null) originalAbility = member.volatile.traceOriginalAbility;
     }
     const originalTypes = member.transformOriginal === undefined ? member.volatile?.originalTypes : undefined;
-    member = restoreTransformedBattler(member);
-    const { volatile: _volatile, ...persistent } = member;
+    member = restoreAbilityForm(restoreTransformedBattler(member));
+    const { volatile: _volatile, illusion: _illusion, ...persistent } = member;
     const ability = originalAbility !== undefined ? originalAbility : member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
@@ -178,7 +184,10 @@ function switchPokemon(
           majorStatus: curedStatus,
         };
   });
-  teams[side] = { activeIndex: toIndex, members };
+  const gasSuppressesIllusion = to.ability !== "NEUTRALIZINGGAS"
+    && activePokemon(teams[opponentOf(side)]).hp > 0
+    && activePokemon(teams[opponentOf(side)]).ability === "NEUTRALIZINGGAS";
+  teams[side] = applyIllusion({ activeIndex: toIndex, members }, toIndex, gasSuppressesIllusion);
   const events: TeamBattleEvent[] = [];
   if (healed > 0) {
     events.push({ type: "abilityActivated", side, ability: "REGENERATOR", effect: "heal-on-switch" },
@@ -208,6 +217,23 @@ function switchPokemon(
       index === teams[side].activeIndex ? markEnteredMidTurn(member) : member) };
   }
   events.push(...entry.events);
+  return events;
+}
+
+function reconcileForms(teams: Record<BattleSide, BattleTeam>, effects: TeamBattleState["effects"]): TeamBattleEvent[] {
+  const active = [activePokemon(teams.player), activePokemon(teams.opponent)];
+  const gasActive = active.some((battler) => battler.hp > 0 && battler.ability === "NEUTRALIZINGGAS");
+  const weather = effectiveBattleWeather(effects?.weather, active, hasWeatherSuppressor(active));
+  const events: TeamBattleEvent[] = [];
+  for (const side of SIDES) {
+    const team = teams[side];
+    const battler = activePokemon(team);
+    const result = reconcileAbilityForm(battler, side, weather,
+      gasActive && battler.ability !== "NEUTRALIZINGGAS");
+    teams[side] = { ...team, members: team.members.map((member, index) =>
+      index === team.activeIndex ? result.battler : member) };
+    events.push(...result.events);
+  }
   return events;
 }
 
@@ -313,6 +339,19 @@ export function createTeamBattleState(
     if (weather.effects !== undefined) state = { ...state, effects: weather.effects };
   }
   state = initializeMegaEvolutionState(state);
+  const gasActive = SIDES.some((side) => {
+    const battler = activePokemon(state.teams[side]);
+    return battler.hp > 0 && battler.ability === "NEUTRALIZINGGAS";
+  });
+  state = { ...state, teams: {
+    player: applyIllusion(state.teams.player, state.teams.player.activeIndex,
+      gasActive && activePokemon(state.teams.player).ability !== "NEUTRALIZINGGAS"),
+    opponent: applyIllusion(state.teams.opponent, state.teams.opponent.activeIndex,
+      gasActive && activePokemon(state.teams.opponent).ability !== "NEUTRALIZINGGAS"),
+  } };
+  const teams = cloneTeams(state);
+  reconcileForms(teams, state.effects);
+  state = { ...state, teams };
   validateState(state);
   return state;
 }
@@ -364,6 +403,9 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const pursuitEvents: BattleEvent[] = [];
   const pursuitTrace: TeamTurnResult["trace"][number][] = [];
   let effects = state.effects;
+  for (const side of switchOrder) {
+    assertVoluntarySwitchAllowed(activePokemon(teams[side]), [activePokemon(teams[opponentOf(side)])]);
+  }
   const pursuitSides = SIDES.filter((side) => {
     const action = moveActions[side];
     const slot = action === undefined ? undefined : activePokemon(teams[side]).moves[action.moveIndex];
@@ -430,7 +472,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   }
 
   const result = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) }, moveActions, rng,
-    { switchingTarget: switchOrder[0] ?? null, opponentItemTheft: rules.opponentItemTheft });
+    { switchingTarget: switchOrder[0] ?? null, opponentItemTheft: rules.opponentItemTheft,
+      attackerCanSwitch: Object.fromEntries(SIDES.map((side) => [side, livingReserve(teams[side])])) });
   storeActiveBattlers(teams, result.state);
   const moveEvents: BattleEvent[] = withoutTurnEnvelope(result.events);
   const trace: TeamTurnResult["trace"] = [...entryTrace, ...pursuitTrace, ...result.trace];
@@ -438,12 +481,15 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const orderEvent = result.events.find((event) => event.type === "actionOrdered");
   const moveOrder: readonly BattleSide[] = orderEvent?.order ?? [];
 
-  const replacementRequired: BattleSide[] = [];
+  const pivotRequired = SIDES.filter((side) => result.events.some((event) =>
+    event.type === "forcedSwitchRequested" && event.side === side) && activePokemon(teams[side]).hp > 0
+    && livingReserve(teams[side]));
+  const replacementRequired: BattleSide[] = [...pivotRequired];
   let winner: BattleSide | null = null;
   const livingSides = SIDES.filter((side) => teams[side].members.some((member) => member.hp > 0));
   for (const side of SIDES) {
     if (activePokemon(teams[side]).hp !== 0) continue;
-    if (livingReserve(teams[side])) replacementRequired.push(side);
+    if (livingReserve(teams[side]) && !replacementRequired.includes(side)) replacementRequired.push(side);
     else winner = opponentOf(side);
   }
   const draw = livingSides.length === 0;
@@ -471,10 +517,11 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   ];
   if (draw) events.push({ type: "battleEnded", winner: null });
   else if (winner !== null) events.push({ type: "battleEnded", winner });
-  events.push({ type: "turnEnded", turn: state.turn });
 
   const reconciledEffects = reconcileExtremeWeather(result.state.effects,
     [activePokemon(teams.player), activePokemon(teams.opponent)]);
+  events.push(...reconcileForms(teams, reconciledEffects));
+  events.push({ type: "turnEnded", turn: state.turn });
   return {
     state: {
       turn: nextTurn,
@@ -482,6 +529,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
       winner,
       teams,
       replacementRequired: winner === null ? replacementRequired : [],
+      pivotRequired: winner === null ? pivotRequired : [],
       ...(state.megaEvolution === undefined ? {} : { megaEvolution: state.megaEvolution }),
       ...(reconciledEffects === undefined ? {} : { effects: reconciledEffects }),
     },
@@ -510,14 +558,17 @@ export function replaceFaintedPokemon(
   for (const side of state.replacementRequired) {
     const teamIndex = replacements[side];
     if (teamIndex === undefined) throw new Error(`Missing replacement for ${side}.`);
-    events.push(...switchPokemon(teams, side, teamIndex, "replacement", rng, trace));
+    events.push(...switchPokemon(teams, side, teamIndex,
+      state.pivotRequired?.includes(side) === true ? "forced" : "replacement", rng, trace));
     const entered = applyEntryAbilities(teams, side, effects);
     effects = entered.effects;
     events.push(...entered.events);
   }
   effects = reconcileExtremeWeather(effects, [activePokemon(teams.player), activePokemon(teams.opponent)]);
+  events.push(...reconcileForms(teams, effects));
   return {
-    state: { ...state, teams, replacementRequired: [], ...(effects === undefined ? {} : { effects }) },
+    state: { ...state, teams, replacementRequired: [], pivotRequired: [],
+      ...(effects === undefined ? {} : { effects }) },
     events,
     trace,
   };

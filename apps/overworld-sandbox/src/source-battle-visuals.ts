@@ -514,7 +514,9 @@ export class SourceBattleVisuals {
     const player = state.teams.player.members[playerIndices[0]!];
     const opponent = state.teams.opponent.members[opponentIndices[0]!];
     if (player === undefined || opponent === undefined) return;
-    const appearanceKey = (battler: BattlerState) => `${battler.species}:${battler.appearance?.form ?? 0}:${Number(battler.appearance?.shiny)}:${battler.appearance?.gender ?? "unknown"}`;
+    const appearanceKey = (battler: BattlerState) => battler.illusion === undefined
+      ? `${battler.species}:${battler.appearance?.form ?? 0}:${Number(battler.appearance?.shiny)}:${battler.appearance?.gender ?? "unknown"}`
+      : `${battler.illusion.species}:${battler.illusion.form}:${Number(battler.illusion.shiny)}:${battler.illusion.gender ?? "unknown"}`;
     const key = `${battleback}:${playerIndices.map((index) => appearanceKey(state.teams.player.members[index]!)).join("|")}:${opponentIndices.map((index) => appearanceKey(state.teams.opponent.members[index]!)).join("|")}`;
     if (this.#rendering !== null) {
       const pending = this.#rendering;
@@ -1089,14 +1091,15 @@ export class SourceBattleVisuals {
       const types = document.getElementById(`source-${side}-types${suffix}`);
       const status = document.getElementById(`source-${side}-status${suffix}`);
       const teamState = document.getElementById(`source-${side}-team`);
-      if (name !== null) name.textContent = battler.name;
+      if (name !== null) name.textContent = battler.illusion?.name ?? battler.name;
       if (gender !== null) {
-        const symbol = sourceBattleGenderSymbol(battler.appearance?.gender);
+        const displayedGender = battler.illusion?.gender ?? battler.appearance?.gender;
+        const symbol = sourceBattleGenderSymbol(displayedGender);
         gender.textContent = symbol;
         gender.hidden = symbol === "";
         if (symbol !== "") {
-          gender.dataset.gender = battler.appearance?.gender === "female" ? "female" : "male";
-          gender.title = battler.appearance?.gender === "female" ? "Femelle" : "Mâle";
+          gender.dataset.gender = displayedGender === "female" ? "female" : "male";
+          gender.title = displayedGender === "female" ? "Femelle" : "Mâle";
           gender.setAttribute("aria-label", gender.title);
         } else {
           delete gender.dataset.gender;
@@ -1111,7 +1114,7 @@ export class SourceBattleVisuals {
         bar.style.width = `${ratio * 100}%`;
         bar.dataset.health = ratio <= 0.2 ? "critical" : ratio <= 0.5 ? "warning" : "healthy";
       }
-      if (types !== null) types.replaceChildren(...battler.types.map((type) => {
+      if (types !== null) types.replaceChildren(...(battler.illusion?.types ?? battler.types).map((type) => {
         const icon = document.createElement("img");
         icon.src = pokemonTypeIconUrl(type);
         icon.alt = type;
@@ -1222,11 +1225,13 @@ export class SourceBattleVisuals {
 
   private async renderBattler(side: BattleSide, battler: BattlerState, back: boolean, manifests: LocalManifests,
     activeSlot = 0, format: "single" | "double" = "single"): Promise<void> {
-    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === battler.species);
+    const species = battler.illusion?.species ?? battler.species;
+    const appearance = battler.illusion ?? battler.appearance;
+    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === species);
     const asset = record === undefined ? null : resolvePokemonAsset(record, { kind: "battler", back,
-      form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
-      female: battler.appearance?.gender === "female" }).asset;
-    if (asset === null) { this.fallback(side, battler.species, activeSlot, format); return; }
+      form: appearance?.form ?? 0, shiny: appearance?.shiny ?? false,
+      female: appearance?.gender === "female" }).asset;
+    if (asset === null) { this.fallback(side, species, activeSlot, format); return; }
     const suffix = activeSlot === 0 ? "" : `-${activeSlot + 1}`;
     const slot = document.getElementById(`source-${side}-sprite${suffix}`);
     if (slot === null) return;
@@ -1273,11 +1278,13 @@ export class SourceBattleVisuals {
       ball.hidden = true;
     }
     if (sendOut !== null) this.playAudio(sendOut, { volume: 0.8, oneShot: true });
-    if (battler.appearance?.shiny === true) await this.playCue("shiny", 0.85);
-    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === battler.species);
+    const species = battler.illusion?.species ?? battler.species;
+    const appearance = battler.illusion ?? battler.appearance;
+    if (appearance?.shiny === true) await this.playCue("shiny", 0.85);
+    const record = manifests.pokemon.records.find((candidate) => candidate.internalName === species);
     const cry = record === undefined ? null : resolvePokemonAsset(record, { kind: "cry",
-      form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
-      female: battler.appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
+      form: appearance?.form ?? 0, shiny: appearance?.shiny ?? false,
+      female: appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
     if (cry !== null) this.playAudio(cry, { volume: 0.8, oneShot: true });
     sprite.classList.remove("joining");
     const reveal = sprite.animate([
@@ -1451,10 +1458,12 @@ export class SourceBattleVisuals {
     playbackRate = 1): Promise<void> {
     if (battler === undefined) return;
     const manifests = await this.manifests().catch(() => null);
-    const record = manifests?.pokemon.records.find((candidate) => candidate.internalName === battler.species);
+    const species = battler.illusion?.species ?? battler.species;
+    const appearance = battler.illusion ?? battler.appearance;
+    const record = manifests?.pokemon.records.find((candidate) => candidate.internalName === species);
     const cry = record === undefined ? null : resolvePokemonAsset(record, { kind: "cry",
-      form: battler.appearance?.form ?? 0, shiny: battler.appearance?.shiny ?? false,
-      female: battler.appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
+      form: appearance?.form ?? 0, shiny: appearance?.shiny ?? false,
+      female: appearance?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
     if (cry !== null) this.playAudio(cry, { volume, playbackRate, oneShot: true });
   }
 

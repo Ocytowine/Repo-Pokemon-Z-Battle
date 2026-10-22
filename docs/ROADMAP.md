@@ -1052,9 +1052,10 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Essentials, Acidarmure, Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii sont
   portés dans le noyau partagé. L'audit ciblé ne conserve que l'animation source
   absente de `LUZDECADENTE`, couverte par le fallback prévu.
-- [ ] porter progressivement les effets des talents source encore inertes ; 223
-  talents sur 255 sont pleinement supportés, `STURDY` reste partiel et 31 sont
-  encore inertes. Le lot élargi du 2026-10-22 ajoute `FLAREBOOST`, `TOXICBOOST`,
+- [x] porter progressivement les effets des talents source encore inertes ; 254
+  talents sur 255 sont pleinement supportés, `STURDY` reste le seul talent
+  partiel et aucun talent n'est encore inerte. Le lot élargi du 2026-10-22 ajoute
+  `FLAREBOOST`, `TOXICBOOST`,
   `SLOWSTART`, `SURGESURFER`, `SILVANO`, `MISTYSURGE`, `PSYCHICSURGE`,
   `TERAVOLT`, `TURBOBLAZE` et `GALEWINGS` dans le noyau solo/Coop commun. Le
   lot suivant ajoute précision et ordre d'action (`VICTORYSTAR`, `WONDERSKIN`,
@@ -1063,9 +1064,25 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   `TOQUEMAGICO`, `RELAMPAGUEO` et `GRANPESADILLA` ; le verrou de capacité de
   `PODERSABIO` reste volontairement séparé. Ce lot est maintenant terminé : il
   couvre seuils de PV, Charge, réactions de contact et dégâts de sommeil dans le
-  noyau commun. Le prochain lot préparé réunit `GOODASGOLD`, `WONDERGUARD`,
-  `LIQUIDOOZE`, `INNARDSOUT` et `MIRRORARMOR` autour des protections, drains et
-  réactions après dégâts.
+  noyau commun. Le lot protections, drains et réflexion (`GOODASGOLD`,
+  `WONDERGUARD`, `LIQUIDOOZE`, `INNARDSOUT`, `MIRRORARMOR`) est lui aussi
+  terminé. Le lot contact, poids et partenaire (`CUTECHARM`, `HEAVYMETAL`,
+  `LIGHTMETAL`, `HEALER`, `POISONPUPPETEER`) est également terminé et ajoute la
+  fonction d'attaque `09B` au même calcul de poids que `09A`. Le lot suivant
+  (`CABEZAHIELO`, `DESPIERTALLAMA`, `MOODY`, `TRUANT`, `ARENATRAP`,
+  `MAGNETPULL`, `SHADOWTAG`) est terminé avec recul, absorption/redirection,
+  cycles de fin de tour et prédicat commun de changement volontaire, validés en
+  simple, double et room restaurée. Le lot suivant groupe `PODERSABIO`,
+  `SUCTIONCUPS`, `PARENTALBOND`, `EMERGENCYEXIT`, `DISGUISE`, `FLOWERGIFT` et
+  `FORECAST` autour du verrou de capacité, des impacts multiples, changements
+  forcés et premières formes de combat autoritaires ; il est terminé avec choix
+  de pivot propriétaire et restauration Coop. Le remplacement d'`EMERGENCYEXIT`
+  reste placé à la frontière de tour : la reprise exacte en milieu de tour est la
+  dette explicitée dans `AI_HANDOFF.md`. Le dernier lot ferme les sept absents :
+  `FORMAILUSORIA`, `HONEYGATHER`, `ILLUSION`, `MULTITYPE`, `NEUTRALIZINGGAS`,
+  `STANCECHANGE` et `ZENMODE`. Les prochains lots basculent sur les fonctions
+  d'attaque, en commençant par sept familles de variations de statistiques à fort
+  impact (`026`, `02C`, `02E`, `032`, `03C`, `03E`, `03F`).
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

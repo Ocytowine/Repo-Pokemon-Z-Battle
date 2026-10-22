@@ -386,7 +386,7 @@ export class SourceBattleController {
         if (this.battle.status === "finished") {
           const encounterCompletion = this.encounterCompletion;
           const settlement = settleSourceEncounter(eventState.party, this.battle,
-            this.callbacks.getResources()?.catalog, this.callbacks.getEvolutionHour?.());
+            this.callbacks.getResources()?.catalog, this.callbacks.getEvolutionHour?.(), this.rng ?? undefined);
           const loss = sourceDefeatLoss({ ...eventState, party: settlement.party });
           this.callbacks.updateEventState({ ...eventState, party: settlement.party, money: eventState.money - loss });
           this.closeFinishedLocalSession(this.battle);
@@ -643,12 +643,12 @@ export class SourceBattleController {
           const levelCap = this.callbacks.getExperienceLevelCap?.() ?? experiencePolicy.levelCap;
           const trainerSettlement = settleSourceTrainerBattle(eventState.party, this.battle,
             this.localParticipation, this.localLedger, resources.catalog,
-            { ...experiencePolicy, levelCap }, this.callbacks.getEvolutionHour?.());
+            { ...experiencePolicy, levelCap }, this.callbacks.getEvolutionHour?.(), this.rng ?? undefined);
           nextState = { ...eventState, party: trainerSettlement.party };
           trainerGains = trainerSettlement.gains;
         } else {
           wildSettlement = settleSourceEncounter(eventState.party, this.battle,
-            resources?.catalog, this.callbacks.getEvolutionHour?.());
+            resources?.catalog, this.callbacks.getEvolutionHour?.(), this.rng ?? undefined);
           nextState = { ...eventState, party: wildSettlement.party };
         }
         let moneyNotice = "";

@@ -1,6 +1,6 @@
 import { ordinaryWeather } from "./ability-weather.js";
 import { resolveStatStageChange } from "./ability-stat-reactions.js";
-import type { BattleEffects, BattleEvent, BattleSide, BattlerState } from "./types.js";
+import type { BattleEffects, BattleEvent, BattleSide, BattleTrace, BattlerState, RandomSource } from "./types.js";
 
 export function markEnteredMidTurn(battler: BattlerState): BattlerState {
   return { ...battler, volatile: {
@@ -40,8 +40,25 @@ export function resolvePoisonHeal(battler: BattlerState, side: BattleSide): {
   ] };
 }
 
+/** End-of-turn partner cure. The source consumes its roll even when no partner can be cured. */
+export function resolveHealer(healer: BattlerState, partner: BattlerState | undefined, side: BattleSide,
+  rng: RandomSource, trace: BattleTrace[]): {
+    readonly partner: BattlerState | undefined; readonly events: readonly BattleEvent[];
+  } {
+  if (healer.hp <= 0 || healer.ability !== "HEALER") return { partner, events: [] };
+  const value = rng.nextInt(10);
+  trace.push({ type: "rng", purpose: "ability", maxExclusive: 10, value });
+  if (value >= 3 || partner === undefined || partner.majorStatus === null) return { partner, events: [] };
+  const status = partner.majorStatus.kind;
+  return { partner: { ...partner, majorStatus: null }, events: [
+    { type: "abilityActivated", side, ability: "HEALER", effect: "cure-status" },
+    { type: "statusCured", side, status },
+  ] };
+}
+
 export function resolveLateEndOfTurnAbilities(battler: BattlerState, side: BattleSide,
-  opponents: readonly BattlerState[]): { readonly battler: BattlerState; readonly events: readonly BattleEvent[] } {
+  opponents: readonly BattlerState[], rng: RandomSource = { nextInt: () => 0 }, trace: BattleTrace[] = []): {
+    readonly battler: BattlerState; readonly events: readonly BattleEvent[] } {
   if (battler.hp <= 0) return { battler, events: [] };
   const events: BattleEvent[] = [];
   let next = battler;
@@ -52,6 +69,37 @@ export function resolveLateEndOfTurnAbilities(battler: BattlerState, side: Battl
     events.push({ type: "abilityActivated", side, ability: "SPEEDBOOST", effect: "raise-stat" },
         { type: "statStageChanged", source: side, target: side, stat: "speed",
           delta: resolved.delta, stage: resolved.stage });
+    }
+  }
+  if (next.ability === "MOODY" && next.volatile?.enteredMidTurn !== true) {
+    const stats = ["attack", "defense", "speed", "specialAttack", "specialDefense", "accuracy", "evasion"] as const;
+    const raisable = stats.filter((stat) => next.stages[stat] < 6);
+    let raised: typeof stats[number] | null = null;
+    if (raisable.length > 0) {
+      const value = rng.nextInt(raisable.length);
+      trace.push({ type: "rng", purpose: "ability", maxExclusive: raisable.length, value });
+      raised = raisable[value]!;
+      const resolved = resolveStatStageChange(next, raised, 2);
+      if (resolved !== null) {
+        next = resolved.battler;
+        events.push({ type: "statStageChanged", source: side, target: side, stat: raised,
+          delta: resolved.delta, stage: resolved.stage });
+      }
+    }
+    const lowerable = stats.filter((stat) => stat !== raised && next.stages[stat] > -6);
+    if (lowerable.length > 0) {
+      const value = rng.nextInt(lowerable.length);
+      trace.push({ type: "rng", purpose: "ability", maxExclusive: lowerable.length, value });
+      const lowered = lowerable[value]!;
+      const resolved = resolveStatStageChange(next, lowered, -1);
+      if (resolved !== null) {
+        next = resolved.battler;
+        events.push({ type: "statStageChanged", source: side, target: side, stat: lowered,
+          delta: resolved.delta, stage: resolved.stage });
+      }
+    }
+    if (events.some((event) => event.type === "statStageChanged")) {
+      events.unshift({ type: "abilityActivated", side, ability: "MOODY", effect: "randomize-stats" });
     }
   }
   if (next.majorStatus?.kind === "sleep" && next.ability !== "MAGICGUARD") {

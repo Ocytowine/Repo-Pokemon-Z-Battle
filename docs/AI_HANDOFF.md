@@ -5598,3 +5598,310 @@ sans réfléchir les changements personnels. Ce lot devra centraliser le blocage
 avant dégâts, la destination des drains et la réflexion du changeur de crans,
 puis couvrir capacités de zone, impacts multiples, limites de crans, Brise Moule,
 simple, double, hôte, invité et reconnexion.
+
+## Protections, drains et réflexion de crans - 2026-10-22
+
+Le noyau partagé porte maintenant `GOODASGOLD`, `WONDERGUARD`, `LIQUIDOOZE`,
+`INNARDSOUT` et `MIRRORARMOR`. Good as Gold bloque toute capacité de statut dont
+le porteur est la cible réelle, y compris sa propre capacité personnelle comme
+dans le Ruby, sauf si le lanceur possède Brise Moule ou l'un de ses alias.
+Wonder Guard consulte le multiplicateur de type effectif partagé après précision
+et absorptions : seule une attaque strictement super efficace atteint son porteur,
+avec le même contournement Brise Moule. Une capacité de zone est résolue par cible
+et continue donc contre les autres emplacements.
+
+Liquid Ooze remplace le soin de la famille drainante `0DD` actuellement supportée
+par des dégâts égaux à la moitié arrondie des PV réellement retirés. Il n'est pas
+contourné par Brise Moule. Innards Out utilise également les dégâts effectivement
+appliqués, cumulés sur tous les impacts, et les renvoie lorsque le dernier impact
+met le porteur K.O. ; le double K.O. et son résultat nul restent pris en charge.
+Enfin, Mirror Armor renvoie à l'auteur toute baisse adverse de cran, y compris les
+baisses d'entrée telles qu'Intimidate. Les baisses personnelles restent locales,
+Brise Moule traverse la réflexion, et le renvoi repasse par les contrats communs
+de Simple, Contestation, protections de crans et réactions Acharné/Compétitif.
+
+Autorité : blocages, efficacité, drain, dégâts de K.O. et crans sont décidés par
+le même résolveur en solo et par la room autoritaire en Coop. Domaine : état de
+combat tactique partagé. Persistance : aucun nouvel état durable ; talents, PV,
+crans, équipes et volatiles existants suffisent au snapshot et à la reconnexion.
+Intentions : capacité, attente ou remplacement seulement ; aucun résultat calculé
+par le client. Audience : participants et observateurs reçoivent les activations,
+échecs, dégâts, K.O. et changements de crans. Le test de room couvre Good as Gold
+côté hôte, Mirror Armor côté invité, les trois autres talents en réserve, puis
+l'export et la restauration autoritaires.
+
+Après `prepare:local`, l'audit passe de 373 à 369 problèmes globaux et les talents
+candidats manquants de 24 à 20 ; un talent du lot n'était pas requis par le
+périmètre de dépendances courant. Le registre complet compte 228 talents
+supportés, 1 partiel (`STURDY`) et 26 absents sur 255. Les 104 fonctions
+supportées sur 353, 298 mécaniques d'attaque manquantes et 51 animations
+manquantes restent inchangées. Les tests couvrent cible adverse et personnelle,
+Brise Moule, efficacité neutre ou super efficace, zone par cible, drain, impacts
+multiples, double K.O., réflexion de capacité et d'entrée, hôte, invité et
+reconnexion.
+
+Prochain lot préparé : réunir `CUTECHARM`, `HEAVYMETAL`, `LIGHTMETAL`, `HEALER`
+et `POISONPUPPETEER`. Cute Charm tente à 30 % d'infliger l'attirance à l'auteur
+d'un contact si les genres et les protections l'autorisent. Heavy Metal et Light
+Metal doublent ou divisent par deux le poids effectif du porteur ; l'effet doit
+être centralisé pour les fonctions fondées sur le poids et rester contournable
+par Brise Moule lorsque le porteur est la cible. Healer tente à 30 % de soigner
+le statut majeur du partenaire actif en double uniquement. Poison Puppeteer
+ajoute la confusion lorsqu'un porteur empoisonne directement une autre cible. Le
+lot réutilisera les réactions de contact, le volatile d'attirance, les statuts et
+la boucle de fin de tour positionnée ; il couvrira RNG autoritaire, genres,
+immunités, cible/partenaire par emplacement, simple, double, hôte, invité et
+restauration après reconnexion.
+
+## Contact, poids effectif et états liés - 2026-10-22
+
+Le noyau partagé porte maintenant `CUTECHARM`, `HEAVYMETAL`, `LIGHTMETAL`,
+`HEALER` et `POISONPUPPETEER`. Cute Charm effectue le tirage source de 30 % après
+un contact, puis applique l'attirance seulement si les deux combattants sont
+conscients, de genres binaires opposés, si l'auteur n'est pas déjà attiré et si
+Benêt ne le protège pas. Le volatile d'attirance et son contrôle d'action
+existaient déjà et sont donc réutilisés sans second état parallèle.
+
+Le poids effectif est désormais un calcul commun. Heavy Metal le double, Light
+Metal le divise par deux et Brise Moule ignore le talent du défenseur lorsque son
+poids est interrogé. `09A` (Balayette/Nœud Herbe) emploie ce calcul au lieu du
+poids brut. Le même lot porte `09B` (Tacle Lourd/Heat Crash) : son rapport entre
+poids effectifs choisit les puissances source 40/60/80/100/120. Le poids propre
+du lanceur conserve naturellement son talent offensif, tandis que Brise Moule ne
+neutralise que celui de la cible.
+
+Healer effectue en fin de tour son tirage autoritaire de 30 % et soigne le statut
+majeur de l'autre emplacement actif de son camp ; il ne se soigne pas lui-même et
+n'a aucune cible en simple. Poison Puppeteer réagit uniquement après qu'un poison
+a réellement été appliqué par son porteur à une autre cible, puis ajoute la
+confusion avec sa durée tirée par le même RNG. Un échec d'empoisonnement ou Tempo
+Perso empêche cette confusion.
+
+Autorité : contact, poids, puissance, tirages, statuts et confusion sont résolus
+par le noyau local en solo et par la room autoritaire en Coop. Domaine : état
+tactique partagé. Persistance : aucun nouvel état durable ; talents, statuts,
+volatiles, poids public et état du RNG font déjà partie des projections ou du
+snapshot. Intentions : capacité, attente ou remplacement uniquement. Audience :
+participants et observateurs reçoivent activations, statut, confusion et soin ;
+en double, l'enveloppe positionnée désigne précisément le partenaire soigné. Le
+test de room couvre Poison Puppeteer côté hôte, Cute Charm côté invité, les trois
+autres talents en réserve, puis export et reconnexion.
+
+Après `prepare:local`, l'audit passe de 369 à 363 problèmes globaux. Les talents
+manquants dans le périmètre courant passent de 20 à 16 ; un talent du lot n'y
+était pas requis. Le registre complet compte 233 talents supportés, 1 partiel
+(`STURDY`) et 21 absents sur 255. L'ajout de `09B` porte les fonctions supportées
+de 104 à 105 sur 353 et réduit les alertes de mécanique d'attaque de 298 à 296 ;
+les 51 animations manquantes restent inchangées. Ce résultat illustre le lien du
+pipeline : quatre alertes disparaissent grâce aux talents requis et deux grâce à
+la fonction d'attaque rendue possible par le même noyau de poids.
+
+Prochain lot préparé : grouper `CABEZAHIELO`, `DESPIERTALLAMA`, `MOODY`, `TRUANT`,
+`ARENATRAP`, `MAGNETPULL` et `SHADOWTAG`. Cabeza Hielo possède déjà son exemption
+de recul dans le résolveur et demande surtout sa formalisation et ses preuves.
+Despiertallama absorbe le type Feu pour augmenter l'Attaque Spéciale ; sa source Z
+contient aussi une redirection double atypique déclenchée par les capacités Eau,
+qui devra être conservée explicitement. Moody choisit en fin de tour une statistique
+éligible à +2 puis une autre à -1. Truant alterne tour d'action et tour d'absence,
+avec remise à zéro au retrait et au réveil. Enfin, Arena Trap, Magnet Pull et
+Shadow Tag partageront un prédicat de changement volontaire : cible au sol, type
+Acier ou adversaire ne possédant pas lui-même Shadow Tag. Le lot couvrira ordre du
+RNG, simple, double positionné, switch, retrait/rentrée, hôte, invité et
+restauration après reconnexion.
+
+## Recul, absorption, cycles et pièges de changement - 2026-10-22
+
+Le noyau partagé porte maintenant `CABEZAHIELO`, `DESPIERTALLAMA`, `MOODY`,
+`TRUANT`, `ARENATRAP`, `MAGNETPULL` et `SHADOWTAG`. Cabeza Hielo bloque le recul
+de toute la famille générique `0FA` à `0FE`, et pas seulement le chemin spécial
+déjà présent. Despierta Llama absorbe les capacités Feu et augmente l'Attaque
+Spéciale d'un cran ; Brise Moule traverse cette immunité. En double, la bizarrerie
+de la source Z est conservée : Despierta Llama attire les capacités Eau avant
+Lavabo, bien qu'il ne les absorbe pas. Le type effectif de la capacité est utilisé
+pour la redirection.
+
+Moody tire en fin de tour une statistique augmentable à +2, puis une autre
+statistique réductible à -1. Les deux listes respectent les bornes, la statistique
+augmentée est exclue du second tirage et chaque choix est inscrit dans la trace
+RNG autoritaire. Truant emploie un volatile partagé `truantLoafing` : il alterne
+action et paresse, ne démarre pas son cycle lors d'une entrée en milieu de tour,
+se réinitialise au réveil et disparaît au retrait avec les autres volatiles.
+
+Les trois pièges partagent `switchTrapAbility`. Magnet Pull retient les types
+Acier, Arena Trap les cibles au sol et Shadow Tag tout adversaire qui ne possède
+pas lui-même Shadow Tag. Le type Spectre et `SHEDSHELL` contournent les pièges.
+Seuls les changements volontaires passent par ce prédicat : les remplacements
+après K.O. restent toujours possibles. Le contrôle est exécuté dans le moteur
+simple/double puis dès la réception de l'intention par chaque chemin de room, afin
+qu'une action interdite ne soit jamais mise en file ni ne consomme du RNG.
+
+Autorité : dégâts, redirection, tirages de Moody, cycle de Truant et droit de
+changer sont calculés par le noyau local en solo et par la room autoritaire en
+Coop. Domaine : état tactique partagé. Persistance : seul `truantLoafing` ajoute
+un état de combat ; il appartient au snapshot, est restauré à la reconnexion et
+au redémarrage de room, puis effacé au retrait. Intentions : capacité, attente ou
+indice de remplaçant uniquement. Audience : participants et observateurs reçoivent
+activations, crans, action sautée et état résolu ; le refus de changement reste
+personnel au demandeur avant réplication.
+
+Après `prepare:local`, l'audit passe de 363 à 358 problèmes globaux et les talents
+manquants dans le périmètre courant de 16 à 11 ; deux talents du lot n'étaient pas
+requis par ce périmètre. Le registre complet compte 240 talents supportés, 1
+partiel (`STURDY`) et 14 absents sur 255. Les 105 fonctions supportées sur 353,
+296 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent recul, Brise Moule, absorption et redirection,
+bornes/RNG de Moody, alternance/retrait de Truant, exemptions des trois pièges,
+simple, double, hôte, invité, refus autoritaire et restauration de room.
+
+Prochain lot préparé : `PODERSABIO`, `SUCTIONCUPS`, `PARENTALBOND`,
+`EMERGENCYEXIT`, `DISGUISE`, `FLOWERGIFT` et `FORECAST`. Poder Sabio combinera
+le multiplicateur spécial ×1,5 avec le verrou de capacité de la source. Suction
+Cups centralisera l'immunité aux changements forcés. Parental Bond étendra le
+contrat multi-impact à deux frappes, avec seconde frappe réduite et exclusions
+source. Emergency Exit conservera la variante Z : une capacité Insecte du
+porteur prépare son propre retrait. Disguise demandera le premier impact annulé,
+le passage de forme et la perte de 1/8 des PV ; Flower Gift partagera sous soleil
+les multiplicateurs physiques offensif et défensif au partenaire ; Forecast
+ouvrira le contrat générique de forme/type piloté par le climat. Ce lot devra
+expliciter formes publiques, changement forcé, sélection du remplaçant, double,
+room et reconnexion avant de déclarer ces talents supportés.
+
+## Verrou, impacts, retrait et formes de talent - 2026-10-22
+
+Le noyau partagé porte maintenant `PODERSABIO`, `SUCTIONCUPS`, `PARENTALBOND`,
+`EMERGENCYEXIT`, `DISGUISE`, `FLOWERGIFT` et `FORECAST`. Poder Sabio multiplie
+par 1,5 l'Attaque Spéciale effective des capacités spéciales et mémorise la
+première capacité employée dans `choiceLockedMove`; ce verrou volatil est repris
+par le snapshot puis disparaît au retrait. Suction Cups expose le prédicat commun
+qui bloque un changement imposé par l'adversaire, sauf contournement Brise Moule.
+Les fonctions source `0EB`/`0EC` restent auditées séparément tant que leurs
+capacités de changement forcé ne sont pas portées.
+
+Parental Bond produit deux calculs d'impact indépendants pour une capacité
+offensive à cible unique qui n'est ni multi-impact, ni en deux tours, ni dans les
+quatre exceptions source. La seconde frappe est réduite de moitié et les effets
+secondaires sont tirés pour chaque impact réellement infligé. Le comportement Z
+particulier est conservé : si la première frappe est annulée par Disguise, la
+séquence s'arrête. Disguise annule ainsi le premier impact offensif reçu par un
+Mimikyu en forme 0, publie sa forme 1 et lui retire `floor(PV max/8)`; Brise Moule
+le traverse et le retrait restaure la forme 0.
+
+Flower Gift augmente sous soleil l'Attaque des capacités physiques du porteur ou
+de son partenaire actif et la Défense Spéciale du défenseur ou de son partenaire.
+Le bonus défensif est traversé par Brise Moule. Aucun changement visuel de Cherrim
+n'a été inventé : le script de combat source ne déclenche ici que les
+multiplicateurs. Forecast utilise le contrat générique `formChanged` pour rendre
+publiques les formes/types de Castform : Feu au soleil, Eau sous pluie, Glace sous
+grêle, Roche sous tempête de sable, Normal sinon. Air Lock et Ciel Gris neutralisent
+ce changement sans supprimer le climat sous-jacent; retrait et rentrée restaurent
+puis réconcilient la forme et les types.
+
+Emergency Exit conserve la variante propre à Pokemon Z : après avoir infligé des
+dégâts avec une capacité Insecte, le porteur vivant demande son propre retrait si
+une réserve existe. L'intention de remplacement n'est jamais choisie côté client
+pour un autre propriétaire : `pivotRequired` en simple et
+`slotPivotReplacements` en double identifient le camp ou l'emplacement, puis le
+protocole autoritaire existant reçoit l'indice choisi. Cet état est répliqué et
+restauré à la reconnexion. Dette explicite : le résolveur atomique termine le tour
+avant cette sélection, alors que le Ruby suspend la suite des actions juste après
+l'attaque à la manière de Demi-Tour. Les marqueurs et l'audience sont prêts; une
+future reprise intra-tour devra réutiliser ce contrat plutôt que choisir
+automatiquement une réserve privée.
+
+Autorité : dégâts, formes, climat, verrou et demandes de retrait sont décidés par
+le même noyau en solo et par la room en Coop. Domaine : état tactique partagé,
+avec choix de réserve personnel à son propriétaire. Persistance : formes, types,
+verrou et pivot en attente vivent dans le snapshot de combat; rien ne persiste
+après sa clôture. Intentions : capacité, attente, changement ou indice de
+remplaçant. Audience : les participants et observateurs reçoivent impacts,
+activations, `formChanged`, demande puis changement; seuls les contrôleurs
+autorisés peuvent répondre au pivot. Les tests couvrent simple, double positionné,
+hôte, invité, reconnexion, retrait/rentrée, météo extrême ou neutralisée, exclusions
+multi-impact, Déguisement et Brise Moule.
+
+Après `prepare:local`, l'audit passe de 358 à 353 problèmes globaux et les talents
+manquants dans le périmètre courant de 11 à 6. Le registre complet compte 247
+talents supportés, 1 partiel (`STURDY`) et 7 absents sur 255. Les 105 fonctions
+supportées sur 353, 296 mécaniques d'attaque manquantes et 51 animations manquantes
+restent inchangées.
+
+Prochain lot préparé : fermer les sept talents encore absents du registre avec
+`FORMAILUSORIA`, `HONEYGATHER`, `ILLUSION`, `MULTITYPE`, `NEUTRALIZINGGAS`,
+`STANCECHANGE` et `ZENMODE`. Il faudra d'abord séparer les formes pilotées par un
+seuil de PV ou une catégorie de capacité des apparences trompeuses, puis définir
+la suppression globale et réversible de Neutralizing Gas. Multitype devra dériver
+forme et type du support d'objet source sans liste propre aux attaques. Honey
+Gather relève du règlement persistant de fin de combat et doit rester personnel
+au propriétaire. Le lot devra couvrir entrée/retrait, K.O., changement de talent,
+objets, formes publiques, double, hôte, invité, règlement et reconnexion.
+
+## Derniers talents : formes, illusion, suppression globale et règlement - 2026-10-22
+
+Le registre ne contient plus aucun talent inerte. Le noyau partagé porte maintenant
+`FORMAILUSORIA`, `HONEYGATHER`, `ILLUSION`, `MULTITYPE`, `NEUTRALIZINGGAS`,
+`STANCECHANGE` et `ZENMODE`. Forme Illusoire place Greninja en forme 1 au-dessus
+des deux tiers de ses PV, sauf formes Méga 2 à 4, et applique exactement le facteur
+d'esquive source de 1,7 au-dessus de 75 %. Zen Mode place Darmanitan à mi-PV ou
+moins dans sa forme 1 Feu/Glace décrite par les données locales. Le script local
+ne contenait pas de hook de seuil pour ce dernier talent : le seuil canonique est
+donc explicite dans le noyau, tandis que types et caractéristiques restent ceux de
+la forme réellement fournie par Pokemon Z.
+
+Multitype dérive la forme et le type d'Arceus des seize Plaques source, les rend
+inamovibles et applique leur bonus de type de 20 %. Le talent brut conserve cette
+protection et cette forme sous Gaz Réactif, conformément aux contrôles directs de
+la source. Stance Change transforme Aegislash avant l'action : une capacité
+offensive passe en forme Assaut et échange les couples Attaque/Défense et Attaque
+Spéciale/Défense Spéciale ; Bouclier Royal restaure la forme Parade. Le retrait
+restaure forme, types et caractéristiques d'origine.
+
+Illusion conserve toujours l'identité mécanique de Zoroark. Elle publie seulement
+l'espèce, le nom, les types affichés, la forme, le chromatisme et le genre du
+dernier Pokémon apte de l'équipe ; sprite, cri et HUD emploient cette identité
+publique, y compris pour un joueur distant. Les premiers dégâts directs la lèvent.
+Une Illusion qui entre alors que Gaz Réactif est déjà actif n'est pas créée ; une
+illusion existante reste masquée tant que son talent est neutralisé, comme dans le
+prédicat `hasWorkingAbility` source.
+
+Gaz Réactif neutralise de façon globale et réversible les autres talents actifs en
+simple comme en double, sans effacer leur identité persistante. L'entrée, les
+formes, la précision, les dégâts, les objets et les réactions de fin de tour passent
+par le même état effectif. Lorsque le dernier porteur conscient tombe K.O., les
+talents reviennent immédiatement pour les réactions post-impact et les actions
+suivantes ; météo et talents de partenaire sont eux aussi recalculés. Honey Gather
+est résolu seulement après une victoire : chaque membre non-Œuf, même K.O., sans
+objet et porteur du talent reçoit Miel selon `5 + floor((niveau-1)/10) * 5` pour
+cent. Le résultat est stocké comme objet tenu persistant.
+
+Autorité : formes, suppression, dégâts et tirages sont calculés par le noyau local
+en solo et par la room autoritaire en Coop. Le tirage Honey Gather n'est jamais
+refait par un client : la room publie seulement les identifiants des Pokémon ayant
+réussi, puis le règlement personnel les applique de façon idempotente. Domaine :
+formes et Illusion sont tactiques et publiques ; Honey Gather est personnel et
+persistant. Persistance : formes, statistiques restaurables, Illusion et talents
+effectifs vivent dans le snapshot de combat ; les identifiants Honey Gather vivent
+dans le règlement, et le Miel dans l'équipe sauvegardée. Intentions : aucune
+nouvelle intention client. Audience : participants et observateurs voient formes,
+apparence trompeuse et activations ; seul le propriétaire reçoit la mutation de son
+équipe après victoire. Les chemins solo, hôte, invité, rendu distant et restauration
+de room utilisent les mêmes contrats.
+
+Après `prepare:local`, l'audit passe de 353 à 348 problèmes globaux. Il ne reste
+qu'une dépendance de talent, `STURDY`, déjà classée partielle ; les sept absences
+du registre sont closes. Le registre complet compte 254 talents supportés, 1
+partiel et 0 absent sur 255. Les 105 fonctions de capacités supportées sur 353,
+296 mécaniques de capacité manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent seuils et restauration de formes, Plaques, rendu et
+rupture d'Illusion, suppression/réactivation de Gaz Réactif, simple, double,
+autorité hôte/invité, règlement Honey Gather idempotent et reconnexion de room.
+
+Prochain lot préparé : sept fonctions d'attaque très diffusées qui réutilisent
+le noyau générique de crans. `026` (Danse Draco) augmente Attaque et Vitesse de 1,
+`02C` (Plénitude) Attaque Spéciale et Défense Spéciale de 1, `02E` (Danse-Lames)
+augmente l'Attaque de 2 et `032` (Machination) l'Attaque Spéciale de 2. Les fonctions
+offensives `03C` (Close Combat et variantes) baissent Défense et Défense Spéciale
+de 1 après des dégâts, `03E` baisse la Vitesse de 1 et `03F` l'Attaque Spéciale de
+2. Elles représentent plus de mille dépendances dans le rapport courant. Le lot
+devra respecter les bornes, Simple, Contestation, les échecs partiels des boosts
+combinés, l'application seulement après un impact réel, les événements positionnés
+en double et la restauration autoritaire après reconnexion.
