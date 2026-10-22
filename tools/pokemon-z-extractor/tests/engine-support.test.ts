@@ -87,6 +87,180 @@ describe("engine support report", () => {
       ({ key, extracted: true, engineSupport: "supported" })));
   });
 
+  it("advertises the offensive and defensive modifier follow-up family as supported", () => {
+    const names = ["ANALYTIC", "CORTANTE", "FURCOAT", "HUSTLE", "WATERBUBBLE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the reactive after-hit ability family as supported", () => {
+    const names = ["BRUTALIDAD", "COLORCHANGE", "JUSTIFIED", "MOXIE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the reactive after-hit follow-up family as supported", () => {
+    const names = ["CUERPOHORNEADO", "GRIMNEIGH", "MUMMY", "TERMOCONVERSION"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared explosion and Aftermath family as supported", () => {
+    const names = ["AFTERMATH", "DAMP"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: [{ functionCode: "0E0" }] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+    expect(report.categories.moveFunctionCodes).toEqual([
+      { key: "0E0", extracted: true, engineSupport: "supported" },
+    ]);
+  });
+
+  it("advertises the threshold and defensive modifier follow-up family as supported", () => {
+    const names = ["DEFEATIST", "FLUFFY", "ICESCALES", "MARVELSCALE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared wind talent and Tailwind family as supported", () => {
+    const names = ["WINDPOWER", "WINDRIDER"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: [{ functionCode: "05B" }] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+    expect(report.categories.moveFunctionCodes).toEqual([
+      { key: "05B", extracted: true, engineSupport: "supported" },
+    ]);
+  });
+
+  it("advertises the shared active-partner talent family as supported", () => {
+    const names = ["FRIENDGUARD", "MINUS", "PLUS", "TELEPATHY"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared calculation-modifier talent family as supported", () => {
+    const names = ["CAMORRISTA", "MERCILESS", "REALEZA", "TANGLEDFEET"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared move-classification talent family as supported", () => {
+    const names = ["BULLETPROOF", "PENETRANTE", "PUNKROCK", "VOZVALQUIRIA"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared stat, hazard, contact and status family as supported", () => {
+    const names = ["CAPATOXICA", "CONTRARY", "OLORPORCINO", "PURIFYINGSALT"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.slice().sort().map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the shared type-interaction talent family as supported", () => {
+    const names = ["CANASTO", "EARTHEATER", "NORMALIZE", "STEELWORKER"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the global aura talent family as supported", () => {
+    const names = ["AURABREAK", "AURADORADA", "DARKAURA", "FAIRYAURA"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the Pokemon Z Normal-conversion talent family as supported", () => {
+    const names = ["COLEOPTERO", "PIELELECTRICA", "PIELMALDITA", "TINTINEO"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the pure offensive type-boost talent family as supported", () => {
+    const names = ["ALBINISMO", "DRAGONSMAW", "INFLAMABLE", "PEDANTE", "TRANSPORTARROCA"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the enlarged easy talent batch as supported", () => {
+    const names = ["FLAREBOOST", "GALEWINGS", "MISTYSURGE", "PSYCHICSURGE", "SILVANO", "SLOWSTART",
+      "SURGESURFER", "TERAVOLT", "TOXICBOOST", "TURBOBLAZE"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    });
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
   it("advertises the shared contact-reaction talent family as supported", () => {
     const names = ["EFFECTSPORE", "FLAMEBODY", "GOOEY", "IRONBARBS", "POISONPOINT", "POISONTOUCH", "ROUGHSKIN"];
     const report = createEngineSupportReport({

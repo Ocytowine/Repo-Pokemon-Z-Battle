@@ -50,6 +50,106 @@ function reactiveBattle(): TeamBattleState {
     opponent: [{ ...battler("opponent"), ability: "STAMINA" }] });
 }
 
+function calculationAbilityBattle(): TeamBattleState {
+  const fire = { ...MINIMAL_MOVE_CATALOG.WATERGUN, internalName: "EMBER", name: "Flammèche",
+    type: "FIRE", accuracy: 0 };
+  const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "REALEZA",
+      majorStatus: { kind: "poison", toxicCounter: null }, moves: [{ move: fire, pp: fire.pp }] }],
+    opponent: [{ ...battler("opponent"), ability: "MERCILESS",
+      moves: [{ move: contact, pp: contact.pp }] }],
+  });
+}
+
+function moveClassificationAbilityBattle(): TeamBattleState {
+  const voice = { ...MINIMAL_MOVE_CATALOG.SWIFT, internalName: "HYPERVOICE", name: "Mégaphone",
+    type: "NORMAL", accuracy: 0, flags: "k" };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "VOZVALQUIRIA",
+      moves: [{ move: voice, pp: voice.pp }] }],
+    opponent: [{ ...battler("opponent"), ability: "PUNKROCK", types: ["DRAGON"] }],
+  });
+}
+
+function statStatusReactionAbilityBattle(): TeamBattleState {
+  const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "OLORPORCINO",
+      moves: [{ move: contact, pp: contact.pp }] },
+    { ...battler("player"), id: "host-contrary", ability: "CONTRARY",
+      stages: { ...battler("player").stages, attack: -1 } }],
+    opponent: [{ ...battler("opponent"), ability: "CAPATOXICA",
+      moves: [{ move: contact, pp: contact.pp }] },
+    { ...battler("opponent"), id: "guest-purifying", ability: "PURIFYINGSALT", types: ["GHOST"],
+      majorStatus: { kind: "burn" } }],
+  });
+}
+
+function typeInteractionAbilityBattle(): TeamBattleState {
+  const ground = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "EARTHQUAKE", name: "Séisme",
+    type: "GROUND", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "NORMALIZE",
+      moves: [{ move: ground, pp: ground.pp }] },
+    { ...battler("player"), id: "host-steelworker", ability: "STEELWORKER", types: ["STEEL"] }],
+    opponent: [{ ...battler("opponent"), ability: "EARTHEATER" },
+    { ...battler("opponent"), id: "guest-canasto", ability: "CANASTO", types: ["ROCK"] }],
+  });
+}
+
+function globalAuraAbilityBattle(): TeamBattleState {
+  const dark = { ...MINIMAL_MOVE_CATALOG.SWIFT, internalName: "DARKPULSE", name: "Vibrobscur",
+    type: "DARK", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "DARKAURA", moves: [{ move: dark, pp: dark.pp }] },
+    { ...battler("player"), id: "host-fairy-aura", ability: "FAIRYAURA", types: ["FAIRY"] }],
+    opponent: [{ ...battler("opponent"), ability: "AURABREAK" },
+    { ...battler("opponent"), id: "guest-golden-aura", ability: "AURADORADA", types: ["ELECTRIC"] }],
+  });
+}
+
+function pokemonZConversionAbilityBattle(): TeamBattleState {
+  const normal = { ...MINIMAL_MOVE_CATALOG.SWIFT, internalName: "HYPERVOICE", name: "Mégaphone",
+    type: "NORMAL", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "TINTINEO", moves: [{ move: normal, pp: normal.pp }] },
+    { ...battler("player"), id: "host-coleoptero", ability: "COLEOPTERO", types: ["BUG"] }],
+    opponent: [{ ...battler("opponent"), ability: "PIELMALDITA", types: ["POISON"] },
+    { ...battler("opponent"), id: "guest-electric-skin", ability: "PIELELECTRICA", types: ["ELECTRIC"] }],
+  });
+}
+
+function pureTypeBoostAbilityBattle(): TeamBattleState {
+  const ice = { ...MINIMAL_MOVE_CATALOG.ICEBEAM, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "ALBINISMO", types: ["ICE"],
+      moves: [{ move: ice, pp: ice.pp }] },
+    { ...battler("player"), id: "host-inflammable", ability: "INFLAMABLE", types: ["FIRE"] },
+    { ...battler("player"), id: "host-rock-carrier", ability: "TRANSPORTARROCA", types: ["ROCK"] }],
+    opponent: [{ ...battler("opponent"), ability: "PEDANTE", types: ["PSYCHIC"] },
+    { ...battler("opponent"), id: "guest-dragons-maw", ability: "DRAGONSMAW", types: ["DRAGON"] }],
+  });
+}
+
+function easyAbilityBatchBattle(): TeamBattleState {
+  const special = { ...MINIMAL_MOVE_CATALOG.WATERGUN, internalName: "SWIFT", name: "Météores",
+    type: "NORMAL", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "FLAREBOOST", majorStatus: { kind: "burn" },
+      moves: [{ move: special, pp: special.pp }] },
+    { ...battler("player"), id: "host-toxic-boost", ability: "TOXICBOOST" },
+    { ...battler("player"), id: "host-slow-start", ability: "SLOWSTART" },
+    { ...battler("player"), id: "host-surge-surfer", ability: "SURGESURFER" },
+    { ...battler("player"), id: "host-silvano", ability: "SILVANO" },
+    { ...battler("player"), id: "host-gale-wings", ability: "GALEWINGS" }],
+    opponent: [{ ...battler("opponent"), ability: "MISTYSURGE" },
+    { ...battler("opponent"), id: "guest-psychic-surge", ability: "PSYCHICSURGE" },
+    { ...battler("opponent"), id: "guest-teravolt", ability: "TERAVOLT" },
+    { ...battler("opponent"), id: "guest-turbo-blaze", ability: "TURBOBLAZE" }],
+  });
+}
+
 function weatherBattle(): TeamBattleState {
   return createTeamBattleState({
     player: [{ ...battler("player"), ability: "SOLARPOWER" }],
@@ -89,6 +189,61 @@ function magicBounceBattle(): TeamBattleState {
     functionCode: "0BA" as const, power: 0, category: "Status" as const, accuracy: 0, flags: "bc" };
   return createTeamBattleState({ player: [{ ...battler("player"), moves: [{ move: taunt, pp: taunt.pp }] }],
     opponent: [{ ...battler("opponent"), ability: "MAGICBOUNCE" }] });
+}
+
+function waterBubbleBattle(): TeamBattleState {
+  const water = { ...MINIMAL_MOVE_CATALOG.WATERGUN, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "WATERBUBBLE", types: ["WATER"],
+      moves: [{ move: water, pp: water.pp }] }],
+    opponent: [battler("opponent")],
+  });
+}
+
+function iceScalesBattle(): TeamBattleState {
+  const water = { ...MINIMAL_MOVE_CATALOG.WATERGUN, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), moves: [{ move: water, pp: water.pp }] }],
+    opponent: [{ ...battler("opponent"), ability: "ICESCALES" }],
+  });
+}
+
+function windBattle(): TeamBattleState {
+  const move = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "TAILWIND", name: "Vent Arrière",
+    functionCode: "05B" as const, type: "FLYING", accuracy: 0, targetCode: "40" };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "WINDPOWER", moves: [{ move, pp: move.pp }] }],
+    opponent: [battler("opponent")],
+  });
+}
+
+function colorChangeBattle(): TeamBattleState {
+  const water = { ...MINIMAL_MOVE_CATALOG.WATERGUN, accuracy: 0 };
+  const opponent = battler("opponent");
+  return createTeamBattleState({
+    player: [{ ...battler("player"), moves: [{ move: water, pp: water.pp }] }],
+    opponent: [{ ...opponent, ability: "COLORCHANGE", types: ["FIRE", "FLYING"], hp: 200,
+      stats: { ...opponent.stats, maxHp: 200 } }],
+  });
+}
+
+function mummyBattle(): TeamBattleState {
+  const contact = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0, flags: "a" };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "HUSTLE", moves: [{ move: contact, pp: contact.pp }] }],
+    opponent: [{ ...battler("opponent"), ability: "MUMMY" }],
+  });
+}
+
+function explosionBattle(): TeamBattleState {
+  const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "EXPLOSION", name: "Explosion",
+    functionCode: "0E0" as const, power: 250, accuracy: 0, flags: "bef" };
+  const opponent = battler("opponent");
+  return createTeamBattleState({
+    player: [{ ...battler("player"), moves: [{ move, pp: 5 }] },
+      { ...battler("player"), id: "player-reserve" }],
+    opponent: [{ ...opponent, hp: 500, stats: { ...opponent.stats, maxHp: 500, defense: 500 } }],
+  });
 }
 
 function battleWithReserve(): TeamBattleState {
@@ -625,6 +780,225 @@ describe("authoritative battle room", () => {
     expect(reconnected.snapshot.battle?.state.teams.opponent.members[0]?.stages.defense).toBe(1);
   });
 
+  it("resolves host Realeza and guest Merciless and restores their authoritative calculation state", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", calculationAbilityBattle,
+      new SeededRandom(24_315), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("calculation-ready-a"));
+    room.receive("bob", ready("calculation-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "calculation-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "calculation-move-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    const trace = resolved.find((entry) => entry.message.type === "turnResolved")?.message;
+    expect(trace).toMatchObject({ trace: expect.arrayContaining([
+      expect.objectContaining({ type: "damage", side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "REALEZA", multiplier: 1.5 }]) }),
+      expect.objectContaining({ type: "damage", side: "opponent", critical: true }),
+    ]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", calculationAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "REALEZA", majorStatus: { kind: "poison" } }] },
+      opponent: { members: [{ ability: "MERCILESS" }] },
+    });
+  });
+
+  it("resolves host Voz Valquiria against guest Punk Rock and restores both classifications", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", moveClassificationAbilityBattle,
+      new SeededRandom(24_316), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("classification-ready-a"));
+    room.receive("bob", ready("classification-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "classification-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "classification-wait-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage",
+        side: "player", effectiveness: 2,
+        abilityModifiers: expect.arrayContaining([{ ability: "PUNKROCK", multiplier: 0.5 }]) })]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", moveClassificationAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "VOZVALQUIRIA" }] },
+      opponent: { members: [{ ability: "PUNKROCK", types: ["DRAGON"] }] },
+    });
+  });
+
+  it("persists authoritative contact stages, Toxic Spikes and the next reaction abilities", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", statStatusReactionAbilityBattle,
+      new SeededRandom(24_317), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("reaction-ready-a"));
+    room.receive("bob", ready("reaction-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "reaction-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "reaction-hit-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "reaction-wait-b",
+      battleId: "ABC234-1", turn: 2, action: { kind: "wait" } });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "reaction-hit-a",
+      battleId: "ABC234-1", turn: 2, action: { kind: "move", moveIndex: 0 } });
+    expect(room.snapshot().battle?.state).toMatchObject({
+      effects: { sides: { player: { toxicSpikesLayers: 1 } } },
+      teams: {
+        player: { members: [{ ability: "OLORPORCINO" },
+          { ability: "CONTRARY", stages: { attack: -1 } }] },
+        opponent: { members: [{ ability: "CAPATOXICA", stages: { evasion: -2 } },
+          { ability: "PURIFYINGSALT", types: ["GHOST"], majorStatus: { kind: "burn" } }] },
+      },
+    });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", statStatusReactionAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state).toMatchObject({
+      effects: { sides: { player: { toxicSpikesLayers: 1 } } },
+      teams: { player: { members: [{ ability: "OLORPORCINO" }, { ability: "CONTRARY" }] },
+        opponent: { members: [{ ability: "CAPATOXICA", stages: { evasion: -2 } },
+          { ability: "PURIFYINGSALT", majorStatus: { kind: "burn" } }] } },
+    });
+  });
+
+  it("resolves and restores authoritative type-interaction abilities for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", typeInteractionAbilityBattle,
+      new SeededRandom(24_318), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("type-ready-a"));
+    room.receive("bob", ready("type-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "type-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "type-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage",
+        side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "NORMALIZE", multiplier: 1.5 }]) })]) });
+    expect(room.snapshot().battle?.state.teams.opponent.members[0]?.hp).toBeLessThan(100);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", typeInteractionAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "NORMALIZE" }, { ability: "STEELWORKER", types: ["STEEL"] }] },
+      opponent: { members: [{ ability: "EARTHEATER" }, { ability: "CANASTO", types: ["ROCK"] }] },
+    });
+  });
+
+  it("resolves and restores host and guest global aura abilities authoritatively", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", globalAuraAbilityBattle,
+      new SeededRandom(24_319), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("aura-ready-a"));
+    room.receive("bob", ready("aura-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "aura-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "aura-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage", side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "AURABREAK", multiplier: 2 / 3 }]) })]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", globalAuraAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "DARKAURA" }, { ability: "FAIRYAURA", types: ["FAIRY"] }] },
+      opponent: { members: [{ ability: "AURABREAK" },
+        { ability: "AURADORADA", types: ["ELECTRIC"] }] },
+    });
+  });
+
+  it("resolves and restores Pokemon Z's Normal conversions for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", pokemonZConversionAbilityBattle,
+      new SeededRandom(24_320), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("conversion-ready-a"));
+    room.receive("bob", ready("conversion-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "conversion-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "conversion-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated", side: "player",
+        ability: "TINTINEO", effect: "announce" })]),
+      trace: expect.arrayContaining([expect.objectContaining({ type: "damage", side: "player", effectiveness: 2,
+        abilityModifiers: expect.not.arrayContaining([{ ability: "TINTINEO", multiplier: 1.2 }]) })]),
+    });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", pokemonZConversionAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "TINTINEO" }, { ability: "COLEOPTERO", types: ["BUG"] }] },
+      opponent: { members: [{ ability: "PIELMALDITA", types: ["POISON"] },
+        { ability: "PIELELECTRICA", types: ["ELECTRIC"] }] },
+    });
+  });
+
+  it("resolves and restores pure offensive type boosts for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", pureTypeBoostAbilityBattle,
+      new SeededRandom(24_321), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("type-boost-ready-a"));
+    room.receive("bob", ready("type-boost-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "type-boost-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "type-boost-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage", side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "ALBINISMO", multiplier: 1.5 }]) })]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", pureTypeBoostAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "ALBINISMO", types: ["ICE"] },
+        { ability: "INFLAMABLE", types: ["FIRE"] },
+        { ability: "TRANSPORTARROCA", types: ["ROCK"] }] },
+      opponent: { members: [{ ability: "PEDANTE", types: ["PSYCHIC"] },
+        { ability: "DRAGONSMAW", types: ["DRAGON"] }] },
+    });
+  });
+
+  it("resolves and restores the enlarged easy ability batch for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", easyAbilityBatchBattle,
+      new SeededRandom(24_322), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("easy-batch-ready-a"));
+    room.receive("bob", ready("easy-batch-ready-b"));
+    expect(room.snapshot().battle?.state.effects).toMatchObject({ terrain: "misty", terrainTurns: 5 });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "easy-batch-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "easy-batch-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage", side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "FLAREBOOST", multiplier: 1.5 }]) })]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", easyAbilityBatchBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state).toMatchObject({
+      effects: { terrain: "misty", terrainTurns: 4 },
+      teams: {
+        player: { members: [{ ability: "FLAREBOOST" }, { ability: "TOXICBOOST" },
+          { ability: "SLOWSTART" }, { ability: "SURGESURFER" }, { ability: "SILVANO" },
+          { ability: "GALEWINGS" }] },
+        opponent: { members: [{ ability: "MISTYSURGE" }, { ability: "PSYCHICSURGE" },
+          { ability: "TERAVOLT" }, { ability: "TURBOBLAZE" }] },
+      },
+    });
+  });
+
   it("keeps authoritative weather and its passive damage across guest reconnect", () => {
     const room = new AuthoritativeBattleRoom("ABC234", weatherBattle, new SeededRandom(24_303), world);
     room.connect("alice");
@@ -666,6 +1040,27 @@ describe("authoritative battle room", () => {
     room.disconnect("bob");
     expect(room.connect("bob").snapshot.battle?.state.effects).toMatchObject({
       trickRoomTurns: 4, terrain: "electric", terrainTurns: 4,
+    });
+  });
+
+  it("keeps authoritative Tailwind and Wind Power Charge across guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", windBattle, new SeededRandom(24_307), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("wind-ready-a"));
+    room.receive("bob", ready("wind-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "wind-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "wind-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(room.snapshot().battle?.state).toMatchObject({
+      effects: { sides: { player: { tailwindTurns: 3 } } },
+      teams: { player: { members: [{ volatile: { chargeTurns: 1 } }] } },
+    });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state).toMatchObject({
+      effects: { sides: { player: { tailwindTurns: 3 } } },
+      teams: { player: { members: [{ volatile: { chargeTurns: 1 } }] } },
     });
   });
 
@@ -753,6 +1148,100 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().battle?.state.teams.player.members[0]?.volatile?.tauntTurns).toBe(3);
     room.disconnect("bob");
     expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]?.volatile?.tauntTurns).toBe(3);
+  });
+
+  it("resolves Water Bubble authoritatively and restores the resulting HP after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", waterBubbleBattle, new SeededRandom(24_309), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("bubble-ready-a"));
+    room.receive("bob", ready("bubble-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "bubble-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "bubble-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const hp = room.snapshot().battle?.state.teams.opponent.members[0]?.hp;
+    expect(hp).toBeLessThan(60);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.opponent.members[0]?.hp).toBe(hp);
+  });
+
+  it("resolves Ice Scales authoritatively and restores the resulting HP after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", iceScalesBattle, new SeededRandom(24_313), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("ice-scales-ready-a"));
+    room.receive("bob", ready("ice-scales-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "ice-scales-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "ice-scales-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage",
+        abilityModifiers: expect.arrayContaining([{ ability: "ICESCALES", multiplier: 2 / 3 }]) })]) });
+    const hp = room.snapshot().battle?.state.teams.opponent.members[0]?.hp;
+    expect(hp).toBeLessThan(100);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.opponent.members[0]?.hp).toBe(hp);
+  });
+
+  it("replicates Color Change authoritatively and restores its type after guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", colorChangeBattle, new SeededRandom(24_310), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("color-ready-a"));
+    room.receive("bob", ready("color-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "color-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "color-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "COLORCHANGE", effect: "change-type" })]) });
+    expect(room.snapshot().battle?.state.teams.opponent.members[0]?.types).toEqual(["WATER"]);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.opponent.members[0]?.types).toEqual(["WATER"]);
+  });
+
+  it("replicates Mummy's ability replacement and restores it after guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", mummyBattle, new SeededRandom(24_311), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("mummy-ready-a"));
+    room.receive("bob", ready("mummy-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "mummy-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "mummy-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "MUMMY", effect: "change-ability" })]) });
+    expect(room.snapshot().battle?.state.teams.player.members[0]).toMatchObject({ ability: "MUMMY",
+      volatile: { originalAbility: "HUSTLE" } });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]).toMatchObject({
+      ability: "MUMMY", volatile: { originalAbility: "HUSTLE" },
+    });
+  });
+
+  it("resolves Explosion authoritatively and restores its self-KO after guest reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", explosionBattle, new SeededRandom(24_312), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("explosion-ready-a"));
+    room.receive("bob", ready("explosion-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "explosion-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15, requestId: "explosion-wait-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "recoilDamage",
+        side: "player", reason: "self-destruct", hp: 0 })]) });
+    expect(room.snapshot().battle?.state).toMatchObject({ replacementRequired: ["player"],
+      teams: { player: { members: [{ hp: 0 }, { hp: 100 }] } } });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state).toMatchObject({ replacementRequired: ["player"],
+      teams: { player: { members: [{ hp: 0 }, { hp: 100 }] } } });
   });
 
   it("deduplicates requests and rejects stale or duplicate turn actions", () => {
@@ -997,6 +1486,40 @@ describe("authoritative battle room", () => {
     const helped = room.receive("bob", { type: "submitAction", version: 15, requestId: "guest-owner-turn",
       battleId, turn: 1, activeSlot: 0, action: { kind: "move", moveIndex: 0 } });
     expect(helped.map((entry) => entry.message.type)).toContain("turnResolved");
+  });
+
+  it("resolves Plus and Minus from host and guest slots and restores their authoritative state", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(24_308), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    const special = { ...MINIMAL_MOVE_CATALOG.SWIFT, accuracy: 0 };
+    const plus = { ...initial.teams.player.members[0]!, ability: "PLUS",
+      moves: [{ move: special, pp: special.pp }] };
+    const minus = { ...battler("player"), id: "guest-minus", ability: "MINUS" };
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "partner-open",
+      context: sourceBattleContext("alice"), playerTeam: { activeIndex: 0, members: [plus] },
+      opponentTeam: initial.teams.opponent });
+    const battleId = room.snapshot().battle!.id;
+    room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "partner-propose",
+      battleId, side: "player", team: { activeIndex: 0, members: [minus] },
+      finalMemberIds: [plus.id, minus.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 15, requestId: "partner-accept",
+      battleId, accept: true });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "partner-guest-wait",
+      battleId, turn: 1, activeSlot: 1, action: { kind: "wait" } });
+    const resolved = room.receive("alice", { type: "submitAction", version: 15,
+      requestId: "partner-host-move", battleId, turn: 1, activeSlot: 0,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([expect.objectContaining({ type: "damage",
+        abilityModifiers: expect.arrayContaining([{ ability: "PLUS", multiplier: 1.5 }]) })]) });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle,
+      new SeededRandom(persisted.rngState), worldWithSource, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams.player).toMatchObject({
+      activeIndices: [0, 1], members: [{ ability: "PLUS" }, { ability: "MINUS" }],
+    });
   });
 
   it("keeps an away guest wild battle joinable when the host reaches its map", () => {

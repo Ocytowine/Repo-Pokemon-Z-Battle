@@ -901,12 +901,12 @@ export class AuthoritativeBattleRoom {
       else this.resolveAutomaticReplacements(output);
     }
 
-    if (this.#battleState.status === "finished" && this.#battleState.winner !== null && source !== null) {
+    if (this.#battleState.status === "finished" && source !== null) {
       if (this.#battleSession === null) throw new Error("Session de combat source absente.");
       this.#battleSession = settleSharedBattleSession(this.#battleSession, this.#battleState);
       this.createSourceBattleSettlements(false, output, captured);
       this.#revision += 1;
-    } else if (this.#battleState.status === "finished" && this.#battleState.winner !== null && encounter !== null) {
+    } else if (this.#battleState.status === "finished" && encounter !== null) {
       this.#worldState = {
         ...this.#worldState,
         session: {

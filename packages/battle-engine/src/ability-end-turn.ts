@@ -1,4 +1,5 @@
 import { ordinaryWeather } from "./ability-weather.js";
+import { resolveStatStageChange } from "./ability-stat-reactions.js";
 import type { BattleEffects, BattleEvent, BattleSide, BattlerState } from "./types.js";
 
 export function markEnteredMidTurn(battler: BattlerState): BattlerState {
@@ -44,11 +45,14 @@ export function resolveLateEndOfTurnAbilities(battler: BattlerState, side: Battl
   if (battler.hp <= 0) return { battler, events: [] };
   const events: BattleEvent[] = [];
   let next = battler;
-  if (next.ability === "SPEEDBOOST" && next.volatile?.enteredMidTurn !== true && next.stages.speed < 6) {
-    const stage = next.stages.speed + 1;
-    next = { ...next, stages: { ...next.stages, speed: stage } };
+  if (next.ability === "SPEEDBOOST" && next.volatile?.enteredMidTurn !== true) {
+    const resolved = resolveStatStageChange(next, "speed", 1);
+    if (resolved !== null) {
+      next = resolved.battler;
     events.push({ type: "abilityActivated", side, ability: "SPEEDBOOST", effect: "raise-stat" },
-      { type: "statStageChanged", source: side, target: side, stat: "speed", delta: 1, stage });
+        { type: "statStageChanged", source: side, target: side, stat: "speed",
+          delta: resolved.delta, stage: resolved.stage });
+    }
   }
   const badDreams = opponents.find((opponent) => opponent.hp > 0 && opponent.ability === "BADDREAMS");
   if (next.majorStatus?.kind === "sleep" && next.ability !== "MAGICGUARD" && badDreams !== undefined) {

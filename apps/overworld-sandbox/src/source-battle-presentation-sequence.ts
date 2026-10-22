@@ -201,7 +201,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         reflect: "Reflet", "light-screen": "Mur Lumière", "lucky-chant": "Air Veinard",
         "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
         "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
-        mist: "Brume", safeguard: "Rune Protect", terrain: "Le terrain", weather: "La météo",
+        mist: "Brume", safeguard: "Rune Protect", tailwind: "Vent Arrière", terrain: "Le terrain",
+        "trick-room": "Distorsion", weather: "La météo",
       };
       const label = labels[event.effect];
       message(event.turns !== 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");

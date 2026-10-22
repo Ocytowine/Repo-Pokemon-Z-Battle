@@ -51,4 +51,13 @@ describe("shared battle session lifecycle", () => {
       settlementId: "wild:1:settlement" });
     expect(() => settleEscapedSharedBattleSession({ ...active, origin: "source-trainer" })).toThrow("sauvage");
   });
+
+  it("settles a finished draw without inventing a tactical winner", () => {
+    const active = activateSharedBattleSession(createSharedBattleSession({ battleId: "duel:draw",
+      origin: "player-duel", narrativeOwnerId: "host", allowJoin: false }));
+    const draw = { ...createTeamBattleState({ player: [battler("ally")], opponent: [battler("foe")] }),
+      status: "finished" as const, winner: null };
+    expect(settleSharedBattleSession(active, draw)).toMatchObject({ lifecycle: "settling",
+      settlementId: "duel:draw:settlement" });
+  });
 });

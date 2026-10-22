@@ -1,12 +1,15 @@
 import type { BattleStat, BattlerState, ImplementedBattleAbility, MajorStatusState } from "./types.js";
 
 export type StatusProtectionAbility = "IMMUNITY" | "INSOMNIA" | "LIMBER" | "MAGMAARMOR"
-  | "VITALSPIRIT" | "WATERVEIL";
+  | "PURIFYINGSALT" | "TERMOCONVERSION" | "VITALSPIRIT" | "WATERBUBBLE" | "WATERVEIL";
 
 export function statusProtectionAbility(battler: BattlerState,
   status: MajorStatusState["kind"]): StatusProtectionAbility | null {
+  if (battler.ability === "PURIFYINGSALT") return "PURIFYINGSALT";
   if (status === "poison" && battler.ability === "IMMUNITY") return "IMMUNITY";
   if (status === "burn" && battler.ability === "WATERVEIL") return "WATERVEIL";
+  if (status === "burn" && battler.ability === "WATERBUBBLE") return "WATERBUBBLE";
+  if (status === "burn" && battler.ability === "TERMOCONVERSION") return "TERMOCONVERSION";
   if (status === "paralysis" && battler.ability === "LIMBER") return "LIMBER";
   if (status === "frozen" && battler.ability === "MAGMAARMOR") return "MAGMAARMOR";
   if (status === "sleep" && battler.ability === "INSOMNIA") return "INSOMNIA";

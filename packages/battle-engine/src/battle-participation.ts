@@ -484,7 +484,7 @@ function ownerSettlement(participation: SharedBattleParticipation, state: TeamBa
 
 export function sharedBattleOwnerSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
   ledger: SharedBattleLedger, ownerId: string): SharedBattleOwnerSettlement {
-  if (state.status !== "finished" || state.winner === null) throw new Error("Le combat doit être terminé avant son règlement.");
+  if (state.status !== "finished") throw new Error("Le combat doit être terminé avant son règlement.");
   const side = BATTLE_SIDES.find((candidate) => participation.camps[candidate].trainerIds.includes(ownerId));
   return ownerSettlement(participation, state, ledger, ownerId, side !== undefined && state.winner === side);
 }

@@ -5,6 +5,29 @@ export interface AbilityStatChange {
   readonly delta: number;
 }
 
+export interface ResolvedStatStageChange {
+  readonly battler: BattlerState;
+  readonly delta: number;
+  readonly stage: number;
+}
+
+/**
+ * Applies the source game's shared Contrary/Simple ordering before clamping.
+ * `ignoreAbility` is reserved for a change imposed by an opposing Mold Breaker;
+ * self changes must always keep the target's ability active.
+ */
+export function resolveStatStageChange(battler: BattlerState, stat: BattleStat, requestedDelta: number,
+  ignoreAbility = false): ResolvedStatStageChange | null {
+  const contrary = !ignoreAbility && battler.ability === "CONTRARY";
+  const simple = !ignoreAbility && battler.ability === "SIMPLE";
+  const effectiveDelta = requestedDelta * (contrary ? -1 : 1) * (simple ? 2 : 1);
+  const current = battler.stages[stat];
+  const stage = Math.max(-6, Math.min(6, current + effectiveDelta));
+  if (stage === current) return null;
+  return { battler: { ...battler, stages: { ...battler.stages, [stat]: stage } },
+    delta: stage - current, stage };
+}
+
 export interface DamageAbilityStatReaction {
   readonly ability: ImplementedBattleAbility;
   readonly changes: readonly AbilityStatChange[];
@@ -24,12 +47,11 @@ export function applyOpposingStatDropReaction(battler: BattlerState): {
 } | null {
   const reaction = opposingStatDropReaction(battler);
   if (reaction === null) return null;
-  const current = battler.stages[reaction.stat];
-  const stage = Math.min(6, current + reaction.delta);
-  if (stage === current) return null;
-  return { battler: { ...battler, stages: { ...battler.stages, [reaction.stat]: stage } },
+  const resolved = resolveStatStageChange(battler, reaction.stat, reaction.delta);
+  if (resolved === null) return null;
+  return { battler: resolved.battler,
     ability: battler.ability as "COMPETITIVE" | "DEFIANT",
-    change: { ...reaction, delta: stage - current, stage } };
+    change: { ...reaction, delta: resolved.delta, stage: resolved.stage } };
 }
 
 export function damageAbilityStatReaction(
@@ -54,6 +76,12 @@ export function damageAbilityStatReaction(
     case "RATTLED":
       return move.type === "BUG" || move.type === "DARK" || move.type === "GHOST"
         ? { ability: "RATTLED", changes: [{ stat: "speed", delta: 1 }], maximize: null } : null;
+    case "JUSTIFIED":
+      return move.type === "DARK"
+        ? { ability: "JUSTIFIED", changes: [{ stat: "attack", delta: 1 }], maximize: null } : null;
+    case "TERMOCONVERSION":
+      return move.type === "FIRE"
+        ? { ability: "TERMOCONVERSION", changes: [{ stat: "attack", delta: 1 }], maximize: null } : null;
     case "WEAKARMOR":
       return move.category === "Physical" ? { ability: "WEAKARMOR", changes: [
         { stat: "defense", delta: -1 }, { stat: "speed", delta: 1 },

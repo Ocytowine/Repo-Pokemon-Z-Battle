@@ -1,5 +1,6 @@
 import { statDropProtectionAbility } from "./ability-protection.js";
-import { applyOpposingStatDropReaction } from "./ability-stat-reactions.js";
+import { applyOpposingStatDropReaction, resolveStatStageChange } from "./ability-stat-reactions.js";
+import { hasMoldBreaker } from "./move-properties.js";
 import { typeEffectiveness } from "./type-chart.js";
 import type { BattleEvent, BattleSide, BattleStat, BattleTrace, BattlerState, RandomSource } from "./types.js";
 
@@ -44,6 +45,9 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
   if (actor.ability === "PRESSURE") {
     events.push({ type: "abilityActivated", side, ability: "PRESSURE", effect: "pressure" });
   }
+  if (actor.ability === "TINTINEO") {
+    events.push({ type: "abilityActivated", side, ability: "TINTINEO", effect: "announce" });
+  }
 
   if (actor.ability === "TRACE") {
     const candidates = targets.filter(({ battler: target }) => target.hp > 0 && target.ability !== null
@@ -66,11 +70,12 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
       ? livingTargets[0]!.battler.stats.specialDefense * livingTargets.length
       : livingTargets.reduce((total, { battler: target }) => total + target.stats.specialDefense, 0);
     const stat = specialDefense > defense ? "attack" as const : "specialAttack" as const;
-    const stage = Math.min(6, actor.stages[stat] + 1);
-    if (stage !== actor.stages[stat]) {
-      actor = { ...actor, stages: { ...actor.stages, [stat]: stage } };
+    const resolved = resolveStatStageChange(actor, stat, 1);
+    if (resolved !== null) {
+      actor = resolved.battler;
       events.push({ type: "abilityActivated", side, ability: "DOWNLOAD", effect: "raise-stat" },
-        { type: "statStageChanged", source: side, target: side, stat, delta: 1, stage });
+        { type: "statStageChanged", source: side, target: side, stat,
+          delta: resolved.delta, stage: resolved.stage });
     }
   } else if (actor.ability === "INTIMIDATE" || actor.ability === "ESPANTO" || actor.ability === "ILLUMINATE") {
     const ability = actor.ability as "INTIMIDATE" | "ESPANTO" | "ILLUMINATE";
@@ -81,18 +86,20 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
     events.push({ type: "abilityActivated", side, ability, effect });
     targets = targets.map((entry) => {
       if (entry.battler.hp <= 0) return entry;
-      const protection = statDropProtectionAbility(entry.battler, stat);
+      const ignoresAbility = hasMoldBreaker(actor);
+      const resolved = resolveStatStageChange(entry.battler, stat, -1, ignoresAbility);
+      const effectiveDelta = resolved?.delta ?? (entry.battler.ability === "CONTRARY" && !ignoresAbility ? 1 : -1);
+      const protection = effectiveDelta < 0 && !ignoresAbility
+        ? statDropProtectionAbility(entry.battler, stat) : null;
       if (protection !== null) {
         events.push({ type: "abilityActivated", side: entry.side, ability: protection, effect: "prevent-stat-drop" });
         return entry;
       }
-      const delta = entry.battler.ability === "SIMPLE" ? -2 : -1;
-      const stage = Math.max(-6, entry.battler.stages[stat] + delta);
-      if (stage === entry.battler.stages[stat]) return entry;
-      let updated = { ...entry.battler, stages: { ...entry.battler.stages, [stat]: stage } };
+      if (resolved === null) return entry;
+      let updated = resolved.battler;
       events.push({ type: "statStageChanged", source: side, target: entry.side, stat,
-        delta: stage - entry.battler.stages[stat], stage });
-      const reaction = applyOpposingStatDropReaction(updated);
+        delta: resolved.delta, stage: resolved.stage });
+      const reaction = resolved.delta < 0 ? applyOpposingStatDropReaction(updated) : null;
       if (reaction !== null) {
         updated = reaction.battler;
         events.push({ type: "abilityActivated", side: entry.side, ability: reaction.ability, effect: "raise-stat" },

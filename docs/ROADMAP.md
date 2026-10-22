@@ -1052,8 +1052,14 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Essentials, Acidarmure, Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii sont
   portés dans le noyau partagé. L'audit ciblé ne conserve que l'animation source
   absente de `LUZDECADENTE`, couverte par le fallback prévu.
-- [ ] porter progressivement les effets des talents source encore inertes ; leur
-  identite valide est conservee et repliquee sans bloquer les combats.
+- [ ] porter progressivement les effets des talents source encore inertes ; 212
+  talents sur 255 sont pleinement supportés, `STURDY` reste partiel et 42 sont
+  encore inertes. Le lot élargi du 2026-10-22 ajoute `FLAREBOOST`, `TOXICBOOST`,
+  `SLOWSTART`, `SURGESURFER`, `SILVANO`, `MISTYSURGE`, `PSYCHICSURGE`,
+  `TERAVOLT`, `TURBOBLAZE` et `GALEWINGS` dans le noyau solo/Coop commun. Le
+  prochain lot regroupera précision et ordre d'action (`VICTORYSTAR`,
+  `WONDERSKIN`, `TRIAGE`, `QUEENLYMAJESTY`, `STALL`) ; le verrou de capacité de
+  `PODERSABIO` reste volontairement séparé.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par
@@ -1905,10 +1911,10 @@ Ordre de travail retenu :
 4. seulement apres cette couverture, reprendre les ameliorations UI/UX qui ne
    conditionnent pas les tests.
 
-L'audit source cible du 2026-10-05, actualise le 2026-10-20, confirme que les
-donnees importees masquent encore un ecart de comportement important : 102/353
-fonctions d'attaque sont executees et aucune n'est partielle ; 144/255 talents sont executes
-et 1 est partiel. Les objets sont avances mais
+L'audit source cible du 2026-10-05, actualise le 2026-10-22, confirme que les
+donnees importees masquent encore un ecart de comportement important : 104/353
+fonctions d'attaque sont executees et aucune n'est partielle ; 212/255 talents sont executes,
+1 est partiel et 42 restent inertes. Les objets sont avances mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots

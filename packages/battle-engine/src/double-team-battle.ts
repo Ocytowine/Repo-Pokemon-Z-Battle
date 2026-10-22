@@ -2,6 +2,7 @@ import { resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveS
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
+import { activateWindAbility } from "./ability-wind.js";
 import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather,
   resolveWeatherEndOfTurn, weatherSpeedMultiplier } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
@@ -11,6 +12,7 @@ import { restoreTransformedBattler, transformBattler } from "./battle-transform.
 import { markEnteredMidTurn, resolveHydration, resolveLateEndOfTurnAbilities,
   resolvePoisonHeal } from "./ability-end-turn.js";
 import { berriesBlockedBy, isSupportedBerry, moveCanTriggerPressure } from "./ability-item-control.js";
+import { effectiveMovePriority } from "./move-properties.js";
 import type {
   BattleEvent, BattlePosition, BattleResolutionRules, BattleSide, BattleState, BattleTeam, BattlerState, DoubleBattleEvent,
   DoubleTurnResult, PositionedTeamBattleAction, RandomSource, TeamBattleAction, TeamBattleState,
@@ -95,7 +97,8 @@ function cloneTeam(team: BattleTeam): BattleTeam {
 
 function key(position: BattlePosition): string { return `${position.side}:${position.slot}`; }
 
-function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects"], weatherSuppressed = false): number {
+function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects"], weatherSuppressed = false,
+  side?: BattleSide): number {
   const stage = battler.stages.speed;
   const staged = stage >= 0 ? Math.floor((battler.stats.speed * (2 + stage)) / 2)
     : Math.floor((battler.stats.speed * 2) / (2 - stage));
@@ -104,6 +107,12 @@ function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects
       ? Math.max(1, Math.round(staged * 1.5))
       : battler.majorStatus?.kind === "paralysis" ? Math.max(1, Math.round(staged / 4)) : staged;
   if (battler.ability === "UNBURDEN" && battler.heldItem === null && battler.volatile?.unburdened === true) speed *= 2;
+  if (side !== undefined && (effects?.sides[side].tailwindTurns ?? 0) > 0) speed *= 2;
+  if (battler.ability === "SURGESURFER" && effects?.terrain === "electric") speed *= 2;
+  if (battler.ability === "SILVANO" && effects?.terrain === "grassy") speed = Math.max(1, Math.round(speed * 1.3));
+  if (battler.ability === "SLOWSTART" && (battler.volatile?.activeTurns ?? 0) <= 5) {
+    speed = Math.max(1, Math.round(speed * 0.5));
+  }
   speed *= weatherSpeedMultiplier(battler, weatherSuppressed ? null : effects?.weather);
   return speed;
 }
@@ -128,8 +137,9 @@ function redirectedElementalTarget(state: TeamBattleState, actor: BattlePosition
       return (battler?.hp ?? 0) > 0 && battler?.ability === ability;
     })
     .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!, state.effects,
-      hasWeatherSuppressor(activeBattlerList(state)))
-      - effectiveSpeed(battlerAtPosition(state, left)!, state.effects, hasWeatherSuppressor(activeBattlerList(state))));
+      hasWeatherSuppressor(activeBattlerList(state)), right.side)
+      - effectiveSpeed(battlerAtPosition(state, left)!, state.effects,
+        hasWeatherSuppressor(activeBattlerList(state)), left.side));
   return candidates[0] ?? intended;
 }
 
@@ -178,6 +188,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
   submitted: readonly PositionedTeamBattleAction[], effects: TeamBattleState["effects"], rules: BattleResolutionRules,
   context?: {
     readonly damagedPositions: ReadonlySet<string>;
+    readonly resolvedPositions: ReadonlySet<string>;
     readonly roundMultiplier: number;
     readonly helpingHandMultiplier: number;
   },
@@ -189,12 +200,18 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
   let first = true;
   const selectedMove = teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]
     ?.moves[action.moveIndex]?.move;
+  const selfDestruct = selectedMove?.functionCode === "0E0";
+  let selfDestructTemplate: BattlerState | null = null;
+  let selfDestructReported = false;
+  const dampSide = SIDES.find((side) => activeTeamIndices(teams[side])
+    .some((index) => teams[side].members[index]!.hp > 0 && teams[side].members[index]!.ability === "DAMP")) ?? null;
   const pressureCost = 1 + (selectedMove !== undefined && moveCanTriggerPressure(selectedMove)
     ? targets.filter((target) => target.side !== actor.side
       && teams[target.side].members[activeTeamIndices(teams[target.side])[target.slot]!]?.ability === "PRESSURE").length : 0);
   let paidMoves: BattlerState["moves"] | null = null;
   for (const [targetIndex, target] of targets.entries()) {
-    const attacker = teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]!;
+    const storedAttacker = teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]!;
+    const attacker: BattlerState = selfDestructTemplate ?? storedAttacker;
     const defender = teams[target.side].members[activeTeamIndices(teams[target.side])[target.slot]!]!;
     if (attacker.hp <= 0 || defender.hp <= 0) continue;
     const resolutionAttacker = first || paidMoves === null ? attacker : {
@@ -209,6 +226,12 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
       ...(effects === undefined ? {} : { effects }) };
     const targetEntry = submitted.find((entry) => key(entry.actor) === key(target));
     const targetAction = targetEntry?.action.kind === "move" ? targetEntry.action : undefined;
+    const activePartnerAbility = (position: BattlePosition): BattlerState["ability"] => {
+      const partnerIndex = activeTeamIndices(teams[position.side])
+        .find((_, slot) => slot !== position.slot);
+      const partner = partnerIndex === undefined ? undefined : teams[position.side].members[partnerIndex];
+      return partner !== undefined && partner.hp > 0 ? partner.ability : null;
+    };
     const result = resolveSelectedMoves(mini, { [miniSide]: action }, rng,
       { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1,
         attackerHeldItemAfterDamage: targetIndex === targets.length - 1,
@@ -220,6 +243,15 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         weatherSuppressed: hasWeatherSuppressor(activeBattlerList(state, teams)),
         defenderBerriesBlocked: berriesBlockedBy(activeTeamIndices(teams[actor.side])
           .map((index) => teams[actor.side].members[index]!) ),
+        attackerPartnerAbility: activePartnerAbility(actor),
+        defenderPartnerAbility: activePartnerAbility(target),
+        activeAbilities: activeBattlerList(state, teams)
+          .filter((active) => active.hp > 0 && active.ability !== null)
+          .map((active) => active.ability as NonNullable<BattlerState["ability"]>),
+        targetIsAlly: target.side === actor.side && key(target) !== key(actor),
+        targetPresentationSide: target.side,
+        targetAlreadyMoved: context?.resolvedPositions.has(key(target)) ?? false,
+        dampSide,
         ppCost: first ? pressureCost : 1,
         ...(targetAction === undefined ? {} : { targetPlannedAction: targetAction }) });
     if (result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
@@ -229,7 +261,24 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     let nextAttacker = result.state.battlers[miniSide];
     if (first) paidMoves = nextAttacker.moves;
     else if (paidMoves !== null) nextAttacker = { ...nextAttacker, moves: paidMoves };
+    if (selfDestruct && nextAttacker.hp === 0 && selfDestructTemplate === null) {
+      selfDestructTemplate = { ...nextAttacker, hp: attacker.hp };
+    }
     storeBattler(teams, actor, nextAttacker);
+    const partnerWindEvents: BattleEvent[] = [];
+    if (first && selectedMove?.functionCode === "05B"
+      && result.events.some((event) => event.type === "moveUsed" && event.move === selectedMove.internalName)) {
+      for (const index of activeTeamIndices(teams[actor.side])) {
+        if (index === activeTeamIndices(teams[actor.side])[actor.slot]) continue;
+        const active = teams[actor.side].members[index]!;
+        if (active.hp <= 0) continue;
+        const wind = activateWindAbility(active, actor.side);
+        if (wind.events.length === 0) continue;
+        teams[actor.side] = { ...teams[actor.side], members: teams[actor.side].members.map((member, candidate) =>
+          candidate === index ? wind.battler : member) };
+        partnerWindEvents.push(...wind.events);
+      }
+    }
     if (key(target) !== key(actor)) {
       let nextTarget = result.state.battlers[miniTarget];
       if (attacker.moves[action.moveIndex]?.move.functionCode === "0DC"
@@ -239,9 +288,22 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
       }
       storeBattler(teams, target, nextTarget);
     }
-    events.push(...result.events.filter((event) => !["turnStarted", "actionOrdered", "turnEnded", "battleEnded"].includes(event.type)));
+    const resolvedEvents = result.events.filter((event) => {
+      if (["turnStarted", "actionOrdered", "turnEnded", "battleEnded"].includes(event.type)) return false;
+      if (!selfDestructReported) return true;
+      if (event.type === "recoilDamage" && event.reason === "self-destruct") return false;
+      return !(event.type === "fainted" && event.side === actor.side);
+    });
+    const effectIndex = resolvedEvents.findIndex((event) => event.type === "battleEffectChanged"
+      && event.effect === "tailwind");
+    if (effectIndex < 0) events.push(...resolvedEvents, ...partnerWindEvents);
+    else events.push(...resolvedEvents.slice(0, effectIndex), ...partnerWindEvents, ...resolvedEvents.slice(effectIndex));
+    if (result.events.some((event) => event.type === "recoilDamage" && event.reason === "self-destruct")) {
+      selfDestructReported = true;
+    }
     trace.push(...result.trace);
     first = false;
+    if (result.events.some((event) => event.type === "abilityActivated" && event.ability === "DAMP")) break;
   }
   effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
   return { events, trace, effects, damagedTargets };
@@ -259,14 +321,20 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   const members = team.members.map((member, index) => {
     if (index !== fromIndex) return member;
     const outgoingAbility = member.ability;
-    const tracedAbility = member.volatile?.traceOriginalAbility;
+    let originalAbility: BattlerState["ability"] | undefined;
+    if (member.transformOriginal === undefined) {
+      if (member.volatile?.abilityReplacementActive === true) originalAbility = member.volatile.originalAbility ?? null;
+      else if (member.volatile?.traceOriginalAbility != null) originalAbility = member.volatile.traceOriginalAbility;
+    }
+    const originalTypes = member.transformOriginal === undefined ? member.volatile?.originalTypes : undefined;
     member = restoreTransformedBattler(member);
     const { volatile: _volatile, ...persistent } = member;
-    const ability = tracedAbility ?? member.ability;
+    const ability = originalAbility !== undefined ? originalAbility : member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
-    return { ...persistent, ability, stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
+    return { ...persistent, ability, types: originalTypes ?? member.types,
+      stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0,
       speed: 0, accuracy: 0, evasion: 0 }, hp, majorStatus: outgoingAbility === "NATURALCURE" ? null
       : member.majorStatus?.kind === "poison" && member.majorStatus.toxicCounter !== null
         ? { kind: "poison" as const, toxicCounter: 0 } : member.majorStatus };
@@ -330,6 +398,13 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, actor: Battl
   const weather = applyEntryWeatherAbility(active, actor.side, effects);
   effects = weather.effects;
   events.push(...weather.events);
+  const entered = teams[actor.side].members[index]!;
+  if (entered.ability === "WINDRIDER" && (effects?.sides[actor.side].tailwindTurns ?? 0) > 0) {
+    const wind = activateWindAbility(entered, actor.side);
+    teams[actor.side] = { ...teams[actor.side], members: teams[actor.side].members.map((member, candidate) =>
+      candidate === index ? wind.battler : member) };
+    events.push(...wind.events);
+  }
   return { events, effects };
 }
 
@@ -595,9 +670,9 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     .map((entry) => { const battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
-      const priority = move.priority + (battler.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0);
+      const priority = effectiveMovePriority(battler, move);
       return { ...entry, priority, speed: effectiveSpeed(battler, effects,
-        hasWeatherSuppressor(activeBattlerList(state, teams))), tie: rng.nextInt(1_000_000) }; })
+        hasWeatherSuppressor(activeBattlerList(state, teams)), entry.actor.side), tie: rng.nextInt(1_000_000) }; })
     .sort((left, right) => right.priority - left.priority
       || ((effects?.trickRoomTurns ?? 0) > 0 ? left.speed - right.speed : right.speed - left.speed)
       || left.tie - right.tie);
@@ -671,11 +746,14 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     }
     const result = executeMove(state, teams, entry.actor, entry.action, targets, rng, effectiveSubmitted, effects, rules, {
       damagedPositions,
+      resolvedPositions,
       roundMultiplier: selectedMove.functionCode === "083" ? 2 ** roundUses[entry.actor.side] : 1,
       helpingHandMultiplier: helpedPositions.has(key(entry.actor)) ? 1.5 : 1,
     });
     effects = result.effects;
-    events.push({ type: "positionedActionResolved", actor: entry.actor, targets, events: result.events });
+    const presentedTargets = selectedMove.functionCode === "05B"
+      ? activeTeamIndices(teams[entry.actor.side]).map((_, slot) => ({ side: entry.actor.side, slot })) : targets;
+    events.push({ type: "positionedActionResolved", actor: entry.actor, targets: presentedTargets, events: result.events });
     trace.push(...result.trace);
     for (const targetKey of result.damagedTargets) damagedPositions.add(targetKey);
     if (selectedMove.functionCode === "083"
@@ -700,9 +778,9 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   effects = endOfTurn.effects;
   effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
   let winner: BattleSide | null = null;
-  for (const side of SIDES) {
-    if (!teams[side].members.some((member) => member.hp > 0)) winner = otherSide(side);
-  }
+  const livingSides = SIDES.filter((side) => teams[side].members.some((member) => member.hp > 0));
+  if (livingSides.length === 1) winner = livingSides[0]!;
+  const draw = livingSides.length === 0;
   const slotReplacements: BattlePosition[] = [];
   if (winner === null) for (const side of SIDES) {
     const team = teams[side];
@@ -719,19 +797,22 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       }
     });
   }
-  if (winner !== null) events.push({ type: "battleEnded", winner });
+  if (draw) events.push({ type: "battleEnded", winner: null });
+  else if (winner !== null) events.push({ type: "battleEnded", winner });
   events.push({ type: "turnEnded", turn: state.turn });
   if (effects !== undefined) effects = { ...effects, sides: {
     player: { ...effects.sides.player, reflectTurns: Math.max(0, effects.sides.player.reflectTurns - 1),
       lightScreenTurns: Math.max(0, (effects.sides.player.lightScreenTurns ?? 0) - 1),
       luckyChantTurns: Math.max(0, effects.sides.player.luckyChantTurns - 1),
       mistTurns: Math.max(0, (effects.sides.player.mistTurns ?? 0) - 1),
-      safeguardTurns: Math.max(0, (effects.sides.player.safeguardTurns ?? 0) - 1) },
+      safeguardTurns: Math.max(0, (effects.sides.player.safeguardTurns ?? 0) - 1),
+      tailwindTurns: Math.max(0, (effects.sides.player.tailwindTurns ?? 0) - 1) },
     opponent: { ...effects.sides.opponent, reflectTurns: Math.max(0, effects.sides.opponent.reflectTurns - 1),
       lightScreenTurns: Math.max(0, (effects.sides.opponent.lightScreenTurns ?? 0) - 1),
       luckyChantTurns: Math.max(0, effects.sides.opponent.luckyChantTurns - 1),
       mistTurns: Math.max(0, (effects.sides.opponent.mistTurns ?? 0) - 1),
-      safeguardTurns: Math.max(0, (effects.sides.opponent.safeguardTurns ?? 0) - 1) },
+      safeguardTurns: Math.max(0, (effects.sides.opponent.safeguardTurns ?? 0) - 1),
+      tailwindTurns: Math.max(0, (effects.sides.opponent.tailwindTurns ?? 0) - 1) },
   }, mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
   waterSportTurns: Math.max(0, effects.waterSportTurns - 1),
   terrain: (effects.terrainTurns ?? 0) <= 1 ? null : effects.terrain ?? null,
@@ -741,7 +822,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     : (effects.weatherTurns ?? 0) <= 1 ? null : effects.weather ?? null,
   weatherTurns: (effects.weatherTurns ?? 0) < 0 ? effects.weatherTurns ?? -1 : Math.max(0, (effects.weatherTurns ?? 0) - 1) };
   return { state: { ...state, turn: state.turn + 1, teams, winner,
-    status: winner === null ? "active" : "finished", replacementRequired: [],
+    status: winner === null && !draw ? "active" : "finished", replacementRequired: [],
     slotReplacements: winner === null ? slotReplacements : [], ...(effects === undefined ? {} : { effects }) }, events, trace };
 }
 

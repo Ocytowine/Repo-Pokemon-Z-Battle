@@ -1,6 +1,6 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-21.
+Derniere mise a jour : 2026-10-22.
 
 ## Reparation du merge du 2026-10-21
 
@@ -4807,3 +4807,691 @@ Après `prepare:local`, le rapport passe de 447 à 442 problèmes globaux et de 
 90 problèmes de talents. Le registre source complet compte 144 talents supportés,
 1 partiel (`STURDY`) et 110 absents sur 255. Les fonctions d'attaque restent à
 102/353 et les 51 animations manquantes sont inchangées.
+
+## Modificateurs offensifs et défensifs partagés - 2026-10-22
+
+Le noyau commun porte maintenant `HUSTLE`, `ANALYTIC`, `CORTANTE`, `FURCOAT` et
+`WATERBUBBLE`. Entusiasmo applique l'Attaque physique x1,5 et la précision
+physique x0,8. Cálculo Final applique son multiplicateur x1,3 lorsque la cible a
+déjà agi ou n'a pas choisi de capacité ; en double, cette décision repose sur la
+position effectivement résolue, pas seulement sur la Vitesse théorique. Cortante
+emploie le catalogue exact de 21 capacités de coupe du Ruby source. Pelage Recio
+divise par deux les dégâts physiques ainsi que la famille Psyko-Choc et reste
+contournable par Brise Moule. Pompa double les dégâts Eau, divise par deux les
+dégâts Feu reçus et partage le garde générique d'immunité à la brûlure.
+
+Autorité : le calcul appartient au noyau local en solo et à la room en Coop.
+Domaine : état tactique partagé. Persistance : aucun nouvel état ; les PV et
+statuts résultants sont déjà restaurés depuis le snapshot autoritaire après
+reconnexion. Intentions : les joueurs continuent d'envoyer uniquement leur
+capacité ou leur action. Audience : participants et observateurs du combat via la
+trace, les dégâts et les événements communs. Les mêmes fonctions sont exercées en
+duel et dans chaque mini-duel positionné du combat double.
+
+La régénération préalable a réconcilié une documentation en retard avec le
+registre courant : la baseline réelle était de 438 problèmes globaux, dont 86
+talents du périmètre jouable. Après le lot, `prepare:local` produit 433 problèmes,
+dont 81 talents. Le registre extrait compte 153 talents supportés, 1 partiel
+(`STURDY`) et 101 absents sur 255. Les fonctions d'attaque restent à 102/353 et
+les 51 animations manquantes sont inchangées. Les tests couvrent les
+multiplicateurs, la précision, la liste coupe, Psyko-Choc, Brise Moule,
+l'immunité à la brûlure, l'ordre double et la restauration Coop.
+
+## Réactions après impact et K.O. - 2026-10-22
+
+Le noyau partagé porte maintenant `JUSTIFIED`, `BRUTALIDAD`, `COLORCHANGE` et
+`MOXIE`. Justicier augmente l'Attaque d'un cran après chaque impact Ténèbres qui
+laisse le porteur conscient, y compris chaque frappe d'une capacité multiple et
+après conversion du type de la capacité. Brutalidad utilise le drapeau de contact
+PBS et le tirage source de 50 % pour infliger `HEMORRAGIA` ; le garde de statut
+commun conserve l'interdiction sur un type Feu, un Pokémon déjà affecté ou K.O.
+Changement Couleur remplace les types du porteur par le type effectif de la
+capacité après les dégâts, sauf type pseudo, type déjà possédé, K.O. ou suppression
+de l'effet post-impact par Sans Limite. Impudence augmente l'Attaque d'un cran
+après chaque cible mise K.O., tant que son porteur est encore conscient.
+
+Autorité : le noyau local résout ces réactions en solo et la room les résout en
+Coop. Domaine : crans, statut majeur et types sont un état tactique partagé.
+Persistance : ils vivent dans le snapshot de combat et sont restaurés après
+reconnexion, sans nouvelle donnée après règlement. Intentions : aucune nouvelle
+intention réseau, seule la capacité choisie reste envoyée. Audience : tous les
+participants et observateurs reçoivent les événements `abilityActivated`, les
+changements de crans et le statut ; les types résultants sont dans le snapshot.
+Le résolveur double réutilise le même hook par cible et conserve la réaction sur
+l'emplacement exact du porteur.
+
+Après `prepare:local`, le rapport passe de 433 à 430 problèmes globaux et de 81
+à 78 problèmes de talents. Le registre extrait compte 157 talents supportés, 1
+partiel (`STURDY`) et 97 absents sur 255. `JUSTIFIED` ne figure pas parmi les 232
+talents du périmètre jouable actuel, ce qui explique que quatre ajouts au registre
+ne retirent que trois problèmes de dépendances. Les fonctions d'attaque restent à
+102/353 et les 51 animations manquantes sont inchangées. Les tests couvrent les
+frappes multiples, le tirage et l'immunité de l'hémorragie, le remplacement de
+type, le K.O. simple et positionné, ainsi que la restauration Coop du type.
+Le type d'origine est conservé dans un marqueur volatil répliqué puis restauré
+au switch, y compris pour le chemin commun déjà employé par `PROTEAN`.
+
+Lot suivant préparé puis réalisé ci-dessous : étendre les mêmes contrats réactifs à `TERMOCONVERSION`
+(Attaque +1 par impact Feu et immunité à la brûlure), `CUERPOHORNEADO` (absorption
+Feu et Défense +2), `MUMMY` (remplacement du talent adverse au contact avec les
+quatre exclusions source) et `GRIMNEIGH` (Attaque Spéciale +1 après K.O.). Les
+tests prévus couvrent les frappes multiples, les limites de crans, le contact en
+double, la réplication du talent remplacé et sa restauration après reconnexion.
+`AFTERMATH` reste dans un lot séparé avec `DAMP`, car ce dernier doit aussi bloquer
+la famille Explosion/Destruction de fonction `0E0`, encore absente du moteur ; il
+ne faut pas annoncer Moiteur comme entièrement supporté sur son seul effet global.
+
+## Réactions Feu, Momie et K.O. spécial - 2026-10-22
+
+Le noyau partagé porte maintenant `TERMOCONVERSION`, `CUERPOHORNEADO`, `MUMMY`
+et `GRIMNEIGH`. Échange Thermique augmente l'Attaque d'un cran après chaque
+impact Feu réellement subi, y compris chaque frappe multiple ; il rejoint aussi
+le garde générique qui empêche puis soigne la brûlure. Corps Cuit absorbe toute
+capacité Feu et tente Défense +2, même lorsque la limite de cran empêche le gain ;
+Brise Moule contourne l'ensemble comme dans le chemin d'absorption commun.
+
+Momie réagit à un contact dommageable même si son porteur tombe K.O., remplace le
+talent de l'attaquant et respecte exactement les exclusions source `MULTITYPE`,
+`DISGUISE`, `STANCECHANGE` et `MUMMY`. Le talent d'origine est conservé dans le
+marqueur volatil répliqué puis restauré au switch. Soucigraine utilise désormais
+le même contrat temporaire au lieu de laisser Insomnia attaché au Pokémon retiré ;
+Calque reste compatible avec son ancien marqueur de restauration. Sombre Ruade
+augmente l'Attaque Spéciale d'un cran après chaque cible mise K.O., via le même
+hook que l'Attaque d'Impudence.
+
+Autorité : le noyau local applique les réactions en solo et la room en Coop.
+Domaine : crans, talent courant et immunités sont tactiques et partagés.
+Persistance : crans et remplacement Momie sont restaurés depuis le snapshot de
+reconnexion, puis le talent source revient au switch et au règlement. Intentions :
+aucune nouvelle intention réseau. Audience : les participants et observateurs
+reçoivent l'activation, le changement de talent et les variations de crans. Les
+tests doubles vérifient que Momie ne modifie que l'attaquant positionné concerné.
+
+Après `prepare:local`, le rapport passe de 430 à 426 problèmes globaux et de 78
+à 74 problèmes de talents. Le registre extrait compte 161 talents supportés, 1
+partiel (`STURDY`) et 93 absents sur 255. Les fonctions d'attaque restent à
+102/353 et les 51 animations manquantes sont inchangées. Les tests couvrent les
+frappes multiples, immunité et soin de brûlure, absorption Feu, Brise Moule, les
+quatre exclusions de Momie, la restauration au switch, l'emplacement double et
+la restauration du remplacement après reconnexion invité.
+
+Prochain lot préparé : porter ensemble `AFTERMATH`, `DAMP` et la fonction `0E0`
+de `SELFDESTRUCT`/`EXPLOSION`. Le noyau devra appliquer le sacrifice pendant
+l'exécution réussie, comme le hook d'animation source placé avant le résultat
+final des dégâts, et empêcher entièrement l'action si un porteur actif de Moiteur
+est présent sur l'un des quatre emplacements, laisser Brise Moule contourner ce
+blocage, puis infliger le quart des PV maximaux de l'attaquant après un K.O. par
+contact contre Boom Final sauf Moiteur global, Brise Moule ou Garde Magik. Le
+contrat prévu couvre double K.O., remplacements obligatoires, égalité, PP,
+présentation distante et restauration de room. `AFTERMATH` n'est pas candidat
+dans le périmètre jouable actuel ; `DAMP` l'est dans 13 dépendances.
+
+## Explosion, Moiteur et Boom Final - 2026-10-22
+
+Le noyau partagé porte maintenant `AFTERMATH`, `DAMP` et la fonction `0E0` de
+`SELFDESTRUCT`/`EXPLOSION`. Une exécution réussie sacrifie le lanceur après le
+calcul des dégâts mais avant leur application et avant les réactions post-impact,
+conformément au hook d'animation Ruby. En double, l'adaptateur positionné rejoue
+le calcul pour toutes les cibles de zone avec le même état d'attaque, puis ne
+publie et ne conserve qu'un seul sacrifice. Un échec de précision ou Protection
+ne sacrifie pas le lanceur tant qu'aucune cible n'a été atteinte.
+
+Moiteur est une garde globale : tout porteur actif et conscient sur l'un des
+quatre emplacements bloque entièrement `0E0`, après consommation des PP. Brise
+Moule du lanceur contourne ce blocage. Boom Final se déclenche après un K.O. par
+contact même si son porteur est tombé, retire au lanceur un quart de ses PV
+maximaux et est neutralisé par Moiteur global, Brise Moule ou Garde Magik. Les
+fins simultanées sans réserve produisent désormais un événement `battleEnded`
+avec `winner: null`, un état terminé et le message de présentation « Match nul » ;
+les combats avec réserve exigent normalement le remplacement du lanceur.
+
+Autorité : le même résolveur est exécuté localement en solo et par la room en
+Coop. Domaine : PV, PP, K.O., résultat et remplacements sont tactiques partagés.
+Persistance : aucun nouveau marqueur durable ; le snapshot autoritaire suffit à
+restaurer PV nuls, PP et remplacement après reconnexion. Intentions : seule la
+capacité choisie est envoyée, la room décide de Moiteur, des cibles et du RNG.
+Audience : participants et observateurs reçoivent l'activation, l'échec, les
+dégâts, le sacrifice, les K.O. et l'égalité. Les tests couvrent solo, hôte,
+invité/reconnexion, quatre emplacements, attaque de zone, PP, Brise Moule, Garde
+Magik, remplacement et égalité.
+
+Après `prepare:local`, le rapport passe de 426 à 423 problèmes globaux. Les
+mécaniques d'attaque manquantes passent de 301 à 299, les talents candidats
+manquants ou partiels de 74 à 73 et les 51 animations manquantes restent
+inchangées. Le registre extrait compte 103 fonctions supportées sur 353, puis 163
+talents supportés, 1 partiel (`STURDY`) et 91 absents sur 255. `AFTERMATH` reste
+hors du périmètre candidat actuel ; `DAMP` en retire une dépendance agrégée dont
+les 13 usages sont maintenant couverts.
+
+Prochain lot préparé : porter `ICESCALES`, `FLUFFY`, `MARVELSCALE` et `DEFEATIST`
+dans le calculateur commun. La fidélité attendue est celle de Z, pas celle des
+jeux récents : Écailles Glacées multiplie la Défense Spéciale effective par 1,5 ;
+Écaille Spéciale multiplie la Défense effective par 1,5 sous tout statut majeur ;
+Défaitiste divise l'Attaque effective par deux à la moitié des PV ou moins ;
+Toison Épaisse double les dégâts Feu et, uniquement hors Feu à cause du `elsif`
+source, divise par deux les dégâts de contact. Les trois protections défensives
+sont contournées par Brise Moule, contrairement à Défaitiste qui appartient au
+lanceur. Le lot devra couvrir catégories physique/spéciale, famille Psyko-Choc,
+seuil exact, statut propre à Z, Feu de contact, double positionné et restauration
+Coop sans nouvel état persistant.
+
+## Modificateurs défensifs et seuil de Défaitiste - 2026-10-22
+
+Le calculateur partagé porte maintenant `ICESCALES`, `FLUFFY`, `MARVELSCALE` et
+`DEFEATIST`. Les comportements suivent les scripts Z 2.12 FR plutôt que les
+descriptions canoniques modernes : Écailles Glacées multiplie la défense utilisée
+par 1,5 contre une capacité spéciale, y compris lorsque la famille Psyko-Choc
+emploie la Défense physique ; Écaille Spéciale applique le même multiplicateur à
+la Défense contre une capacité physique sous n'importe quel statut majeur, dont
+`CADUCO` et `HEMORRAGIA`.
+
+Toison Épaisse double les dégâts Feu. Le `elsif` source est conservé : une
+capacité Feu de contact reste donc doublée et ne reçoit pas simultanément la
+réduction de contact ; hors Feu, une capacité de contact est divisée par deux.
+Défaitiste divise l'Attaque ou l'Attaque Spéciale effective par deux lorsque les
+PV sont inférieurs ou égaux à la moitié des PV maximaux. Brise Moule contourne
+Écailles Glacées, Écaille Spéciale et Toison Épaisse, mais pas Défaitiste puisque
+ce dernier appartient au lanceur.
+
+Autorité : ces multiplicateurs vivent exclusivement dans le calculateur du noyau,
+appelé en solo et par la room Coop. Domaine : seuls les dégâts et PV tactiques
+partagés changent. Persistance : aucun nouvel état ; PV, statut et résultat sont
+déjà restaurés par le snapshot. Intentions : seule la capacité choisie est
+envoyée. Audience : les participants et observateurs reçoivent les dégâts et la
+trace autoritaire, qui nomme désormais le talent et son multiplicateur équivalent.
+Les tests couvrent catégories physique/spéciale, Psyko-Choc, seuil exact, statut
+propre à Z, Feu de contact, Brise Moule, emplacement double et reconnexion invité.
+
+Après `prepare:local`, l'audit passe de 423 à 419 problèmes globaux et de 73 à 69
+talents candidats manquants ou partiels. Le registre extrait compte 167 talents
+supportés, 1 partiel (`STURDY`) et 87 absents sur 255. Les 299 mécaniques
+d'attaque manquantes et 51 animations manquantes restent inchangées ; le registre
+conserve 103 fonctions supportées sur 353.
+
+Prochain lot préparé : porter ensemble `WINDRIDER`, `WINDPOWER` et la fonction
+`05B` de `TAILWIND`, en introduisant une classification partagée des capacités de
+vent fidèle à `isWindMove?` : `AIRCUTTER`, `TWISTER`, `HEATWAVE`, `SANDSTORM`,
+`PETALBLIZZARD`, `GUST`, `HURRICANE`, `BLIZZARD`, `TAILWIND`, `FAIRYWIND`,
+`ICYWIND`, `SILVERWIND`, `OMINOUSWIND`, `AIRSLASH`, `AEROBLAST` et
+`LEAFTORNADO`. Surcavents doit immuniser sa cible et augmenter son Attaque d'un
+cran ; Énergie Éolienne doit laisser les dégâts passer puis poser Charge pour la
+prochaine capacité Électrik. Vent Arrière dure quatre tours, double la Vitesse du
+camp, active les deux talents chez l'utilisateur et son partenaire lors de son
+emploi, puis Surcavents doit aussi réagir à l'entrée sous un Vent Arrière déjà
+actif. Le lot devra expliciter état de camp, compteur Charge, ordre double,
+switch/entrée, non-contournement par Brise Moule dans ce hook source,
+présentation et reconnexion Coop.
+
+## Vent Arrière, Surcavents et Énergie Éolienne - 2026-10-22
+
+Le noyau partagé porte maintenant `WINDRIDER`, `WINDPOWER` et la fonction `05B`
+de `TAILWIND`. La classification commune reprend exactement les seize capacités
+de `isWindMove?` du script Z. Surcavents absorbe une capacité de cette liste et
+augmente l'Attaque d'un cran avant la précision ou Protection ; ce hook source
+n'est pas contourné par Brise Moule. Énergie Éolienne ne bloque pas la capacité :
+elle arme le compteur Charge à 2 avant les dégâts lorsque celui-ci était nul. Le
+bonus Électrik et sa consommation continuent d'utiliser le compteur commun déjà
+présent dans le moteur.
+
+Vent Arrière pose un état de camp à quatre tours, décrémenté à la fin du tour de
+pose, et double la Vitesse effective de chaque allié dans l'ordre partagé. Son
+emploi active Surcavents ou Énergie Éolienne chez l'utilisateur et son partenaire
+conscient avant de poser l'effet. En double, l'enveloppe positionnée expose les
+deux emplacements alliés à la présentation distante. Un Surcavents entrant sous
+un Vent Arrière encore actif gagne aussi son cran d'Attaque, en simple comme sur
+l'emplacement exact d'un combat double.
+
+Autorité : le noyau local résout l'effet en solo et la room résout le même contrat
+en Coop. Domaine : `tailwindTurns` est un état tactique partagé du camp et
+`chargeTurns` un volatil partagé du Pokémon. Persistance : les deux compteurs,
+les crans et l'ordre résultant vivent dans le snapshot et sont restaurés après
+reconnexion ; ils ne survivent pas au règlement. Intentions : seule la capacité
+choisie est envoyée, sans nouvelle commande réseau. Audience : participants et
+observateurs reçoivent activations, Charge, changement de cran et état de camp.
+
+Après `prepare:local`, l'audit passe de 419 à 416 problèmes globaux. Les
+mécaniques d'attaque manquantes passent de 299 à 298, les talents candidats
+manquants de 69 à 67 et les 51 animations manquantes restent inchangées. Le
+registre extrait compte 104 fonctions supportées sur 353, 169 talents supportés,
+1 partiel (`STURDY`) et 85 absents sur 255. Les tests couvrent cible simple,
+Brise Moule, dégâts conservés d'Énergie Éolienne, ordre sous Vent Arrière,
+utilisateur et partenaire doubles, entrée sous effet et reconnexion invité.
+
+Prochain lot préparé : porter ensemble les talents de partenaire `PLUS`, `MINUS`,
+`FRIENDGUARD` et `TELEPATHY`. Plus et Minus doivent multiplier par 1,5 l'Attaque
+Spéciale effective uniquement lorsque leur porteur conscient a un partenaire
+actif doté de l'un ou l'autre talent. Garde Amie réduit de 25 % les dégâts reçus
+par le partenaire, jamais ceux de son propre porteur. Télépathe immunise son
+porteur aux capacités offensives d'un allié, notamment les attaques de zone,
+sans bloquer les capacités adverses. Le noyau de calcul devra recevoir un contexte
+d'allié générique, l'adaptateur double fournir les positions exactes et le simple
+conserver les multiplicateurs neutres. Les tests prévus couvrent les couples
+Plus/Minus croisés, partenaire K.O. ou remplacé, attaque spéciale/physique,
+Garde Amie, Télépathe sur zone, hôte/invité, rendu distant et reconnexion. La
+classe Ruby `137` d'Aura Magnétique cible aussi Plus/Minus, mais aucune capacité
+`MAGNETICFLUX` n'est présente dans le PBS extrait actuel ; elle reste donc une
+dette auditée hors de ce lot de dépendances jouables, sans inventer d'entrée.
+
+## Talents de partenaire actifs - 2026-10-22
+
+Le calculateur partagé porte maintenant `PLUS`, `MINUS`, `FRIENDGUARD` et
+`TELEPATHY`. Le contexte de dégâts accepte l'identité des deux partenaires actifs,
+mais seul l'adaptateur double l'alimente ; le combat simple conserve donc un
+contexte neutre sans chemin métier parallèle. Plus et Minus multiplient par 1,5
+l'Attaque Spéciale effective de leur porteur pour une capacité spéciale lorsque
+son partenaire actif et conscient possède Plus ou Minus. Le bonus disparaît dès
+que ce partenaire tombe K.O. ou quitte l'emplacement.
+
+Garde Amie applique le multiplicateur source de 0,75 aux dégâts reçus par son
+partenaire, jamais à son propre porteur. Brise Moule contourne cette protection.
+Télépathe intercepte une capacité offensive lancée par un allié avant les dégâts,
+notamment une attaque de zone qui continue normalement sur les adversaires ; elle
+ne bloque ni les capacités de statut, ni une capacité adverse, ni un allié doté de
+Brise Moule. L'événement d'activation conserve le camp réel de la cible dans
+l'enveloppe positionnée.
+
+Autorité : le calculateur local et la room autoritaire consomment le même contexte
+de partenaire. Domaine : dégâts, PV et K.O. sont tactiques partagés ; aucun nouvel
+état durable n'est ajouté. Persistance : talents, emplacements actifs et PV déjà
+présents dans le snapshot suffisent à recalculer le contexte après reconnexion.
+Intentions : chaque propriétaire continue d'envoyer seulement l'action de son
+emplacement. Audience : participants et observateurs reçoivent dégâts, trace des
+multiplicateurs et activation de Télépathe ; la room conserve les talents des
+emplacements hôte et invité après restauration.
+
+Après `prepare:local`, l'audit passe de 416 à 413 problèmes globaux et les talents
+candidats manquants de 67 à 64. Plus, Minus et Télépathe retirent chacun leur
+dépendance ; Garde Amie est entièrement supporté mais n'avait aucun usage dans le
+périmètre jouable actuel. Le registre extrait compte 173 talents supportés, 1
+partiel (`STURDY`) et 81 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques manquantes et 51 animations manquantes restent inchangées. Les
+tests couvrent couples Plus/Minus croisés, capacité physique, partenaire absent ou
+K.O., Garde Amie, Brise Moule, attaque de zone, Télépathe, hôte/invité et
+restauration autoritaire.
+
+Prochain lot préparé : porter les quatre modificateurs de calcul `CAMORRISTA`,
+`REALEZA`, `MERCILESS` et `TANGLEDFEET`. Camorrista doit appliquer ×1,2 à la liste
+source exacte des coups de pied (`MEGAKICK`, `LOWKICK`, `ROLLINGKICK`, `JUMPKICK`,
+`HIJUMPKICK`, `DOUBLEKICK`, `TRIPLEKICK`, `BLAZEKICK`, `TROPKICK`,
+`TRIPLEAXEL`). Realeza applique ×1,5 à tous les types offensifs sauf Normal,
+indépendamment des types du porteur. Ensañamiento garantit un critique contre une
+cible empoisonnée, tandis que Tumbos multiplie l'esquive par 1,2 lorsque son
+porteur est confus et reste contourné par Brise Moule. Le lot devra garder ces
+règles dans les classifications et calculateurs communs, tracer les
+multiplicateurs, puis couvrir solo, double positionné, hôte/invité et reconnexion.
+
+## Coups de pied, Realeza, critiques et esquive confuse - 2026-10-22
+
+Le noyau partagé porte maintenant `CAMORRISTA`, `REALEZA`, `MERCILESS` et
+`TANGLEDFEET`. Camorrista applique le multiplicateur final de 1,2 uniquement aux
+dix capacités reconnues par `isKickingMove?` dans Z ; cette classification vit
+avec les autres propriétés génériques de capacité. Realeza applique 1,5 aux
+dix-sept types offensifs explicitement cités par le script, indépendamment des
+types du porteur, sans inclure `NORMAL` ni le type interne `QMARKS`.
+
+Ensañamiento garantit un critique contre une cible empoisonnée sans tirage RNG.
+L'ordre Ruby est conservé : Armurbaston et Coque Armure bloquent d'abord le
+critique, puis Ensañamiento passe avant Chant Canon. Tumbos multiplie l'esquive
+effective par 1,2 tant que son porteur est confus ; Identification annule seulement
+les crans comme auparavant et Brise Moule contourne le talent. La trace de
+précision expose le talent et son multiplicateur, comme la trace de dégâts pour
+Camorrista et Realeza.
+
+Autorité : le même calculateur est appelé localement en solo et par la room en
+Coop. Domaine : dégâts, précision, PV et K.O. sont tactiques partagés. Persistance :
+aucun nouvel état ; talent, statut, confusion et PV sont déjà dans le snapshot et
+sont restaurés après reconnexion. Intentions : seule la capacité choisie reste
+envoyée, le RNG et les calculs demeurent autoritaires. Audience : participants et
+observateurs reçoivent dégâts, critiques, échecs de précision et traces ; les tests
+de room couvrent un talent hôte, un talent invité et leur restauration.
+
+Après `prepare:local`, l'audit passe de 413 à 409 problèmes globaux et les talents
+candidats manquants de 64 à 60. Le registre extrait compte 177 talents supportés,
+1 partiel (`STURDY`) et 77 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques manquantes et 51 animations manquantes restent inchangées. Les
+tests couvrent les dix coups de pied et un contre-exemple, les types Feu, Normal et
+`QMARKS`, l'ordre critique, Chant Canon, l'immunité aux critiques, Tumbos, Brise
+Moule, le double positionné, l'hôte, l'invité et la reconnexion.
+
+Prochain lot préparé : réunir les classifications de capacités encore requises par
+`BULLETPROOF`, `PUNKROCK`, `VOZVALQUIRIA` et `PENETRANTE`. Antibalas doit bloquer
+les capacités portant le drapeau bombe source `n`, avec contournement par Brise
+Moule. Punk Rock doit appliquer 1,3 aux capacités sonores du lanceur et 0,5 aux
+dégâts sonores reçus, cette protection défensive étant contournée par Brise Moule.
+Voz Valquiria convertit les capacités Normal en Glace sans bonus de puissance et
+ajoute la chance source de 30 % d'apeurement aux capacités sonores. Penetrante
+ajoute la même chance aux capacités à haut taux critique. Le lot devra partager
+les classifications bombe, son et haut critique, conserver l'ordre des immunités
+et effets secondaires, puis couvrir solo, double, hôte/invité et reconnexion.
+
+## Bombes, sons et haut taux critique - 2026-10-22
+
+Le noyau partagé porte maintenant `BULLETPROOF`, `PUNKROCK`, `VOZVALQUIRIA` et
+`PENETRANTE`. Les propriétés communes exposent les drapeaux source `n` (bombe),
+`k` (son) et `h` (haut taux critique), sans maintenir de liste parallèle de
+capacités. Antibalas intercepte toute capacité `n` avant précision et dégâts ;
+les PP sont consommés et Brise Moule contourne l'immunité. En double, chaque cible
+est évaluée séparément afin que les autres cibles d'une capacité de zone restent
+atteintes.
+
+Punk Rock multiplie par 1,3 les dégâts sonores du porteur et par 0,5 les dégâts
+sonores qu'il reçoit. Seule la branche défensive est contournée par Brise Moule.
+Voz Valquiria convertit toute capacité Normal en Glace sans le bonus de puissance
+des talents de type Peau, puis donne aux capacités sonores la chance source de
+30 % d'apeurement. Penetrante donne la même chance aux capacités portant `h`.
+Comme le Ruby utilise `pbRandom(100) <= 30`, le noyau conserve volontairement ce
+seuil inclusif. Le drapeau `h` augmente également d'un cran le calcul critique
+normal, dette transverse révélée par cette classification.
+
+Autorité : calcul, immunité, tirages et apeurement vivent dans le résolveur commun,
+appelé en solo et par la room autoritaire. Domaine : type effectif, dégâts, PV et
+volatil d'apeurement sont tactiques partagés. Persistance : aucun nouvel état ;
+talents, types source, PV et volatil existants suffisent au snapshot, l'apeurement
+étant consommé ou nettoyé pendant le tour. Intentions : seule la capacité choisie
+est transmise. Audience : participants et observateurs reçoivent blocage, dégâts,
+activation et volatile ; le test de room couvre Voz Valquiria côté hôte, Punk Rock
+côté invité et leur restauration après reconnexion.
+
+Après `prepare:local`, l'audit passe de 409 à 405 problèmes globaux et les talents
+candidats manquants de 60 à 56. Le registre extrait compte 181 talents supportés,
+1 partiel (`STURDY`) et 73 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques manquantes et 51 animations manquantes restent inchangées. Les
+tests couvrent PP, Brise Moule, capacité bombe de zone, multiplicateurs offensif
+et défensif, conversion sans bonus, efficacité Glace, seuil d'apeurement, haut
+critique, Duo Poudre + Cape Obscure, double positionné, hôte, invité et reconnexion.
+
+Prochain lot préparé : centraliser les réactions de `CONTRARY`, `CAPATOXICA`,
+`OLORPORCINO` et `PURIFYINGSALT`. Contrary doit inverser tout changement de cran,
+y compris les gains personnels, tout en laissant Brise Moule contourner seulement
+les changements imposés par l'adversaire ; les limites doivent être testées dans
+la direction réellement inversée. Capa Tóxica doit poser une couche de Pics Toxik
+sur le camp de l'attaquant après un impact subi, jusqu'au plafond de deux couches.
+Olor Porcino doit réduire de deux crans l'esquive d'un attaquant ayant touché par
+contact. Purifying Salt doit empêcher puis soigner tous les statuts majeurs de Z
+et diviser par deux les dégâts Spectre, avec contournement défensif par Brise Moule.
+Le lot devra réutiliser le changeur de crans, les effets de camp et la protection
+de statut communs, puis couvrir impacts multiples, limites, contact, double,
+hôte/invité et restauration des crans, pièges et statuts après reconnexion.
+
+## Crans inversés, réactions d'impact et Sel Purificateur - 2026-10-22
+
+Le noyau partagé porte maintenant `CONTRARY`, `CAPATOXICA`, `OLORPORCINO` et
+`PURIFYINGSALT`. Le changement de cran commun applique Respondón avant Simple et
+avant les limites : un gain personnel devient donc une baisse, une baisse adverse
+devient un gain, et un cran déjà à la limite échoue dans la direction réellement
+inversée. Brise Moule désactive cette inversion uniquement lorsque l'adversaire
+impose le changement ; les gains et réactions propres du porteur restent inversés.
+Les talents d'entrée, de fin de tour, de vent, de Baie et de réaction aux dégâts
+réutilisent ce même contrat, y compris la maximisation de Colérique.
+
+Capa Tóxica pose une couche de Pics Toxik sur le camp de l'attaquant après chaque
+impact qui inflige des dégâts, jusqu'au plafond source de deux couches. Olor
+Porcino réduit de deux crans l'esquive de l'attaquant après chaque impact de
+contact. Les deux hooks conservent la cible positionnée en double et restent
+actifs sur un impact mettant leur porteur K.O., comme le callback Ruby appelé
+avec le talent de la cible. Sel Purificateur empêche et soigne sommeil, poison,
+brûlure, paralysie, gel, Caduco et Hémorragie, puis divise par deux les dégâts
+Spectre. Les protections de statut, le sommeil différé de Bâillement et la
+réduction Spectre sont contournés par Brise Moule adverse.
+
+Autorité : le résolveur local en solo et la room en Coop appellent exactement les
+mêmes changeurs de crans, hooks après impact, effets de camp et protections de
+statut. Domaine : crans, statut, PV et couches de Pics Toxik sont tactiques
+partagés. Persistance : aucun état durable hors combat ; le snapshot autoritaire
+conserve crans, statut, talent, effets de camp et le contexte différé de
+Bâillement après reconnexion. Intentions : les propriétaires n'envoient que leur
+capacité, leur attente ou leur remplacement ; la room décide des impacts et des
+réactions. Audience : participants et observateurs reçoivent activations,
+changements de cran, statuts, dégâts et effets de camp positionnés.
+
+Après `prepare:local`, l'audit passe de 405 à 401 problèmes globaux et les talents
+candidats manquants de 56 à 52. Le registre extrait compte 185 talents supportés,
+1 partiel (`STURDY`) et 69 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent gains personnels, baisses adverses, limites,
+Brise Moule, impacts multiples, plafond des pièges, contact, sept statuts, dégâts
+Spectre, double positionné, hôte, invité et restauration après reconnexion.
+
+Prochain lot préparé : réunir les quatre interactions de type encore candidates
+`NORMALIZE`, `STEELWORKER`, `EARTHEATER` et `CANASTO`. Normalize doit convertir
+toutes les capacités en Normal et appliquer le multiplicateur source de 1,5,
+contrairement aux talents Peau limités aux capacités déjà Normal. Steelworker
+applique 1,5 aux dégâts Acier du lanceur. Earth Eater doit absorber les capacités
+Sol après précision et avant dégâts puis restaurer un quart des PV maximaux, avec
+Brise Moule comme contournement défensif. Canasto réduit à 0,3 les dégâts Vol et
+Roche reçus, également sous le contrat Brise Moule. Le lot devra partager type
+effectif, absorption et trace de dégâts, puis couvrir immunités Normal/Spectre,
+soin plafonné, attaques de zone, double positionné et restauration Coop.
+
+## Conversions, absorption Sol et résistances de type - 2026-10-22
+
+Le noyau partagé porte maintenant `NORMALIZE`, `STEELWORKER`, `EARTHEATER` et
+`CANASTO`. La résolution du type effectif applique Normalisation avant les Peaux :
+toute capacité devient Normal et reçoit le multiplicateur source de 1,5, même si
+elle était déjà Normal. Cette conversion alimente ensuite STAB, immunités et
+absorptions sans branche propre à une capacité. Steelworker ajoute son facteur
+offensif de 1,5 aux seules capacités Acier. Canasto ajoute le facteur défensif
+source de 0,3 aux capacités Vol et Roche ; Brise Moule le contourne.
+
+Earth Eater rejoint le hook générique d'absorption par type. Après le test de
+précision, une capacité Sol visant son porteur est bloquée et soigne jusqu'à un
+quart des PV maximaux, même si le porteur est déjà à son maximum. Brise Moule
+contourne cette défense. Une capacité Sol convertie en Normal par Normalisation
+n'est donc pas absorbée. En double, chaque cible d'une capacité de zone est
+résolue séparément : Earth Eater protège et soigne son emplacement sans annuler
+les dégâts infligés à l'autre adversaire. L'ordre après précision corrige le
+cadrage préparatoire précédent et correspond à l'appel Ruby de
+`pbTypeModMessages` depuis le calcul des dégâts, après `pbAccuracyCheck`.
+
+Autorité : type effectif, absorption, soin et dégâts sont décidés par le même
+résolveur en solo et par la room autoritaire en Coop. Domaine : talent, type,
+PV et PP sont tactiques partagés. Persistance : aucun nouvel état durable ; le
+snapshot existant conserve talents, PV et PP après reconnexion. Intentions : le
+joueur transmet uniquement sa capacité ou son attente. Audience : participants
+et observateurs reçoivent la consommation des PP, l'activation, le soin et les
+dégâts ; le test de room couvre Normalisation côté hôte, Earth Eater côté invité,
+les deux talents de réserve et leur restauration autoritaire.
+
+Après `prepare:local`, l'audit passe de 401 à 397 problèmes globaux et les talents
+candidats manquants de 52 à 48. Le registre extrait compte 189 talents supportés,
+1 partiel (`STURDY`) et 65 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent conversion de types non-Normal et déjà Normal,
+immunité Normal/Spectre, multiplicateurs offensifs et défensifs, soin plafonné et
+à PV pleins, Brise Moule, interaction Normalize/Earth Eater, attaque de zone,
+double positionné, hôte, invité et restauration après reconnexion.
+
+Prochain lot préparé : réunir les auras globales `DARKAURA`, `FAIRYAURA`,
+`AURADORADA` et `AURABREAK`. Le Ruby recherche ces talents sur les quatre
+combattants actifs : Aura Sombre, Aura Féérique et Aura Dorée multiplient
+respectivement par 4/3 les dégâts Ténèbres, Fée et Électrik de n'importe quel
+participant. Si au moins un porteur de Brise Aura est actif, le facteur de l'aura
+présente devient 2/3 au lieu de 4/3. Plusieurs porteurs d'une même aura ne doivent
+pas cumuler le bonus, Brise Aura agit quelle que soit son équipe et Brise Moule
+ne contourne pas ces effets globaux. Le lot devra exposer dans le contexte de
+dégâts l'ensemble borné des talents actifs, alimenté par les adaptateurs simple
+et double, tracer l'aura appliquée, puis couvrir porteur allié/adverse, doubles,
+K.O. ou retrait du porteur, hôte, invité et restauration après reconnexion.
+
+## Auras globales actives - 2026-10-22
+
+Le noyau partagé porte maintenant `DARKAURA`, `FAIRYAURA`, `AURADORADA` et
+`AURABREAK`. Le contexte générique de dégâts expose l'ensemble borné des talents
+de tous les combattants actifs et conscients, sans dépendre du camp du lanceur ni
+du format. Aura Sombre, Aura Féérique et Aura Dorée appliquent respectivement le
+facteur source de 4/3 aux dégâts Ténèbres, Fée et Électrik de n'importe quel
+participant. Un ensemble évite tout cumul si plusieurs porteurs partagent la même
+aura. Lorsqu'au moins un Brise Aura est actif, le facteur de l'aura présente est
+2/3 au lieu de 4/3 ; Brise Moule ne désactive pas cet effet global.
+
+L'adaptateur simple dérive la liste des deux combattants au moment du calcul.
+L'adaptateur double la reconstruit depuis les quatre emplacements avant chaque
+cible résolue. Un porteur mis K.O. plus tôt dans le tour ou remplacé avant
+l'attaque cesse donc immédiatement de contribuer, sans drapeau volatil ni état
+dupliqué. Le calculateur direct conserve un repli sur attaquant et défenseur afin
+que ses consommateurs hors adaptateur obtiennent le même comportement en simple.
+La trace attribue le facteur 4/3 à l'aura de type et le facteur 2/3 à Brise Aura.
+
+Autorité : la liste active et le multiplicateur sont calculés dans le résolveur
+local en solo et dans ce même résolveur appelé par la room autoritaire. Domaine :
+talents actifs, dégâts et PV sont tactiques partagés. Persistance : aucun nouvel
+état ; équipes, emplacements, talents et PV du snapshot suffisent à reconstruire
+les auras après reconnexion. Intentions : capacité, attente ou remplacement
+seulement. Audience : participants et observateurs reçoivent la trace et les
+dégâts autoritaires ; le test de room couvre Aura Sombre côté hôte, Brise Aura
+côté invité, les deux autres auras en réserve et leur restauration.
+
+Après `prepare:local`, l'audit passe de 397 à 393 problèmes globaux et les talents
+candidats manquants de 48 à 44. Le registre extrait compte 193 talents supportés,
+1 partiel (`STURDY`) et 61 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent les trois types, porteur allié ou adverse, absence
+de cumul, inversion, absence d'aura à inverser, Brise Moule, double positionné,
+K.O. antérieur, remplacement, hôte, invité et reconnexion.
+
+Prochain lot préparé : compléter les conversions Normal propres à Pokémon Z avec
+`COLEOPTERO`, `PIELMALDITA`, `PIELELECTRICA` et `TINTINEO`. Les trois premiers
+convertissent une capacité Normal en Insecte, Spectre ou Électrik et appliquent le
+facteur source de 1,2. Tintineo convertit Normal en Psy mais, bien que le Ruby arme
+son indicateur `@powerboost`, il est volontairement absent de la liste qui applique
+le facteur 1,2 : aucun bonus ne doit donc être inventé. Son message au premier
+tour devra passer par la présentation générique des activations. Le lot réutilisera
+`effectiveMoveType`, puis couvrira STAB, immunités et absorptions sur le type
+converti, capacités non-Normal inchangées, Brise Moule sans incidence, double,
+hôte, invité et restauration après reconnexion.
+
+## Conversions Normal propres à Pokémon Z - 2026-10-22
+
+Le noyau partagé porte maintenant `COLEOPTERO`, `PIELMALDITA`, `PIELELECTRICA`
+et `TINTINEO`. Ces quatre talents rejoignent la table générique de type effectif :
+une capacité Normal devient respectivement Insecte, Spectre, Électrik ou Psy,
+tandis qu'une capacité d'un autre type reste inchangée. Le type converti alimente
+ensuite sans branche spéciale STAB, table des types, immunités, redirections et
+absorptions. Coleoptero, Peau Maudite et Peau Électrique appliquent le facteur
+source de 1,2. Tintineo conserve exactement l'anomalie Ruby : `@powerboost` est
+armé, mais ce talent n'apparaît pas dans la liste qui applique 1,2, donc aucun
+bonus n'est ajouté.
+
+L'annonce de Tintineo au premier tour passe par l'événement générique
+`abilityActivated` avec l'effet `announce`. Le marqueur d'entrée existant évite
+de la répéter à chaque tour et la rejoue après une véritable nouvelle entrée.
+En double, la conversion est recalculée pour chaque cible ; une capacité Normal
+devenue Électrik peut donc être absorbée par Absorb Volt sur un emplacement tout
+en touchant l'autre cible de zone.
+
+Autorité : conversion, annonce, absorption et dégâts utilisent le même résolveur
+en solo et dans la room autoritaire. Domaine : type effectif, talent, PP et PV
+sont tactiques partagés. Persistance : aucun nouvel état durable ; le snapshot
+conserve talent, équipe et marqueur volatil d'entrée. Intentions : capacité,
+attente ou remplacement seulement. Audience : participants et observateurs
+reçoivent annonce, activation d'absorption et dégâts ; le test de room couvre
+Tintineo côté hôte, Peau Maudite côté invité, les deux autres talents en réserve
+et leur restauration après reconnexion.
+
+Après `prepare:local`, l'audit passe de 393 à 391 problèmes globaux et les talents
+candidats manquants de 44 à 42 ; deux talents du lot n'étaient pas requis par le
+périmètre de dépendances courant. Le registre extrait compte néanmoins 197 talents
+supportés, 1 partiel (`STURDY`) et 57 absents sur 255. Les 104 fonctions supportées
+sur 353, 298 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent les quatre conversions, bonus exacts, capacités
+non-Normal, annonce unique, efficacité de type, absorption par cible, double,
+hôte, invité et reconnexion.
+
+Prochain lot préparé : réunir les cinq amplificateurs offensifs de type purs
+`ALBINISMO`, `PEDANTE`, `INFLAMABLE`, `TRANSPORTARROCA` et `DRAGONSMAW`. Le Ruby
+leur applique sans autre effet un facteur de 1,5 aux dégâts Glace, Psy, Feu, Roche
+ou Dragon du porteur. Ils doivent consommer le type effectif après conversion,
+ne jamais renforcer les autres types et rester indépendants de Brise Moule.
+Le lot réutilisera la trace des multiplicateurs offensifs et couvrira types
+convertis, STAB, immunités, double positionné, hôte, invité et restauration après
+reconnexion.
+
+## Amplificateurs offensifs de type purs - 2026-10-22
+
+Le noyau partagé porte maintenant `ALBINISMO`, `PEDANTE`, `INFLAMABLE`,
+`TRANSPORTARROCA` et `DRAGONSMAW`. Une seule table déclarative associe chaque
+talent à son type Glace, Psy, Feu, Roche ou Dragon et au facteur source de 1,5.
+Floración et Steelworker ont été migrés dans la même table afin de conserver un
+seul contrat pour les sept talents dont l'unique effet est ce renforcement typé.
+Le calcul consulte le type effectif de la capacité, puis compose ce facteur avec
+STAB, efficacité, climat et autres modificateurs tracés. Un type différent ne
+reçoit rien et Brise Moule, talent du lanceur destiné aux défenses adverses, n'a
+aucune incidence sur ce bonus offensif.
+
+Autorité : le calculateur commun décide le multiplicateur en solo et dans la room
+autoritaire. Domaine : talent, type effectif et dégâts sont tactiques partagés.
+Persistance : aucun nouvel état ; talents et équipes du snapshot suffisent après
+reconnexion. Intentions : seule la capacité choisie est transmise. Audience :
+participants et observateurs reçoivent les dégâts et leur trace ; le test de room
+couvre Albino côté hôte, Pedante côté invité, les trois autres talents en réserve
+et leur restauration. Une capacité de zone en double reçoit le même bonus pour
+chaque cible positionnée.
+
+Après `prepare:local`, l'audit passe de 391 à 388 problèmes globaux et les talents
+candidats manquants de 42 à 39 ; deux talents du lot n'étaient pas requis par le
+périmètre de dépendances courant. Le registre extrait compte 202 talents supportés,
+1 partiel (`STURDY`) et 52 absents sur 255. Les 104 fonctions supportées sur 353,
+298 mécaniques d'attaque manquantes et 51 animations manquantes restent
+inchangées. Les tests couvrent les cinq types, type incorrect, STAB, Brise Moule,
+attaque de zone, double positionné, hôte, invité et reconnexion.
+
+Prochain lot préparé : réunir les modificateurs offensifs à condition ou durée
+`FLAREBOOST`, `TOXICBOOST`, `PODERSABIO` et `SLOWSTART`. Flare Boost applique 1,5
+aux capacités spéciales lorsque le porteur est brûlé ; Toxic Boost applique 1,5
+aux capacités physiques lorsqu'il est empoisonné. Poder Sabio multiplie l'Attaque
+Spéciale par 1,5 mais verrouille après la première capacité utilisée comme un
+objet Choix, verrou à nettoyer au retrait. Slow Start divise par deux l'Attaque
+physique et la Vitesse tant que le compteur source `turncount <= 5` ; la frontière
+exacte doit être vérifiée contre l'incrément du compteur partagé. Le lot devra
+réutiliser statuts, ordre d'action, volatile de verrouillage et compteur de tours,
+puis couvrir catégories incorrectes, guérison, switch aller-retour, limites de
+durée, double, hôte, invité et reconnexion.
+
+## Lot élargi de talents simples : statut, terrain et priorité - 2026-10-22
+
+Le noyau partagé porte désormais dix talents supplémentaires. `FLAREBOOST`
+multiplie par 1,5 les dégâts spéciaux d'un porteur brûlé et `TOXICBOOST` les
+dégâts physiques d'un porteur empoisonné. `SLOWSTART` divise par deux l'Attaque
+physique et la Vitesse tant que `activeTurns <= 5` ; le sixième tour actif libère
+les deux caractéristiques et un retrait efface le volatile, donc relance la durée
+à la rentrée. `SURGESURFER` double la Vitesse sous Champ Électrifié, tandis que
+`SILVANO` multiplie Attaque physique et Vitesse par 1,3 sous Champ Herbu.
+
+`MISTYSURGE` et `PSYCHICSURGE` réutilisent le même contrat d'entrée que les deux
+champs déjà portés et installent respectivement les Champs Brumeux et Psychique
+pour cinq tours. `TERAVOLT` et `TURBOBLAZE` sont des alias complets du prédicat
+partagé de Brise Moule : toutes les protections qui consultent ce prédicat sont
+donc ignorées sans liste parallèle. Enfin, `GALEWINGS` ajoute un niveau de priorité
+à toute capacité Vol, conformément à Pokémon Z sans condition de PV. Le calcul de
+priorité a été centralisé afin que le simple et le double positionné ne puissent
+pas diverger.
+
+Autorité : ordre, terrains et dégâts sont décidés par le noyau local en solo et
+par la room en Coop. Domaine : état tactique partagé. Persistance : aucun nouveau
+champ ; terrains, équipes et `activeTurns` existaient déjà dans le snapshot, et le
+volatile est remis à zéro par le contrat générique de retrait. Intentions : choix
+de capacité ou changement uniquement. Audience : participants et observateurs
+reçoivent l'ordre, les dégâts, le terrain et leurs événements ; aucune donnée
+personnelle supplémentaire. Les tests couvrent catégories et statuts incorrects,
+frontière des cinq tours, retrait/rentrée, vitesse sous les deux terrains, double,
+hôte, invité et export/restauration de room avec les dix identités.
+
+Après `prepare:local`, l'audit passe de 388 à 381 problèmes globaux. Les talents
+manquants dans le périmètre de dépendances courant passent de 39 à 32 ; trois
+talents du lot ne sont pas requis par ce périmètre. Le registre complet compte
+maintenant 212 talents supportés, 1 partiel (`STURDY`) et 42 absents sur 255. Les
+104 fonctions supportées sur 353, 298 mécaniques d'attaque manquantes et 51
+animations manquantes restent inchangées.
+
+`PODERSABIO` n'a pas été inclus artificiellement dans ce lot : son multiplicateur
+spécial est indissociable du verrou sur la première capacité utilisée et du
+nettoyage au retrait, donc il exige un contrat de choix persistant séparé.
+
+Prochain lot préparé : regrouper les talents de précision et d'ordre d'action
+`VICTORYSTAR`, `WONDERSKIN`, `TRIAGE`, `QUEENLYMAJESTY` et `STALL`. Le premier
+renforce la précision du porteur et de son partenaire actif, le deuxième plafonne
+à 50 la précision des capacités de statut adverses, `TRIAGE` ajoute trois niveaux
+aux soins selon le catalogue source, `QUEENLYMAJESTY` protège le camp des capacités
+prioritaires adverses et `STALL` agit en dernier dans son niveau de priorité. Le
+lot devra centraliser précision, classification des soins et départage d'ordre,
+puis couvrir simple, double, partenaire, Brise Moule, hôte, invité et reconnexion.

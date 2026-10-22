@@ -52,7 +52,7 @@ export function activateSharedBattleSession(session: SharedBattleSession): Share
 export function settleSharedBattleSession(session: SharedBattleSession, state: TeamBattleState): SharedBattleSession {
   if (session.lifecycle === "settling") return session;
   if (session.lifecycle !== "active") throw new Error("Seul un combat actif peut entrer en règlement.");
-  if (state.status !== "finished" || state.winner === null) throw new Error("Le combat tactique doit être terminé avant son règlement.");
+  if (state.status !== "finished") throw new Error("Le combat tactique doit être terminé avant son règlement.");
   return { ...session, lifecycle: "settling", settlementId: `${session.battleId}:settlement` };
 }
 

@@ -64,7 +64,7 @@ export interface SessionState {
   readonly battleResults: readonly {
     readonly encounterId: string;
     readonly kind: EncounterKind;
-    readonly winner: "player" | "opponent";
+    readonly winner: "player" | "opponent" | null;
   }[];
 }
 

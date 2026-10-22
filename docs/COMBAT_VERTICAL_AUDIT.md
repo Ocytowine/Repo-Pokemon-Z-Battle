@@ -221,9 +221,134 @@ d'un historique commun des objets perdus ou consommés, persistant dans les
 snapshots autoritaires. L'audit atteint ainsi 447 problèmes, dont 95 talents.
 Le lot de contrôle des actions porte ensuite `OBLIVIOUS`, `STENCH`,
 `CURSEDBODY`, `INFILTRATOR` et `MAGICBOUNCE`, avec les mêmes règles en duel et
-en double. L'audit atteint désormais 442 problèmes, dont 90 talents ; le registre
-extrait compte 144 talents pleinement supportés, 1 partiel et 110
-absents.
+en double. Le lot de modificateurs du 2026-10-22 porte ensuite `HUSTLE`,
+`ANALYTIC`, `CORTANTE`, `FURCOAT` et `WATERBUBBLE`, y compris l'ordre positionné
+en double, la famille Psyko-Choc et l'immunité à la brûlure. Après régénération,
+l'audit atteint 433 problèmes, dont 81 talents ; le registre extrait compte 153
+talents pleinement supportés, 1 partiel et 101 absents. Le lot réactif suivant
+porte `JUSTIFIED`, `BRUTALIDAD`, `COLORCHANGE` et `MOXIE` sur les hooks communs
+d'impact, de contact et de K.O. L'audit descend à 430 problèmes, dont 78 talents ;
+le registre extrait atteint 157 talents pleinement supportés, 1 partiel et 97
+absents. `JUSTIFIED` est bien couvert par le registre complet mais ne retire pas
+de problème du périmètre jouable actuel, qui ne le référence pas encore.
+Le lot réactif suivant porte `TERMOCONVERSION`, `CUERPOHORNEADO`, `MUMMY` et
+`GRIMNEIGH`. Les réactions Feu, le remplacement temporaire du talent au contact
+et les bonus après K.O. utilisent les mêmes hooks par impact et par emplacement.
+L'audit atteint 426 problèmes, dont 74 talents ; le registre extrait compte 161
+talents pleinement supportés, 1 partiel et 93 absents.
+Le lot Explosion porte ensuite `AFTERMATH`, `DAMP` et la fonction `0E0` de
+`SELFDESTRUCT`/`EXPLOSION`. Le sacrifice intervient pendant l'exécution réussie,
+avant les réactions post-impact ; le résolveur positionné conserve néanmoins
+toutes les cibles d'une attaque de zone et ne publie qu'un seul K.O. du lanceur.
+Moiteur inspecte les quatre emplacements actifs, bloque l'action après dépense des
+PP et neutralise aussi Boom Final ; Brise Moule contourne ces deux protections.
+Boom Final retire un quart des PV maximaux après un K.O. de contact, sauf Garde
+Magik. Les doubles K.O. produisent désormais une égalité explicite. Après
+régénération, l'audit atteint 423 problèmes, dont 73 talents ; le registre compte
+163 talents pleinement supportés, 1 partiel et 91 absents, ainsi que 103 fonctions
+d'attaque supportées sur 353.
+Le lot défensif suivant porte `ICESCALES`, `FLUFFY`, `MARVELSCALE` et
+`DEFEATIST` dans le calculateur commun. Il conserve les multiplicateurs exacts de
+Z, y compris Défense Spéciale ×1,5 pour Écailles Glacées, la priorité de la
+faiblesse Feu de Toison Épaisse sur sa réduction de contact et le seuil inclusif
+de Défaitiste. Écaille Spéciale reconnaît aussi les statuts propres à Z ; Brise
+Moule contourne les trois protections adverses. L'audit atteint 419 problèmes,
+dont 69 talents ; le registre extrait compte 167 talents pleinement supportés, 1
+partiel et 87 absents. Les 103 fonctions d'attaque et 51 animations manquantes ne
+changent pas dans ce lot.
+Le lot vent porte ensuite `WINDRIDER`, `WINDPOWER` et `05B` (`TAILWIND`). La
+classification des seize capacités de vent est partagée ; Surcavents absorbe et
+augmente l'Attaque, Énergie Éolienne arme Charge sans absorber, et Vent Arrière
+double la Vitesse du camp tout en activant ces talents chez les deux alliés. Le
+switch sous Vent Arrière et les snapshots Coop utilisent le même état de camp.
+Après régénération, l'audit atteint 416 problèmes, dont 67 talents et 298
+fonctions manquantes ; le registre extrait compte 169 talents pleinement
+supportés, 1 partiel et 85 absents, ainsi que 104 fonctions supportées sur 353.
+Les 51 animations manquantes restent inchangées.
+Le lot partenaire porte ensuite `PLUS`, `MINUS`, `FRIENDGUARD` et `TELEPATHY`
+avec un contexte d'allié fourni par les emplacements doubles au calculateur
+commun. Plus et Minus renforcent les capacités spéciales uniquement avec un
+partenaire compatible conscient ; Garde Amie protège seulement ce partenaire et
+Télépathe absorbe seulement les capacités offensives alliées. Brise Moule
+contourne les deux protections défensives. L'audit atteint 413 problèmes, dont 64
+talents ; le registre extrait compte 173 talents pleinement supportés, 1 partiel
+et 81 absents. Fonctions et animations restent respectivement à 104 supportées,
+298 manquantes et 51 manquantes.
+Le lot de calcul suivant porte `CAMORRISTA`, `REALEZA`, `MERCILESS` et
+`TANGLEDFEET`. Camorrista s'appuie sur la liste source exacte des dix coups de
+pied ; Realeza renforce les dix-sept types offensifs non-Normal sans dépendre des
+types du porteur ; Ensañamiento garantit le critique contre une cible empoisonnée
+dans l'ordre source des immunités et de Chant Canon ; Tumbos multiplie l'esquive
+d'un porteur confus et reste contourné par Brise Moule. Les multiplicateurs sont
+tracés par le calculateur commun et le seuil de précision nomme également Tumbos.
+Après régénération locale, l'audit atteint 409 problèmes, dont 60 talents ; le
+registre compte 177 talents pleinement supportés, 1 partiel et 77 absents. Les
+104 fonctions supportées, 298 fonctions manquantes et 51 animations manquantes
+restent inchangées.
+Le lot de classifications porte ensuite `BULLETPROOF`, `PUNKROCK`,
+`VOZVALQUIRIA` et `PENETRANTE`. Les drapeaux source `n`, `k` et `h` alimentent
+respectivement les bombes, les capacités sonores et le haut taux critique.
+Antibalas bloque chaque cible concernée, Punk Rock renforce les sons infligés et
+réduit ceux reçus, Voz Valquiria convertit Normal en Glace sans bonus et peut
+apeurer avec un son, tandis que Penetrante peut apeurer avec une capacité `h`.
+Le drapeau `h` augmente aussi désormais le cran critique général comme dans Z.
+L'audit atteint 405 problèmes, dont 56 talents ; le registre extrait compte 181
+talents pleinement supportés, 1 partiel et 73 absents. Fonctions et animations
+restent à 104 supportées, 298 mécaniques manquantes et 51 animations manquantes.
+
+Le lot de réactions partagées porte `CONTRARY`, `CAPATOXICA`, `OLORPORCINO` et
+`PURIFYINGSALT`. Le changeur de crans inverse désormais les gains comme les
+baisses dans leur direction réelle, en conservant le contournement adverse par
+Brise Moule. Les impacts alimentent les Pics Toxik ou la baisse d'esquive selon
+le talent et l'emplacement exact ; Sel Purificateur couvre les sept statuts de Z
+et réduit les dégâts Spectre. L'audit atteint 401 problèmes, dont 52 talents ;
+le registre extrait compte 185 talents pleinement supportés, 1 partiel et 69
+absents. Les compteurs restent à 104 fonctions supportées, 298 mécaniques
+manquantes et 51 animations manquantes.
+
+Le lot d'interactions de type porte `NORMALIZE`, `STEELWORKER`, `EARTHEATER` et
+`CANASTO`. Normalisation convertit toute capacité en Normal avant les autres
+conversions et applique le multiplicateur source de 1,5, y compris à une capacité
+déjà Normal. Steelworker renforce de 1,5 les dégâts Acier. Earth Eater absorbe
+les capacités Sol après leur test de précision, bloque leurs effets et restaure
+jusqu'à un quart des PV maximaux. Canasto multiplie par 0,3 les dégâts Vol et
+Roche reçus. Brise Moule contourne les deux talents défensifs, mais pas les bonus
+offensifs. L'audit atteint 397 problèmes, dont 48 talents ; le registre extrait
+compte 189 talents pleinement supportés, 1 partiel et 65 absents. Les compteurs
+restent à 104 fonctions supportées, 298 mécaniques manquantes et 51 animations
+manquantes.
+
+Le lot d'auras globales porte `DARKAURA`, `FAIRYAURA`, `AURADORADA` et
+`AURABREAK`. Le calcul commun reçoit désormais la liste bornée des talents de
+tous les combattants actifs et conscients. Aura Sombre, Aura Féérique et Aura
+Dorée multiplient respectivement par 4/3 les dégâts Ténèbres, Fée et Électrik de
+n'importe quel camp, sans cumul entre plusieurs porteurs. La présence de Brise
+Aura remplace ce facteur par 2/3 ; Brise Moule ne le contourne pas. La liste est
+recalculée après chaque K.O. ou remplacement et par cible en double. L'audit
+atteint 393 problèmes, dont 44 talents ; le registre extrait compte 193 talents
+pleinement supportés, 1 partiel et 61 absents. Les compteurs restent à 104
+fonctions supportées, 298 mécaniques manquantes et 51 animations manquantes.
+
+Le lot de conversions propres à Z porte `COLEOPTERO`, `PIELMALDITA`,
+`PIELELECTRICA` et `TINTINEO`. Le résolveur commun convertit les seules capacités
+Normal en Insecte, Spectre, Électrik ou Psy avant STAB, immunités et absorptions.
+Les trois premiers talents appliquent le facteur source de 1,2 ; Tintineo n'en
+applique aucun malgré son indicateur Ruby, absent de la liste source des bonus,
+et publie une annonce générique lors de son entrée. L'audit atteint 391 problèmes,
+dont 42 talents ; le registre extrait compte 197 talents pleinement supportés,
+1 partiel et 57 absents. Les compteurs restent à 104 fonctions supportées,
+298 mécaniques manquantes et 51 animations manquantes.
+
+Le lot d'amplificateurs typés porte `ALBINISMO`, `PEDANTE`, `INFLAMABLE`,
+`TRANSPORTARROCA` et `DRAGONSMAW`. Une table déclarative commune, partagée avec
+Floración et Steelworker, applique le facteur source de 1,5 aux seuls dégâts
+Glace, Psy, Feu, Roche ou Dragon du porteur. Le multiplicateur suit STAB et le
+type effectif, s'applique à chaque cible de zone et reste indépendant de Brise
+Moule. L'audit atteint 388 problèmes, dont 39 talents ; le registre extrait
+compte 202 talents pleinement supportés, 1 partiel et 52 absents. Les compteurs
+restent à 104 fonctions supportées, 298 mécaniques manquantes et 51 animations
+manquantes.
+
 ## Lot 4 — Route 3, Nouvelle Réunion, Route 4 et Bois-en-Tronc
 
 Frontière automatisée le 2026-10-19 : Maps 023 à 029, soit Rena, Gerard,

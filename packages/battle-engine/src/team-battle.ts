@@ -2,6 +2,7 @@ import { resolveSelectedMoves } from "./resolve-turn.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
+import { activateWindAbility } from "./ability-wind.js";
 import { applyEntryWeatherAbility, reconcileExtremeWeather } from "./ability-weather.js";
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
@@ -153,10 +154,15 @@ function switchPokemon(
   const members = team.members.map((member, index) => {
     if (index !== fromIndex) return member;
     const outgoingAbility = member.ability;
-    const tracedAbility = member.volatile?.traceOriginalAbility;
+    let originalAbility: BattlerState["ability"] | undefined;
+    if (member.transformOriginal === undefined) {
+      if (member.volatile?.abilityReplacementActive === true) originalAbility = member.volatile.originalAbility ?? null;
+      else if (member.volatile?.traceOriginalAbility != null) originalAbility = member.volatile.traceOriginalAbility;
+    }
+    const originalTypes = member.transformOriginal === undefined ? member.volatile?.originalTypes : undefined;
     member = restoreTransformedBattler(member);
     const { volatile: _volatile, ...persistent } = member;
-    const ability = tracedAbility ?? member.ability;
+    const ability = originalAbility !== undefined ? originalAbility : member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
       ? Math.min(member.stats.maxHp, member.hp + Math.max(1, Math.floor(member.stats.maxHp / 3))) : member.hp;
     healed = hp - member.hp;
@@ -166,6 +172,7 @@ function switchPokemon(
     return {
           ...persistent,
           ability,
+          types: originalTypes ?? member.types,
           hp,
           stages: { ...ZERO_STAGES },
           majorStatus: curedStatus,
@@ -224,6 +231,14 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, side: Battle
   const weather = applyEntryWeatherAbility(active, side, effects);
   effects = weather.effects;
   events.push(...weather.events);
+  const entered = activePokemon(teams[side]);
+  if (entered.ability === "WINDRIDER" && (effects?.sides[side].tailwindTurns ?? 0) > 0) {
+    const wind = activateWindAbility(entered, side);
+    const team = teams[side];
+    teams[side] = { ...team, members: team.members.map((member, index) =>
+      index === team.activeIndex ? wind.battler : member) };
+    events.push(...wind.events);
+  }
   return { events, effects };
 }
 
@@ -425,11 +440,14 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const replacementRequired: BattleSide[] = [];
   let winner: BattleSide | null = null;
+  const livingSides = SIDES.filter((side) => teams[side].members.some((member) => member.hp > 0));
   for (const side of SIDES) {
     if (activePokemon(teams[side]).hp !== 0) continue;
     if (livingReserve(teams[side])) replacementRequired.push(side);
     else winner = opponentOf(side);
   }
+  const draw = livingSides.length === 0;
+  if (draw) winner = null;
 
   const orderedActions = [
     ...pursuitSides.map((side) => ({ side, kind: "move" as const })),
@@ -451,7 +469,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     ...moveEvents,
     ...replacementRequired.map((side): TeamBattleEvent => ({ type: "replacementRequired", side })),
   ];
-  if (winner !== null) events.push({ type: "battleEnded", winner });
+  if (draw) events.push({ type: "battleEnded", winner: null });
+  else if (winner !== null) events.push({ type: "battleEnded", winner });
   events.push({ type: "turnEnded", turn: state.turn });
 
   const reconciledEffects = reconcileExtremeWeather(result.state.effects,
@@ -459,7 +478,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   return {
     state: {
       turn: nextTurn,
-      status: winner === null ? "active" : "finished",
+      status: winner === null && !draw ? "active" : "finished",
       winner,
       teams,
       replacementRequired: winner === null ? replacementRequired : [],

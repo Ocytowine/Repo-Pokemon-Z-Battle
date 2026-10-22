@@ -1,9 +1,27 @@
 import { typeEffectiveness } from "./type-chart.js";
 import { preventsCriticalHit } from "./ability-protection.js";
-import { effectiveMoveType, hasMoldBreaker, hasMoveFlag, isRecklessBoostedMove } from "./move-properties.js";
+import { effectiveMoveType, hasHighCriticalRate, hasMoldBreaker, hasMoveFlag, isCuttingMove,
+  isKickingMove, isRecklessBoostedMove, isSoundMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
-import type { BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
+import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
+
+/** Exact non-Normal type list named by Pokemon Z's Realeza branch; QMARKS is intentionally excluded. */
+const REALEZA_TYPES = new Set([
+  "FIRE", "BUG", "DARK", "DRAGON", "ELECTRIC", "FAIRY", "FIGHTING", "FLYING", "GHOST",
+  "GRASS", "GROUND", "ICE", "POISON", "PSYCHIC", "ROCK", "STEEL", "WATER",
+]);
+
+/** Pokemon Z abilities whose only battle effect is a 1.5 offensive multiplier for one effective move type. */
+const OFFENSIVE_TYPE_BOOSTS = {
+  ALBINISMO: "ICE",
+  DRAGONSMAW: "DRAGON",
+  FLORACION: "GRASS",
+  INFLAMABLE: "FIRE",
+  PEDANTE: "PSYCHIC",
+  STEELWORKER: "STEEL",
+  TRANSPORTARROCA: "ROCK",
+} as const;
 
 export interface BattleDamageContext {
   readonly reflect: boolean;
@@ -14,6 +32,13 @@ export interface BattleDamageContext {
   readonly weather?: BattleEffects["weather"];
   readonly terrain?: BattleEffects["terrain"];
   readonly defenderBerriesBlocked?: boolean;
+  /** The defender already acted, or did not select a move, as required by Pokemon Z's Analytic check. */
+  readonly defenderAlreadyMoved?: boolean;
+  /** Active, conscious partner abilities supplied by the positioned double-battle adapter. */
+  readonly attackerPartnerAbility?: BattleAbility | null;
+  readonly defenderPartnerAbility?: BattleAbility | null;
+  /** Every active, conscious battler ability. Global auras are side-independent and do not stack. */
+  readonly activeAbilities?: readonly BattleAbility[];
 }
 
 function stagedStat(value: number, stage: number): number {
@@ -41,6 +66,8 @@ export function calculateDamage(
   const attackerItemActive = heldItemIsActive(attacker);
   const defenderItemActive = heldItemIsActive(defender);
   const moveType = effectiveMove.type;
+  const activeAbilities = new Set(context.activeAbilities
+    ?? [attacker.ability, defender.ability].filter((ability): ability is BattleAbility => ability !== null));
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
     && (moveType === "NORMAL" || moveType === "FIGHTING")
@@ -67,14 +94,22 @@ export function calculateDamage(
     return result;
   }
   const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
-  const defenseKey = move.category === "Physical" ? "defense" : "specialDefense";
+  const usesPhysicalDefense = move.category === "Physical" || (move.functionCode as string) === "122";
+  const defenseKey = usesPhysicalDefense ? "defense" : "specialDefense";
+  const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];
+  const recordAbilityModifier = (ability: ImplementedBattleAbility, multiplier: number): void => {
+    abilityModifiers.push({ ability, multiplier });
+  };
   const criticalStage = Math.min(4,
     (defender.majorStatus?.kind === "hemorrhage" ? 2 : 0)
     + (attacker.volatile?.focusEnergy ?? 0)
+    + (hasHighCriticalRate(move) ? 1 : 0)
     + (attackerItemActive && attacker.heldItem === "SCOPELENS" ? 1 : 0)
     + (attacker.ability === "SUPERLUCK" ? 1 : 0));
-  const critical = !context.luckyChant && (ignoresDefenderAbility || !preventsCriticalHit(defender))
-    && draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
+  const critical = !ignoresDefenderAbility && preventsCriticalHit(defender) ? false
+    : !ignoresDefenderAbility && attacker.ability === "MERCILESS" && defender.majorStatus?.kind === "poison" ? true
+      : context.luckyChant ? false
+        : draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = defender.ability === "UNAWARE" && !ignoresDefenderAbility ? 0
     : critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
   const defenseStage = attacker.ability === "UNAWARE" ? 0
@@ -82,16 +117,45 @@ export function calculateDamage(
   const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
   let attack = stagedAttack;
   if (attacker.ability === "GUTS" && attacker.majorStatus !== null && move.category === "Physical") attack = Math.round(attack * 1.5);
+  if (attacker.ability === "HUSTLE" && move.category === "Physical") attack = Math.round(attack * 1.5);
   if ((attacker.ability === "HUGEPOWER" || attacker.ability === "PUREPOWER") && move.category === "Physical") attack = Math.round(attack * 2);
+  if (attacker.ability === "SLOWSTART" && move.category === "Physical"
+    && (attacker.volatile?.activeTurns ?? 0) <= 5) {
+    attack = Math.max(1, Math.round(attack * 0.5));
+    recordAbilityModifier("SLOWSTART", 0.5);
+  }
+  if (attacker.ability === "SILVANO" && move.category === "Physical" && context.terrain === "grassy") {
+    attack = Math.max(1, Math.round(attack * 1.3));
+    recordAbilityModifier("SILVANO", 1.3);
+  }
   const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
     : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
   if (lowHpAbilityType === moveType && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "SWARM" && moveType === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
   if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
+  if (attacker.ability === "DEFEATIST" && attacker.hp <= Math.floor(attacker.stats.maxHp / 2)) {
+    attack = Math.round(attack * 0.5);
+    recordAbilityModifier("DEFEATIST", 0.5);
+  }
+  if ((attacker.ability === "PLUS" || attacker.ability === "MINUS") && move.category === "Special"
+    && (context.attackerPartnerAbility === "PLUS" || context.attackerPartnerAbility === "MINUS")) {
+    attack = Math.round(attack * 1.5);
+    recordAbilityModifier(attacker.ability === "PLUS" ? "PLUS" : "MINUS", 1.5);
+  }
   let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
   const currentWeather = ordinaryWeather(context.weather);
-  if (currentWeather === "sand" && move.category === "Special" && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
+  if (currentWeather === "sand" && move.category === "Special" && !usesPhysicalDefense
+    && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
   if (currentWeather === "hail" && move.category === "Physical" && defender.types.includes("ICE")) defense = Math.round(defense * 1.5);
+  if (!ignoresDefenderAbility && defender.ability === "MARVELSCALE"
+    && defender.majorStatus !== null && move.category === "Physical") {
+    defense = Math.max(1, Math.round(defense * 1.5));
+    recordAbilityModifier("MARVELSCALE", 2 / 3);
+  }
+  if (!ignoresDefenderAbility && defender.ability === "ICESCALES" && move.category === "Special") {
+    defense = Math.max(1, Math.round(defense * 1.5));
+    recordAbilityModifier("ICESCALES", 2 / 3);
+  }
   if (defenderItemActive && defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defenderItemActive && defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = defender.capture?.weight ?? 0;
@@ -151,12 +215,31 @@ export function calculateDamage(
     && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
   const defenderGender = defender.appearance?.gender;
-  const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];
   const addAbilityModifier = (ability: ImplementedBattleAbility, multiplier: number): void => {
-    abilityModifiers.push({ ability, multiplier });
+    recordAbilityModifier(ability, multiplier);
     statusModifier *= multiplier;
   };
-  if (attacker.ability === "FLORACION" && moveType === "GRASS") addAbilityModifier("FLORACION", 1.5);
+  const typeBoostAbility = attacker.ability !== null && attacker.ability in OFFENSIVE_TYPE_BOOSTS
+    ? attacker.ability as keyof typeof OFFENSIVE_TYPE_BOOSTS : null;
+  if (typeBoostAbility !== null && moveType === OFFENSIVE_TYPE_BOOSTS[typeBoostAbility]) {
+    addAbilityModifier(typeBoostAbility, 1.5);
+  }
+  if (attacker.ability === "FLAREBOOST" && attacker.majorStatus?.kind === "burn"
+    && move.category === "Special") addAbilityModifier("FLAREBOOST", 1.5);
+  if (attacker.ability === "TOXICBOOST" && attacker.majorStatus?.kind === "poison"
+    && move.category === "Physical") addAbilityModifier("TOXICBOOST", 1.5);
+  if (attacker.ability === "ANALYTIC" && context.defenderAlreadyMoved === true) addAbilityModifier("ANALYTIC", 1.3);
+  if (attacker.ability === "CAMORRISTA" && isKickingMove(move)) addAbilityModifier("CAMORRISTA", 1.2);
+  if (attacker.ability === "CORTANTE" && isCuttingMove(move)) addAbilityModifier("CORTANTE", 1.5);
+  if (attacker.ability === "PUNKROCK" && isSoundMove(move)) addAbilityModifier("PUNKROCK", 1.3);
+  if (attacker.ability === "REALEZA" && REALEZA_TYPES.has(moveType)) addAbilityModifier("REALEZA", 1.5);
+  const auraAbility = moveType === "DARK" ? "DARKAURA"
+    : moveType === "FAIRY" ? "FAIRYAURA" : moveType === "ELECTRIC" ? "AURADORADA" : null;
+  if (auraAbility !== null && activeAbilities.has(auraAbility)) {
+    addAbilityModifier(activeAbilities.has("AURABREAK") ? "AURABREAK" : auraAbility,
+      activeAbilities.has("AURABREAK") ? 2 / 3 : 4 / 3);
+  }
+  if (attacker.ability === "WATERBUBBLE" && moveType === "WATER") addAbilityModifier("WATERBUBBLE", 2);
   if (attacker.ability === "SHEERFORCE" && move.effectChance > 0) addAbilityModifier("SHEERFORCE", 1.3);
   if (attacker.ability === "RECKLESS" && isRecklessBoostedMove(move)) addAbilityModifier("RECKLESS", 1.2);
   if (attacker.ability === "TINTEDLENS" && effectiveness < 1) addAbilityModifier("TINTEDLENS", 2);
@@ -190,8 +273,28 @@ export function calculateDamage(
   if (!ignoresDefenderAbility && defender.ability === "THICKFAT" && (moveType === "FIRE" || moveType === "ICE")) {
     addAbilityModifier("THICKFAT", 0.5);
   }
+  if (!ignoresDefenderAbility && defender.ability === "FURCOAT"
+    && (move.category === "Physical" || (move.functionCode as string) === "122")) addAbilityModifier("FURCOAT", 0.5);
+  if (!ignoresDefenderAbility && defender.ability === "WATERBUBBLE" && moveType === "FIRE") {
+    addAbilityModifier("WATERBUBBLE", 0.5);
+  }
+  if (!ignoresDefenderAbility && defender.ability === "FLUFFY") {
+    if (moveType === "FIRE") addAbilityModifier("FLUFFY", 2);
+    else if (hasMoveFlag(move, "a")) addAbilityModifier("FLUFFY", 0.5);
+  }
+  if (!ignoresDefenderAbility && defender.ability === "PUNKROCK" && isSoundMove(move)) {
+    addAbilityModifier("PUNKROCK", 0.5);
+  }
+  if (!ignoresDefenderAbility && defender.ability === "PURIFYINGSALT" && moveType === "GHOST") {
+    addAbilityModifier("PURIFYINGSALT", 0.5);
+  }
+  if (!ignoresDefenderAbility && defender.ability === "CANASTO"
+    && (moveType === "FLYING" || moveType === "ROCK")) addAbilityModifier("CANASTO", 0.3);
   if (!ignoresDefenderAbility && (defender.ability === "FILTER" || defender.ability === "SOLIDROCK") && effectiveness > 1) {
     addAbilityModifier(defender.ability === "FILTER" ? "FILTER" : "SOLIDROCK", 0.75);
+  }
+  if (!ignoresDefenderAbility && context.defenderPartnerAbility === "FRIENDGUARD") {
+    addAbilityModifier("FRIENDGUARD", 0.75);
   }
   if (!ignoresDefenderAbility && defender.ability === "MULTISCALE" && defender.hp === defender.stats.maxHp) {
     addAbilityModifier("MULTISCALE", 0.5);

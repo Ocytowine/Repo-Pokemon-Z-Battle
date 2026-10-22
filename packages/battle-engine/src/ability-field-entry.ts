@@ -35,5 +35,17 @@ export function applyEntryFieldAbility(battler: BattlerState, side: BattleSide,
       { type: "battleEffectChanged", side: null, effect: "terrain", turns: 5 },
     ] };
   }
+  if (battler.ability === "MISTYSURGE" && current.terrain !== "misty") {
+    return { effects: { ...current, terrain: "misty", terrainTurns: 5 }, events: [
+      { type: "abilityActivated", side, ability: "MISTYSURGE", effect: "set-terrain" },
+      { type: "battleEffectChanged", side: null, effect: "terrain", turns: 5 },
+    ] };
+  }
+  if (battler.ability === "PSYCHICSURGE" && current.terrain !== "psychic") {
+    return { effects: { ...current, terrain: "psychic", terrainTurns: 5 }, events: [
+      { type: "abilityActivated", side, ability: "PSYCHICSURGE", effect: "set-terrain" },
+      { type: "battleEffectChanged", side: null, effect: "terrain", turns: 5 },
+    ] };
+  }
   return { effects, events: [] };
 }

@@ -316,7 +316,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;
     case "fainted": return `${event.side} est K.O.`;
     case "actionSkipped": return `Action de ${event.side} ignorée (${event.reason})`;
-    case "battleEnded": return `Victoire : ${event.winner}`;
+    case "battleEnded": return event.winner === null ? "Match nul" : `Victoire : ${event.winner}`;
     case "turnEnded": return `Fin du tour ${event.turn}`;
     case "teamActionOrdered": return `Ordre d'équipe : ${event.order.map((entry) => `${entry.side} (${entry.kind})`).join(" → ")}`;
     case "pokemonSwitched": return `${event.side} remplace ${event.from} par ${event.to}`;
@@ -536,9 +536,12 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
       element<HTMLDivElement>(`${event.side}-sprite`).classList.add("fainted");
       await presenter.pause(720);
     } else if (event.type === "battleEnded") {
-      const winner = activeState().battlers[event.winner].name;
-      presenter.message(`Victoire : ${winner}`);
-      showBattleResult(event.winner);
+      if (event.winner === null) presenter.message("Match nul !");
+      else {
+        const winner = activeState().battlers[event.winner].name;
+        presenter.message(`Victoire : ${winner}`);
+        showBattleResult(event.winner);
+      }
     } else if (event.type === "actionSkipped") {
       const skipped = {
         "no-pp": "Cette capacité n'a plus de PP !",

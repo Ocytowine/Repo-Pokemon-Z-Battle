@@ -14,6 +14,44 @@ function pokemon(id: string, side: BattleSide, speed: number, targetCode = "00")
 }
 
 describe("double team battles", () => {
+  it("keeps Moxie's knockout boost on the exact attacking slot", () => {
+    const moxie = { ...pokemon("p1", "player", 100), ability: "MOXIE" as const };
+    const state = createDoubleTeamBattleState({
+      player: [moxie, pokemon("p2", "player", 90)],
+      opponent: [{ ...pokemon("o1", "opponent", 80), hp: 1 }, pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+
+    expect(result.state.teams.player.members[0]?.stages.attack).toBe(1);
+    expect(result.state.teams.player.members[1]?.stages.attack).toBe(0);
+  });
+
+  it("keeps Mummy's contact replacement on the exact attacking slot", () => {
+    const contact = { ...pokemon("p1", "player", 100).moves[0]!.move, flags: "a" };
+    const attacker = { ...pokemon("p1", "player", 100), ability: "HUSTLE" as const,
+      moves: [{ move: contact, pp: contact.pp }] };
+    const state = createDoubleTeamBattleState({
+      player: [attacker, pokemon("p2", "player", 90)],
+      opponent: [{ ...pokemon("o1", "opponent", 80), ability: "MUMMY" }, pokemon("o2", "opponent", 70)],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.state.teams.player.members[0]?.ability).toBe("MUMMY");
+    expect(result.state.teams.player.members[1]?.ability).toBeNull();
+  });
+
+
   it("shares entry talents across both opposing slots and preserves Download's source comparison", () => {
     const download = { ...pokemon("download", "player", 100), ability: "DOWNLOAD" };
     const ally = { ...pokemon("frisk", "player", 90), ability: "FRISK" };
