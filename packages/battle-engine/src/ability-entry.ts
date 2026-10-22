@@ -2,7 +2,7 @@ import { statDropProtectionAbility } from "./ability-protection.js";
 import { applyOpposingStatDropReaction, resolveStatStageChange } from "./ability-stat-reactions.js";
 import { hasMoldBreaker } from "./move-properties.js";
 import { typeEffectiveness } from "./type-chart.js";
-import type { BattleEvent, BattleSide, BattleStat, BattleTrace, BattlerState, RandomSource } from "./types.js";
+import type { BattleEffects, BattleEvent, BattleSide, BattleStat, BattleTrace, BattlerState, RandomSource } from "./types.js";
 
 export interface EntryOpponent {
   readonly side: BattleSide;
@@ -36,6 +36,7 @@ function entryVolatile(battler: BattlerState): NonNullable<BattlerState["volatil
 
 export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opponents: readonly EntryOpponent[],
   rng: RandomSource, trace: BattleTrace[], informationEnabled = side === "player", abilitySuppressed = false,
+  battleEffects?: BattleEffects,
 ): { readonly battler: BattlerState; readonly opponents: readonly EntryOpponent[]; readonly events: readonly BattleEvent[] } {
   if (battler.hp <= 0 || battler.volatile?.entryAbilityResolved === true || abilitySuppressed
     || battler.ability !== "NEUTRALIZINGGAS" && opponents.some(({ battler: target }) =>
@@ -97,6 +98,12 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
           ability: "MIRRORARMOR", effect: "reflect-stat-drop" });
         const reflected = resolveStatStageChange(actor, stat, -1);
         const effectiveDelta = reflected?.delta ?? (actor.ability === "CONTRARY" ? 1 : -1);
+        if (effectiveDelta < 0 && (battleEffects?.sides[side].mistTurns ?? 0) > 0
+          && entry.battler.ability !== "INFILTRATOR") {
+          events.push({ type: "statStageChangeFailed", source: entry.side, target: side,
+            stat, reason: "mist" });
+          return entry;
+        }
         const protection = effectiveDelta < 0 ? statDropProtectionAbility(actor, stat) : null;
         if (protection !== null) {
           events.push({ type: "abilityActivated", side, ability: protection, effect: "prevent-stat-drop" });
@@ -120,6 +127,12 @@ export function resolveEntryAbility(side: BattleSide, battler: BattlerState, opp
       }
       const resolved = resolveStatStageChange(entry.battler, stat, -1, ignoresAbility);
       const effectiveDelta = resolved?.delta ?? (entry.battler.ability === "CONTRARY" && !ignoresAbility ? 1 : -1);
+      if (effectiveDelta < 0 && (battleEffects?.sides[entry.side].mistTurns ?? 0) > 0
+        && actor.ability !== "INFILTRATOR") {
+        events.push({ type: "statStageChangeFailed", source: side, target: entry.side,
+          stat, reason: "mist" });
+        return entry;
+      }
       const protection = effectiveDelta < 0 && !ignoresAbility
         ? statDropProtectionAbility(entry.battler, stat) : null;
       if (protection !== null) {

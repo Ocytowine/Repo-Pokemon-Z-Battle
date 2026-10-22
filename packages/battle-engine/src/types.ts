@@ -16,8 +16,9 @@ export interface BattleMove {
   readonly name: string;
   readonly functionCode: "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
     | "00F" | "010" | "012" | "013" | "016" | "017"
-    | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "027" | "028" | "030"
-    | "02D" | "02F" | "033" | "034" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04B" | "04C" | "04D" | "04F" | "05B"
+    | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
+    | "02A" | "02B" | "02C" | "02D" | "02E" | "02F" | "032" | "033" | "034" | "035" | "036" | "037" | "038" | "039" | "03A" | "03B" | "03C" | "03D" | "03E" | "03F"
+    | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "056" | "05B"
     | "064" | "069" | "06D" | "06F" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
     | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
@@ -152,6 +153,8 @@ export interface BattlerState {
     readonly choiceLockedMove?: string | null;
     readonly originalForm?: number | null;
     readonly originalStats?: BattleStats | null;
+    /** Autotomize's cumulative weight change in hectograms; cleared on switch. */
+    readonly weightChange?: number;
   };
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
@@ -291,7 +294,7 @@ export type BattleEvent =
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
-      readonly reason?: "recoil" | "crash" | "self-destruct"; readonly amount: number; readonly hp: number }
+      readonly reason?: "recoil" | "crash" | "self-destruct" | "belly-drum"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
   | { readonly type: "abilityActivated"; readonly side: BattleSide; readonly ability: ImplementedBattleAbility; readonly effect: "announce" | "prevent-stat-drop" | "reflect-stat-drop" | "prevent-status" | "prevent-confusion" | "prevent-additional-effect" | "prevent-infatuation" | "prevent-taunt" | "inflict-paralysis" | "inflict-status" | "inflict-burn" | "inflict-flinch" | "disable-move" | "reflect-move" | "lower-attack" | "lower-special-attack" | "lower-accuracy" | "lower-speed" | "lower-evasion" | "raise-stat" | "damage-attacker" | "absorb-type" | "heal-on-switch" | "heal-on-berry" | "cure-on-switch" | "survive" | "steal-item" | "block-move" | "boost-stat" | "charge" | "cure-status" | "change-type" | "change-ability" | "contact-damage" | "set-hazard" | "transform" | "set-terrain" | "set-trick-room" | "set-weather" | "weather-heal" | "weather-damage" | "status-heal" | "status-damage" | "pressure" | "recover-item" | "randomize-stats" | "skip-turn" | "extra-hit" | "request-switch" | "break-disguise" }
   | { readonly type: "abilityObserved"; readonly side: BattleSide; readonly ability: "TRACE" | "FRISK" | "ANTICIPATION" | "FOREWARN";
@@ -335,7 +338,7 @@ export type BattleEvent =
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
       readonly calculation: PokemonCaptureCalculation }
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
-  | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" }
+  | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" | "mist" }
   | { readonly type: "fainted"; readonly side: BattleSide }
   | { readonly type: "volatileApplied"; readonly source: BattleSide; readonly target: BattleSide;
       readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "rage" | "protect" | "endure" | "yawn" | "charge" | "helping-hand" | "uproar" | "embargo";
@@ -352,7 +355,7 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "acupressure"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean;
       readonly abilityModifier?: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;

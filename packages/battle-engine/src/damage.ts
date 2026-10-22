@@ -80,7 +80,7 @@ export function effectiveWeight(battler: BattlerState, attacker?: BattlerState):
     if (battler.ability === "HEAVYMETAL") weight *= 2;
     if (battler.ability === "LIGHTMETAL") weight /= 2;
   }
-  return Math.max(1, Math.floor(weight));
+  return Math.max(1, Math.floor(weight + (battler.volatile?.weightChange ?? 0)));
 }
 
 function stagedStat(value: number, stage: number): number {

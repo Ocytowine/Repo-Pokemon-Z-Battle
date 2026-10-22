@@ -1082,7 +1082,25 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   `FORMAILUSORIA`, `HONEYGATHER`, `ILLUSION`, `MULTITYPE`, `NEUTRALIZINGGAS`,
   `STANCECHANGE` et `ZENMODE`. Les prochains lots basculent sur les fonctions
   d'attaque, en commençant par sept familles de variations de statistiques à fort
-  impact (`026`, `02C`, `02E`, `032`, `03C`, `03E`, `03F`).
+  impact (`026`, `02C`, `02E`, `032`, `03C`, `03E`, `03F`). Ce premier lot est
+  terminé. Compteur du registre : **112 fonctions couvertes / 241 non couvertes
+  sur 353**. L'audit des contenus réellement rencontrés conserve 280 alertes de
+  mécanique d'attaque ; ce compteur est distinct des 336 problèmes globaux, qui
+  incluent aussi 55 animations manquantes et le support partiel de `STURDY`.
+  Le deuxième lot de crans (`024`, `025`, `029`, `02A`, `02B`, `036`, `038`) est
+  terminé dans le noyau partagé. Compteur : **119 fonctions couvertes / 234 non
+  couvertes sur 353** ; 272 alertes de mécanique d'attaque et 328 problèmes
+  globaux dans l'audit local. Le troisième lot (`031`, `035`, `039`, `03B`,
+  `03D`, `04A`, `04E`) est terminé avec poids temporaire, variations mixtes,
+  condition de genre et coût sur l'allié de Coup Victoire en double. Compteur :
+  **126 fonctions couvertes / 227 non couvertes sur 353**, 266 alertes de
+  mécanique et 322 problèmes globaux. Le quatrième lot (`037`, `03A`, `040`,
+  `041`, `050`, `051`, `056`) est terminé avec tirage autoritaire, confusion,
+  remise à zéro et Brume commune aux baisses de capacité et d'entrée. Compteur :
+  **133 fonctions couvertes / 220 non couvertes sur 353**, 259 alertes de
+  mécanique et 315 problèmes globaux. Le prochain lot préparé traite `052`,
+  `053`, `054`, `055`, `057`, `058` et `059`, soit échanges, copie et moyenne
+  de statistiques.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

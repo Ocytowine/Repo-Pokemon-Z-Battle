@@ -429,6 +429,46 @@ describe("engine support report", () => {
     ]);
   });
 
+  it("advertises the first shared stat-stage move batch as supported", () => {
+    const codes = ["026", "02C", "02E", "032", "03C", "03E", "03F"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: codes.map((functionCode) => ({ functionCode })) }, abilities: { records: [] },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.moveFunctionCodes).toEqual(codes.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the second shared stat-stage move batch as supported", () => {
+    const codes = ["024", "025", "029", "02A", "02B", "036", "038"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: codes.map((functionCode) => ({ functionCode })) }, abilities: { records: [] },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.moveFunctionCodes).toEqual(codes.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises source mixed stat, weight and conditional drop functions as supported", () => {
+    const codes = ["031", "035", "039", "03B", "03D", "04A", "04E"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: codes.map((functionCode) => ({ functionCode })) }, abilities: { records: [] },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.moveFunctionCodes).toEqual(codes.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the random, confusion, reset and Mist function batch as supported", () => {
+    const codes = ["037", "03A", "040", "041", "050", "051", "056"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      moves: { records: codes.map((functionCode) => ({ functionCode })) }, abilities: { records: [] },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.moveFunctionCodes).toEqual(codes.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
   it("advertises the shared PP and held-item control talent family as supported", () => {
     const names = ["KLUTZ", "PRESSURE", "UNNERVE"];
     const report = createEngineSupportReport({

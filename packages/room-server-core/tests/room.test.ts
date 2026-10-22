@@ -230,6 +230,17 @@ function formPivotBondAbilityBattle(): TeamBattleState {
   });
 }
 
+function statMoveFunctionBattle(): TeamBattleState {
+  const dragonDance = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "DRAGONDANCE", name: "Danse Draco",
+    functionCode: "026", category: "Status" as const, power: 0, accuracy: 0 };
+  const closeCombat = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "CLOSECOMBAT", name: "Close Combat",
+    functionCode: "03C", accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), moves: [{ move: dragonDance, pp: 20 }] }],
+    opponent: [{ ...battler("opponent"), moves: [{ move: closeCombat, pp: 5 }] }],
+  });
+}
+
 function authoritativeTrapBattle(): TeamBattleState {
   return createTeamBattleState({
     player: [{ ...battler("player"), types: ["STEEL"] },
@@ -1228,6 +1239,131 @@ describe("authoritative battle room", () => {
       new SeededRandom(persisted.rngState), world, persisted);
     expect(restarted.connect("alice").snapshot.battle?.state.teams.opponent.members[0])
       .toMatchObject({ ability: "TRUANT", volatile: { truantLoafing: true } });
+  });
+
+  it("resolves stat move functions for host and guest and restores their stages", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", statMoveFunctionBattle,
+      new SeededRandom(24_328), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("stat-functions-ready-a"));
+    room.receive("bob", ready("stat-functions-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "stat-functions-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "stat-functions-move-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      state: { teams: {
+        player: { members: [{ stages: { attack: 1, speed: 1 } }] },
+        opponent: { members: [{ stages: { defense: -1, specialDefense: -1 } }] },
+      } },
+    });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ stages: { attack: 1, speed: 1 } }] },
+      opponent: { members: [{ stages: { defense: -1, specialDefense: -1 } }] },
+    });
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", statMoveFunctionBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ stages: { attack: 1, speed: 1 } }] },
+      opponent: { members: [{ stages: { defense: -1, specialDefense: -1 } }] },
+    });
+  });
+
+  it("shares mixed self boosts from both owners across reconnection", () => {
+    const shiftGear = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "SHIFTGEAR", name: "Chgt Vitesse",
+      functionCode: "036", category: "Status" as const, power: 0, accuracy: 0 };
+    const coil = { ...shiftGear, internalName: "COIL", name: "Enroulement", functionCode: "025" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: shiftGear, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: coil, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_330), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("mixed-boost-ready-a"));
+    room.receive("bob", ready("mixed-boost-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "mixed-boost-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "mixed-boost-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const expected = {
+      player: { members: [{ stages: { speed: 2, attack: 1 } }] },
+      opponent: { members: [{ stages: { attack: 1, defense: 1, accuracy: 1 } }] },
+    };
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("restores Autotomize weight and Shell Smash stages for host and guest", () => {
+    const autotomize = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "AUTOTOMIZE", name: "Aligerar",
+      functionCode: "031", category: "Status" as const, power: 0, accuracy: 0 };
+    const shellSmash = { ...autotomize, internalName: "SHELLSMASH", name: "Rompecoraza",
+      functionCode: "035" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), capture: { rate: 45, baseSpeed: 50, weight: 1_500 },
+        moves: [{ move: autotomize, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: shellSmash, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_331), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("weight-smash-ready-a"));
+    room.receive("bob", ready("weight-smash-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "weight-smash-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "weight-smash-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const expected = {
+      player: { members: [{ stages: { speed: 2 }, volatile: { weightChange: -1_000 } }] },
+      opponent: { members: [{ stages: { defense: -1, specialDefense: -1,
+        attack: 2, specialAttack: 2, speed: 2 } }] },
+    };
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("keeps Acupressure's authoritative draw and Belly Drum cost after reconnect", () => {
+    const acupressure = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "ACUPRESSURE",
+      name: "Acupression", functionCode: "037", targetCode: "200", accuracy: 0 };
+    const bellyDrum = { ...acupressure, internalName: "BELLYDRUM", name: "Tambor",
+      functionCode: "03A", targetCode: "10" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: acupressure, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: bellyDrum, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_332), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("random-boost-ready-a"));
+    room.receive("bob", ready("random-boost-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "random-boost-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "random-boost-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      trace: expect.arrayContaining([expect.objectContaining({ type: "rng", purpose: "acupressure" })]),
+      state: { teams: { opponent: { members: [{ hp: 50, stages: { attack: 6 } }] } } },
+    });
+    const stages = room.snapshot().battle?.state.teams.player.members[0]!.stages;
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]!.stages).toEqual(stages);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams.player.members[0]!.stages).toEqual(stages);
   });
 
   it("keeps Emergency Exit's owner choice authoritative across guest reconnect", () => {

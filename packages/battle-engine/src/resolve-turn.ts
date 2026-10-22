@@ -2,7 +2,7 @@ import { calculateDamage, effectiveTypeMultiplier } from "./damage.js";
 import { colorChangeType, knockoutAbilityStatReaction } from "./ability-after-hit.js";
 import { activateWindAbility } from "./ability-wind.js";
 import { damageAbilityStatReaction, opposingStatDropReaction,
-  resolveStatStageChange } from "./ability-stat-reactions.js";
+  resolveStatStageChange, clearStatStages } from "./ability-stat-reactions.js";
 import { cureStatusBlockedByAbility, statDropProtectionAbility, statusProtectionAbility } from "./ability-protection.js";
 import { hasHighCriticalRate, isBombMove, isSoundMove, isWindMove, moveTargetsUser,
   recoilDivisor } from "./move-properties.js";
@@ -61,7 +61,7 @@ function volatileOf(battler: BattlerState): BattleVolatile {
     yawnBypassesAbility: false, infatuated: false,
     furyCutterCount: 0, rolloutTurns: 0, uproarTurns: 0, embargoTurns: 0,
     unburdened: false, pickupItem: null, pickupUse: 0, truantLoafing: false,
-    choiceLockedMove: null, originalForm: null, originalStats: null };
+    choiceLockedMove: null, originalForm: null, originalStats: null, weightChange: 0 };
   return { ...neutral, ...(battler.volatile ?? {}) };
 }
 
@@ -175,6 +175,29 @@ function applySelfStatChanges(source: BattleSide, changes: readonly { readonly s
   return changed;
 }
 
+function clearBattlerStages(source: BattleSide, target: BattleSide,
+  battlers: Record<BattleSide, BattlerState>, events: BattleEvent[]): void {
+  const reset = clearStatStages(battlers[target]);
+  battlers[target] = reset.battler;
+  for (const change of reset.changes) events.push({ type: "statStageChanged", source, target,
+    stat: change.stat, delta: change.delta, stage: 0 });
+}
+
+const COMBINED_SELF_BOOSTS: Readonly<Partial<Record<BattleMove["functionCode"], readonly {
+  readonly stat: BattleStat; readonly delta: number
+}[]>>> = {
+  "024": [{ stat: "attack", delta: 1 }, { stat: "defense", delta: 1 }],
+  "025": [{ stat: "attack", delta: 1 }, { stat: "defense", delta: 1 }, { stat: "accuracy", delta: 1 }],
+  "026": [{ stat: "attack", delta: 1 }, { stat: "speed", delta: 1 }],
+  "029": [{ stat: "attack", delta: 1 }, { stat: "accuracy", delta: 1 }],
+  "02A": [{ stat: "defense", delta: 1 }, { stat: "specialDefense", delta: 1 }],
+  "02B": [{ stat: "specialAttack", delta: 1 }, { stat: "specialDefense", delta: 1 }, { stat: "speed", delta: 1 }],
+  "02C": [{ stat: "specialAttack", delta: 1 }, { stat: "specialDefense", delta: 1 }],
+  "036": [{ stat: "speed", delta: 2 }, { stat: "attack", delta: 1 }],
+  "038": [{ stat: "defense", delta: 3 }],
+  "039": [{ stat: "specialAttack", delta: 3 }],
+};
+
 function statChangeEffect(move: BattleMove): StatChangeEffect | null {
   switch (move.functionCode) {
     case "01C": return { target: "self", stat: "attack", delta: 1 };
@@ -208,6 +231,7 @@ function applyStatChange(
   effect: StatChangeEffect,
   battlers: Record<BattleSide, BattlerState>,
   events: BattleEvent[],
+  effects?: MutableBattleEffects,
 ): boolean {
   const target = effect.target === "self" ? source : opponent;
   const battler = battlers[target];
@@ -218,6 +242,12 @@ function applyStatChange(
     const resolvedReflection = resolveStatStageChange(reflected, effect.stat, effect.delta);
     const reflectedDelta = resolvedReflection?.delta
       ?? (reflected.ability === "CONTRARY" ? -effect.delta : effect.delta);
+    if (reflectedDelta < 0 && (effects?.sides[source].mistTurns ?? 0) > 0
+      && battler.ability !== "INFILTRATOR") {
+      events.push({ type: "statStageChangeFailed", source: target, target: source,
+        stat: effect.stat, reason: "mist" });
+      return false;
+    }
     const protection = reflectedDelta < 0 ? statDropProtectionAbility(reflected, effect.stat) : null;
     if (protection !== null) {
       events.push({ type: "abilityActivated", side: source, ability: protection, effect: "prevent-stat-drop" });
@@ -234,7 +264,7 @@ function applyStatChange(
     const reaction = resolvedReflection.delta < 0 ? opposingStatDropReaction(battlers[source]) : null;
     if (reaction !== null) {
       const reactionStart = events.length;
-      if (applyStatChange(source, target, { target: "self", ...reaction }, battlers, events)) {
+      if (applyStatChange(source, target, { target: "self", ...reaction }, battlers, events, effects)) {
         events.splice(reactionStart, 0, { type: "abilityActivated", side: source,
           ability: battlers[source].ability as "COMPETITIVE" | "DEFIANT", effect: "raise-stat" });
       }
@@ -244,6 +274,11 @@ function applyStatChange(
   const resolved = resolveStatStageChange(battler, effect.stat, effect.delta, opposingMoldBreaker);
   const effectiveDelta = resolved?.delta ?? (battler.ability === "CONTRARY" && !opposingMoldBreaker
     ? -effect.delta : effect.delta);
+  if (effectiveDelta < 0 && target !== source && (effects?.sides[target].mistTurns ?? 0) > 0
+    && battlers[source].ability !== "INFILTRATOR") {
+    events.push({ type: "statStageChangeFailed", source, target, stat: effect.stat, reason: "mist" });
+    return false;
+  }
   const preventingAbility = effectiveDelta < 0 && target !== source && !opposingMoldBreaker
     ? statDropProtectionAbility(battler, effect.stat) : null;
   if (preventingAbility !== null) {
@@ -261,7 +296,7 @@ function applyStatChange(
     const reaction = opposingStatDropReaction(battlers[target]);
     if (reaction !== null) {
       const reactionStart = events.length;
-      if (applyStatChange(target, source, { target: "self", ...reaction }, battlers, events)) {
+      if (applyStatChange(target, source, { target: "self", ...reaction }, battlers, events, effects)) {
         events.splice(reactionStart, 0, { type: "abilityActivated", side: target,
           ability: battlers[target].ability as "COMPETITIVE" | "DEFIANT", effect: "raise-stat" });
       }
@@ -347,7 +382,76 @@ function applyMoveEffect(
   trace: BattleTrace[],
   effects: MutableBattleEffects,
   weather: BattleEffects["weather"] = effects.weather,
+  hazeSelfOnly = false,
 ): void {
+  if (move.functionCode === "037") {
+    const stats: readonly BattleStat[] = ["attack", "defense", "speed", "specialAttack",
+      "specialDefense", "accuracy", "evasion"];
+    const eligible = stats.filter((stat) => resolveStatStageChange(battlers[target], stat, 2) !== null);
+    if (eligible.length === 0) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const stat = eligible[draw(rng, trace, "acupressure", eligible.length)]!;
+    const raised = resolveStatStageChange(battlers[target], stat, 2)!;
+    battlers[target] = raised.battler;
+    events.push({ type: "statStageChanged", source, target, stat, delta: raised.delta, stage: raised.stage });
+    return;
+  }
+  if (move.functionCode === "03A") {
+    const user = battlers[source];
+    const cost = Math.floor(user.stats.maxHp / 2);
+    const desired = user.ability === "CONTRARY" ? -6 : 6;
+    if (user.hp <= cost || user.stages.attack === desired) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    battlers[source] = { ...user, hp: user.hp - cost,
+      stages: { ...user.stages, attack: desired } };
+    events.push({ type: "recoilDamage", side: source, move: move.internalName,
+      reason: "belly-drum", amount: cost, hp: user.hp - cost });
+    events.push({ type: "statStageChanged", source, target: source, stat: "attack",
+      delta: desired - user.stages.attack, stage: desired });
+    return;
+  }
+  if (move.functionCode === "051") {
+    clearBattlerStages(source, source, battlers, events);
+    if (!hazeSelfOnly && target !== source) clearBattlerStages(source, target, battlers, events);
+    return;
+  }
+  if (move.functionCode === "056") {
+    const current = effects.sides[source];
+    if (current.mistTurns > 0) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    effects.sides[source] = { ...current, mistTurns: 5 };
+    events.push({ type: "battleEffectChanged", side: source, effect: "mist", turns: 5 });
+    return;
+  }
+  if (move.functionCode === "040" || move.functionCode === "041") {
+    const stat: BattleStat = move.functionCode === "040" ? "specialAttack" : "attack";
+    const raised = applyStatChange(source, target, { target: "opponent", stat,
+      delta: move.functionCode === "040" ? 1 : 2 }, battlers, events, effects);
+    const defender = battlers[target];
+    const protectedBySafeguard = source !== target && effects.sides[target].safeguardTurns > 0
+      && battlers[source].ability !== "INFILTRATOR";
+    const protectedByOwnTempo = defender.ability === "OWNTEMPO" && !hasMoldBreaker(battlers[source]);
+    let confused = false;
+    if (protectedByOwnTempo) events.push({ type: "abilityActivated", side: target,
+      ability: "OWNTEMPO", effect: "prevent-confusion" });
+    if (defender.hp > 0 && volatileOf(defender).confusionTurns === 0
+      && !protectedBySafeguard && !protectedByOwnTempo) {
+      const turns = 2 + draw(rng, trace, "confusion-duration", 4);
+      battlers[target] = withVolatile(defender, { ...volatileOf(defender), confusionTurns: turns });
+      events.push({ type: "volatileApplied", source, target, effect: "confusion", turns,
+        move: move.internalName });
+      confused = true;
+    }
+    if (!raised && !confused) events.push({ type: "moveFailed", side: source,
+      move: move.internalName, reason: "condition" });
+    return;
+  }
   if (move.functionCode === "021") {
     const attacker = battlers[source];
     battlers[source] = withVolatile(attacker, { ...volatileOf(attacker), chargeTurns: 2 });
@@ -356,17 +460,65 @@ function applyMoveEffect(
     applyStatChange(source, target, { target: "self", stat: "specialDefense", delta: 1 }, battlers, events);
     return;
   }
+  if (move.functionCode === "031") {
+    if (!applyStatChange(source, target, { target: "self", stat: "speed", delta: 2 }, battlers, events)) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const current = battlers[source];
+    battlers[source] = withVolatile(current, { ...volatileOf(current),
+      weightChange: (current.volatile?.weightChange ?? 0) - 1_000 });
+    return;
+  }
+  if (move.functionCode === "035") {
+    const raises = ["attack", "specialAttack", "speed"] as const;
+    if (!raises.some((stat) => resolveStatStageChange(battlers[source], stat, 2) !== null)) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    applySelfStatChanges(source, [
+      { stat: "defense", delta: -1 }, { stat: "specialDefense", delta: -1 },
+      { stat: "attack", delta: 2 }, { stat: "specialAttack", delta: 2 }, { stat: "speed", delta: 2 },
+    ], battlers, events);
+    return;
+  }
   if (move.functionCode === "02D") {
     applySelfStatChanges(source, ["attack", "defense", "specialAttack", "specialDefense", "speed"]
       .map((stat) => ({ stat: stat as BattleStat, delta: 1 })), battlers, events);
     return;
   }
-  if (move.functionCode === "026" || move.functionCode === "02C") {
-    const stats: readonly BattleStat[] = move.functionCode === "026"
-      ? ["attack", "speed"] : ["specialAttack", "specialDefense"];
-    if (!applySelfStatChanges(source, stats.map((stat) => ({ stat, delta: 1 })), battlers, events)) {
+  const boosts = COMBINED_SELF_BOOSTS[move.functionCode];
+  if (boosts !== undefined) {
+    if (!applySelfStatChanges(source, boosts, battlers, events) && move.category === "Status") {
       events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
     }
+    return;
+  }
+  if (move.functionCode === "04A" || move.functionCode === "04E") {
+    const defender = battlers[target];
+    const sourceGender = battlers[source].appearance?.gender;
+    const targetGender = defender.appearance?.gender;
+    const wrongGender = move.functionCode === "04E"
+      && (sourceGender !== "male" && sourceGender !== "female"
+        || targetGender !== "male" && targetGender !== "female"
+        || sourceGender === targetGender);
+    if (wrongGender || move.functionCode === "04A" && source !== target && effects.sides[target].mistTurns > 0
+      || move.functionCode === "04E" && defender.ability === "OBLIVIOUS" && !hasMoldBreaker(battlers[source])) {
+      if (move.functionCode === "04E" && defender.ability === "OBLIVIOUS" && !hasMoldBreaker(battlers[source])
+        && !wrongGender) events.push({ type: "abilityActivated", side: target, ability: "OBLIVIOUS",
+        effect: "prevent-infatuation" });
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const drops: readonly { readonly stat: BattleStat; readonly delta: number }[] = move.functionCode === "04A"
+      ? [{ stat: "attack", delta: -1 }, { stat: "defense", delta: -1 }]
+      : [{ stat: "specialAttack", delta: -2 }];
+    let changed = false;
+    for (const drop of drops) changed = applyStatChange(source, target,
+      { target: "opponent", ...drop }, battlers, events, effects) || changed;
+    if (!changed && move.category === "Status") events.push({
+      type: "moveFailed", side: source, move: move.internalName, reason: "condition",
+    });
     return;
   }
   if (move.functionCode === "02E" || move.functionCode === "032") {
@@ -426,7 +578,7 @@ function applyMoveEffect(
   }
   const change = statChangeEffect(move);
   if (change !== null) {
-    applyStatChange(source, target, change, battlers, events);
+    applyStatChange(source, target, change, battlers, events, effects);
     return;
   }
   if (statusKind(move) !== null) {
@@ -495,7 +647,7 @@ function applyMoveEffect(
     return;
   }
   if (move.functionCode === "049") {
-    applyStatChange(source, target, { target: "opponent", stat: "evasion", delta: -1 }, battlers, events);
+    applyStatChange(source, target, { target: "opponent", stat: "evasion", delta: -1 }, battlers, events, effects);
     for (const side of SIDES) {
       if (effects.sides[side].reflectTurns > 0) events.push({ type: "battleEffectChanged", side, effect: "reflect", turns: 0 });
       if (effects.sides[side].lightScreenTurns > 0) events.push({ type: "battleEffectChanged", side, effect: "light-screen", turns: 0 });
@@ -1501,6 +1653,7 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       }
     }
     let actualTargetSide = targetSide;
+    if (slot.move.functionCode === "037" && options.targetIsAlly !== true) actualTargetSide = side;
     const intendedDefender = battlers[targetSide];
     if (moveType === "FLYING" && intendedDefender.ability === "CONTRAGUARDIA"
       && !hasMoldBreaker(battlers[side])) actualTargetSide = side;
@@ -1633,7 +1786,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       continue;
     }
     if (slot.move.category === "Status") {
-      applyMoveEffect(side, actualTargetSide, resolvedMove, battlers, rng, events, trace, effects, effectiveWeather);
+      applyMoveEffect(side, actualTargetSide, resolvedMove, battlers, rng, events, trace, effects, effectiveWeather,
+        slot.move.functionCode === "051" && options.targetPresentationSide === side);
       if (battlers[side].hp === 0) {
         winner = targetSide;
         events.push({ type: "fainted", side });
@@ -1741,8 +1895,14 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     refreshNeutralizingGas();
     effectiveWeather = effectiveBattleWeather(effects.weather, Object.values(battlers), options.weatherSuppressed);
     if (damage > 0) {
-      const selfDrops = slot.move.functionCode === "03C"
+      if (slot.move.functionCode === "050") clearBattlerStages(side, actualTargetSide, battlers, events);
+      const selfDrops = slot.move.functionCode === "03B"
+        ? [{ stat: "attack" as const, delta: -1 }, { stat: "defense" as const, delta: -1 }]
+        : slot.move.functionCode === "03C"
         ? [{ stat: "defense" as const, delta: -1 }, { stat: "specialDefense" as const, delta: -1 }]
+        : slot.move.functionCode === "03D"
+          ? [{ stat: "speed" as const, delta: -1 }, { stat: "defense" as const, delta: -1 },
+            { stat: "specialDefense" as const, delta: -1 }]
         : slot.move.functionCode === "03E" ? [{ stat: "speed" as const, delta: -1 }]
           : slot.move.functionCode === "03F" ? [{ stat: "specialAttack" as const, delta: -2 }] : [];
       if (selfDrops.length > 0) applySelfStatChanges(side, selfDrops, battlers, events);
@@ -2065,13 +2225,13 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     }
     if (contact && defender.ability === "GOOEY" && battlers[side].hp > 0) {
       events.push({ type: "abilityActivated", side: actualTargetSide, ability: "GOOEY", effect: "lower-speed" });
-      applyStatChange(actualTargetSide, side, { target: "opponent", stat: "speed", delta: -1 }, battlers, events);
+      applyStatChange(actualTargetSide, side, { target: "opponent", stat: "speed", delta: -1 }, battlers, events, effects);
     }
     if (contact && defender.ability === "OLORPORCINO" && battlers[side].hp > 0) {
       for (let hit = 0; hit < landedHits; hit += 1) {
         const start = events.length;
         if (applyStatChange(actualTargetSide, side,
-          { target: "opponent", stat: "evasion", delta: -2 }, battlers, events)) {
+          { target: "opponent", stat: "evasion", delta: -2 }, battlers, events, effects)) {
           events.splice(start, 0, { type: "abilityActivated", side: actualTargetSide,
             ability: "OLORPORCINO", effect: "lower-evasion" });
         }

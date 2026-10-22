@@ -11,6 +11,18 @@ export interface ResolvedStatStageChange {
   readonly stage: number;
 }
 
+/** Clears battle stages directly, without triggering Contrary or stat-drop abilities. */
+export function clearStatStages(battler: BattlerState): {
+  readonly battler: BattlerState;
+  readonly changes: readonly { readonly stat: BattleStat; readonly delta: number }[];
+} {
+  const changes = (Object.keys(battler.stages) as BattleStat[])
+    .filter((stat) => battler.stages[stat] !== 0)
+    .map((stat) => ({ stat, delta: -battler.stages[stat] }));
+  return { battler: { ...battler, stages: { attack: 0, defense: 0, specialAttack: 0,
+    specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 } }, changes };
+}
+
 /**
  * Applies the source game's shared Contrary/Simple ordering before clamping.
  * `ignoreAbility` is reserved for a change imposed by an opposing Mold Breaker;

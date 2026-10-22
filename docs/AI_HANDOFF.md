@@ -5905,3 +5905,188 @@ de 1 après des dégâts, `03E` baisse la Vitesse de 1 et `03F` l'Attaque Spéci
 devra respecter les bornes, Simple, Contestation, les échecs partiels des boosts
 combinés, l'application seulement après un impact réel, les événements positionnés
 en double et la restauration autoritaire après reconnexion.
+
+## Premier lot de fonctions d'attaque : variations de statistiques - 2026-10-22
+
+Le noyau partagé porte maintenant `026` (Danse Draco), `02C` (Plénitude), `02E`
+(Danse-Lames et éventuels effets additionnels offensifs), `032` (Machination),
+`03C` (Close Combat et variantes), `03E` (Marteau de Glace, Marto-Poing et
+Dérapage) et `03F` (Surchauffe, Tempête Verte, Draco-Météore et variantes).
+Les quatre premières familles appliquent respectivement Attaque/Vitesse +1,
+Attaque Spéciale/Défense Spéciale +1, Attaque +2 et Attaque Spéciale +2. Une
+capacité combinée réussit si au moins un cran peut encore changer ; chaque
+caractéristique déjà à sa borne produit son échec ciblé sans annuler les autres.
+
+Les trois familles offensives n'appliquent leur contrecoup qu'après au moins un
+point de dégâts réel : Défense et Défense Spéciale -1 pour `03C`, Vitesse -1 pour
+`03E`, Attaque Spéciale -2 pour `03F`. Une immunité, une protection ou tout autre
+impact nul ne baisse donc rien. Toutes ces variations passent par le résolveur
+commun des crans : Simple double l'amplitude, Contestation inverse le signe, les
+bornes -6/+6 sont respectées et les baisses personnelles ne déclenchent pas les
+protections réservées aux baisses imposées par un adversaire.
+
+Autorité : choix de capacité, dégâts et crans sont résolus par le même noyau en
+solo et par la room autoritaire en Coop. Domaine : état tactique partagé.
+Persistance : les crans vivent dans le snapshot de combat, sont visibles par les
+participants et observateurs, restaurés à la reconnexion ou au redémarrage de la
+room, puis remis à zéro lors d'un retrait selon le contrat existant. Intentions :
+aucune nouvelle intention réseau. Audience : les événements `statStageChanged`
+et `statStageChangeFailed` sont positionnés par l'adaptateur double existant. Les
+tests couvrent joueur local, hôte, invité, Simple, Contestation, bornes partielles,
+impact nul et restauration autoritaire.
+
+Compteurs après `prepare:local` :
+
+- registre complet des fonctions de capacité : **112 couvertes / 241 non
+  couvertes / 353 au total**, soit 31,73 % ;
+- audit des contenus réellement utilisés : **280 alertes de mécanique d'attaque**,
+  contre 296 avant ce lot ;
+- audit global : **336 problèmes**, composés de 280 mécaniques, 55 animations et
+  1 talent partiel (`STURDY`).
+
+Ces nombres mesurent deux choses différentes. Le registre compte chaque code de
+fonction une seule fois, même s'il n'est utilisé par aucun contenu du périmètre.
+Les 336 problèmes globaux correspondent aux dépendances concrètes rencontrées.
+Rendre une fonction compatible rend aussi ses animations éligibles : ce lot a
+retiré 16 alertes de mécanique, importé automatiquement les animations disponibles
+et révélé quatre correspondances d'animation réellement absentes. Le total net
+passe ainsi de 348 à 336, et 587 animations sont prêtes.
+
+Prochain lot préparé : poursuivre les variations déterministes avec `024`
+(Gonflette : Attaque/Défense +1), `025` (Enroulement : Attaque/Défense/Précision
++1), `029` (Aiguisage : Attaque/Précision +1), `02A` (Force Cosmique et Appel
+Défense : Défense/Défense Spéciale +1), `02B` (Papillodanse : Attaque Spéciale,
+Défense Spéciale et Vitesse +1), `036` (Chgt Vitesse : Vitesse +2 puis Attaque
++1) et `038` (Cotogarde : Défense +3, y compris comme effet additionnel d'une
+capacité offensive). Ce lot réutilisera le même contrat de bornes, Simple,
+Contestation, double, room et reconnexion.
+
+## Deuxième lot de fonctions d'attaque : augmentations combinées - 2026-10-22
+
+Le noyau partagé porte désormais `024`, `025`, `029`, `02A`, `02B`, `036` et
+`038`. Les huit capacités locales correspondantes sont toutes des capacités de
+statut. Une table commune décrit les crans dans l'ordre de la fonction :
+Attaque/Défense pour Gonflette, Attaque/Défense/Précision pour Enroulement,
+Attaque/Précision pour Aiguisage, Défense/Défense Spéciale pour Force Cosmique et
+Appel Défense, Attaque Spéciale/Défense Spéciale/Vitesse pour Papillodanse,
+Vitesse +2 puis Attaque +1 pour Chgt Vitesse, Défense +3 pour Cotogarde. Le
+résolveur existant applique Simple, Contestation, les bornes et les échecs
+individuels. Une capacité combinée réussit dès qu'un de ses crans progresse.
+La même fonction accepte un effet additionnel offensif si un futur contenu source
+emploie l'un de ces codes avec une puissance et une probabilité d'effet.
+
+Autorité : le noyau de combat local en solo et la room en Coop calculent les
+mêmes crans à partir des seules intentions de capacité. Domaine : état tactique
+partagé. Persistance : les crans sont dans le snapshot autoritaire et sont
+restaurés après reconnexion ou redémarrage de room, puis remis à zéro au retrait.
+Audience : joueurs, adversaires et observateurs reçoivent les événements de
+variation de cran, positionnés en double. Les tests couvrent les sept fonctions,
+Simple, Contestation, bornes partielles ou totales, double positionné via le
+résolveur commun, hôte, invité et restauration de room.
+
+Après `prepare:local`, le registre compte **119 fonctions couvertes / 234 non
+couvertes / 353 au total**, soit 33,71 %. L'audit du contenu courant compte
+**272 alertes de mécanique d'attaque**, 55 animations manquantes et 1 talent
+partiel (`STURDY`) : **328 problèmes globaux**. 596 animations sont prêtes.
+
+Prochain lot préparé : `031` (Allègement : Vitesse et poids temporaire), `035`
+(Exuviation : défenses -1, Attaque/Attaque Spéciale/Vitesse +2), `039`
+(Lumiqueue : Attaque Spéciale +3), `03B` (Surpuissance : Attaque/Défense -1
+après impact), `03D` (Coup Victoire : Défense/Défense Spéciale/Vitesse -1 après
+impact), `04A` (Chatouille : Attaque/Défense adverses -1) et `04E`
+(Séduction : condition de genre puis Attaque Spéciale adverse -2). Vérifier les
+conditions exactes de la source, les immunités, l'ordre des événements et la
+restauration du poids temporaire avant de classer ces codes comme supportés.
+
+## Troisième lot de fonctions d'attaque : poids et baisses conditionnelles - 2026-10-22
+
+Le noyau partagé porte `031`, `035`, `039`, `03B`, `03D`, `04A` et `04E` d'après
+leurs classes Ruby locales. `031` augmente la Vitesse de 2 et retire 100 kg au
+poids effectif à chaque usage réussi ; le changement est volatil, cumulatif et
+effacé au retrait. Le calcul de poids commun utilise ce changement après les
+modificateurs de talent, comme la source. `035` n'agit que si au moins une des
+trois hausses est possible ; il baisse Défense et Défense Spéciale avant de monter
+Attaque, Attaque Spéciale et Vitesse. `039` monte l'Attaque Spéciale de 3.
+
+`03B` baisse Attaque et Défense après des dégâts réels. `03D` baisse Vitesse,
+Défense et Défense Spéciale dans cet ordre ; en double, sa variante Z enlève aussi
+`floor(PV max/16)` à l'allié vivant. Le dégât allié est publié comme événement
+positionné et peut le mettre K.O. `04A` baisse Attaque et Défense adverses ;
+`04E` baisse l'Attaque Spéciale de 2 uniquement face au genre opposé, et Brume
+ou Benêt bloquent l'effet selon leurs conditions source. Les baisses
+passent par le noyau commun de Simple, Contestation, protections de statistiques
+et réactions aux baisses imposées. Une capacité combinée réussit si au moins un
+cran est modifié. La source du lot ne contient ni clone offensif de ces deux
+dernières fonctions, ni Clonage déjà porté ; leur branche additionnelle reste
+soumise au raccord futur de cette mécanique.
+
+Autorité : résolveur local en solo, même résolveur dans la room pour l'hôte et
+l'invité. Domaine : poids volatil et crans tactiques partagés. Persistance : le
+snapshot autoritaire transporte le poids temporaire et les crans à la
+reconnexion ; le retrait efface le poids temporaire et les crans selon le contrat
+existant. Intentions : seulement capacité et cible habituelles. Audience : les
+participants et observateurs voient événements de crans, dégâts et K.O.
+positionnés. Les tests couvrent impact nul, immunité, coût allié en double,
+bornes, Simple, Contestation, genre, Benêt, hôte/invité et reprise de room.
+
+Après `prepare:local` : **126 fonctions couvertes / 227 non couvertes / 353 au
+total**, soit 35,69 %. L'audit courant compte **266 alertes de mécanique
+d'attaque**, 55 animations manquantes et 1 talent partiel (`STURDY`) : **322
+problèmes globaux**. 604 animations sont prêtes.
+
+Prochain lot préparé : `037` (Acupression : tirage RNG parmi les crans
+augmentables), `03A` (Cognobidon : coût de PV et Attaque maximale), `040`
+(Flatterie : Attaque Spéciale +1 puis confusion), `041` (Vantardise : Attaque +2
+puis confusion), `050` (Bain de Smog : remettre les crans de la cible à zéro après
+impact), `051` (Buée Noire : remettre les crans de tous les combattants à zéro)
+et `056` (Brume : protection de camp contre les baisses adverses). Vérifier les
+classes Ruby et brancher la protection de Brume sur toutes les baisses hostiles,
+pas seulement sur les nouvelles fonctions ; couvrir le tirage autoritaire, les
+alliés en double et la reconnexion.
+
+## Quatrième lot de fonctions d'attaque : tirage, confusion et remise à zéro - 2026-10-22
+
+Les sept fonctions `037`, `03A`, `040`, `041`, `050`, `051` et `056` sont dans le
+noyau partagé. Acupression construit les sept caractéristiques augmentables dans
+l'ordre Ruby, tire une seule fois dans la trace RNG autoritaire et augmente de 2
+le porteur ou l'allié ciblé. Cognobidon exige plus de la moitié des PV maximaux,
+retire `floor(PV max/2)` et fixe l'Attaque à +6, ou -6 sous Contestation.
+Flatterie et Vantardise appliquent leur hausse adverse et la confusion de façon
+indépendante : une hausse bloquée n'empêche pas la confusion, ni l'inverse.
+Tempo Perso, Rune Protect et Brise Moule suivent les prédicats source déjà partagés.
+
+Bain de Smog remet les sept crans de la cible à zéro seulement après des dégâts
+réels. Buée Noire remet à zéro les combattants actifs, y compris les quatre slots
+en double. Ce nettoyage direct ne déclenche pas Contestation, Acharné ou Battant.
+Brume dure cinq fins de tour source, couvre le camp entier et bloque les baisses
+hostiles dans le résolveur générique des crans, puis à l'entrée pour Intimidation
+et ses variantes. Infiltrateur contourne Brume selon le contrôle Ruby ; les
+baisses personnelles et les augmentations ne sont pas bloquées. L'événement
+`statStageChangeFailed` signale désormais la raison `mist` et la présentation
+affiche explicitement la protection.
+
+Autorité : RNG, PV, confusion, crans et durée de Brume sont calculés par le
+résolveur local en solo ou par la room autoritaire en Coop. Domaine : état
+tactique partagé. Persistance : tous ces états figurent dans le snapshot et sont
+restaurés à la reconnexion et au redémarrage de room ; les effets volatils
+s'effacent selon leur contrat de retrait ou de fin de tour. Intentions : capacité
+et cible habituelles seulement. Audience : événements positionnés aux
+participants et observateurs. Les tests couvrent tirage filtré et absence de
+tirage en échec, PV et Contestation, confusion et Tempo Perso, immunité à Bain de Smog,
+quatre combattants de Buée Noire, Brume contre Rugissement et Intimidation,
+Infiltrateur, allié double, hôte/invité et restauration de room. Les interactions
+avec Clonage et Bouclier Rusé devront être raccordées lorsque leurs états et
+fonctions seront portés ; ce lot ne les simule pas isolément.
+
+Après `prepare:local` : **133 fonctions couvertes / 220 non couvertes / 353 au
+total**, soit 37,68 %. L'audit courant compte **259 alertes de mécanique
+d'attaque**, 55 animations manquantes et 1 talent partiel (`STURDY`) : **315
+problèmes globaux**. 613 animations sont prêtes.
+
+Prochain lot préparé : les transformations déterministes de statistiques `052`
+(échange Attaque/Attaque Spéciale), `053` (échange Défense/Défense Spéciale),
+`054` (échange de tous les crans), `055` (copie des crans adverses), `057`
+(échange des statistiques physiques de base du porteur), `058` (moyenne des
+Attaques physique/spéciale) et `059` (moyenne des Défenses physique/spéciale).
+Vérifier les classes Ruby pour les exceptions de Clonage, la persistance
+temporaire au retrait, la cible en double et les événements nécessaires au rendu.

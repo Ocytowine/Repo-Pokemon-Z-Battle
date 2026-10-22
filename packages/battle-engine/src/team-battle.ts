@@ -149,6 +149,7 @@ function switchPokemon(
   reason: "voluntary" | "replacement" | "forced",
   rng: RandomSource,
   trace: TeamTurnResult["trace"][number][],
+  effects: TeamBattleState["effects"],
 ): readonly TeamBattleEvent[] {
   const team = teams[side];
   validateSwitch(team, toIndex, side);
@@ -207,7 +208,7 @@ function switchPokemon(
   }
   const other = opponentOf(side);
   const entry = resolveEntryAbility(side, activePokemon(teams[side]),
-    [{ side: other, battler: activePokemon(teams[other]) }], rng, trace);
+    [{ side: other, battler: activePokemon(teams[other]) }], rng, trace, side === "player", false, effects);
   teams[side] = { ...teams[side], members: teams[side].members.map((member, index) =>
     index === teams[side].activeIndex ? entry.battler : member) };
   teams[other] = { ...teams[other], members: teams[other].members.map((member, index) =>
@@ -380,7 +381,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   for (const side of SIDES) {
     const other = opponentOf(side);
     const entry = resolveEntryAbility(side, activePokemon(teams[side]),
-      [{ side: other, battler: activePokemon(teams[other]) }], rng, entryTrace);
+      [{ side: other, battler: activePokemon(teams[other]) }], rng, entryTrace,
+      side === "player", false, state.effects);
     teams[side] = { ...teams[side], members: teams[side].members.map((member, index) =>
       index === teams[side].activeIndex ? entry.battler : member) };
     teams[other] = { ...teams[other], members: teams[other].members.map((member, index) =>
@@ -426,7 +428,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   for (const side of switchOrder) {
     const action = actions[side];
     if (action.kind !== "switch") continue;
-    switchEvents.push(...switchPokemon(teams, side, action.teamIndex, "voluntary", rng, entryTrace));
+    switchEvents.push(...switchPokemon(teams, side, action.teamIndex, "voluntary", rng, entryTrace, effects));
     const entered = applyEntryAbilities(teams, side, effects);
     effects = entered.effects;
     switchEvents.push(...entered.events);
@@ -559,7 +561,7 @@ export function replaceFaintedPokemon(
     const teamIndex = replacements[side];
     if (teamIndex === undefined) throw new Error(`Missing replacement for ${side}.`);
     events.push(...switchPokemon(teams, side, teamIndex,
-      state.pivotRequired?.includes(side) === true ? "forced" : "replacement", rng, trace));
+      state.pivotRequired?.includes(side) === true ? "forced" : "replacement", rng, trace, effects));
     const entered = applyEntryAbilities(teams, side, effects);
     effects = entered.effects;
     events.push(...entered.events);

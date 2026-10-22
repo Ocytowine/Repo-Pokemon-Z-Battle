@@ -257,7 +257,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     } else if (event.type === "curseDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de la malédiction et perd ${event.amount} PV.`);
     } else if (event.type === "recoilDamage") {
-      health(event.side, event.hp, `${activeName(state, event.side)} est blessé par le contrecoup et perd ${event.amount} PV.`);
+      health(event.side, event.hp, event.reason === "belly-drum"
+        ? `${activeName(state, event.side)} sacrifie ${event.amount} PV pour se renforcer !`
+        : `${activeName(state, event.side)} est blessé par le contrecoup et perd ${event.amount} PV.`);
     } else if (event.type === "itemActivated") {
       health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
@@ -328,7 +330,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ${event.delta > 0 ? "augmente" : "baisse"}.`, "status",
         { side: event.target, effect: event.delta > 0 ? "stat-up" : "stat-down" });
     } else if (event.type === "statStageChangeFailed") {
-      message(`${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ne peut plus changer.`, "status");
+      message(event.reason === "mist" ? `La Brume protège ${activeName(state, event.target)} !`
+        : `${STAT_NAMES[event.stat]} de ${activeName(state, event.target)} ne peut plus changer.`, "status");
     } else if (event.type === "actionSkipped") {
       const reason = event.reason === "sleep" ? "est endormi"
         : event.reason === "paralysis" ? "est paralysé et ne peut pas agir"
