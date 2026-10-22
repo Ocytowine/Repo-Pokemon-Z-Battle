@@ -12,6 +12,18 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("presents Flame Burst collateral HP on the positioned partner", () => {
+    const state = createDoubleTeamBattleState({ player: [battler("Héros"), battler("Allié")],
+      opponent: [battler("Cible"), battler("Partenaire")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [{ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, targets: [{ side: "opponent", slot: 1 }],
+      events: [{ type: "collateralDamage", source: "player", target: "opponent",
+        move: "FLAMEBURST", amount: 2, hp: 18 }] }]);
+    expect(sequence).toContainEqual(expect.objectContaining({ kind: "health", to: 18,
+      message: "Les flammes atteignent aussi Partenaire : 2 PV perdus." }));
+    expect(sequence.at(-1)?.state.teams.opponent.members.map((member) => member.hp)).toEqual([20, 18]);
+  });
+
   it("projects shared HP and changed types for remote participants", () => {
     const state = createTeamBattleState({ player: [battler("Héros", 8)],
       opponent: [battler("Cible", 16)] });

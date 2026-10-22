@@ -18,8 +18,8 @@ export interface BattleMove {
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
     | "02A" | "02B" | "02C" | "02D" | "02E" | "02F" | "032" | "033" | "034" | "035" | "036" | "037" | "038" | "039" | "03A" | "03B" | "03C" | "03D" | "03E" | "03F"
-    | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "052" | "053" | "054" | "055" | "056" | "057" | "058" | "059" | "05B"
-    | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
+    | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "052" | "053" | "054" | "055" | "056" | "057" | "058" | "059" | "05B" | "05C" | "05D" | "05E" | "05F"
+    | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "071" | "072" | "073" | "074" | "079" | "07A" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
     | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
     | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
@@ -109,6 +109,18 @@ export interface BattlerState {
     readonly bindingTurns: number;
     readonly cursed: boolean;
     readonly lastMoveUsed: string | null;
+    /** Actual move/type most recently attempted, including effective type for Conversion 2. */
+    readonly lastUsedMove?: BattleMove | null;
+    readonly lastMoveUsedType?: string | null;
+    /** Last regular move eligible for Sketch; unlike Mimic history it survives failed effects. */
+    readonly lastSketchableMove?: BattleMove | null;
+    /** Last actual HP loss by category and attacker during one turn; battle-only snapshot state. */
+    readonly retaliation?: { readonly turn: number;
+      readonly last?: { readonly amount: number; readonly attackerId: string };
+      readonly physical?: { readonly amount: number; readonly attackerId: string };
+      readonly special?: { readonly amount: number; readonly attackerId: string } } | null;
+    /** Mimic changes only battle slots; these slots are restored on withdrawal/settlement. */
+    readonly mimicOriginalSlots?: readonly { readonly index: number; readonly slot: MoveSlot }[];
     /** Added in the Fortress vertical lot; omitted legacy snapshots use the neutral value. */
     readonly activeTurns?: number;
     /** True only for a battler switched in after the round began; cleared at end of turn. */
@@ -177,6 +189,8 @@ export interface BattlerState {
     readonly moves: readonly MoveSlot[];
   };
   readonly moves: readonly MoveSlot[];
+  /** Owner-scoped permanent replacements made by Sketch, applied once at settlement. */
+  readonly sketchedMoveSlots?: readonly { readonly index: number; readonly move: BattleMove }[];
   /** Public species facts used by the authoritative capture formula. */
   readonly capture?: { readonly rate: number; readonly baseSpeed: number; readonly weight: number };
   /** Public visual identity replicated with battle state; excludes private Pokemon metadata. */
@@ -245,6 +259,9 @@ export interface BattleEffects {
   readonly trickRoomTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
+  /** Source reciprocal Fusion field markers, shared by all active battlers for this turn only. */
+  readonly fusionBoltTurn?: number | null;
+  readonly fusionFlareTurn?: number | null;
   readonly environment?: "none" | "grass" | "tall-grass" | "forest" | "moving-water" | "still-water" | "underwater" | "cave"
     | "rock" | "sand" | "snow" | "volcano" | "graveyard" | "sky" | "space";
 }
@@ -298,6 +315,8 @@ export type BattleEvent =
   | { readonly type: "ppChanged"; readonly side: BattleSide; readonly move: string; readonly pp: number }
   | { readonly type: "moveMissed"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "damageApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly amount: number; readonly hp: number; readonly critical: boolean; readonly effectiveness: number }
+  | { readonly type: "collateralDamage"; readonly source: BattleSide; readonly target: BattleSide;
+      readonly move: string; readonly amount: number; readonly hp: number }
   | { readonly type: "recoilDamage"; readonly side: BattleSide; readonly move: string;
       readonly reason?: "recoil" | "crash" | "self-destruct" | "belly-drum"; readonly amount: number; readonly hp: number }
   | { readonly type: "hpRestored"; readonly side: BattleSide; readonly source: "move"; readonly move: string; readonly amount: number; readonly hp: number }
@@ -319,6 +338,8 @@ export type BattleEvent =
       readonly move: string }
   | { readonly type: "typesChanged"; readonly source: BattleSide; readonly target: BattleSide;
       readonly types: readonly string[]; readonly move: string }
+  | { readonly type: "moveCopied"; readonly side: BattleSide; readonly move: string;
+      readonly copiedMove: string; readonly permanent: boolean }
   | { readonly type: "formChanged"; readonly side: BattleSide; readonly species: string;
       readonly fromForm: number; readonly toForm: number; readonly reason: "ability" }
   | { readonly type: "forcedSwitchRequested"; readonly side: BattleSide; readonly ability: "EMERGENCYEXIT" }
@@ -370,7 +391,7 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "acupressure"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "acupressure" | "conversion" | "conversion2"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean;
       readonly abilityModifier?: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;

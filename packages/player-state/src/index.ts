@@ -1,4 +1,4 @@
-import { isHeldItemSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
+import { isHeldItemSupported, isMoveFunctionSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
   type BattleTeam, type BattlerState, type HeldItem,
   type MajorStatusState, type SharedBattleOwnerSettlement, type SharedBattleParticipation,
   type RandomSource, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -1105,10 +1105,6 @@ export function addPokemonToParty(party: PlayerPartyState, pokemon: PersistentPo
   return { ...party, activeIndex: party.activeIndex ?? 0, members: [...party.members, pokemon] };
 }
 
-const FUNCTIONS = new Set<BattleMove["functionCode"]>(["000", "001", "003", "004", "005", "006", "007", "008", "009", "00A", "00C", "00F", "010", "012", "013", "016", "017",
-  "01C", "01D", "01E", "01F", "020", "021", "022", "023", "027", "028", "030", "033", "034", "042", "043", "044", "045", "046", "047", "048", "049", "04B", "04C", "04D", "04F",
-  "02D", "02F", "064", "069", "06D", "06F", "077", "07B", "082", "083", "086", "088", "08D", "091", "093", "095", "098", "09A", "09C", "09D", "09E", "0A1", "0A2", "0A3", "0A5", "0A7", "0AA", "0AD", "0B3", "0B9", "0BA", "0BC", "0BD", "0BE", "0C0", "0CF", "0D1", "0D3", "0D5", "0D8", "0DC", "0DD", "0E8", "0F0", "0F1", "0F4", "0F8", "0FA", "10D", "10E", "110", "116", "159", "906"]);
-
 function supportedAbility(value: string | null): BattleAbility | null {
   if (value === null) return null;
   if (!/^[A-Z][A-Z0-9_]{0,63}$/u.test(value)) throw new Error(`Identifiant de talent invalide : ${value}.`);
@@ -1126,7 +1122,7 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
   if (definition === undefined) throw new Error(`Capacité absente du catalogue : ${slot.internalName}.`);
   const normalizedFunction = /^[0-9A-F]{1,3}$/u.test(definition.functionCode)
     ? definition.functionCode.padStart(3, "0") as BattleMove["functionCode"] : definition.functionCode as BattleMove["functionCode"];
-  if (!FUNCTIONS.has(normalizedFunction)) {
+  if (!isMoveFunctionSupported(normalizedFunction)) {
     throw new Error(`Fonction de capacité non supportée : ${definition.internalName} (${definition.functionCode}).`);
   }
   // Le catalogue détaillé contient aussi description/targetCode. Ces données
@@ -1277,21 +1273,32 @@ function settledHeldItem(result: BattlerState, retainTransferredHeldItems: boole
   return result.heldItemTransfer.originalItem;
 }
 
+function settledMoveSlots(pokemon: PersistentPokemon, result: BattlerState,
+  strict = false): readonly PersistentMoveSlot[] {
+  const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
+  const mimicked = new Map(result.volatile?.mimicOriginalSlots?.map((entry) => [entry.index, entry.slot]) ?? []);
+  const sketched = new Map(result.sketchedMoveSlots?.map((entry) => [entry.index, entry.move]) ?? []);
+  return pokemon.moves.map((slot, index) => {
+    const learned = sketched.get(index);
+    if (learned !== undefined && slot.internalName === "SKETCH") return {
+      internalName: learned.internalName, pp: learned.pp, maxPp: learned.pp,
+    };
+    const remaining = mimicked.get(index)?.pp ?? pp.get(slot.internalName);
+    if (remaining === undefined && strict) throw new Error(`Résultat sans la capacité ${slot.internalName}.`);
+    return { ...slot, pp: remaining ?? slot.pp };
+  });
+}
+
 export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): PlayerPartyState {
   const byId = new Map(team.members.map((member) => [member.id, member]));
   const members = party.members.map((member) => {
     const result = byId.get(member.id);
     if (result === undefined) throw new Error(`Résultat de combat incomplet pour ${member.id}.`);
-    const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? member.metadata
         : { ...member.metadata, happiness: result.happiness },
       heldItem: settledHeldItem(result, false),
-      moves: member.moves.map((slot) => {
-        const current = pp.get(slot.internalName);
-        if (current === undefined) throw new Error(`Résultat sans la capacité ${slot.internalName}.`);
-        return { ...slot, pp: current };
-      }) };
+      moves: settledMoveSlots(member, result, true) };
   });
   const activeId = team.members[team.activeIndex]?.id;
   const activeIndex = members.findIndex((member) => member.id === activeId);
@@ -1309,14 +1316,13 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
   const members = party.members.map((member) => {
     const result = byId.get(member.id);
     if (result === undefined) return member;
-    const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     const preserveHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? member.metadata
         : { ...member.metadata, happiness: result.happiness },
       heldItem: preserveHeldItem ? member.heldItem
         : settledHeldItem(result, options.retainTransferredHeldItems === true),
-      moves: member.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
+      moves: settledMoveSlots(member, result) };
   });
   const activeId = team.members[team.activeIndex]?.id;
   const projectedActiveIndex = members.findIndex((member) => member.id === activeId);
@@ -1349,14 +1355,13 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
   const members = party.members.map((pokemon) => {
     const result = owned.get(pokemon.id)?.battler;
     if (result === undefined) return pokemon;
-    const pp = new Map(result.moves.map((slot) => [slot.move.internalName, slot.pp]));
     const preserveSourceHeldItem = pokemon.heldItem !== null && !isHeldItemSupported(pokemon.heldItem);
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: result.happiness === undefined ? pokemon.metadata
         : { ...pokemon.metadata, happiness: result.happiness },
       heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem
         : settledHeldItem(result, retainTransferredHeldItems),
-      moves: pokemon.moves.map((slot) => ({ ...slot, pp: pp.get(slot.internalName) ?? slot.pp })) };
+      moves: settledMoveSlots(pokemon, result) };
   });
   const activeOwned = (["player", "opponent"] as const).map((side) => state.teams[side].members[state.teams[side].activeIndex])
     .find((battler) => battler !== undefined && owned.has(battler.id));

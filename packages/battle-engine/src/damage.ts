@@ -56,6 +56,8 @@ export interface BattleDamageContext {
   readonly defenderPartnerAbility?: BattleAbility | null;
   /** Every active, conscious battler ability. Global auras are side-independent and do not stack. */
   readonly activeAbilities?: readonly BattleAbility[];
+  /** Actual HP lost by the qualifying previous hit, supplied by the turn resolver. */
+  readonly retaliationDamage?: number;
 }
 
 /** Source-faithful type multiplier shared by damage calculation and pre-damage abilities. */
@@ -113,10 +115,12 @@ export function calculateDamage(
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const currentWeather = ordinaryWeather(context.weather);
   const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather);
-  if (["06A", "06B", "06C", "06E", "070"].includes(move.functionCode)) {
+  if (["06A", "06B", "06C", "06E", "070", "071", "072", "073"].includes(move.functionCode)) {
     const fixed = move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
       : move.functionCode === "06C" ? Math.max(1, Math.floor(defender.hp / 2))
         : move.functionCode === "06E" ? Math.max(0, defender.hp - attacker.hp)
+          : move.functionCode === "071" || move.functionCode === "072" ? (context.retaliationDamage ?? 0) * 2
+            : move.functionCode === "073" ? Math.floor((context.retaliationDamage ?? 0) * 1.5)
           : defender.stats.maxHp;
     const result = effectiveness === 0 ? 0 : fixed;
     trace.push({ type: "damage", side, move: move.internalName, attack: 0, defense: 0,

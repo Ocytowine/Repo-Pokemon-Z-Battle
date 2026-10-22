@@ -5,6 +5,18 @@ export function restoreMoveModifiedStats(battler: BattlerState): BattlerState {
   return original == null ? battler : { ...battler, stats: { ...original } };
 }
 
+export function restoreMimickedMoves(battler: BattlerState): BattlerState {
+  const originals = battler.volatile?.mimicOriginalSlots;
+  if (originals === undefined || originals.length === 0) return battler;
+  const permanentlyChanged = new Set(battler.sketchedMoveSlots?.map((entry) => entry.index) ?? []);
+  const moves = battler.moves.map((slot, index) => {
+    const original = originals.find((entry) => entry.index === index);
+    return original === undefined || permanentlyChanged.has(index) ? slot
+      : { ...original.slot, move: { ...original.slot.move } };
+  });
+  return { ...battler, moves };
+}
+
 export function transformBattler(user: BattlerState, target: BattlerState): BattlerState | null {
   if (user.transformOriginal !== undefined || target.transformOriginal !== undefined) return null;
   const original = { species: user.species, name: user.name, types: [...user.types], stats: { ...user.stats },

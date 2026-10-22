@@ -2,6 +2,11 @@
 
 Derniere mise a jour : 2026-10-22.
 
+Les vérifications à effectuer par le porteur après les derniers lots de
+fonctions d'attaque sont regroupées dans
+[`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md). Les cases sont
+volontairement laissées ouvertes jusqu'à une observation réelle en jeu.
+
 ## Reparation du merge du 2026-10-21
 
 Le merge publie `da89cb5` avait conserve des marqueurs de conflit bruts dans 21
@@ -6220,3 +6225,127 @@ capacité adverse). Ce lot doit d'abord préciser la persistance personnelle de
 Sketch, l'historique de capacité/type, le tirage RNG autoritaire, les exclusions
 source et les tests de reconnexion. Les représailles `071`-`073` formeront le
 lot suivant, après ce contrat d'historique.
+
+## Huitième lot de fonctions d'attaque : copies et conversions - 2026-10-22
+
+`05C`-`05F` sont exécutées par le noyau commun. Mimic copie temporairement la
+dernière capacité de la cible dans son propre emplacement et retrouve sa capacité
+et ses PP après retrait. Sketch enregistre la capacité esquissée dans
+`sketchedMoveSlots` hors du volatil de combat : elle demeure après changement de
+Pokémon et remplace durablement Sketch dans la sauvegarde personnelle à la
+clôture du combat. Les exclusions source (capacités interdites, Ombre, capacité
+déjà connue, Transform) sont vérifiées. Conversion retient la première capacité
+éligible du porteur selon la mécanique moderne de la source ; Conversion 2 tire
+un type résistant ou immunisé à la dernière capacité adverse effectivement
+utilisée. Les deux types temporaires reviennent au retrait et leurs tirages
+figurent dans la trace RNG.
+
+Autorité : intention `submitAction` de chaque joueur, calcul local en solo et
+room autoritaire en Coop. Domaine : historique/type/copie tactiques partagés ;
+apprentissage Sketch personnel au propriétaire du Pokémon. Persistance :
+historique, types temporaires et remplacement Sketch dans le snapshot de room,
+puis seul Sketch dans l'équipe personnelle ; Mimic n'y inscrit jamais la capacité
+copiée. Réplication : événements de copie et de type et état minimal du
+combattant ; audience : participants, avec règlement de l'équipe réservé au
+propriétaire. Tests : solo, hôte, invité, restitution au retrait, règlement
+personnel, reconnexion et redémarrage de room.
+
+Le registre des fonctions acceptées par l'adaptateur d'équipe personnelle et
+l'audit d'extraction est désormais partagé avec `battle-engine` ; l'ancienne
+liste locale rejetait plusieurs fonctions pourtant déjà portées. Après
+`prepare:local` : **158 fonctions couvertes / 195 non couvertes / 353 au total**
+(44,76 %). L'audit compte **231 alertes de mécanique d'attaque**, 55 animations
+manquantes et 1 talent partiel (`STURDY`) : **287 problèmes globaux**. 649
+animations sont prêtes.
+
+Dépendances ouvertes : Bouclier Rusé doit encore être raccordé au blocage de
+Sketch et Conversion 2, et les interactions avec Clonage/Transform et les
+fenêtres d'échec avant lancement d'une capacité restent à auditer. Prochain lot
+préparé : `071` Counter, `072` Mirror Coat et `073` Metal Burst. Ces trois
+représailles nécessitent un historique des PV réellement perdus par catégorie,
+attaquant et tour, puis le ciblage automatique de la source en double ; ne pas
+confondre avec le simple `lastMoveUsedType` introduit ici. Vérifier la réponse
+à plusieurs coups, l'ordre, la protection et la restauration Coop avant de
+marquer le lot terminé.
+
+## Neuvième lot de fonctions d'attaque : représailles - 2026-10-22
+
+Les codes `071` Counter, `072` Mirror Coat et `073` Metal Burst emploient un
+historique tactique unique des PV effectivement perdus, avec tour, attaquant et
+catégorie. Counter reprend deux fois le dernier coup physique, Mirror Coat deux
+fois le dernier coup spécial, Metal Burst une fois et demie le dernier coup
+toutes catégories confondues (arrondi inférieur). Comme dans les classes Ruby,
+un coup multiple remplace l'enregistrement à chaque impact : la riposte ne
+somme pas les impacts. Sans coup admissible dans le tour courant, elle échoue.
+Les trois passent par le pipeline commun des dégâts fixes, dont immunités,
+protection, Ceinture Force et événements de dégâts. En double, la cible est
+l'attaquant enregistré s'il est encore présent, même si une autre cible avait
+été choisie manuellement ; sinon le ciblage ordinaire reste le repli source.
+
+Autorité : intention du joueur local en solo, et de l'hôte ou de l'invité dans
+la room en Coop ; calcul et ordre autoritaires dans le même noyau. Domaine :
+historique tactique partagé sur le combattant, non personnel persistant.
+Persistance : historique dans les snapshots de combat pour reconnexion ou
+redémarrage de room, mais admissibilité limitée à son numéro de tour ; il
+disparaît avec le volatil au retrait. Réplication : dégâts et état des
+combattants ; audience : participants. Tests : catégories, échec, expiration,
+dernier impact multiple, ciblage en double, usage des deux propriétaires et
+restauration Coop. Validation visuelle manuelle encore ouverte.
+
+Après `prepare:local` : **161 fonctions couvertes / 192 non couvertes / 353 au
+total** (45,61 %). L'audit compte **227 alertes de mécanique d'attaque**,
+56 animations manquantes et 1 talent partiel (`STURDY`) : **284 problèmes
+globaux**. 654 animations sont prêtes. L'augmentation d'une animation manquante
+est une dépendance désormais visible après promotion d'une fonction, pas une
+animation inventée.
+
+Prochain lot préparé : `074` Pirotecnia (dégât collatéral à l'allié de la cible)
+et `079`/`07A` Rayo Fusión / Llama Fusión (marqueurs réciproques du tour). Le
+premier demande l'audience positionnée en double et la garde Magic Guard ; le
+duo Fusion demande un état de terrain partagé, consommation du marqueur et
+réinitialisation au tour suivant. `075` Surf et `076` Séisme exigent au préalable
+le contrat des états semi-invulnérables Plongée/Creusement et restent planifiés.
+
+## Dixième lot de fonctions d'attaque : collatéral et Fusion - 2026-10-22
+
+`074` Pirotecnia conserve ses dégâts directs ordinaires et, en combat double,
+retire à l'allié vivant de la cible 1/16 de ses PV maximaux après un impact
+effectif (minimum un PV selon `pbReduceHP`). Garde Magik bloque ce dégât
+indirect, sauf si son effet est supprimé par Gaz Réactif. L'événement
+`collateralDamage` garde la position de l'allié, de sorte que les participants
+voient la bonne barre de PV ; il n'est pas traité comme un nouveau coup direct
+pour Counter/Mirror Coat. Les K.O. collatéraux entrent dans le remplacement
+normal de fin de tour.
+
+`079` Rayo Fusión et `07A` Llama Fusión écrivent chacun un marqueur de champ
+après des dégâts effectifs. Leur pendant consomme ce marqueur et double les
+dégâts de son coup dans le même tour. Le champ est commun aux camps et aux
+deux emplacements du combat double ; les marqueurs sont remis à zéro à la fin
+du tour. Un coup immunisé ou manqué ne les arme pas. Les tests couvrent les
+deux ordres, l'absence de persistance au tour suivant, l'enchaînement entre
+alliés en double, Garde Magik, le rendu de la cible collatérale et les actions
+hôte/invité dans la room.
+
+Autorité : intentions du joueur local en solo, et des propriétaires dans la
+room autoritaire en Coop. Domaine : marqueurs Fusion tactiques partagés et PV
+collatéraux partagés ; aucun état personnel permanent. Persistance : PV et
+état de combat restaurés par snapshot après reconnexion ou redémarrage ; les
+marqueurs n'ont d'effet que pendant le tour courant. Réplication : événements
+de dégâts et état minimal des combattants ; audience : participants, y compris
+observateurs. Validation visuelle manuelle encore ouverte. La combinaison
+éventuelle de Pirotecnia et Lien Parental demande un contrôle source dédié.
+
+Après `prepare:local` : **164 fonctions couvertes / 189 non couvertes / 353 au
+total** (46,46 %). L'audit compte **224 alertes de mécanique d'attaque**,
+57 animations manquantes et 1 talent partiel (`STURDY`) : **282 problèmes
+globaux**. 658 animations sont prêtes. L'animation supplémentaire signalée
+par l'audit n'est pas remplacée par une animation inventée.
+
+Prochain lot préparé : `07C` Estímulo (paralysie et guérison après coup),
+`07D` Espabila (sommeil et réveil), `07E` Imagen (statut du porteur), `07F`
+Infortunio (statut de la cible), `080` Salmuera (PV à la moitié) et `081`
+Desquite/Alud (coup reçu de la cible ce tour). Réutiliser le noyau de dégâts
+et étendre l'historique du neuvième lot pour retenir tous les attaquants du
+tour, pas uniquement le dernier. Clonage reste une dépendance transverse pour
+les effets de statut conditionnels. `075`/`076` restent prévus avec les états
+semi-invulnérables Plongée/Creusement.

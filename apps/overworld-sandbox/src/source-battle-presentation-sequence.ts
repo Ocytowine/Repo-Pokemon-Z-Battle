@@ -182,6 +182,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       if (event.critical) message("Coup critique !");
       const effectiveness = effectivenessMessage(event.effectiveness);
       if (effectiveness !== null) message(effectiveness);
+    } else if (event.type === "collateralDamage") {
+      health(event.target, event.hp,
+        `Les flammes atteignent aussi ${activeName(state, event.target)} : ${event.amount} PV perdus.`);
     } else if (event.type === "hpRestored") {
       health(event.side, event.hp, `${activeName(state, event.side)} récupère ${event.amount} PV.`);
     } else if (event.type === "hpShared") {
@@ -204,6 +207,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         members: team.members.map((member, index) => index === team.activeIndex
           ? { ...member, types: [...event.types] } : member) } } };
       message(`Le type de ${activeName(state, event.target)} change.`, "status");
+    } else if (event.type === "moveCopied") {
+      message(`${activeName(state, event.side)} apprend ${event.copiedMove}${event.permanent ? " définitivement" : " temporairement"}.`, "status");
     } else if (event.type === "ppReduced") {
       message(`${event.move} perd ${event.amount} PP.`, "status");
     } else if (event.type === "heldItemRemoved") {

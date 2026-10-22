@@ -8,7 +8,8 @@ import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor,
 import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
-import { restoreMoveModifiedStats, restoreTransformedBattler, transformBattler } from "./battle-transform.js";
+import { restoreMimickedMoves, restoreMoveModifiedStats, restoreTransformedBattler,
+  transformBattler } from "./battle-transform.js";
 import { markEnteredMidTurn, resolveHealer, resolveHydration, resolveLateEndOfTurnAbilities,
   resolvePoisonHeal } from "./ability-end-turn.js";
 import { assertVoluntarySwitchAllowed } from "./ability-switch-trap.js";
@@ -194,6 +195,14 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
     .filter((position) => position.slot !== actor.slot && (battlerAtPosition(state, position)?.hp ?? 0) > 0);
   const code = (move.targetCode ?? "00").toUpperCase().replace(/^0X/u, "");
   const moveType = effectiveMoveType(user, move).type;
+  if (["071", "072", "073"].includes(move.functionCode)) {
+    const retaliation = user.volatile?.retaliation;
+    const hit = retaliation?.turn !== state.turn ? undefined
+      : move.functionCode === "071" ? retaliation.physical
+        : move.functionCode === "072" ? retaliation.special : retaliation.last;
+    const source = enemies.find((position) => battlerAtPosition(state, position)?.id === hit?.attackerId);
+    if (source !== undefined) return [source];
+  }
   if (code === "04") return enemies;
   if (code === "08") return [...enemies, ...allies];
   if (moveTargetsUser(move)) return [actor];
@@ -376,7 +385,7 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
       else if (member.volatile?.traceOriginalAbility != null) originalAbility = member.volatile.traceOriginalAbility;
     }
     const originalTypes = member.transformOriginal === undefined ? member.volatile?.originalTypes : undefined;
-    member = restoreAbilityForm(restoreTransformedBattler(restoreMoveModifiedStats(member)));
+    member = restoreAbilityForm(restoreTransformedBattler(restoreMimickedMoves(restoreMoveModifiedStats(member))));
     const { volatile: _volatile, illusion: _illusion, ...persistent } = member;
     const ability = originalAbility !== undefined ? originalAbility : member.ability;
     const hp = outgoingAbility === "REGENERATOR" && member.hp > 0
@@ -839,6 +848,25 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const presentedTargets = selectedMove.functionCode === "05B"
       ? activeTeamIndices(teams[entry.actor.side]).map((_, slot) => ({ side: entry.actor.side, slot })) : targets;
     events.push({ type: "positionedActionResolved", actor: entry.actor, targets: presentedTargets, events: result.events });
+    if (selectedMove.functionCode === "074" && targets[0] !== undefined
+      && result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
+      const target = targets[0];
+      const partnerSlot = activeTeamIndices(teams[target.side]).findIndex((_, slot) => slot !== target.slot);
+      const partnerIndex = activeTeamIndices(teams[target.side])[partnerSlot];
+      const partner = partnerIndex === undefined ? undefined : teams[target.side].members[partnerIndex];
+      const gasActive = activeBattlerList({ ...state, teams }, teams)
+        .some((active) => active.hp > 0 && active.ability === "NEUTRALIZINGGAS");
+      if (partner !== undefined && partner.hp > 0 && (partner.ability !== "MAGICGUARD" || gasActive)) {
+        const amount = Math.min(partner.hp, Math.max(1, Math.floor(partner.stats.maxHp / 16)));
+        storeBattler(teams, { side: target.side, slot: partnerSlot }, { ...partner, hp: partner.hp - amount });
+        const partnerPosition = { side: target.side, slot: partnerSlot };
+        events.push({ type: "positionedActionResolved", actor: entry.actor, targets: [partnerPosition],
+          events: [{ type: "collateralDamage", source: entry.actor.side, target: target.side,
+            move: selectedMove.internalName, amount, hp: partner.hp - amount },
+          ...(partner.hp === amount ? [{ type: "fainted" as const, side: target.side }] : [])] });
+        damagedPositions.add(key(partnerPosition));
+      }
+    }
     if (selectedMove.functionCode === "051"
       && result.events.some((event) => event.type === "moveUsed" && event.move === selectedMove.internalName)
       && !result.events.some((event) => event.type === "moveFailed")) {
@@ -948,7 +976,8 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       mistTurns: Math.max(0, (effects.sides.opponent.mistTurns ?? 0) - 1),
       safeguardTurns: Math.max(0, (effects.sides.opponent.safeguardTurns ?? 0) - 1),
       tailwindTurns: Math.max(0, (effects.sides.opponent.tailwindTurns ?? 0) - 1) },
-  }, mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
+  }, fusionBoltTurn: null, fusionFlareTurn: null,
+  mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
   waterSportTurns: Math.max(0, effects.waterSportTurns - 1),
   terrain: (effects.terrainTurns ?? 0) <= 1 ? null : effects.terrain ?? null,
   terrainTurns: Math.max(0, (effects.terrainTurns ?? 0) - 1),

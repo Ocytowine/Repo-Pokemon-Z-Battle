@@ -2549,4 +2549,120 @@ describe("authoritative battle room", () => {
     expect(restored.snapshot().world.session.flags).toContain("SYNC_DONE");
     expect(restored.snapshot().world.session.completedInteractions).toContain("sync");
   });
+
+  it("replicates Sketch and Conversion 2 for both players across reconnect and room restart", () => {
+    const sketch = { ...MINIMAL_MOVE_CATALOG.GROWL, internalName: "SKETCH", name: "Gribouille",
+      functionCode: "05D" as const, targetCode: "10", accuracy: 0 };
+    const conversion2 = { ...sketch, internalName: "CONVERSION2", name: "Conversion 2",
+      functionCode: "05F" as const };
+    const water = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "WATERMOVE", type: "WATER" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: sketch, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: water, pp: 20 },
+        { move: conversion2, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_340), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("copy-ready-a"));
+    room.receive("bob", ready("copy-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "copy-wait-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "copy-water-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "copy-sketch-a",
+      battleId: "ABC234-1", turn: 2, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "copy-conversion-b", battleId: "ABC234-1", turn: 2,
+      action: { kind: "move", moveIndex: 1 } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ trace: expect.arrayContaining([
+        expect.objectContaining({ type: "rng", purpose: "conversion2" }),
+      ]) });
+    const expected = { player: { members: [{ moves: [{ move: { internalName: "WATERMOVE" } }],
+      sketchedMoveSlots: [{ index: 0, move: { internalName: "WATERMOVE" } }] }] },
+    opponent: { members: [{ volatile: { lastMoveUsedType: "NORMAL" } }] } };
+    expect(room.snapshot().battle?.state.teams).toMatchObject(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("keeps both owners' retaliation history and results across reconnect and restart", () => {
+    const strike = { ...MINIMAL_MOVE_CATALOG.TACKLE, power: 20, accuracy: 0 };
+    const counter = { ...strike, internalName: "COUNTER", name: "Riposte",
+      functionCode: "071" as const, power: 1, priority: -5 };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), hp: 200, stats: { ...battler("player").stats, maxHp: 200 },
+        moves: [{ move: strike, pp: 20 }, { move: counter, pp: 20 }] }],
+      opponent: [{ ...battler("opponent"), hp: 200, stats: { ...battler("opponent").stats, maxHp: 200 },
+        moves: [{ move: strike, pp: 20 }, { move: counter, pp: 20 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_341), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("counter-ready-a"));
+    room.receive("bob", ready("counter-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "counter-strike-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "counter-return-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 1 } });
+    expect(room.snapshot().battle?.state.teams.player.members[0]!.hp).toBeLessThan(200);
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "counter-return-a",
+      battleId: "ABC234-1", turn: 2, action: { kind: "move", moveIndex: 1 } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "counter-strike-b",
+      battleId: "ABC234-1", turn: 2, action: { kind: "move", moveIndex: 0 } });
+    const expected = { player: { members: [{ volatile: { retaliation: {
+      turn: 2, physical: { attackerId: "opponent" } } } }] },
+    opponent: { members: [{ volatile: { retaliation: {
+      turn: 2, physical: { attackerId: "player" } } } }] } };
+    expect(room.snapshot().battle?.state.teams).toMatchObject(expected);
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams).toMatchObject(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state.teams).toMatchObject(expected);
+  });
+
+  it("resolves reciprocal Fusion from host and guest and restores both HP snapshots", () => {
+    const bolt = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FUSIONBOLT", name: "Rayo Fusión",
+      functionCode: "079" as const, category: "Special" as const, power: 30, accuracy: 0 };
+    const flare = { ...bolt, internalName: "FUSIONFLARE", name: "Llama Fusión",
+      functionCode: "07A" as const };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: bolt, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: flare, pp: 10 }] }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_342), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("fusion-ready-a"));
+    room.receive("bob", ready("fusion-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "fusion-bolt-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "fusion-flare-b", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    const message = resolved.find((entry) => entry.message.type === "turnResolved")?.message;
+    const damage = message?.type === "turnResolved"
+      ? message.events.filter((event) => event.type === "damageApplied") : [];
+    expect(damage).toHaveLength(2);
+    expect(damage[1]?.type === "damageApplied" ? damage[1].amount : 0)
+      .toBeGreaterThan(damage[0]?.type === "damageApplied" ? damage[0].amount * 1.5 : 0);
+    const expected = { teams: { player: { members: [{ hp: expect.any(Number) }] },
+      opponent: { members: [{ hp: expect.any(Number) }] } },
+    effects: { fusionBoltTurn: null, fusionFlareTurn: null } };
+    expect(room.snapshot().battle?.state).toMatchObject(expected);
+    const hp = room.snapshot().battle?.state.teams.player.members[0]!.hp;
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state.teams.player.members[0]!.hp).toBe(hp);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state).toMatchObject(expected);
+  });
 });

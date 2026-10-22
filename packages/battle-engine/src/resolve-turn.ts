@@ -9,7 +9,7 @@ import { hasHighCriticalRate, isBombMove, isSoundMove, isWindMove, moveTargetsUs
   recoilDivisor } from "./move-properties.js";
 import { effectiveBattleWeather, ordinaryWeather, resolveWeatherEndOfTurn, weatherEvasionMultiplier,
   weatherSpeedMultiplier } from "./ability-weather.js";
-import { isKnownType } from "./type-chart.js";
+import { isKnownType, REAL_BATTLE_TYPES, typeEffectiveness } from "./type-chart.js";
 import { effectiveMovePriority, effectiveMoveType, hasMoldBreaker, hasMoveFlag } from "./move-properties.js";
 import { transformBattler } from "./battle-transform.js";
 import { resolveHealer, resolveHydration, resolveLateEndOfTurnAbilities, resolvePoisonHeal,
@@ -28,6 +28,9 @@ function opponentOf(side: BattleSide): BattleSide {
 
 function cloneBattler(battler: BattlerState): BattlerState {
   return { ...battler, types: [...battler.types], stats: { ...battler.stats }, stages: { ...battler.stages }, majorStatus: battler.majorStatus === null ? null : { ...battler.majorStatus },
+    ...(battler.sketchedMoveSlots === undefined ? {} : { sketchedMoveSlots: battler.sketchedMoveSlots.map((entry) => ({
+      index: entry.index, move: { ...entry.move },
+    })) }),
     ...(battler.volatile === undefined ? {} : { volatile: { ...battler.volatile } }),
     moves: battler.moves.map((slot) => ({ ...slot, move: { ...slot.move } })) };
 }
@@ -47,6 +50,8 @@ type MutableBattleEffects = {
   trickRoomTurns: number;
   weather: NonNullable<BattleEffects["weather"]> | null;
   weatherTurns: number;
+  fusionBoltTurn: number | null;
+  fusionFlareTurn: number | null;
   environment: NonNullable<BattleEffects["environment"]>;
 };
 
@@ -54,6 +59,8 @@ function volatileOf(battler: BattlerState): BattleVolatile {
   const neutral = { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
     disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
     bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
+    lastUsedMove: null, lastMoveUsedType: null, lastSketchableMove: null, retaliation: null,
+    mimicOriginalSlots: [],
     activeTurns: 0, enteredMidTurn: false, protected: false, endured: false, protectRate: 1, tauntTurns: 0, rage: false,
     flashFire: false, entryAbilityResolved: false, traceOriginalAbility: null, originalAbility: null,
     abilityReplacementActive: false,
@@ -74,7 +81,8 @@ function effectsOf(effects: BattleEffects | undefined): MutableBattleEffects {
     opponent: { reflectTurns: 0, lightScreenTurns: 0, luckyChantTurns: 0, spikesLayers: 0,
       toxicSpikesLayers: 0, stealthRock: false, stickyWeb: false, mistTurns: 0, safeguardTurns: 0, tailwindTurns: 0 },
   }, mudSportTurns: 0, waterSportTurns: 0, itemTransfers: [], terrain: null, terrainTurns: 0, trickRoomTurns: 0,
-  nextPickupUse: 0, weather: null, weatherTurns: 0, environment: "none" } : { sides: {
+  nextPickupUse: 0, weather: null, weatherTurns: 0, fusionBoltTurn: null,
+  fusionFlareTurn: null, environment: "none" } : { sides: {
     player: { ...effects.sides.player, lightScreenTurns: effects.sides.player.lightScreenTurns ?? 0,
       spikesLayers: effects.sides.player.spikesLayers ?? 0,
       toxicSpikesLayers: effects.sides.player.toxicSpikesLayers ?? 0,
@@ -97,6 +105,7 @@ function effectsOf(effects: BattleEffects | undefined): MutableBattleEffects {
   terrain: effects.terrain ?? null, terrainTurns: effects.terrainTurns ?? 0,
   trickRoomTurns: effects.trickRoomTurns ?? 0,
   weather: effects.weather ?? null, weatherTurns: effects.weatherTurns ?? 0,
+  fusionBoltTurn: effects.fusionBoltTurn ?? null, fusionFlareTurn: effects.fusionFlareTurn ?? null,
   environment: effects.environment ?? "none" };
 }
 
@@ -405,6 +414,67 @@ function applyMoveEffect(
   weather: BattleEffects["weather"] = effects.weather,
   hazeSelfOnly = false,
 ): void {
+  if (move.functionCode === "05C" || move.functionCode === "05D") {
+    const user = battlers[source];
+    const copied = move.functionCode === "05C"
+      ? battlers[target].volatile?.lastUsedMove : battlers[target].volatile?.lastSketchableMove;
+    const blacklist = move.functionCode === "05C"
+      ? ["002", "014", "05C", "05D", "0B6"] : ["002", "014", "05D"];
+    const index = user.moves.findIndex((slot) => slot.move.id === move.id);
+    if (user.transformOriginal !== undefined || copied == null || copied.type === "SHADOW"
+      || blacklist.includes(copied.functionCode) || user.moves.some((slot) => slot.move.id === copied.id)
+      || index < 0) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const replacement = { move: { ...copied }, pp: copied.pp };
+    const moves = user.moves.map((slot, slotIndex) => slotIndex === index ? replacement : slot);
+    if (move.functionCode === "05C") {
+      const current = volatileOf(user);
+      battlers[source] = withVolatile({ ...user, moves }, { ...current,
+        mimicOriginalSlots: [...current.mimicOriginalSlots,
+          { index, slot: { ...user.moves[index]!, move: { ...user.moves[index]!.move } } }] });
+    } else {
+      battlers[source] = { ...user, moves, sketchedMoveSlots: [
+        ...(user.sketchedMoveSlots ?? []).filter((entry) => entry.index !== index),
+        { index, move: { ...copied } },
+      ] };
+    }
+    events.push({ type: "moveCopied", side: source, move: move.internalName,
+      copiedMove: copied.internalName, permanent: move.functionCode === "05D" });
+    return;
+  }
+  if (move.functionCode === "05E" || move.functionCode === "05F") {
+    const user = battlers[source];
+    if (user.ability === "MULTITYPE") {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    let choices: string[] = [];
+    if (move.functionCode === "05E") {
+      const candidate = user.moves.find((slot) => slot.move.id !== move.id
+        && isKnownType(slot.move.type) && slot.move.type !== "QMARKS"
+        && !user.types.includes(slot.move.type));
+      if (candidate !== undefined) choices = [candidate.move.type];
+    } else {
+      const lastType = battlers[target].volatile?.lastMoveUsedType;
+      if (battlers[target].volatile?.lastUsedMove != null && lastType != null
+        && isKnownType(lastType) && lastType !== "QMARKS") {
+        choices = REAL_BATTLE_TYPES.filter((type) => !user.types.includes(type)
+          && typeEffectiveness(lastType, [type]) < 1);
+      }
+    }
+    if (choices.length === 0) {
+      events.push({ type: "moveFailed", side: source, move: move.internalName, reason: "condition" });
+      return;
+    }
+    const selected = choices[draw(rng, trace, move.functionCode === "05E" ? "conversion" : "conversion2",
+      choices.length)]!;
+    battlers[source] = withTemporaryTypes(user, [selected]);
+    events.push({ type: "typesChanged", source, target: source,
+      types: [selected], move: move.internalName });
+    return;
+  }
   if (move.functionCode === "067") {
     const user = battlers[source];
     const defender = battlers[target];
@@ -1454,6 +1524,8 @@ function applyItemRecoveryAbilities(battlers: Record<BattleSide, BattlerState>, 
 }
 
 function tickBattleEffects(effects: MutableBattleEffects, events: BattleEvent[]): void {
+  effects.fusionBoltTurn = null;
+  effects.fusionFlareTurn = null;
   for (const side of SIDES) {
     const current = effects.sides[side];
     const reflectTurns = Math.max(0, current.reflectTurns - 1);
@@ -1837,6 +1909,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     }
     const moveType = effectiveMoveType(battlers[side], slot.move).type;
     const resolvedMove = moveType === slot.move.type ? slot.move : { ...slot.move, type: moveType };
+    battlers[side] = withVolatile(battlers[side], { ...volatileOf(battlers[side]),
+      lastUsedMove: { ...slot.move }, lastMoveUsedType: moveType,
+      lastSketchableMove: { ...slot.move } });
     if (battlers[side].ability === "PROTEAN"
       && (battlers[side].types.length !== 1 || battlers[side].types[0] !== moveType)) {
       const current = battlers[side];
@@ -1984,7 +2059,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       continue;
     }
     const targetCode = (slot.move.targetCode ?? "00").toUpperCase().replace(/^0X/u, "");
-    const fixedDamageMove = ["06A", "06B", "06C", "06D", "06E", "06F", "070"].includes(slot.move.functionCode);
+    const fixedDamageMove = ["06A", "06B", "06C", "06D", "06E", "06F", "070", "071", "072", "073"]
+      .includes(slot.move.functionCode);
     const parentalEligible = battlers[side].ability === "PARENTALBOND" && slot.move.category !== "Status"
       && !["04", "08"].includes(targetCode)
       && !fixedDamageMove
@@ -2030,6 +2106,15 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       events.push({ type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
       continue;
     }
+    const retaliation = battlers[side].volatile?.retaliation;
+    const retaliationHit = retaliation?.turn !== state.turn ? undefined
+      : slot.move.functionCode === "071" ? retaliation.physical
+        : slot.move.functionCode === "072" ? retaliation.special : retaliation.last;
+    if (["071", "072", "073"].includes(slot.move.functionCode)
+      && (retaliationHit === undefined || retaliationHit.amount <= 0)) {
+      events.push({ type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
+      continue;
+    }
     const traceStart = trace.length;
     const infiltrates = battlers[side].ability === "INFILTRATOR";
     const damageContext = { reflect: !infiltrates && effects.sides[actualTargetSide].reflectTurns > 0,
@@ -2046,11 +2131,18 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
           .filter((candidate) => candidate.hp > 0 && candidate.ability !== null)
           .map((candidate) => candidate.ability as NonNullable<BattlerState["ability"]>),
       defenderAlreadyMoved: moved.has(actualTargetSide) || options.targetAlreadyMoved === true
-        || selectedActions[actualTargetSide] === undefined && options.targetPlannedAction === undefined };
+        || selectedActions[actualTargetSide] === undefined && options.targetPlannedAction === undefined,
+      ...(retaliationHit === undefined ? {} : { retaliationDamage: retaliationHit.amount }) };
     const assuranceMultiplier = slot.move.functionCode === "082"
       && (options.targetTookDamageThisTurn === true || damagedThisTurn.has(actualTargetSide)) ? 2 : 1;
     const roundMultiplier = slot.move.functionCode === "083" ? options.roundMultiplier ?? 1 : 1;
     const chargeMultiplier = moveType === "ELECTRIC" && volatileOf(battlers[side]).chargeTurns > 0 ? 2 : 1;
+    const fusionBoost = slot.move.functionCode === "079" && effects.fusionBoltTurn === state.turn
+      || slot.move.functionCode === "07A" && effects.fusionFlareTurn === state.turn;
+    if (fusionBoost) {
+      if (slot.move.functionCode === "079") effects.fusionBoltTurn = null;
+      else effects.fusionFlareTurn = null;
+    }
     const powerMultiplier = assuranceMultiplier * roundMultiplier * chargeMultiplier;
     let damageMove = powerMultiplier === 1 ? slot.move : { ...slot.move, power: slot.move.power * powerMultiplier };
     if (slot.move.functionCode === "095") {
@@ -2105,7 +2197,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     for (const [hitIndex, rawDamage] of damageRolls.entries()) {
       if (hp <= 0) break;
       const presentationMultiplier = fixedDamageMove ? 1
-        : (options.damageMultiplier ?? 1) * (options.helpingHandMultiplier ?? 1);
+        : (options.damageMultiplier ?? 1) * (options.helpingHandMultiplier ?? 1)
+          * (fusionBoost ? 2 : 1);
       let hitDamage = rawDamage === 0 ? 0 : Math.max(1, Math.floor(rawDamage * presentationMultiplier
         * (parentalBond && hitIndex === 1 ? 0.5 : 1)));
       if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) hitDamage *= 2;
@@ -2123,10 +2216,21 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       if (applied > 0) landedHits += 1;
       const hitTrace = damageTraces[hitIndex] ?? damageTrace;
       if (applied > 0) appliedHits.push({ hpBefore, hpAfter: hp, critical: hitTrace.critical });
+      if (applied > 0) {
+        const current = battlers[actualTargetSide];
+        const previous = current.volatile?.retaliation;
+        const record = previous?.turn === state.turn ? previous : { turn: state.turn };
+        const hit = { amount: applied, attackerId: battlers[side].id };
+        battlers[actualTargetSide] = withVolatile(current, { ...volatileOf(current), retaliation: {
+          ...record, last: hit,
+          ...(slot.move.category === "Physical" ? { physical: hit }
+            : slot.move.category === "Special" ? { special: hit } : {}),
+        } });
+      }
       events.push({ type: "damageApplied", source: side, target: actualTargetSide,
         amount: applied, hp, critical: hitTrace.critical, effectiveness: hitTrace.effectiveness });
     }
-    battlers[actualTargetSide] = { ...defender, hp };
+    battlers[actualTargetSide] = { ...battlers[actualTargetSide], hp };
     refreshNeutralizingGas();
     effectiveWeather = effectiveBattleWeather(effects.weather, Object.values(battlers), options.weatherSuppressed);
     if (damage > 0) {
@@ -2152,6 +2256,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (focusSash) battlers[actualTargetSide] = consumeTrackedItem(battlers[actualTargetSide], "FOCUSSASH", effects);
     else if (payapa) battlers[actualTargetSide] = consumeTrackedItem(battlers[actualTargetSide], "PAYAPABERRY", effects);
     if (damage > 0) damagedThisTurn.add(actualTargetSide);
+    if (damage > 0 && slot.move.functionCode === "079") effects.fusionFlareTurn = state.turn;
+    if (damage > 0 && slot.move.functionCode === "07A") effects.fusionBoltTurn = state.turn;
     if (damage > 0 && slot.move.functionCode === "0D1") {
       const current = battlers[side];
       if (volatileOf(current).uproarTurns === 0) {

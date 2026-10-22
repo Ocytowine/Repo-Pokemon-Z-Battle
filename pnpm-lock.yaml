@@ -158,6 +158,9 @@ importers:
 
   tools/pokemon-z-extractor:
     dependencies:
+      '@pokemon-z-battle/battle-engine':
+        specifier: workspace:*
+        version: link:../../packages/battle-engine
       '@pokemon-z-battle/game-data':
         specifier: workspace:*
         version: link:../../packages/game-data

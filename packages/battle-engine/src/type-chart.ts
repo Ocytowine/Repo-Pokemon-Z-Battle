@@ -26,6 +26,9 @@ const TYPE_DEFENSES: Readonly<Record<string, TypeDefense>> = {
   FAIRY: { weak: ["STEEL", "POISON"], resistant: ["DARK", "FIGHTING", "BUG"], immune: ["DRAGON"] },
 };
 
+/** Source PBTypes order; QMARKS is a pseudo-type and cannot be chosen by Conversion 2. */
+export const REAL_BATTLE_TYPES = Object.keys(TYPE_DEFENSES).filter((type) => type !== "QMARKS");
+
 export function typeEffectiveness(moveType: string, defenderTypes: readonly string[]): number {
   return defenderTypes.reduce((multiplier, defenderType) => {
     const defense = TYPE_DEFENSES[defenderType];

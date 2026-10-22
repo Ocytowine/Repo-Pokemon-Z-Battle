@@ -1117,8 +1117,29 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   la suppression temporaire des talents ont des tests solo/Coop et de reprise.
   Clonage, les transitions instantanées de Gaz Réactif et les hooks d'Échange
   en double contre plusieurs adversaires restent audités séparément. Le
-  prochain lot préparé est `05C`-`05F`, capacités copiées et conversions ;
-  `071`-`073` suivront le contrat d'historique qu'il introduira.
+  huitième lot (`05C`-`05F`) terminé : **158 fonctions couvertes / 195 non
+  couvertes sur 353**, 231 alertes de mécanique et 287 problèmes globaux.
+  Mimic restaure son emplacement au retrait, Sketch persiste dans l'équipe de
+  son propriétaire, et Conversion/Conversion 2 utilisent le type et le tirage
+  autoritaires ; les snapshots Coop conservent l'historique et les changements.
+  Le registre d'exécution des fonctions est désormais commun à l'audit et à
+  l'adaptateur d'équipe. Bouclier Rusé, Clonage et certains cas Transform restent
+  des dépendances auditées. Neuvième lot `071`-`073` terminé : **161 fonctions
+  couvertes / 192 non couvertes sur 353**, 227 alertes de mécanique et 284
+  problèmes globaux. Les représailles utilisent les PV réellement perdus par
+  dernier impact, catégorie, attaquant et tour ; l'attaquant est ciblé en double
+  et l'historique tactique est restauré par la room. La validation visuelle
+  manuelle reste ouverte. Dixième lot `074`, `079`, `07A` terminé : **164
+  fonctions couvertes / 189 non couvertes sur 353**, 224 alertes de mécanique
+  et 282 problèmes globaux. Pirotecnia inflige son dégât collatéral positionné
+  en double, sauf Garde Magik actif ; Rayo/Llama Fusión partagent des marqueurs
+  de champ consommés dans le même tour, en solo et en Coop. Le rendu et les
+  snapshots hôte/invité sont testés, validation visuelle manuelle ouverte.
+  Prochain lot préparé : `07C`-`081`, multiplicateurs liés aux statuts, aux PV
+  et à l'historique des attaquants. `075`-`076` restent liés aux états
+  Plongée/Creusement ; l'interaction Pirotecnia/Lien Parental reste à auditer.
+  La recette visuelle utilisateur des lots `05C`-`07A`, encore ouverte, est
+  consignée dans [`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md).
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

@@ -211,6 +211,53 @@ describe("persistent player party", () => {
       metadata: { form: 2, shiny: true, gender: "female", happiness: 12 }, moves: [{ pp: 1 }] });
   });
 
+  it("accepts the shared supported registry and persists Sketch but not Mimic", () => {
+    const sketch = { ...catalog.moves[0]!, id: 101, internalName: "SKETCH", functionCode: "05D",
+      name: "Esquema", power: 0, category: "Status" as const, pp: 1 };
+    const mimic = { ...sketch, id: 102, internalName: "MIMIC", functionCode: "05C", name: "Mimético", pp: 10 };
+    const dance = { ...sketch, id: 103, internalName: "DRAGONDANCE", functionCode: "026", name: "Danse Draco" };
+    const expanded = { ...catalog, moves: [...catalog.moves, sketch, mimic, dance] };
+    const sketchParty = { ...party, members: [{ ...party.members[0]!, moves: [
+      { internalName: "SKETCH", pp: 1, maxPp: 1 },
+      { internalName: "DRAGONDANCE", pp: 1, maxPp: 1 },
+    ] }] };
+    const sketchTeam = playerPartyToBattleTeam(sketchParty, expanded);
+    const tackle = playerPartyToBattleTeam(party, catalog).members[0]!.moves[0]!.move;
+    const sketched = { ...sketchTeam, members: [{ ...sketchTeam.members[0]!,
+      moves: [{ move: tackle, pp: tackle.pp }, sketchTeam.members[0]!.moves[1]!],
+      sketchedMoveSlots: [{ index: 0, move: tackle }] }] };
+    expect(storeBattleTeam(sketchParty, sketched).members[0]!.moves[0]).toEqual({
+      internalName: "TACKLE", pp: tackle.pp, maxPp: tackle.pp,
+    });
+    expect(storeProjectedBattleTeam(sketchParty, sketched).members[0]!.moves[1]!.internalName)
+      .toBe("DRAGONDANCE");
+    const wild = { ...sketched.members[0]!, id: "wild" };
+    const sharedState = createTeamBattleState({ player: sketched.members, opponent: [wild] });
+    const participation: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["host"], activeMemberId: "starter",
+        members: [{ ownerId: "host", battler: sharedState.teams.player.members[0]! }] },
+      opponent: { trainerIds: [], activeMemberId: "wild",
+        members: [{ ownerId: null, battler: sharedState.teams.opponent.members[0]! }] },
+    } };
+    expect(storeOwnedBattleResults(sketchParty, participation, sharedState, "host")
+      .members[0]!.moves[0]!.internalName).toBe("TACKLE");
+    expect(storeOwnedBattleResults(sketchParty, participation, sharedState, "guest")
+      .members[0]!.moves[0]!.internalName).toBe("SKETCH");
+
+    const mimicParty = { ...party, members: [{ ...party.members[0]!, moves: [
+      { internalName: "MIMIC", pp: 7, maxPp: 10 },
+    ] }] };
+    const mimicTeam = playerPartyToBattleTeam(mimicParty, expanded);
+    const original = { ...mimicTeam.members[0]!.moves[0]!, pp: 6 };
+    const mimicked = { ...mimicTeam, members: [{ ...mimicTeam.members[0]!,
+      moves: [{ move: tackle, pp: tackle.pp }],
+      volatile: { ...mimicTeam.members[0]!.volatile!, mimicOriginalSlots: [{ index: 0, slot: original }] },
+    }] };
+    expect(storeProjectedBattleTeam(mimicParty, mimicked).members[0]!.moves[0]).toEqual({
+      internalName: "MIMIC", pp: 6, maxPp: 10,
+    });
+  });
+
   it("restores a reduced battle projection without deleting source-only mechanics", () => {
     const sourceOnlyMove = { internalName: "FUTUREMOVE", pp: 7, maxPp: 10 };
     const persistent = { ...party, members: [{ ...party.members[0]!, heldItem: "AMULETCOIN",
