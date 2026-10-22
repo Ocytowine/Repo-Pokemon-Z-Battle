@@ -73,6 +73,13 @@ export function damageAbilityStatReaction(
       return hpBefore > half && hpAfter < half
         ? { ability: "BERSERK", changes: [{ stat: "specialAttack", delta: 1 }], maximize: null } : null;
     }
+    case "CORAZAIRA": {
+      const half = Math.floor(battler.stats.maxHp / 2);
+      return hpBefore > half && hpAfter < half
+        ? { ability: "CORAZAIRA", changes: [
+          { stat: "specialAttack", delta: 1 }, { stat: "attack", delta: 1 },
+        ], maximize: null } : null;
+    }
     case "RATTLED":
       return move.type === "BUG" || move.type === "DARK" || move.type === "GHOST"
         ? { ability: "RATTLED", changes: [{ stat: "speed", delta: 1 }], maximize: null } : null;

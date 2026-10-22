@@ -1052,14 +1052,20 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Essentials, Acidarmure, Gyroballe, Ignifugé, Alchimie Vil et Baie Lichii sont
   portés dans le noyau partagé. L'audit ciblé ne conserve que l'animation source
   absente de `LUZDECADENTE`, couverte par le fallback prévu.
-- [ ] porter progressivement les effets des talents source encore inertes ; 212
-  talents sur 255 sont pleinement supportés, `STURDY` reste partiel et 42 sont
+- [ ] porter progressivement les effets des talents source encore inertes ; 223
+  talents sur 255 sont pleinement supportés, `STURDY` reste partiel et 31 sont
   encore inertes. Le lot élargi du 2026-10-22 ajoute `FLAREBOOST`, `TOXICBOOST`,
   `SLOWSTART`, `SURGESURFER`, `SILVANO`, `MISTYSURGE`, `PSYCHICSURGE`,
   `TERAVOLT`, `TURBOBLAZE` et `GALEWINGS` dans le noyau solo/Coop commun. Le
-  prochain lot regroupera précision et ordre d'action (`VICTORYSTAR`,
-  `WONDERSKIN`, `TRIAGE`, `QUEENLYMAJESTY`, `STALL`) ; le verrou de capacité de
-  `PODERSABIO` reste volontairement séparé.
+  lot suivant ajoute précision et ordre d'action (`VICTORYSTAR`, `WONDERSKIN`,
+  `TRIAGE`, `QUEENLYMAJESTY`, `STALL`). Le prochain lot groupe six talents simples
+  propres aux hooks déjà communs : `SOBRECARGA`, `CORAZAIRA`, `DINAMO`,
+  `TOQUEMAGICO`, `RELAMPAGUEO` et `GRANPESADILLA` ; le verrou de capacité de
+  `PODERSABIO` reste volontairement séparé. Ce lot est maintenant terminé : il
+  couvre seuils de PV, Charge, réactions de contact et dégâts de sommeil dans le
+  noyau commun. Le prochain lot préparé réunit `GOODASGOLD`, `WONDERGUARD`,
+  `LIQUIDOOZE`, `INNARDSOUT` et `MIRRORARMOR` autour des protections, drains et
+  réactions après dégâts.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par
@@ -1913,8 +1919,8 @@ Ordre de travail retenu :
 
 L'audit source cible du 2026-10-05, actualise le 2026-10-22, confirme que les
 donnees importees masquent encore un ecart de comportement important : 104/353
-fonctions d'attaque sont executees et aucune n'est partielle ; 212/255 talents sont executes,
-1 est partiel et 42 restent inertes. Les objets sont avances mais
+fonctions d'attaque sont executees et aucune n'est partielle ; 217/255 talents sont executes,
+1 est partiel et 37 restent inertes. Les objets sont avances mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots

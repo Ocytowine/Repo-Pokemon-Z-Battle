@@ -54,13 +54,20 @@ export function resolveLateEndOfTurnAbilities(battler: BattlerState, side: Battl
           delta: resolved.delta, stage: resolved.stage });
     }
   }
-  const badDreams = opponents.find((opponent) => opponent.hp > 0 && opponent.ability === "BADDREAMS");
-  if (next.majorStatus?.kind === "sleep" && next.ability !== "MAGICGUARD" && badDreams !== undefined) {
-    const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 6)));
-    next = { ...next, hp: next.hp - amount };
+  if (next.majorStatus?.kind === "sleep" && next.ability !== "MAGICGUARD") {
     const source = side === "player" ? "opponent" : "player";
-    events.push({ type: "abilityActivated", side: source, ability: "BADDREAMS", effect: "status-damage" },
-      { type: "abilityDamage", source, target: side, ability: "BADDREAMS", amount, hp: next.hp });
+    const nightmares = [
+      { ability: "BADDREAMS" as const, divisor: 6 },
+      { ability: "GRANPESADILLA" as const, divisor: 4 },
+    ];
+    for (const nightmare of nightmares) {
+      if (next.hp <= 0 || !opponents.some((opponent) => opponent.hp > 0
+        && opponent.ability === nightmare.ability)) continue;
+      const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / nightmare.divisor)));
+      next = { ...next, hp: next.hp - amount };
+      events.push({ type: "abilityActivated", side: source, ability: nightmare.ability, effect: "status-damage" },
+        { type: "abilityDamage", source, target: side, ability: nightmare.ability, amount, hp: next.hp });
+    }
   }
   if (next.volatile?.enteredMidTurn === true) {
     next = { ...next, volatile: { ...next.volatile, enteredMidTurn: false } };

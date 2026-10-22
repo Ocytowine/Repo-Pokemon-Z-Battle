@@ -671,10 +671,12 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
       const priority = effectiveMovePriority(battler, move);
-      return { ...entry, priority, speed: effectiveSpeed(battler, effects,
+      return { ...entry, priority, lagging: battler.ability === "STALL", speed: effectiveSpeed(battler, effects,
         hasWeatherSuppressor(activeBattlerList(state, teams)), entry.actor.side), tie: rng.nextInt(1_000_000) }; })
     .sort((left, right) => right.priority - left.priority
-      || ((effects?.trickRoomTurns ?? 0) > 0 ? left.speed - right.speed : right.speed - left.speed)
+      || (left.lagging !== right.lagging ? left.lagging ? 1 : -1 : 0)
+      || (left.lagging && right.lagging ? left.speed - right.speed
+        : (effects?.trickRoomTurns ?? 0) > 0 ? left.speed - right.speed : right.speed - left.speed)
       || left.tie - right.tie);
   events.push({ type: "teamActionOrdered", order: [
     ...switchEntries.map((entry) => ({ side: entry.actor.side, kind: "switch" as const })),

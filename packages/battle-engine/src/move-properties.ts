@@ -98,7 +98,27 @@ export function hasMoldBreaker(attacker: BattlerState): boolean {
 export function effectiveMovePriority(attacker: BattlerState, move: BattleMove): number {
   return move.priority
     + (attacker.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0)
-    + (attacker.ability === "GALEWINGS" && move.type === "FLYING" ? 1 : 0);
+    + (attacker.ability === "GALEWINGS" && move.type === "FLYING" ? 1 : 0)
+    + (attacker.ability === "TRIAGE" && isTriageMove(move) ? 3 : 0);
+}
+
+/** Every Pokemon Z move class that overrides `isHealingMove?`. */
+const HEALING_FUNCTION_CODES = new Set([
+  "0D5", "0D6", "0D7", "0D8", "0D9", "0DA", "0DB", "0DD", "0DE", "0DF",
+  "0E3", "0E4", "114", "14F", "902",
+]);
+
+/** Triage exclusions hard-coded by Pokemon Z after its generic healing classification. */
+const TRIAGE_EXCLUSIONS = new Set([
+  "AQUARING", "GRASSYTERRAIN", "INGRAIN", "LEECHSEED", "PAINSPLIT", "PRESENT",
+]);
+
+export function isHealingMove(move: BattleMove): boolean {
+  return HEALING_FUNCTION_CODES.has(move.functionCode);
+}
+
+export function isTriageMove(move: BattleMove): boolean {
+  return isHealingMove(move) && !TRIAGE_EXCLUSIONS.has(move.internalName);
 }
 
 export function hasMoveFlag(move: BattleMove, flag: string): boolean {

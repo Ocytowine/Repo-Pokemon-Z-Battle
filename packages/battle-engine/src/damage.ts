@@ -23,6 +23,15 @@ const OFFENSIVE_TYPE_BOOSTS = {
   TRANSPORTARROCA: "ROCK",
 } as const;
 
+/** Pokemon Z's one-third-HP offensive abilities, evaluated on the effective move type. */
+const LOW_HP_TYPE_BOOSTS = {
+  BLAZE: "FIRE",
+  OVERGROW: "GRASS",
+  SOBRECARGA: "ELECTRIC",
+  SWARM: "BUG",
+  TORRENT: "WATER",
+} as const;
+
 export interface BattleDamageContext {
   readonly reflect: boolean;
   readonly lightScreen: boolean;
@@ -128,10 +137,13 @@ export function calculateDamage(
     attack = Math.max(1, Math.round(attack * 1.3));
     recordAbilityModifier("SILVANO", 1.3);
   }
-  const lowHpAbilityType = attacker.ability === "OVERGROW" ? "GRASS"
-    : attacker.ability === "BLAZE" ? "FIRE" : attacker.ability === "TORRENT" ? "WATER" : null;
-  if (lowHpAbilityType === moveType && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
-  if (attacker.ability === "SWARM" && moveType === "BUG" && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) attack = Math.round(attack * 1.5);
+  const lowHpAbility = attacker.ability !== null && attacker.ability in LOW_HP_TYPE_BOOSTS
+    ? attacker.ability as keyof typeof LOW_HP_TYPE_BOOSTS : null;
+  if (lowHpAbility !== null && LOW_HP_TYPE_BOOSTS[lowHpAbility] === moveType
+    && attacker.hp <= Math.floor(attacker.stats.maxHp / 3)) {
+    attack = Math.round(attack * 1.5);
+    recordAbilityModifier(lowHpAbility, 1.5);
+  }
   if (attacker.ability === "ACOMETIDA" && move.category === "Physical" && (attacker.volatile?.activeTurns ?? 0) === 0) attack = Math.round(attack * 1.2);
   if (attacker.ability === "DEFEATIST" && attacker.hp <= Math.floor(attacker.stats.maxHp / 2)) {
     attack = Math.round(attack * 0.5);

@@ -7,7 +7,7 @@ const rng: RandomSource = { nextInt: (maximum) => Math.max(0, maximum - 1) };
 
 function pokemon(id: string, side: BattleSide, overrides: Partial<BattlerState> = {}): BattlerState {
   const source = side === "player" ? MINIMAL_MOVE_CATALOG.TACKLE : MINIMAL_MOVE_CATALOG.GROWL;
-  const base: BattleMove = { ...source, flags: side === "player" ? "a" : undefined };
+  const base: BattleMove = side === "player" ? { ...source, flags: "a" } : { ...source };
   return {
     id, species: id.toUpperCase(), name: id, level: 50, types: ["NORMAL"],
     stats: { maxHp: 100, attack: 100, defense: 100, specialAttack: 100,

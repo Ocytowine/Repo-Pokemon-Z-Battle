@@ -5495,3 +5495,106 @@ aux soins selon le catalogue source, `QUEENLYMAJESTY` protège le camp des capac
 prioritaires adverses et `STALL` agit en dernier dans son niveau de priorité. Le
 lot devra centraliser précision, classification des soins et départage d'ordre,
 puis couvrir simple, double, partenaire, Brise Moule, hôte, invité et reconnexion.
+
+## Précision et ordre d'action - 2026-10-22
+
+Le noyau partagé porte maintenant `VICTORYSTAR`, `WONDERSKIN`, `TRIAGE`,
+`QUEENLYMAJESTY` et `STALL`. Étoile Victoire multiplie par 1,1 la précision de son
+porteur et celle de son partenaire actif et conscient ; deux Étoiles Victoire se
+composent donc en double. Peau Miracle suit le calcul Ruby exact : contre une
+capacité de statut lancée par un adversaire, le multiplicateur de précision est
+plafonné à 50 % avant division par l'esquive. Brise Moule, Téra-Voltage et
+Turbo-Brasier contournent cette protection ; les capacités alliées ne sont pas
+concernées.
+
+Premier Auxilio ajoute trois niveaux de priorité aux quinze familles de fonctions
+qui redéfinissent `isHealingMove?` dans la source. Les six exclusions explicites
+(`AQUARING`, `GRASSYTERRAIN`, `INGRAIN`, `LEECHSEED`, `PAINSPLIT`, `PRESENT`)
+restent sans bonus. Majesté Royale bloque les capacités dont la priorité finale
+est positive et reste, conformément à cette version de Z, une protection du
+porteur ciblé plutôt qu'une aura de camp ; Brise Moule et ses alias la traversent.
+Frein agit après tout combattant non-Frein du même niveau de priorité. Entre deux
+porteurs de Frein, le plus lent agit d'abord, indépendamment de Distorsion, tandis
+qu'une priorité supérieure continue naturellement de gagner.
+
+Autorité : précision, blocage et ordre sont décidés par le noyau local en solo et
+par la room autoritaire en Coop. Domaine : calcul tactique partagé. Persistance :
+aucun nouvel état ; talents, partenaires actifs et ordre choisi sont déjà dans le
+snapshot. Intentions : seule l'action du joueur est envoyée. Audience : les
+participants et observateurs reçoivent ordre, trace de précision, échec et
+activation du talent. Les tests couvrent porteur et partenaire, cible alliée,
+Brise Moule, exclusions de soin, niveau de priorité supérieur, simple, double,
+hôte, invité et export/restauration de room avec les cinq identités.
+
+Après `prepare:local`, l'audit passe de 381 à 378 problèmes globaux. Les talents
+manquants dans le périmètre de dépendances courant passent de 32 à 29 ; deux
+talents du lot ne sont pas requis par ce périmètre. Le registre complet compte
+217 talents supportés, 1 partiel (`STURDY`) et 37 absents sur 255. Les 104
+fonctions supportées sur 353, 298 mécaniques d'attaque manquantes et 51 animations
+manquantes restent inchangées.
+
+Prochain lot préparé : grouper six talents simples déjà alignés sur les hooks
+communs. `SOBRECARGA` renforce de 1,5 les capacités Électrik au tiers de PV ou
+moins ; `CORAZAIRA` augmente Attaque et Attaque Spéciale d'un cran au franchissement
+de la moitié des PV ; `DINAMO` pose Charge et Défense Spéciale +1 au premier impact
+tant que Charge est inactive ; `TOQUEMAGICO` et `RELAMPAGUEO` ajoutent respectivement
+20 % de confusion et 30 % de paralysie aux attaques de contact ;
+`GRANPESADILLA` retire un quart des PV maximaux aux adversaires endormis en fin de
+tour. Le lot réutilisera dégâts conditionnels, réactions par frappe, RNG de talent,
+statuts et passifs globaux, avec les mêmes preuves simple/double/room/reconnexion.
+
+## Talents personnalisés simples : seuils, contact et cauchemars - 2026-10-22
+
+Le noyau partagé porte maintenant `SOBRECARGA`, `CORAZAIRA`, `DINAMO`,
+`TOQUEMAGICO`, `RELAMPAGUEO` et `GRANPESADILLA`. Sobrecarga rejoint la table
+générique des talents au tiers de PV et multiplie par 1,5 les capacités Électrik
+au seuil inclus. Coraza Ira réutilise la réaction après chaque impact : lorsque
+les PV passent strictement d'au-dessus à en dessous de la moitié, elle augmente
+d'un cran l'Attaque Spéciale puis l'Attaque. Atteindre exactement la moitié ne
+déclenche pas le talent.
+
+Dinamo réagit à un impact de contact lorsque Charge est inactive : il pose le
+compteur commun à 2 et augmente la Défense Spéciale d'un cran. Tant que Charge
+reste active, les impacts suivants ne répètent ni le cran ni l'activation ; le
+bonus et la consommation des capacités Électrik continuent d'employer le même
+volatile que Charge et Énergie Éolienne. Toque Mágico et Relampagueo rejoignent
+les réactions offensives de contact avec les tirages source respectifs de 20 %
+de confusion et 30 % de paralysie. Les immunités et l'état déjà présent sont
+contrôlés avant le tirage, sans RNG artificiel.
+
+Grande Pesadilla rejoint le passif partagé de fin de tour et retire un quart des
+PV maximaux à un adversaire endormi. Plusieurs porteurs du même talent ne le
+multiplient pas ; en revanche, Mauvais Rêve et Grande Pesadilla sont deux blocs
+Ruby distincts et se cumulent une fois chacun lorsqu'ils sont tous deux actifs.
+Garde Magik bloque ces dégâts indirects.
+
+Autorité : le résolveur local en solo et la room autoritaire appellent les mêmes
+tables et hooks. Domaine : dégâts, PV, crans, statut et compteurs sont tactiques
+partagés. Persistance : aucun état durable hors combat ; talents, PV, crans,
+statuts et `chargeTurns` vivent dans le snapshot et sont restaurés après
+reconnexion. Intentions : seule la capacité, l'attente ou le remplacement est
+envoyé ; les tirages restent autoritaires. Audience : participants et
+observateurs reçoivent activations, crans, statut, dégâts et trace, avec les
+positions réelles fournies par l'adaptateur double.
+
+Après `prepare:local`, l'audit passe de 378 à 373 problèmes globaux et les talents
+candidats manquants de 29 à 24 ; un talent du lot n'était pas requis par le
+périmètre de dépendances courant. Le registre complet compte 223 talents
+supportés, 1 partiel (`STURDY`) et 31 absents sur 255. Les 104 fonctions
+supportées sur 353, 298 mécaniques d'attaque manquantes et 51 animations
+manquantes restent inchangées. Les tests couvrent seuils exacts, type incorrect,
+Charge inactive ou déjà armée, probabilités de contact, confusion, paralysie,
+cumul des deux cauchemars, Garde Magik, hôte, invité et restauration autoritaire.
+
+Prochain lot préparé : regrouper `GOODASGOLD`, `WONDERGUARD`, `LIQUIDOOZE`,
+`INNARDSOUT` et `MIRRORARMOR`. Good as Gold doit bloquer les capacités de statut
+qui ciblent son porteur, avec le contrat Brise Moule. Wonder Guard doit bloquer
+les capacités offensives dont l'efficacité finale n'est pas strictement super
+efficace, également avec contournement défensif. Liquid Ooze inverse en dégâts le
+soin que l'attaquant aurait reçu d'une capacité drainante. Innards Out inflige à
+l'attaquant les PV effectivement retirés par l'impact qui met son porteur K.O.
+Mirror Armor renvoie vers l'auteur les baisses de crans imposées par l'adversaire,
+sans réfléchir les changements personnels. Ce lot devra centraliser le blocage
+avant dégâts, la destination des drains et la réflexion du changeur de crans,
+puis couvrir capacités de zone, impacts multiples, limites de crans, Brise Moule,
+simple, double, hôte, invité et reconnexion.

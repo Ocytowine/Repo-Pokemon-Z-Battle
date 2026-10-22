@@ -1104,7 +1104,7 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
       * weatherSpeedMultiplier(battler, weather);
     const priority = effectiveMovePriority(battler, slot.move);
     trace.push({ type: "order", side, priority, speed });
-    return { side, priority, speed };
+    return { side, priority, speed, lagging: battler.ability === "STALL" };
   });
   if (decorated.length === 0) return [];
   const only = decorated[0];
@@ -1112,8 +1112,11 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
   const [player, opponent] = decorated;
   if (player === undefined || opponent === undefined) throw new Error("Battle requires two sides.");
   if (player.priority !== opponent.priority) return player.priority > opponent.priority ? [player.side, opponent.side] : [opponent.side, player.side];
+  if (player.lagging !== opponent.lagging) return player.lagging
+    ? [opponent.side, player.side] : [player.side, opponent.side];
   if (player.speed !== opponent.speed) {
-    const fasterFirst = (state.effects?.trickRoomTurns ?? 0) <= 0;
+    const fasterFirst = player.lagging && opponent.lagging
+      ? false : (state.effects?.trickRoomTurns ?? 0) <= 0;
     return (player.speed > opponent.speed) === fasterFirst
       ? [player.side, opponent.side] : [opponent.side, player.side];
   }
@@ -1121,7 +1124,8 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
 }
 
 function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: BattlerState, move: BattleMove,
-  rng: RandomSource, trace: BattleTrace[], weather: BattleEffects["weather"]): boolean {
+  rng: RandomSource, trace: BattleTrace[], weather: BattleEffects["weather"],
+  context: { readonly attackerPartnerAbility?: BattlerState["ability"]; readonly hostile?: boolean } = {}): boolean {
   const accuracy = move.accuracy;
   const drawnIn = defender.ability === "STORMDRAIN" && move.type === "WATER"
     || defender.ability === "LIGHTNINGROD" && move.type === "ELECTRIC";
@@ -1136,12 +1140,18 @@ function accuracyCheck(side: BattleSide, attacker: BattlerState, defender: Battl
   }
   const itemModifier = heldItemIsActive(attacker) && attacker.heldItem === "WIDELENS" ? 1.1 : 1;
   const abilityModifier = (attacker.ability === "COMPOUNDEYES" ? 1.3 : 1)
-    * (attacker.ability === "HUSTLE" && move.category === "Physical" ? 0.8 : 1);
+    * (attacker.ability === "HUSTLE" && move.category === "Physical" ? 0.8 : 1)
+    * (attacker.ability === "VICTORYSTAR" ? 1.1 : 1)
+    * (context.attackerPartnerAbility === "VICTORYSTAR" ? 1.1 : 1);
   const evasionStage = defender.volatile?.identified === true
     || (attacker.ability === "KEENEYE" && defender.stages.evasion > 0) ? 0 : defender.stages.evasion;
   const tangledFeetModifier = !hasMoldBreaker(attacker) && defender.ability === "TANGLEDFEET"
     && (defender.volatile?.confusionTurns ?? 0) > 0 ? 1.2 : 1;
-  const threshold = accuracy * itemModifier * abilityModifier * accuracyFactor(attacker.stages.accuracy)
+  const rawAccuracyModifier = itemModifier * abilityModifier * accuracyFactor(attacker.stages.accuracy);
+  const accuracyModifier = !hasMoldBreaker(attacker) && defender.ability === "WONDERSKIN"
+    && move.category === "Status" && context.hostile === true
+    ? Math.min(0.5, rawAccuracyModifier) : rawAccuracyModifier;
+  const threshold = accuracy * accuracyModifier
     / accuracyFactor(evasionStage) / weatherEvasionMultiplier(defender, weather) / tangledFeetModifier;
   const roll = draw(rng, trace, "accuracy", 100);
   const hit = roll < threshold;
@@ -1388,6 +1398,14 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         ability: "TELEPATHY", effect: "block-move" });
       continue;
     }
+    const hostileTarget = options.targetIsAlly !== true && actualTargetSide !== side;
+    if (hostileTarget && defender.ability === "QUEENLYMAJESTY"
+      && effectiveMovePriority(battlers[side], slot.move) > 0 && !hasMoldBreaker(battlers[side])) {
+      events.push({ type: "abilityActivated", side: options.targetPresentationSide ?? actualTargetSide,
+        ability: "QUEENLYMAJESTY", effect: "block-move" },
+      { type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
+      continue;
+    }
     if (slot.move.functionCode !== "05B" && isWindMove(slot.move)) {
       const wind = activateWindAbility(defender, actualTargetSide, true);
       battlers[actualTargetSide] = wind.battler;
@@ -1423,7 +1441,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (slot.move.category === "Status" && hasMoveFlag(slot.move, "c")
       && defender.ability === "MAGICBOUNCE" && !hasMoldBreaker(battlers[side]) && actualTargetSide !== side) {
       events.push({ type: "abilityActivated", side: actualTargetSide, ability: "MAGICBOUNCE", effect: "reflect-move" });
-      if (!accuracyCheck(actualTargetSide, defender, battlers[side], slot.move, rng, trace, effectiveWeather)) {
+      if (!accuracyCheck(actualTargetSide, defender, battlers[side], slot.move, rng, trace, effectiveWeather,
+        { ...(options.defenderPartnerAbility === undefined ? {} : {
+          attackerPartnerAbility: options.defenderPartnerAbility }), hostile: options.targetIsAlly !== true })) {
         events.push({ type: "moveMissed", side: actualTargetSide, move: slot.move.internalName });
       } else {
         applyMoveEffect(actualTargetSide, side, resolvedMove, battlers, rng, events, trace, effects, effectiveWeather);
@@ -1440,7 +1460,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       events.push({ type: "volatileEnded", side: actualTargetSide, effect: "protect" });
       defender = battlers[actualTargetSide];
     }
-    if (!accuracyCheck(side, battlers[side], defender, slot.move, rng, trace, effectiveWeather)) {
+    if (!accuracyCheck(side, battlers[side], defender, slot.move, rng, trace, effectiveWeather,
+      { ...(options.attackerPartnerAbility === undefined ? {} : {
+        attackerPartnerAbility: options.attackerPartnerAbility }), hostile: hostileTarget })) {
       if (selectedSlot.move.functionCode === "091" || selectedSlot.move.functionCode === "0D3") {
         const current = battlers[side];
         battlers[side] = withVolatile(current, { ...volatileOf(current), furyCutterCount: 0, rolloutTurns: 0 });
@@ -1802,6 +1824,16 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (contact && defender.ability === "POISONPOINT" && draw(rng, trace, "ability", 10) < 3) {
       applyAbilityStatus(actualTargetSide, side, "POISONPOINT", "poison", battlers, rng, events, trace);
     }
+    if (contact && defender.ability === "DINAMO" && battlers[actualTargetSide].hp > 0
+      && (battlers[actualTargetSide].volatile?.chargeTurns ?? 0) <= 0) {
+      const charged = battlers[actualTargetSide];
+      battlers[actualTargetSide] = withVolatile(charged, { ...volatileOf(charged), chargeTurns: 2 });
+      events.push({ type: "abilityActivated", side: actualTargetSide, ability: "DINAMO", effect: "charge" },
+        { type: "volatileApplied", source: actualTargetSide, target: actualTargetSide,
+          effect: "charge", turns: 2, move: null });
+      applyStatChange(actualTargetSide, side,
+        { target: "self", stat: "specialDefense", delta: 1 }, battlers, events);
+    }
     if (contact && (defender.ability === "ROUGHSKIN" || defender.ability === "IRONBARBS")
       && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
       const attacker = battlers[side];
@@ -1838,6 +1870,22 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       && battlers[actualTargetSide].majorStatus === null
       && !typePreventsStatus(battlers[actualTargetSide], "hemorrhage") && draw(rng, trace, "ability", 10) < 5) {
       applyAbilityStatus(side, actualTargetSide, "BRUTALIDAD", "hemorrhage", battlers, rng, events, trace);
+    }
+    if (contact && battlers[side].ability === "RELAMPAGUEO" && battlers[actualTargetSide].hp > 0
+      && battlers[actualTargetSide].majorStatus === null
+      && !typePreventsStatus(battlers[actualTargetSide], "paralysis")
+      && draw(rng, trace, "ability", 10) < 3) {
+      applyAbilityStatus(side, actualTargetSide, "RELAMPAGUEO", "paralysis", battlers, rng, events, trace);
+    }
+    if (contact && battlers[side].ability === "TOQUEMAGICO" && battlers[actualTargetSide].hp > 0
+      && (battlers[actualTargetSide].volatile?.confusionTurns ?? 0) <= 0
+      && battlers[actualTargetSide].ability !== "OWNTEMPO" && draw(rng, trace, "ability", 10) < 2) {
+      const confused = battlers[actualTargetSide];
+      const turns = 2 + draw(rng, trace, "confusion-duration", 4);
+      battlers[actualTargetSide] = withVolatile(confused, { ...volatileOf(confused), confusionTurns: turns });
+      events.push({ type: "abilityActivated", side, ability: "TOQUEMAGICO", effect: "inflict-status" },
+        { type: "volatileApplied", source: side, target: actualTargetSide,
+          effect: "confusion", turns, move: slot.move.internalName });
     }
     if (damage > 0 && slot.move.flags?.includes("a") === true && heldItemIsActive(defender)
       && defender.heldItem === "ROCKYHELMET"

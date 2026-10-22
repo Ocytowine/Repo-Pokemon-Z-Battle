@@ -200,7 +200,7 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.slice().sort().map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -211,7 +211,7 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -222,7 +222,7 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -233,7 +233,7 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -244,7 +244,7 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -256,7 +256,18 @@ describe("engine support report", () => {
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>
         ({ id, internalName, name: internalName, description: "" })) },
-    });
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the accuracy and action-order talent family as supported", () => {
+    const names = ["QUEENLYMAJESTY", "STALL", "TRIAGE", "VICTORYSTAR", "WONDERSKIN"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
     expect(report.categories.abilities).toEqual(names.map((key) =>
       ({ key, extracted: true, engineSupport: "supported" })));
   });
@@ -312,7 +323,7 @@ describe("engine support report", () => {
   });
 
   it("advertises the shared reactive-stat talent family as supported", () => {
-    const names = ["ANGERPOINT", "BERSERK", "COMPETITIVE", "DEFIANT", "RATTLED", "STAMINA",
+    const names = ["ANGERPOINT", "BERSERK", "COMPETITIVE", "CORAZAIRA", "DEFIANT", "RATTLED", "STAMINA",
       "STEAMENGINE", "WATERCOMPACTION", "WEAKARMOR"];
     const report = createEngineSupportReport({
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
@@ -336,7 +347,18 @@ describe("engine support report", () => {
   });
 
   it("advertises the shared status and end-of-turn talent family as supported", () => {
-    const names = ["BADDREAMS", "EARLYBIRD", "HYDRATION", "POISONHEAL", "SPEEDBOOST"];
+    const names = ["BADDREAMS", "EARLYBIRD", "GRANPESADILLA", "HYDRATION", "POISONHEAL", "SPEEDBOOST"];
+    const report = createEngineSupportReport({
+      types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
+      abilities: { records: names.map((internalName, id) =>
+        ({ id, internalName, name: internalName, description: "" })) },
+    } as unknown as EngineSupportInput);
+    expect(report.categories.abilities).toEqual(names.map((key) =>
+      ({ key, extracted: true, engineSupport: "supported" })));
+  });
+
+  it("advertises the custom simple talent batch as supported", () => {
+    const names = ["CORAZAIRA", "DINAMO", "GRANPESADILLA", "RELAMPAGUEO", "SOBRECARGA", "TOQUEMAGICO"];
     const report = createEngineSupportReport({
       types: { records: [] }, moves: { records: [] }, items: { records: [] }, pokemon: { records: [] },
       abilities: { records: names.map((internalName, id) =>

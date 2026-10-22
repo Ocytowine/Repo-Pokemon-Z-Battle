@@ -150,6 +150,34 @@ function easyAbilityBatchBattle(): TeamBattleState {
   });
 }
 
+function orderAccuracyAbilityBattle(): TeamBattleState {
+  const priority = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "QUICKATTACK", name: "Vive-Attaque",
+    priority: 1, accuracy: 0 };
+  return createTeamBattleState({
+    player: [{ ...battler("player"), ability: "VICTORYSTAR",
+      moves: [{ move: priority, pp: priority.pp }] },
+    { ...battler("player"), id: "host-triage", ability: "TRIAGE" },
+    { ...battler("player"), id: "host-stall", ability: "STALL" }],
+    opponent: [{ ...battler("opponent"), ability: "QUEENLYMAJESTY" },
+    { ...battler("opponent"), id: "guest-wonder-skin", ability: "WONDERSKIN" }],
+  });
+}
+
+function customSimpleAbilityBattle(): TeamBattleState {
+  const electricContact = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "SPARK", name: "Étincelle",
+    type: "ELECTRIC", accuracy: 0, flags: "a" };
+  const guest = battler("opponent");
+  return createTeamBattleState({
+    player: [{ ...battler("player"), hp: 33, ability: "SOBRECARGA",
+      moves: [{ move: electricContact, pp: electricContact.pp }] },
+    { ...battler("player"), id: "host-magic-touch", ability: "TOQUEMAGICO" },
+    { ...battler("player"), id: "host-lightning", ability: "RELAMPAGUEO" }],
+    opponent: [{ ...guest, ability: "DINAMO", hp: 200, stats: { ...guest.stats, maxHp: 200 } },
+    { ...guest, id: "guest-angry-shell", ability: "CORAZAIRA" },
+    { ...guest, id: "guest-nightmare", ability: "GRANPESADILLA" }],
+  });
+}
+
 function weatherBattle(): TeamBattleState {
   return createTeamBattleState({
     player: [{ ...battler("player"), ability: "SOLARPOWER" }],
@@ -996,6 +1024,58 @@ describe("authoritative battle room", () => {
         opponent: { members: [{ ability: "MISTYSURGE" }, { ability: "PSYCHICSURGE" },
           { ability: "TERAVOLT" }, { ability: "TURBOBLAZE" }] },
       },
+    });
+  });
+
+  it("resolves and restores accuracy and action-order abilities for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", orderAccuracyAbilityBattle,
+      new SeededRandom(24_323), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("order-accuracy-ready-a"));
+    room.receive("bob", ready("order-accuracy-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "order-accuracy-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "order-accuracy-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "QUEENLYMAJESTY", effect: "block-move" })]) });
+    expect(room.snapshot().battle?.state.teams.opponent.members[0]!.hp).toBe(100);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", orderAccuracyAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "VICTORYSTAR" }, { ability: "TRIAGE" }, { ability: "STALL" }] },
+      opponent: { members: [{ ability: "QUEENLYMAJESTY" }, { ability: "WONDERSKIN" }] },
+    });
+  });
+
+  it("resolves and restores the custom simple ability batch for host and guest", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", customSimpleAbilityBattle,
+      new SeededRandom(24_324), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("custom-simple-ready-a"));
+    room.receive("bob", ready("custom-simple-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "custom-simple-move-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const resolved = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "custom-simple-wait-b", battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(resolved.find((entry) => entry.message.type === "turnResolved")?.message).toMatchObject({
+      trace: expect.arrayContaining([expect.objectContaining({ type: "damage", side: "player",
+        abilityModifiers: expect.arrayContaining([{ ability: "SOBRECARGA", multiplier: 1.5 }]) })]),
+      events: expect.arrayContaining([expect.objectContaining({ type: "abilityActivated",
+        side: "opponent", ability: "DINAMO", effect: "charge" })]),
+    });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", customSimpleAbilityBattle,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state.teams).toMatchObject({
+      player: { members: [{ ability: "SOBRECARGA" }, { ability: "TOQUEMAGICO" },
+        { ability: "RELAMPAGUEO" }] },
+      opponent: { members: [{ ability: "DINAMO", stages: { specialDefense: 1 },
+        volatile: { chargeTurns: 1 } }, { ability: "CORAZAIRA" }, { ability: "GRANPESADILLA" }] },
     });
   });
 
