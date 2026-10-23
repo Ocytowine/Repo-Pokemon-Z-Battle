@@ -1,6 +1,6 @@
 import type { BattleMove, BattlerState, HeldItem } from "./types.js";
+import { NATURAL_GIFT_BERRIES } from "./natural-gift.js";
 
-const BERRIES = new Set<HeldItem>(["LIECHIBERRY", "ORANBERRY", "PAYAPABERRY"]);
 const PLATES = new Set<HeldItem>(["FISTPLATE", "SKYPLATE", "TOXICPLATE", "EARTHPLATE", "STONEPLATE",
   "INSECTPLATE", "SPOOKYPLATE", "IRONPLATE", "FLAMEPLATE", "SPLASHPLATE", "MEADOWPLATE", "ZAPPLATE",
   "MINDPLATE", "ICICLEPLATE", "DRACOPLATE", "DREADPLATE", "PIXIEPLATE", "TABLANEUTRA"]);
@@ -9,8 +9,9 @@ export function heldItemIsUnlosable(battler: BattlerState): boolean {
   return battler.ability === "MULTITYPE" && battler.heldItem !== null && PLATES.has(battler.heldItem);
 }
 
-export function heldItemIsActive(battler: BattlerState): boolean {
-  return battler.heldItem !== null && battler.ability !== "KLUTZ" && (battler.volatile?.embargoTurns ?? 0) === 0;
+export function heldItemIsActive(battler: BattlerState, magicRoomTurns = 0): boolean {
+  return battler.heldItem !== null && battler.ability !== "KLUTZ"
+    && (battler.volatile?.embargoTurns ?? 0) === 0 && magicRoomTurns <= 0;
 }
 
 export function hasActiveHeldItem<I extends HeldItem>(battler: BattlerState, item: I): battler is BattlerState & {
@@ -29,7 +30,7 @@ export function moveCanTriggerPressure(move: BattleMove): boolean {
 }
 
 export function isSupportedBerry(item: HeldItem | null): item is HeldItem {
-  return item !== null && BERRIES.has(item);
+  return item !== null && NATURAL_GIFT_BERRIES.has(item);
 }
 
 export function consumeHeldItem(battler: BattlerState, item: HeldItem, pickupUse: number,

@@ -14,7 +14,8 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
   transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   sourcePokemonAbility, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
-import { createTeamBattleState, type SharedBattleOwnerSettlement, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
+import { createTeamBattleState, hiddenPowerTypeFromIvs,
+  type SharedBattleOwnerSettlement, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 
 const party: PlayerPartyState = { schemaVersion: 1, activeIndex: 0, members: [{
   id: "starter", species: "PIKACHU", nickname: null, level: 12, experience: 900,
@@ -200,6 +201,9 @@ describe("persistent player party", () => {
     const visualParty = { ...party, members: party.members.map((member) => ({ ...member,
       metadata: { ...member.metadata, form: 2, shiny: true, gender: "female" as const } })) };
     const team = playerPartyToBattleTeam(visualParty, catalog);
+    expect(team.members[0]?.hiddenPowerType)
+      .toBe(hiddenPowerTypeFromIvs(visualParty.members[0]!.metadata.ivs));
+    expect(JSON.stringify(team)).not.toContain('"ivs"');
     expect(team.members[0]).toMatchObject({ species: "PIKACHU", name: "Pikachu", hp: 4,
       happiness: visualParty.members[0]!.metadata.happiness, ability: "QUICKFEET",
       appearance: { form: 2, shiny: true, gender: "female" },
@@ -394,6 +398,17 @@ describe("persistent player party", () => {
 
     expect(storeOwnedBattleResults(sourceParty, participation, state, "host").members[0]?.heldItem)
       .toBe("FUTUREITEM");
+  });
+
+  it("projects a real source berry while leaving absent berry names unsupported", () => {
+    const sourceParty = { ...party, members: [{ ...party.members[0]!, heldItem: "CHERIBERRY" }] };
+    const projected = playerPartyToBattleTeam(sourceParty, catalog);
+    expect(projected.members[0]!.heldItem).toBe("CHERIBERRY");
+    expect(storeProjectedBattleTeam(sourceParty, { ...projected, members: [
+      { ...projected.members[0]!, heldItem: null, recyclableItem: "CHERIBERRY" },
+    ] }).members[0]?.heldItem).toBeNull();
+    expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!,
+      heldItem: "KEEBERRY" }] }, catalog)).toThrow("Objet tenu non supporté");
   });
 
   it("restores tactical item transfers only when the settlement requests it", () => {

@@ -5,6 +5,7 @@ export { activeBattleController, activeBattleControllerAt, applyBattleJoin, appr
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,
   restoreSharedBattleLedger, sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement } from "./battle-participation.js";
 export { calculateDamage } from "./damage.js";
+export { hiddenPowerTypeFromIvs } from "./hidden-power.js";
 export { switchTrapAbility } from "./ability-switch-trap.js";
 export type { SwitchTrapAbility } from "./ability-switch-trap.js";
 export { forcedSwitchBlockedByAbility } from "./ability-forced-switch.js";

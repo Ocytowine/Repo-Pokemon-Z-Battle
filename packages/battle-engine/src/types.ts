@@ -1,3 +1,5 @@
+import { naturalGiftProfile } from "./natural-gift.js";
+
 export type BattleSide = "player" | "opponent";
 export type MoveCategory = "Physical" | "Special" | "Status";
 export type BattleStatus = "active" | "finished";
@@ -19,9 +21,9 @@ export interface BattleMove {
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
     | "02A" | "02B" | "02C" | "02D" | "02E" | "02F" | "032" | "033" | "034" | "035" | "036" | "037" | "038" | "039" | "03A" | "03B" | "03C" | "03D" | "03E" | "03F"
     | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "052" | "053" | "054" | "055" | "056" | "057" | "058" | "059" | "05B" | "05C" | "05D" | "05E" | "05F"
-    | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "071" | "072" | "073" | "074" | "079" | "07A" | "077" | "07B" | "082" | "083" | "086" | "088" | "08D" | "091" | "093" | "095" | "098" | "09A" | "09B" | "09C" | "09D" | "09E" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
-    | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
-    | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
+    | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "071" | "072" | "073" | "074" | "079" | "07A" | "077" | "07B" | "07C" | "07D" | "07E" | "07F" | "080" | "081" | "082" | "083" | "084" | "085" | "086" | "087" | "088" | "089" | "08A" | "08B" | "08C" | "08D" | "08E" | "08F" | "090" | "091" | "092" | "093" | "094" | "095" | "096" | "097" | "098" | "099" | "09A" | "09B" | "09C" | "09D" | "09E" | "09F" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
+    | "0A0" | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
+    | "0F9" | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
   readonly type: string;
   readonly category: MoveCategory;
@@ -49,11 +51,13 @@ export type BattleAbility = ImplementedBattleAbility | (string & {});
 export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT", "FOCUSSASH",
   "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES",
   "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "HONEY", "LIECHIBERRY", "ORANBERRY", "PAYAPABERRY", "SAFETYGOGGLES", "SHEDSHELL",
+  "SHOCKDRIVE", "BURNDRIVE", "CHILLDRIVE", "DOUSEDRIVE",
   "FISTPLATE", "SKYPLATE", "TOXICPLATE", "EARTHPLATE", "STONEPLATE", "INSECTPLATE", "SPOOKYPLATE", "IRONPLATE", "FLAMEPLATE", "SPLASHPLATE", "MEADOWPLATE", "ZAPPLATE", "MINDPLATE", "ICICLEPLATE", "DRACOPLATE", "DREADPLATE", "PIXIEPLATE", "TABLANEUTRA"] as const;
-export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number];
+/** Other source berries are transportable, but only listed items have their passive effects implemented. */
+export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number] | `${string}BERRY`;
 
 export function isHeldItemSupported(value: string): value is HeldItem {
-  return (SUPPORTED_HELD_ITEMS as readonly string[]).includes(value);
+  return (SUPPORTED_HELD_ITEMS as readonly string[]).includes(value) || naturalGiftProfile(value) !== null;
 }
 
 export interface MoveSlot {
@@ -92,6 +96,8 @@ export interface BattlerState {
   readonly hp: number;
   /** Combat-relevant friendship value; null is preserved for legacy saves. */
   readonly happiness?: number | null;
+  /** Only the derived Hidden Power type crosses the room boundary; raw personal IVs stay private. */
+  readonly hiddenPowerType?: string;
   /** Public species fact needed by Eviolite; it contains no private evolution state. */
   readonly canEvolve?: boolean;
   readonly majorStatus: MajorStatusState | null;
@@ -114,8 +120,9 @@ export interface BattlerState {
     readonly lastMoveUsedType?: string | null;
     /** Last regular move eligible for Sketch; unlike Mimic history it survives failed effects. */
     readonly lastSketchableMove?: BattleMove | null;
-    /** Last actual HP loss by category and attacker during one turn; battle-only snapshot state. */
+    /** Actual HP losses and every damaging attacker during one turn; battle-only snapshot state. */
     readonly retaliation?: { readonly turn: number;
+      readonly attackers?: readonly string[];
       readonly last?: { readonly amount: number; readonly attackerId: string };
       readonly physical?: { readonly amount: number; readonly attackerId: string };
       readonly special?: { readonly amount: number; readonly attackerId: string } } | null;
@@ -228,6 +235,11 @@ export interface BattleState {
 }
 
 export interface BattleSideEffects {
+  /** Source LastRoundFainted, stored by side for Retaliate across room restoration. */
+  readonly lastFaintedTurn?: number | null;
+  /** Source EchoedVoiceCounter/EchoedVoiceUsed, scoped to the side across turns and room snapshots. */
+  readonly echoedVoiceCount?: number;
+  readonly echoedVoiceLastTurn?: number | null;
   readonly reflectTurns: number;
   readonly luckyChantTurns: number;
   /** Source Tailwind counter; doubles the effective speed of every active ally. */
@@ -257,6 +269,8 @@ export interface BattleEffects {
   readonly terrain?: "electric" | "grassy" | "misty" | "psychic" | null;
   readonly terrainTurns?: number;
   readonly trickRoomTurns?: number;
+  /** Source Magic Room field counter; item suppression is shared by every active battler. */
+  readonly magicRoomTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
   /** Source reciprocal Fusion field markers, shared by all active battlers for this turn only. */
@@ -366,7 +380,7 @@ export type BattleEvent =
       readonly move: string; readonly amount: number; readonly pp: number }
   | { readonly type: "battleEffectChanged"; readonly side: BattleSide | null;
       readonly effect: "reflect" | "light-screen" | "lucky-chant" | "mud-sport" | "water-sport"
-        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "tailwind" | "terrain" | "trick-room" | "weather";
+        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "tailwind" | "terrain" | "trick-room" | "magic-room" | "weather";
       readonly turns: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
@@ -391,7 +405,7 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "acupressure" | "conversion" | "conversion2"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "present" | "acupressure" | "conversion" | "conversion2"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean;
       readonly abilityModifier?: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;

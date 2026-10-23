@@ -1,4 +1,5 @@
 import { resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
+import { recordSideFaints } from "./side-faint-history.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
@@ -194,7 +195,8 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
   const allies = activeTeamIndices(state.teams[actor.side]).map((_, slot) => ({ side: actor.side, slot }))
     .filter((position) => position.slot !== actor.slot && (battlerAtPosition(state, position)?.hp ?? 0) > 0);
   const code = (move.targetCode ?? "00").toUpperCase().replace(/^0X/u, "");
-  const moveType = effectiveMoveType(user, move).type;
+  const moveType = effectiveMoveType(user, move, state.effects?.weather,
+    state.effects?.magicRoomTurns).type;
   if (["071", "072", "073"].includes(move.functionCode)) {
     const retaliation = user.volatile?.retaliation;
     const hit = retaliation?.turn !== state.turn ? undefined
@@ -291,8 +293,14 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         roundMultiplier: context?.roundMultiplier ?? 1,
         helpingHandMultiplier: context?.helpingHandMultiplier ?? 1,
         weatherSuppressed: hasWeatherSuppressor(activeBattlerList(state, teams)),
+        effectiveSpeeds: { [miniSide]: effectiveSpeed(resolutionAttacker, effects,
+          hasWeatherSuppressor(activeBattlerList(state, teams)), actor.side),
+        [miniTarget]: effectiveSpeed(defender, effects,
+          hasWeatherSuppressor(activeBattlerList(state, teams)), target.side) },
         defenderBerriesBlocked: berriesBlockedBy(activeTeamIndices(teams[actor.side])
           .map((index) => teams[actor.side].members[index]!) ),
+        attackerBerriesBlocked: berriesBlockedBy(activeTeamIndices(teams[actor.side === "player" ? "opponent" : "player"])
+          .map((index) => teams[actor.side === "player" ? "opponent" : "player"].members[index]!) ),
         attackerPartnerAbility: activePartnerAbility(actor),
         defenderPartnerAbility: activePartnerAbility(target),
         activeAbilities: activeBattlerList(state, teams)
@@ -521,7 +529,7 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       inner.push(...volatile.events);
     }
     if (battler.hp > 0) {
-      const weatherResult = resolveWeatherEndOfTurn(battler, position.side, weather);
+      const weatherResult = resolveWeatherEndOfTurn(battler, position.side, weather, effects?.magicRoomTurns ?? 0);
       battler = weatherResult.battler;
       inner.push(...weatherResult.events);
     }
@@ -529,7 +537,7 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       const opposingBattlers = activeTeamIndices(teams[otherSide(position.side)])
         .map((opposingIndex) => teams[otherSide(position.side)].members[opposingIndex]!);
       const passive = resolveBattlePassiveEndOfTurn(battler, position.side, rng, trace,
-        berriesBlockedBy(opposingBattlers), nextPickupUse);
+        berriesBlockedBy(opposingBattlers), nextPickupUse, effects?.magicRoomTurns ?? 0);
       battler = passive.battler;
       nextPickupUse = passive.nextPickupUse;
       inner.push(...passive.events);
@@ -619,7 +627,7 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       const opposingBattlers = activeTeamIndices(teams[otherSide(position.side)])
         .map((index) => teams[otherSide(position.side)].members[index]!);
       const activated = resolveBattlePassiveEndOfTurn(recovered, position.side, rng, trace,
-        berriesBlockedBy(opposingBattlers), nextPickupUse);
+        berriesBlockedBy(opposingBattlers), nextPickupUse, effects?.magicRoomTurns ?? 0);
       nextPickupUse = activated.nextPickupUse;
       storeBattler(teams, position, activated.battler);
       inner.push(...activated.events);
@@ -713,7 +721,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     if (switching === undefined) throw new Error("Combattant double absent.");
     const opponents = activeTeamIndices(teams[otherSide(entry.actor.side)])
       .map((index) => teams[otherSide(entry.actor.side)].members[index]!);
-    assertVoluntarySwitchAllowed(switching, opponents);
+    assertVoluntarySwitchAllowed(switching, opponents, effects?.magicRoomTurns ?? 0);
   }
   const pursuitKeys = new Set<string>();
   for (const entry of effectiveSubmitted) {
@@ -744,6 +752,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const team = teams[entry.actor.side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error("Cible d'objet double invalide.");
+    if ((effects?.magicRoomTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: Magic Room.`);
     if ((target.volatile?.embargoTurns ?? 0) > 0) throw new Error(`Objet ${action.itemId} inutilisable : embargo.`);
     const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Objet ${action.itemId} inutilisable : ${applied}.`);
@@ -982,10 +991,12 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   terrain: (effects.terrainTurns ?? 0) <= 1 ? null : effects.terrain ?? null,
   terrainTurns: Math.max(0, (effects.terrainTurns ?? 0) - 1),
   trickRoomTurns: Math.max(0, (effects.trickRoomTurns ?? 0) - 1),
+  magicRoomTurns: Math.max(0, (effects.magicRoomTurns ?? 0) - 1),
   weather: (effects.weatherTurns ?? 0) < 0 ? effects.weather ?? null
     : (effects.weatherTurns ?? 0) <= 1 ? null : effects.weather ?? null,
   weatherTurns: (effects.weatherTurns ?? 0) < 0 ? effects.weatherTurns ?? -1 : Math.max(0, (effects.weatherTurns ?? 0) - 1) };
   events.push(...reconcileDoubleForms(state, teams, effects));
+  effects = recordSideFaints(effects, state.teams, teams, state.turn);
   events.push({ type: "turnEnded", turn: state.turn });
   return { state: { ...state, turn: state.turn + 1, teams, winner,
     status: winner === null && !draw ? "active" : "finished", replacementRequired: [],

@@ -1,4 +1,5 @@
-import { isHeldItemSupported, isMoveFunctionSupported, type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
+import { hiddenPowerTypeFromIvs, isHeldItemSupported, isMoveFunctionSupported,
+  type BattleAbility, type BattleMove, type BattleSide, type BattleStats,
   type BattleTeam, type BattlerState, type HeldItem,
   type MajorStatusState, type SharedBattleOwnerSettlement, type SharedBattleParticipation,
   type RandomSource, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -1147,7 +1148,9 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
   return { id: member.id, species: member.species, name: member.nickname ?? definition.name, level: member.level,
     types: [...definition.types], stats: { ...member.stats },
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
-    hp: member.hp, happiness: member.metadata.happiness, canEvolve: (definition.evolutions?.length ?? 0) > 0,
+    hp: member.hp, happiness: member.metadata.happiness,
+    hiddenPowerType: hiddenPowerTypeFromIvs(member.metadata.ivs),
+    canEvolve: (definition.evolutions?.length ?? 0) > 0,
     majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),

@@ -1,4 +1,5 @@
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
+import { hiddenPowerTypeFromIvs } from "@pokemon-z-battle/battle-engine";
 import { experienceAtLevel, POKEMON_NATURES, type PlayerDetailsCatalog, type PokemonNature,
   type PokemonTrainingValues, type PublicPokemonIdentity } from "@pokemon-z-battle/player-state";
 import { resolvePokemonAsset, type PokemonAssetsManifest, type PokemonSummaryAssets }
@@ -100,8 +101,6 @@ const CHARACTERISTICS = [
   ["Très curieux.", "Coquin.", "Très astucieux.", "Souvent dans la lune.", "Très méticuleux."],
   ["Fort volontaire.", "Un peu vaniteux.", "Fortement obstiné.", "Déteste perdre.", "Un peu entêté."],
 ] as const;
-const HIDDEN_POWER_TYPES = ["FIGHTING", "FLYING", "POISON", "GROUND", "ROCK", "BUG", "GHOST", "STEEL",
-  "FIRE", "WATER", "GRASS", "ELECTRIC", "PSYCHIC", "ICE", "DRAGON", "DARK", "FAIRY"] as const;
 const MARKS = ["●", "■", "▲", "♥"] as const;
 const BALL_TYPES: Readonly<Record<string, number>> = Object.freeze({
   POKEBALL: 0, GREATBALL: 1, SAFARIBALL: 2, ULTRABALL: 3, MASTERBALL: 4, NETBALL: 5, DIVEBALL: 6,
@@ -143,8 +142,7 @@ export function sourcePokemonCharacteristic(personalId: number, ivs: PokemonTrai
 }
 
 export function sourceHiddenPowerType(ivs: PokemonTrainingValues): string {
-  const bits = STAT_ORDER.reduce((value, stat, index) => value | ((ivs[stat] & 1) << index), 0);
-  return HIDDEN_POWER_TYPES[Math.floor((bits * (HIDDEN_POWER_TYPES.length - 1)) / 63)]!;
+  return hiddenPowerTypeFromIvs(ivs);
 }
 
 export function createPublicSourcePokemonSummary(identity: PublicPokemonIdentity,

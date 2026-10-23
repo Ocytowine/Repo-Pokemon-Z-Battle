@@ -219,7 +219,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
         "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
         mist: "Brume", safeguard: "Rune Protect", tailwind: "Vent Arrière", terrain: "Le terrain",
-        "trick-room": "Distorsion", weather: "La météo",
+        "trick-room": "Distorsion", "magic-room": "Zone Magique", weather: "La météo",
       };
       const label = labels[event.effect];
       message(event.turns !== 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");

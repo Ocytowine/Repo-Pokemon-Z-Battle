@@ -1,4 +1,5 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
+import { recordSideFaints } from "./side-faint-history.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
@@ -410,7 +411,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   const pursuitTrace: TeamTurnResult["trace"][number][] = [];
   let effects = state.effects;
   for (const side of switchOrder) {
-    assertVoluntarySwitchAllowed(activePokemon(teams[side]), [activePokemon(teams[opponentOf(side)])]);
+    assertVoluntarySwitchAllowed(activePokemon(teams[side]), [activePokemon(teams[opponentOf(side)])],
+      effects?.magicRoomTurns ?? 0);
   }
   const pursuitSides = SIDES.filter((side) => {
     const action = moveActions[side];
@@ -444,6 +446,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const team = teams[side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error(`Invalid item target for ${side}.`);
+    if ((effects?.magicRoomTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: Magic Room.`);
     if ((target.volatile?.embargoTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: embargo.`);
     const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
@@ -524,8 +527,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   if (draw) events.push({ type: "battleEnded", winner: null });
   else if (winner !== null) events.push({ type: "battleEnded", winner });
 
-  const reconciledEffects = reconcileExtremeWeather(result.state.effects,
-    [activePokemon(teams.player), activePokemon(teams.opponent)]);
+  const reconciledEffects = recordSideFaints(reconcileExtremeWeather(result.state.effects,
+    [activePokemon(teams.player), activePokemon(teams.opponent)]), state.teams, teams, state.turn);
   events.push(...reconcileForms(teams, reconciledEffects));
   events.push({ type: "turnEnded", turn: state.turn });
   return {

@@ -1,9 +1,9 @@
 # Validation manuelle des fonctions de combat
 
-État au 2026-10-22 : **à exécuter par le porteur du projet**. Les tests automatisés et
+État au 2026-10-23 : **à exécuter par le porteur du projet**. Les tests automatisés et
 le build passent, mais ils ne remplacent pas la vérification visuelle en jeu.
 Cette fiche couvre les fonctions récemment portées `05C`-`05F`, `071`-`074`,
-`079` et `07A`. Ajouter ici les prochains lots avant de demander une validation
+`079`, `07A`, `07C`-`081`, `084` et `089`-`08C`. Ajouter ici les prochains lots avant de demander une validation
 manuelle. La mécanique et les limites connues sont détaillées dans
 [AI_HANDOFF.md](AI_HANDOFF.md) ; le suivi général est dans [ROADMAP.md](ROADMAP.md).
 
@@ -32,6 +32,10 @@ manuelle. La mécanique et les limites connues sont détaillées dans
 | `073` Metal Burst | Dinoclier niveau 37 | Repr. Metal |
 | `074` Flame Burst | Chamallot niveau 15 | Pirotecnia |
 | `079`/`07A` Fusion | Zekrom et Reshiram niveau 50 | Rayo Fusión, Llama Fusión |
+| `07C`/`07D` Statut guéri | Makuhita niveau 34 | Estímulo, Espabila |
+| `07E`/`07F` Statut et puissance | Sapereau niveau 47, Branette niveau 26 | Imagen, Infortunio |
+| `080` PV de la cible | Mamanbo niveau 41 | Salmuera |
+| `081` Attaquant du tour | Grelaçon niveau 39, Cradopaud niveau 22 | Alud, Desquite |
 
 Les noms affichés peuvent dépendre de la traduction chargée ; les codes et noms
 internes (`MIMIC`, `SKETCH`, `CONVERSION`, `CONVERSION2`, `COUNTER`,
@@ -84,6 +88,64 @@ Coop et sauvegarde.
   s'anime. Un coup raté ou immunisé ne doit pas infliger ces dégâts annexes.
   Si le partenaire a Garde Magik actif, aucun dégât annexe ne doit être appliqué
   (cas avancé : ne pas bloquer le reste si cette équipe n'est pas disponible).
+- [ ] **Solo — statuts et seuil de PV (`07C`-`080`)** : comparer Estímulo face
+  à une cible paralysée et saine, puis Espabila face à une cible endormie et
+  éveillée. Après un impact non fatal, le statut concerné doit disparaître et le
+  message de guérison doit viser la cible. Vérifier aussi le bonus d'Imagen avec
+  un porteur empoisonné/brûlé/paralysé, d'Infortunio face à une cible affectée et
+  de Salmuera à la moitié des PV ou moins. Un K.O. par Estímulo/Espabila ne doit
+  pas afficher ensuite une guérison du statut.
+- [ ] **Double/Coop — attaquants du tour (`081`)** : faire subir au porteur de
+  Desquite ou Alud des dégâts provenant des deux adversaires pendant le même tour,
+  puis cibler celui qui n'a pas infligé le dernier impact. Le bonus doit quand
+  même s'appliquer à cette cible. Au tour suivant sans nouveau dégât de sa part,
+  le bonus ne doit pas être conservé. Recharger l'invité avant la réponse et
+  vérifier que l'historique autoritaire n'est ni perdu ni rejoué.
+- [ ] **Solo/Coop — puissance variable (`084`, `089`-`08C`)** : vérifier
+  Vendetta après une action adverse puis avant celle-ci, Retour/Frustration avec
+  des bonheurs distincts, Éruption/Giclédo avec PV pleins puis réduits et
+  Presse/Essorage sur une cible saine puis blessée. Répéter une attaque comme
+  hôte et une comme invité, puis reconnecter pendant le combat pour comparer
+  les mêmes PV et le même ordre d'action.
+- [ ] **Solo/Coop — Represalia et Meteorobola (`085`, `087`)** : après le K.O.
+  d'un allié, vérifier que Represalia est renforcée uniquement au tour suivant,
+  y compris en double et après reconnexion. Tester Meteorobola sous soleil,
+  pluie, sable, grêle et Vents Forts, puis avec Ciel Gris ou Air Lock ; comparer
+  type, puissance, messages et PV sur les écrans hôte et invité.
+- [ ] **Solo/Coop — Force Ajoutée et Punition (`08E`, `08F`)** : cumuler des
+  boosts positifs, dont précision/esquive, avec un malus indépendant ; comparer
+  les dégâts avant/après, puis vérifier le plafond de Punition. Répéter une
+  action hôte et une invitée et recharger chaque écran pendant le combat.
+- [ ] **Solo/Coop — Puissance Cachée et Écho (`090`, `092`)** : tester deux
+  Pokémon aux IV de parité différente, puis inverser Attaque/Attaque Spéciale
+  autour de l'égalité pour vérifier la catégorie. Jouer Écho deux tours de
+  suite, deux fois au même tour en double, puis laisser un tour vide ; vérifier
+  le plafond et la remise à un. Reconnecter hôte et invité avant la reprise.
+- [ ] **Solo/Coop — Présent et As Caché (`094`, `097`)** : provoquer les trois
+  puissances et le soin de Présent sur une cible blessée, puis son échec sur
+  cible pleine ; vérifier la Gemme et Lien Parental. Pour As Caché, comparer
+  plusieurs PP restants dont zéro après dépense et le surcoût de Pression.
+  Refaire en double, côté hôte et invité, puis après reconnexion.
+- [ ] **Solo/Coop — Boule Élek (`099`)** : comparer les dégâts sous les seuils
+  de rapport de vitesses 2, 3 et 4, puis avec Vent Arrière sur chaque camp,
+  un cran de Vitesse et une météo modifiant la Vitesse. Refaire en double
+  lorsque la cible bénéficie de Vent Arrière ; vérifier la même cible et les
+  mêmes PV chez l'hôte et l'invité, puis après reconnexion.
+- [ ] **Solo/Coop — critiques garantis (`0A0`)** : utiliser Souffle Glacé ou
+  Yama Arashi contre une cible ordinaire, puis sous Conjuro et avec
+  Armurbaston/Coque Armure ; vérifier l'indicateur de critique et les PV.
+  Refaire en double avec une action de l'hôte et une de l'invité, puis recharger.
+- [ ] **Solo/Coop — Jugement et Techno Blast (`09F`)** : comparer une plaque,
+  chacun des quatre modules, un objet non correspondant et aucun objet ; vérifier
+  type, efficacité, animation et PV. Répéter sous Embargo/Maladresse, en double
+  avec hôte et invité, puis après reconnexion. Noter séparément toute variante
+  d'animation source absente ou incorrecte ; ne pas en inventer une.
+
+`096` (Don Naturel) n'est pas encore à cocher manuellement : sa table de 64
+baies est portée et trois cas passent dans le noyau/room de test, mais la
+capacité reste `partial` et n'est pas proposée aux équipes source. Attendre
+le transport des autres baies, Champ Magique complet et la validation de la
+consommation avant d'ajouter sa recette en jeu.
 
 ## Matrice Coop à répéter sur un ou deux cas représentatifs
 
@@ -113,4 +175,5 @@ rester ouvert même si le calcul des dégâts est correct.
 Limites déjà connues, à ne pas confondre avec un nouveau défaut : Clonage et
 Bouclier Rusé n'ont pas encore tous leurs raccords transverses ; l'interaction
 Pirotecnia/Lien Parental requiert un audit source dédié ; les animations absentes
-de `move2anim.dat` utilisent un fallback explicite, jamais une animation inventée.
+de `move2anim.dat`, dont `SMELLINGSALT`, utilisent un fallback explicite, jamais
+une animation inventée.

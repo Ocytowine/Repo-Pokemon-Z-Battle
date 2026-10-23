@@ -1,4 +1,5 @@
 import { isGrounded } from "./ability-field-entry.js";
+import { heldItemIsActive } from "./ability-item-control.js";
 import type { BattlerState, ImplementedBattleAbility } from "./types.js";
 
 export type SwitchTrapAbility = Extract<ImplementedBattleAbility, "ARENATRAP" | "MAGNETPULL" | "SHADOWTAG">;
@@ -8,8 +9,9 @@ export type SwitchTrapAbility = Extract<ImplementedBattleAbility, "ARENATRAP" | 
  * Replacement after fainting and forced movement deliberately bypass this predicate.
  */
 export function switchTrapAbility(battler: BattlerState,
-  opponents: readonly BattlerState[]): SwitchTrapAbility | null {
-  if (battler.hp <= 0 || battler.types.includes("GHOST") || battler.heldItem === "SHEDSHELL") return null;
+  opponents: readonly BattlerState[], magicRoomTurns = 0): SwitchTrapAbility | null {
+  if (battler.hp <= 0 || battler.types.includes("GHOST")
+    || battler.heldItem === "SHEDSHELL" && heldItemIsActive(battler, magicRoomTurns)) return null;
   const active = opponents.filter((opponent) => opponent.hp > 0);
   if (battler.types.includes("STEEL") && active.some((opponent) => opponent.ability === "MAGNETPULL")) {
     return "MAGNETPULL";
@@ -22,7 +24,7 @@ export function switchTrapAbility(battler: BattlerState,
 }
 
 export function assertVoluntarySwitchAllowed(battler: BattlerState,
-  opponents: readonly BattlerState[]): void {
-  const ability = switchTrapAbility(battler, opponents);
+  opponents: readonly BattlerState[], magicRoomTurns = 0): void {
+  const ability = switchTrapAbility(battler, opponents, magicRoomTurns);
   if (ability !== null) throw new Error(`Cannot switch ${battler.id}: trapped by ${ability}.`);
 }

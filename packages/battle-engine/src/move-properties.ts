@@ -1,4 +1,7 @@
-import type { BattleMove, BattlerState } from "./types.js";
+import type { BattleEffects, BattleMove, BattlerState, MoveCategory } from "./types.js";
+import { heldItemIsActive } from "./ability-item-control.js";
+import { DRIVE_TYPES, PLATE_TYPES } from "./held-item-types.js";
+import { naturalGiftProfile } from "./natural-gift.js";
 
 const RECOIL_DIVISORS: Readonly<Partial<Record<BattleMove["functionCode"], number>>> = {
   "0FA": 4,
@@ -87,12 +90,40 @@ export interface EffectiveMoveType {
 }
 
 /** Mirrors Pokemon Z's pbModifyType order, including its broad Liquid Voice branch. */
-export function effectiveMoveType(attacker: BattlerState, move: BattleMove): EffectiveMoveType {
+export function effectiveMoveType(attacker: BattlerState, move: BattleMove,
+  weather?: BattleEffects["weather"], magicRoomTurns = 0): EffectiveMoveType {
+  if (move.functionCode === "096") return { type: naturalGiftProfile(attacker.heldItem)?.type ?? "NORMAL",
+    abilityBoost: 1 };
+  // The source move class replaces the base type before ability conversions.
+  if (move.functionCode === "09F") {
+    const item = heldItemIsActive(attacker, magicRoomTurns) ? attacker.heldItem : null;
+    return { type: move.internalName === "JUDGMENT" && item !== "TABLANEUTRA"
+      ? PLATE_TYPES[item ?? ""] ?? "NORMAL"
+      : move.internalName === "TECHNOBLAST" ? DRIVE_TYPES[item ?? ""] ?? "NORMAL"
+        : "NORMAL", abilityBoost: 1 };
+  }
+  // 090 also overrides pbModifyType without calling Normal-type ability conversions.
+  if (move.functionCode === "090") {
+    if (attacker.hiddenPowerType === undefined) throw new Error("Hidden Power requires a derived type on the battler.");
+    return { type: attacker.hiddenPowerType, abilityBoost: 1 };
+  }
+  // 087 overrides pbModifyType in Ruby without calling the base ability conversions.
+  if (move.functionCode === "087") return { type: weather === "sun" || weather === "harsh-sun" ? "FIRE"
+    : weather === "rain" || weather === "heavy-rain" ? "WATER"
+      : weather === "sand" ? "ROCK" : weather === "hail" ? "ICE" : "NORMAL", abilityBoost: 1 };
   if (attacker.ability === "NORMALIZE") return { type: "NORMAL", abilityBoost: 1.5 };
   if (move.type !== "NORMAL") return { type: move.type, abilityBoost: 1 };
   const ability = attacker.ability;
   if (ability === null || !(ability in NORMAL_TYPE_CONVERSIONS)) return { type: move.type, abilityBoost: 1 };
   return NORMAL_TYPE_CONVERSIONS[ability as keyof typeof NORMAL_TYPE_CONVERSIONS];
+}
+
+/** Pokemon Z 090 compares raw Attack/Sp. Attack plus their stage integers, not staged stats. */
+export function effectiveMoveCategory(attacker: BattlerState, move: BattleMove): MoveCategory {
+  return move.functionCode === "090"
+    ? attacker.stats.attack + attacker.stages.attack > attacker.stats.specialAttack + attacker.stages.specialAttack
+      ? "Physical" : "Special"
+    : move.category;
 }
 
 export function hasMoldBreaker(attacker: BattlerState): boolean {

@@ -79,7 +79,7 @@ export function weatherEvasionMultiplier(battler: BattlerState, weather: BattleE
 }
 
 export function resolveWeatherEndOfTurn(battler: BattlerState, side: BattleSide,
-  weather: BattleEffects["weather"]): { readonly battler: BattlerState; readonly events: readonly BattleEvent[] } {
+  weather: BattleEffects["weather"], magicRoomTurns = 0): { readonly battler: BattlerState; readonly events: readonly BattleEvent[] } {
   if (battler.hp <= 0 || weather === null || weather === undefined) return { battler, events: [] };
   weather = ordinaryWeather(weather);
   if (weather === null) return { battler, events: [] };
@@ -105,7 +105,7 @@ export function resolveWeatherEndOfTurn(battler: BattlerState, side: BattleSide,
   else if (weather === "sun" && next.ability === "DRYSKIN") damage("DRYSKIN", 8);
   if (weather === "sand" && next.hp > 0 && !next.types.some((type) => ["GROUND", "ROCK", "STEEL"].includes(type))
     && !["SANDVEIL", "SANDRUSH", "SANDFORCE", "MAGICGUARD", "OVERCOAT"].includes(next.ability ?? "")
-    && !(heldItemIsActive(next) && next.heldItem === "SAFETYGOGGLES")) {
+    && !(heldItemIsActive(next, magicRoomTurns) && next.heldItem === "SAFETYGOGGLES")) {
     const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
     next = { ...next, hp: next.hp - amount };
     events.push({ type: "weatherDamage", side, weather: "sand", amount, hp: next.hp });

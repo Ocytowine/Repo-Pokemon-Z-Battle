@@ -1136,8 +1136,101 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   de champ consommés dans le même tour, en solo et en Coop. Le rendu et les
   snapshots hôte/invité sont testés, validation visuelle manuelle ouverte.
   Prochain lot préparé : `07C`-`081`, multiplicateurs liés aux statuts, aux PV
-  et à l'historique des attaquants. `075`-`076` restent liés aux états
+  et à l'historique des attaquants. Ce onzième lot est terminé : **170 fonctions
+  couvertes / 183 non couvertes sur 353**, 217 alertes de mécanique et 276
+  problèmes globaux. Les six fonctions partagent le calcul de puissance, la
+  guérison post-impact et une liste de tous les attaquants dommageables du tour,
+  restaurée par la room ; l'action de l'invité et le double sont testés.
+  `SMELLINGSALT`, seule nouvelle animation sans mapping source, conserve le
+  fallback explicite. Clonage reste une dépendance transverse documentée.
+  Le prochain lot préparé couvre `084`, `085`, `087`, `089`-`08C`, autour de
+  l'ordre d'action, du dernier K.O., de la météo, du bonheur et des PV.
+  `075`-`076` restent liés aux états
   Plongée/Creusement ; l'interaction Pirotecnia/Lien Parental reste à auditer.
+  Première tranche du douzième lot : `084`, `089`, `08A`, `08B` et `08C` sont
+  portés dans le noyau partagé. Compteur : **175 couvertes / 178 non couvertes
+  sur 353**, 209 alertes mécaniques et 269 problèmes globaux. `085` et `087`
+  attendent leurs contrats d'état de camp et de météo ; la recette manuelle
+  solo/Coop de cette tranche reste ouverte.
+  Le tableau « Suivi des fonctions d'attaque à reprendre » dans `AI_HANDOFF.md`
+  distingue désormais ces codes non portés des interactions encore ouvertes sur
+  des codes comptés comme couverts par l'audit.
+  Seconde tranche du douzième lot : `085` et `087` sont portés dans le même noyau
+  solo/Coop. Le dernier K.O. par camp est horodaté et restauré par la room ; la
+  météo effective détermine type et puissance de Meteorobola, y compris sa
+  suppression. Compteur : **177 couvertes / 176 non couvertes sur 353**,
+  207 alertes mécaniques et 267 problèmes globaux après `prepare:local`.
+  Tests simple, double, hôte/invité et reconnexion/redémarrage automatisés ;
+  recette visuelle manuelle encore ouverte. Le tableau des interactions
+  partielles dans `AI_HANDOFF.md` reste le point de contrôle pour les lots suivants.
+  Première tranche du treizième lot : `08E`/`08F` calculent leur puissance sur
+  les sept niveaux de stats positifs, avec plafond source pour `08F`. Noyau
+  solo/Coop et snapshots hôte/invité testés. Après `prepare:local` : **179
+  couvertes / 174 non couvertes sur 353**, 204 alertes mécaniques, 60
+  animations absentes et 265 problèmes globaux. Recette manuelle ouverte ;
+  `090`/`092` restent documentés comme prochains contrats à préparer.
+  Seconde tranche du treizième lot : `090`/`092` sont portés dans le noyau
+  commun. Puissance Cachée ne projette que son type dérivé des IV et recalcule
+  sa catégorie ; Écho garde un compteur de camp (plafond 5) à travers les tours
+  et snapshots Coop. Tests de double, hôte/invité et reprise de room ajoutés.
+  Après `prepare:local` : **181 couvertes / 172 non couvertes sur 353**,
+  202 alertes mécaniques, 60 animations absentes et 263 problèmes globaux.
+  `094`, `096`, `097` sont les prochains contrats à étudier ; recette visuelle
+  encore ouverte. L'absorption du type météo de `087` a aussi été corrigée.
+  Première tranche du quatorzième lot : `094` (Présent) et `097` (As Caché)
+  sont portés dans le noyau commun et testés en simple, double et room restaurée.
+  Présent suit les tirages 4/3/1/2 de la source, soin/Gemme et second coup de
+  Lien Parental ; As Caché prend les PP après dépense et Pression. Après
+  `prepare:local` : **183 fonctions couvertes / 170 non couvertes sur 353**,
+  200 alertes mécaniques, 60 animations absentes et 261 problèmes globaux.
+  `096` reste non portée : baies, Champ Magique et consommation source à
+  raccorder ; `099` est l'autre fonction préparée pour le prochain lot.
+  La recette visuelle manuelle reste ouverte.
+  Seconde tranche du quatorzième lot : `099` utilise les vitesses effectives
+  au moment de l'impact, y compris Vent Arrière du vrai camp ciblé en double,
+  météo et talents. Tests de seuils, simple/double, hôte/invité et reprise de
+  room ajoutés. Après `prepare:local` : **184 fonctions couvertes / 169 non
+  couvertes sur 353**, 199 alertes mécaniques et 260 problèmes globaux.
+  `096` reste non portée : les 67 baies, Champ Magique et la consommation Ruby
+  ambiguë doivent être raccordés ensemble. Recette visuelle encore ouverte.
+  Première tranche du quinzième lot : `0A0` force le critique après les gardes
+  Armurbaston/Coque Armure et Conjuro, sans tirage critique. Tests simple,
+  double, hôte/invité et room restaurée ajoutés. Après `prepare:local` :
+  **185 fonctions couvertes / 168 non couvertes sur 353**, 195 alertes
+  mécaniques et 257 problèmes globaux. `096` reste non portée : distinguer
+  transport de baie et effet automatique, puis raccorder Champ Magique et
+  clarifier la consommation source. `09F` suit ce contrat d'objet.
+  Seconde tranche du quinzième lot : `09F` convertit Jugement et Techno Blast
+  selon les 17 plaques et quatre modules réels, avec Maladresse/Embargo ; noyau
+  commun et room restaurée testés. Après `prepare:local` : **186 couvertes /
+  167 non couvertes sur 353**, 193 alertes mécaniques et 255 problèmes globaux.
+  La variante d'animation Techno Blast et Champ Magique restent documentés
+  comme interactions partielles. Pour `096`, le script nomme 67 baies mais
+  `PBS/items.txt` n'en définit que 64 : Rose, Kee et Maranga sont absentes.
+  Le prochain lot reprend le contrat des 64 baies réelles puis `096`.
+  Seizième lot, fondation partielle : la table de Don Naturel couvre les 64
+  baies PBS atteignables avec type et puissance source ; le noyau exécute
+  `096` sur les trois baies déjà projetées, avec Embargo, Maladresse, Tension
+  des deux adversaires, Champ Magique préexistant et consommation après dégâts.
+  Le compteur de champ est partagé et temporisé en simple/double. `096` reste
+  `partial` dans l'audit et absente du registre d'exécution source : 61 baies
+  non transportées, leurs effets automatiques, l'activation `0F9`, la
+  suppression globale d'objets et le hook Ruby ambigu restent à fermer.
+  **186 fonctions terminées sur 353, plus `096` partielle** ; 193 alertes
+  mécaniques, 61 animations absentes et 255 problèmes globaux après
+  `prepare:local`.
+  Seizième lot, seconde tranche : les 64 baies réellement définies sont
+  désormais transportées comme objets tenus dans l'équipe, le combat et la
+  room, sans prétendre que leurs effets automatiques sont tous portés. `0F9`
+  active ou annule Champ Magique dans le noyau simple/double ; son compteur et
+  les premières suppressions d'objets sont répliqués et restaurés en Coop.
+  `096` et `0F9` restent **partielles et non promues** : terminer les passifs
+  des baies, les interactions d'objets/formes et vérifier le hook Ruby de
+  consommation. **186 fonctions terminées sur 353, plus deux partielles** ;
+  193 alertes mécaniques, 61 animations absentes, 255 problèmes globaux et
+  696 animations prêtes après `prepare:local`. La validation visuelle reste
+  ouverte. Prochain lot : fermeture des baies et de Champ Magique, ou fonction
+  indépendante si l'ambiguïté Ruby empêche cette fermeture.
   La recette visuelle utilisateur des lots `05C`-`07A`, encore ouverte, est
   consignée dans [`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md).
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les

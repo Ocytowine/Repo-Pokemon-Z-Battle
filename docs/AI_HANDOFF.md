@@ -6349,3 +6349,365 @@ et étendre l'historique du neuvième lot pour retenir tous les attaquants du
 tour, pas uniquement le dernier. Clonage reste une dépendance transverse pour
 les effets de statut conditionnels. `075`/`076` restent prévus avec les états
 semi-invulnérables Plongée/Creusement.
+
+## Onzième lot de fonctions d'attaque : statuts, PV et attaquants - 2026-10-23
+
+Les six fonctions `07C`-`081` préparées ci-dessus sont exécutées par le noyau
+commun. Estímulo et Espabila doublent leur puissance face à une cible paralysée
+ou endormie, puis guérissent ce statut uniquement après des dégâts réels si la
+cible reste consciente. Imagen double sa puissance si le porteur est empoisonné,
+brûlé ou paralysé ; conformément au calcul Ruby de Z, la fonction `07E` ignore
+aussi la réduction offensive ordinaire de la brûlure et du gel. Infortunio double
+sa puissance face à tout statut majeur et Salmuera face à une cible à la moitié
+de ses PV maximaux ou moins.
+
+Desquite et Alud consultent maintenant la liste de tous les attaquants ayant fait
+perdre des PV au porteur pendant le tour. La puissance double seulement si la
+cible actuelle figure dans cette liste. Le dernier impact par catégorie reste
+conservé séparément pour Counter, Mirror Coat et Metal Burst : étendre l'historique
+n'a donc pas changé leur règle de représailles. En double, deux adversaires peuvent
+être mémorisés et `081` répond correctement à celui qui a été ciblé, même s'il
+n'est pas l'auteur du dernier impact.
+
+Autorité : calcul de puissance, pertes de PV, historique et guérison sont résolus
+par le noyau local en solo ou par la room autoritaire en Coop. Domaine : état
+tactique partagé, sans mutation personnelle permanente. Persistance : la liste
+d'attaquants vit dans le volatil du combattant et dans le snapshot de room pour
+reconnexion ou redémarrage ; elle n'est admissible que pour son numéro de tour et
+disparaît au retrait. Intentions : capacité et cible habituelles uniquement.
+Audience : dégâts et `statusCured` sont présentés aux participants et observateurs.
+Les tests couvrent les six fonctions, seuil de PV, statuts, exception de brûlure,
+absence de guérison après K.O., deux attaquants en double, action de l'invité,
+reconnexion et redémarrage de room.
+
+Dépendance ouverte : les contrôles de Clonage de `07C`, `07D` et `07F` attendent
+toujours son état partagé ; ce lot ne simule pas un clone absent. Après
+`prepare:local` : **170 fonctions couvertes / 183 non couvertes / 353 au total**
+(48,16 %). L'audit compte **217 alertes de mécanique d'attaque**, 58 animations
+manquantes et 1 talent partiel (`STURDY`) : **276 problèmes globaux**. 665
+animations sont prêtes. Les six fonctions rendent sept capacités concrètes
+éligibles ; `SMELLINGSALT` reste sans correspondance dans `move2anim.dat` et
+emploie donc le fallback prévu, sans animation inventée.
+
+Prochain lot préparé : poursuivre les puissances déterministes avec `084`
+(Vendetta selon l'action de la cible), `085` (Represalia après le K.O. d'un allié
+au tour précédent), `087` (Meteorobola : météo, puissance et type), `089`/`08A`
+(bonheur), puis `08B`/`08C` (PV du porteur ou de la cible). Vérifier l'ordre des
+arrondis Ruby, la suppression de météo, l'état de camp du dernier K.O. et la
+restauration Coop avant promotion. `075`/`076` restent liés aux états
+semi-invulnérables Plongée/Creusement.
+
+## Douzième lot, première tranche : puissances dépendant du contexte - 2026-10-23
+
+Le noyau commun porte `084` (Vendetta/Payback), `089` (Retour), `08A`
+(Frustration), `08B` (Éruption/Giclédo) et `08C` (Presse/Essorage).
+`084` double sa puissance si la cible a déjà agi ou n'a choisi aucune capacité ;
+il utilise l'ordre d'action déjà calculé par le résolveur. `089` et `08A`
+emploient le bonheur du combattant, `08B` ses PV actuels et `08C` ceux de la
+cible. Les formules et divisions entières sont celles des classes Ruby, avec
+une puissance minimale de 1.
+
+Autorité : ces calculs sont faits par le noyau utilisé en solo et par la room
+en Coop. Domaine : bonheur personnel projeté dans le combattant, puis ordre et
+PV tactiques partagés. Persistance : bonheur dans l'équipe du propriétaire ;
+PV et ordre courant dans le snapshot autoritaire. Intentions et audience : les
+intentions de capacité ordinaires suffisent et les dégâts sont présentés aux
+participants. Les tests ciblés couvrent formules et ordre d'action. La validation
+manuelle solo/hôte/invité et reconnexion de cette tranche reste ouverte ; ne pas
+déclarer le douzième lot entier terminé.
+
+Après `prepare:local` : **175 fonctions couvertes / 178 non couvertes sur 353**.
+Le rapport compte **209 alertes de mécanique d'attaque**, 59 animations absentes,
+1 talent partiel et **269 problèmes globaux** ; 675 animations sont prêtes.
+L'animation supplémentaire est une absence source exposée par la promotion des
+fonctions et garde son fallback.
+
+La seconde tranche `085`/`087` est décrite ci-dessous ; les valeurs d'audit de
+ce paragraphe restent le jalon de la première tranche.
+
+## Douzième lot, seconde tranche : Represalia et Meteorobola - 2026-10-23
+
+`085` (Represalia/Retaliate) double sa puissance si le dernier K.O. d'un membre
+du camp a eu lieu au tour précédent, exactement comme `LastRoundFainted` dans
+la source. Le numéro du tour est conservé dans les effets de camp et enregistré
+après chaque tour simple ou double ; aucun bonus n'est retenu deux tours plus
+tard. `087` (Meteorobola/Weather Ball) utilise la météo **effective** pour son
+type (Feu, Eau, Roche, Glace ou Normal) et double sa puissance dès qu'une météo
+est active, y compris Vents Forts où le type reste Normal. Ciel Gris et Air Lock
+suppriment ensemble conversion et bonus. Son override Ruby de `pbModifyType`
+court-circuite également Normalize et les talents convertissant le type Normal.
+
+Autorité : le noyau partagé calcule les deux attaques en solo et dans la room
+autoritaire. Domaine : dernier K.O. tactique du camp, météo partagée et dégâts
+visibles aux participants. Persistance : le numéro du dernier K.O. est dans le
+snapshot de combat, restauré lors de la reconnexion et du redémarrage ; la météo
+est déjà persistée. Intentions : actions et cibles ordinaires, sans message
+supplémentaire. Les tests couvrent l'expiration du bonus, le partenaire K.O. en
+double, tous les types météo, sa suppression, puis le jeu hôte/invité avec
+reconnexion et redémarrage de room. La recette visuelle manuelle reste ouverte.
+
+Après `prepare:local` : **177 fonctions couvertes / 176 non couvertes sur 353**.
+Le rapport compte **207 alertes de mécanique d'attaque**, 59 animations
+absentes, 1 talent partiel (`STURDY`) et **267 problèmes globaux** ; 678
+animations sont prêtes. Les animations absentes conservent le fallback source.
+
+## Treizième lot, première tranche : boosts positifs de stats - 2026-10-23
+
+`08E` (Force Ajoutée/Stored Power) vaut `20 × (1 + somme des niveaux de stats
+positifs du porteur)` ; `08F` (Punition/Punishment) vaut `min(200, 20 × (3 +
+somme des niveaux positifs de la cible))`. Les sept stats incluent précision et
+esquive ; les niveaux négatifs n'annulent pas les positifs. Le calcul réside
+dans le noyau partagé et n'ajoute aucun état : les niveaux sont déjà dans les
+combattants autoritaires, projetés en solo, répliqués et persistés par la room.
+Intentions : capacités/cibles ordinaires. Audience : dégâts aux participants.
+Les tests couvrent les formules, le plafond, l'hôte et l'invité, puis la
+reconnexion et le redémarrage. Recette visuelle manuelle ouverte.
+
+Après `prepare:local` : **179 fonctions couvertes / 174 non couvertes sur 353**,
+204 alertes de mécanique, 60 animations absentes, 1 talent partiel et **265
+problèmes globaux** ; 680 animations prêtes. Les absences source utilisent
+toujours le fallback.
+
+## Treizième lot, seconde tranche : Puissance Cachée et Écho - 2026-10-23
+
+`090` (Puissance Cachée/Hidden Power) prend son type des bits de parité des six
+IV dans l'ordre source ; la projection d'équipe ne réplique que le type dérivé,
+jamais les IV personnels. Avec `USENEWBATTLEMECHANICS = true`, la puissance est
+70. Sa catégorie est recalculée à chaque usage : Physique si Attaque brute +
+niveau d'Attaque dépasse strictement Attaque Spéciale brute + niveau spécial,
+Spéciale sinon. L'override Ruby de type ignore les conversions des talents.
+Un combattant externe sans type dérivé échoue explicitement au lieu d'inventer
+un type ; toute entrée de combat réelle passe par la projection persistante.
+
+`092` (Écho/Echoed Voice) conserve par camp le compteur (1 à 5) et le dernier
+tour d'utilisation. Un second partenaire au même tour n'incrémente pas le
+compteur ; un tour sans usage brise la chaîne ; une attaque manquée ne compte
+pas. Le calcul est fait dans le noyau commun, sans deuxième implémentation
+Coop. Autorité : noyau en solo, room en Coop. Domaine : type dérivé du Pokémon
+personnel, compteur tactique partagé par camp. Persistance : type et compteur
+dans le snapshot de room ; restauration vérifiée après reconnexion et
+redémarrage. Intentions : capacité/cible habituelles. Audience : dégâts et
+types effectifs visibles aux participants. Tests : IV extrêmes, confidentialité
+des IV, catégorie, plafond, échec, double et hôte/invité. Recette visuelle
+manuelle encore ouverte.
+
+Le même passage a raccordé l'absorption des attaques `087` au type de météo
+effectif ; la pluie permet maintenant à Absorb Eau d'intercepter Meteorobola.
+Après `prepare:local` : **181 fonctions couvertes / 172 non couvertes sur 353**,
+202 alertes mécaniques, 60 animations absentes, 1 talent partiel et **263
+problèmes globaux** ; 682 animations prêtes.
+
+## Quatorzième lot, première tranche : Présent et As Caché - 2026-10-23
+
+`094` (Présent) tire dans la room/le noyau les dix issues source : quatre
+puissances 90, trois puissances 140, une puissance 200 et deux soins de la
+cible à hauteur d'un quart de ses PV maximaux. Le soin échoue sur une cible
+pleine ou immunisée au type et consomme une Gemme applicable comme le calcul
+Ruby ; Lien Parental effectue un second tirage sur huit issues dommageables
+seulement. `097` (As Caché) lit les PP **après** dépense, y compris le surcoût
+de Pression : 0/1/2/3/4 PP ou plus donnent 200/80/60/50/40 de puissance.
+
+Autorité : tirage, dépense des PP, soin et dégâts passent par le noyau unique
+en solo et par la room autoritaire en Coop. Domaine : PV/PP tactiques partagés,
+aucun nouvel état personnel. Persistance : PV/PP et graine aléatoire sont dans
+le snapshot de room, vérifié à la reconnexion et au redémarrage. Intentions :
+capacité/cible ordinaires. Audience : événements de soin/dégât et PP pour les
+participants. Tests : chaque tirage, soin et échec, Gemme, Lien Parental,
+Pression, double, hôte/invité et reprise. Recette visuelle manuelle ouverte.
+
+Après `prepare:local` : **183 fonctions couvertes / 170 non couvertes sur 353**,
+200 alertes mécaniques, 60 animations absentes, 1 talent partiel et **261
+problèmes globaux** ; 685 animations prêtes.
+
+`096` (Don Naturel) reste **non portée** : le moteur ne projette actuellement
+que trois des nombreuses baies de sa table source, et Champ Magique n'a pas
+encore d'état partagé. Il faut porter ensemble la table type/puissance,
+l'éligibilité (Embargo, Maladresse, Tension et Champ Magique), la consommation
+avec son historique d'objet et les tests solo/double/room. Le hook Ruby
+`pbEffectAfterHit` contient `TotalDamage>0>0` : vérifier son comportement
+réel avant de figer le moment de consommation ; ne pas corriger silencieusement
+le script source. Aucune baie ou animation n'a été inventée dans cette tranche.
+
+## Quatorzième lot, seconde tranche : rapport de vitesses - 2026-10-23
+
+`099` (Boule Élek/Electro Ball) applique la table source 60/80/120/150 selon
+le rapport entier des vitesses effectives (seuils 2, 3 et 4). Le calcul utilise
+les vitesses au moment de l'impact, incluant crans, statuts, talents, Vent Arrière,
+terrain et météo effective. En double, l'adaptateur positionné fournit les
+vitesses des vrais combattants et leurs camps, sans perdre le Vent Arrière de
+la cible dans le mini-duel. L'autorité reste le noyau en solo et la room en
+Coop ; le domaine est tactique partagé, sans nouvel état personnel. Les
+intentions et la réplication restent celles des attaques ordinaires. Vitesses,
+PV et tour sont restaurés par snapshot ; tests de seuils, simple, double,
+hôte/invité, reconnexion et redémarrage ajoutés. Recette visuelle ouverte.
+
+Après `prepare:local` : **184 fonctions couvertes / 169 non couvertes sur 353**,
+199 alertes mécaniques, 60 animations absentes, 1 talent partiel et **260
+problèmes globaux** ; 687 animations prêtes.
+
+`096` demeure non portée : les 67 noms de sa table source dépassent les trois baies
+projetées par le combat actuel. Le hook Ruby de consommation contient toujours
+`TotalDamage>0>0`, non validé en exécution ; ni son instant de consommation ni
+un remplacement implicite ne sont présumés. Prochain lot : contrat générique
+des baies et de Champ Magique, puis `096` ; si ce socle n'est pas fermé, avancer
+les fonctions indépendantes sans promouvoir `096`.
+
+## Quinzième lot, première tranche : critiques garantis - 2026-10-23
+
+`0A0` (Souffle Glacé/Yama Arashi) force le coup critique après les gardes
+source : Armurbaston/Coque Armure d'abord, puis Conjuro ; il ne tire pas de
+RNG critique lorsque le coup est garanti. Le même calcul autoritaire sert le
+solo, les deux positions du double et les actions hôte/invité. Domaine : dégâts
+tactiques partagés, sans nouvel état personnel ; intentions ordinaires et
+événements de dégâts répliqués aux participants. PV, tour et graine RNG sont
+restaurés par la room ; les tests couvrent gardes, double, reconnexion et
+redémarrage. Validation visuelle manuelle ouverte.
+
+Après `prepare:local` : **185 fonctions couvertes / 168 non couvertes sur 353**,
+195 alertes mécaniques, 61 animations absentes, 1 talent partiel et **257
+problèmes globaux** ; 691 animations prêtes. La nouvelle animation absente
+reste en fallback source, sans correspondance inventée.
+
+`096` n'est toujours pas promue. Pour la suite, séparer dans le contrat
+d'objet « baie reconnue comme tenue » et « effet automatique de baie porté » :
+le filtre actuel `SUPPORTED_HELD_ITEMS` ne transporte que trois baies et ne
+peut être étendu aux 67 noms de la table en prétendant que tous leurs effets automatiques
+existent. Champ Magique doit être un état de champ partagé, temporisé et
+restauré ; Embargo, Maladresse et Tension doivent être évalués sur les vrais
+combattants actifs du double. Enfin le hook Ruby `TotalDamage>0>0` reste à
+valider avant la règle de consommation. Le prochain lot doit établir ces
+contrats puis traiter `096`. Les données `PBS/items.txt` de la version locale
+ne définissent que **64** de ces 67 baies (`itemType=5`) : `ROSELIBERRY`,
+`KEEBERRY` et `MARANGABERRY` figurent dans le script mais sont absentes du
+catalogue. Ne pas les fabriquer ni les compter comme baies atteignables.
+
+## Quinzième lot, seconde tranche : types selon l'objet tenu - 2026-10-23
+
+`09F` (Jugement/Techno Blast) utilise le type des 17 plaques source ou des
+quatre modules selon la capacité. Un objet absent, bloqué par Maladresse ou
+Embargo, ou de la mauvaise famille laisse le type Normal. L'override Ruby
+court-circuite les conversions de type des talents. Les modules sont maintenant
+projetés comme objets tenus depuis l'équipe personnelle ; la table des plaques
+est partagée avec leur bonus de dégâts existant, sans liste divergente.
+
+Autorité : noyau partagé en solo et room en Coop. Domaine : objet personnel
+projeté dans le combattant et type/dégâts tactiques partagés. Persistance :
+objet et PV dans le snapshot ; intentions ordinaires ; audience : participants.
+Tests : 21 correspondances, absence/blocage d'objet, simple, double, hôte/invité,
+reconnexion et redémarrage. La sélection des variantes d'animation de Techno
+Blast (`pbShowAnimation` 0 à 4) et Champ Magique restent des interactions
+visuelles/transversales ouvertes ; ne pas inventer de variante manquante.
+
+Après `prepare:local` : **186 fonctions couvertes / 167 non couvertes sur 353**,
+193 alertes mécaniques, 61 animations absentes, 1 talent partiel et **255
+problèmes globaux** ; 694 animations prêtes. Prochain lot : contrat des 64 baies
+réelles, Champ Magique, puis `096`.
+
+## Seizième lot, fondation partielle de Don Naturel - 2026-10-23
+
+`096` possède maintenant une table testée des **64 baies réellement définies**
+dans `PBS/items.txt` de Z 2.12 FR : 33 à puissance 80, 16 à 90 et 15 à 100
+avec `USENEWBATTLEMECHANICS`. Les trois noms du script sans objet PBS
+(`ROSELIBERRY`, `KEEBERRY`, `MARANGABERRY`) ne sont pas inventés. Le même
+catalogue sert la classification de baie et le calcul type/puissance.
+
+Le noyau exécute `096` pour les trois baies déjà projetées (`ORANBERRY`,
+`LIECHIBERRY`, `PAYAPABERRY`) : échec sans baie, sous Embargo, Maladresse,
+Tension adverse ou Champ Magique ; consommation enregistrée après perte
+effective de PV, conservation en cas d'immunité. En double, Tension est
+cherchée chez les deux adversaires actifs. Le compteur de Champ Magique est
+ajouté à l'état de champ, décrémenté et restauré dans les snapshots simple
+et double, mais sa commande d'activation `0F9` et sa suppression de **tous**
+les effets d'objets ne sont pas encore portées.
+
+Ce jalon est **partiel**, pas une promotion : `096` figure comme `partial`
+dans le rapport de support, mais reste absente de `SUPPORTED_MOVE_FUNCTION_CODES`
+et n'est donc pas proposée par la projection des capacités source. Le choix
+provisoire de consommer seulement après des dégâts positifs correspond à
+l'intention du hook `pbEffectAfterHit` ; l'expression Ruby `TotalDamage>0>0`
+n'a toujours pas été validée en exécution et ne doit pas être présentée comme
+une fidélité démontrée. Les 61 autres baies existent dans la table mais ne
+sont pas encore transportées comme objets tenus, afin de ne pas masquer leurs
+effets automatiques manquants.
+
+Autorité : noyau commun en solo et room autoritaire en Coop ; l'objet reste
+personnel dans l'équipe et son usage est tactique partagé. Les intentions
+restent celles d'une capacité normale ; type, dégâts, consommation et PV sont
+présentés aux participants. Le snapshot restaure objet consommé, historique
+de recyclage/ramassage et compteur de champ. Tests : table 64, trois baies
+transportées, blocages, immunité, partenaire Tension, hôte/invité,
+reconnexion et redémarrage. Validation visuelle ouverte.
+
+**Compteur inchangé : 186 fonctions terminées sur 353, plus `096` partielle.**
+L'audit des usages reste à 193 alertes mécaniques, 61 animations absentes,
+1 talent partiel et 255 problèmes globaux ; 695 animations prêtes.
+
+Prochain lot : transport distinct des 61 autres baies, effets automatiques
+nécessaires et `0F9` Champ Magique avec suppression globale des objets ;
+ensuite valider la consommation Ruby et promouvoir `096` seulement si les
+tests solo/double/room restent verts.
+
+## Seizième lot, seconde tranche : transport des baies et Champ Magique partiel - 2026-10-23
+
+Les **64 baies présentes dans le catalogue source** traversent maintenant la
+projection de l'équipe personnelle, le snapshot tactique et la room Coop comme
+objets tenus. Le type `HeldItem` distingue ce transport de la liste plus étroite
+des objets dont les effets passifs sont effectivement portés. Les trois noms
+absents des objets source (`ROSELIBERRY`, `KEEBERRY`, `MARANGABERRY`) restent
+rejetés. `096` peut donc utiliser la table type/puissance sur ces 64 baies dans
+le noyau, mais demeure non proposée par le registre source : la prise en charge
+des effets automatiques des 61 baies nouvellement transportées est incomplète.
+
+`0F9` active ou annule le compteur partagé de Champ Magique (cinq tours à
+l'activation, décrément en fin de tour). Les premiers chemins communs suppriment
+les objets actifs dans le calcul des dégâts et du type, la précision, les effets
+additionnels, les baies déjà gérées, la météo, les objets de Dresseur et la
+Coquille Mue face aux talents-pièges. Le même état et les mêmes règles passent
+par le résolveur solo et la room hôte/invité ; le snapshot les restaure après
+reconnexion et redémarrage. L'événement du champ est présenté aux participants.
+Tests ciblés : activation et annulation en simple/double, baies transportées,
+projection personnelle, hôte/invité et restauration de room. Recette visuelle
+manuelle toujours ouverte.
+
+`0F9` est **partielle dans l'audit, non promue** dans le registre de capacités.
+Il reste à vérifier systématiquement toutes les interactions avec les objets
+(notamment changements de forme, vols/transferts et les effets automatiques des
+baies) avant promotion. `096` reste également partielle : l'ambiguïté Ruby
+`TotalDamage>0>0` de sa consommation n'est pas résolue. Ne pas confondre
+« baie tenue et transportée » avec « baie dont l'effet automatique est porté ».
+**Compteur inchangé : 186 fonctions terminées sur 353, plus `096` et `0F9`
+partielles.** Après `prepare:local` : 193 alertes mécaniques, 61 animations
+absentes, 1 talent partiel, 255 problèmes globaux et 696 animations prêtes.
+
+Prochain lot : auditer et porter les effets automatiques des baies atteignables
+et les dernières interactions d'objets sous Champ Magique ; vérifier le hook
+Ruby de consommation, puis seulement promouvoir `0F9`/`096` si les matrices
+solo, double et Coop sont closes. Une fonction indépendante peut avancer si
+cette validation source bloque la clôture.
+
+### Suivi des fonctions d'attaque à reprendre
+
+Ce tableau est le point de contrôle avant chaque nouvelle promotion dans
+`move-function-support.ts`. Le rapport automatique classe une fonction par code ;
+il ne détecte pas encore toutes les interactions transversales ci-dessous. Une
+fonction annoncée « couverte » peut donc conserver une dette précise à fermer et
+à tester, sans que l'audit global la compte comme fonction partielle.
+
+| État | Codes | Travail restant |
+| --- | --- | --- |
+| Fermées dans le douzième lot | `085`, `087` | Historique de K.O. et météo effective portés et testés en solo, double et room ; recette visuelle manuelle encore ouverte. |
+| Fermées dans le treizième lot | `090`, `092` | Type dérivé sans IV bruts, catégorie dynamique et compteur de camp restaurable ; recette visuelle manuelle ouverte. |
+| Fermées dans le quatorzième lot | `094`, `097` | Présent : tirages/soin/Gemme/Lien Parental ; As Caché : PP après dépense/Pression. Recette visuelle manuelle ouverte. |
+| Partielle, non promue | `096` | Table et transport des 64 baies réelles, exécution dans le noyau ; effets automatiques des 61 baies nouvellement transportées et hook Ruby de consommation à fermer avant promotion. |
+| Partielle, non promue | `0F9` | Compteur et principales suppressions d'objets portés ; auditer formes, vols/transferts et baies avant promotion. |
+| Fermée dans le quatorzième lot | `099` | Rapport des vitesses effectives raccordé en simple et double ; restauration room testée, recette visuelle ouverte. |
+| Fermée dans le quinzième lot | `0A0` | Critique garanti après gardes de critique/Conjuro ; simple, double et room restaurée testés, recette visuelle ouverte. |
+| Couverte avec interaction visuelle ouverte | `09F` | Types des plaques/modules et blocages portés ; variante d'animation Techno Blast et suppression par Champ Magique à raccorder. |
+| Couvertes avec interaction Clonage ouverte | `055`, `058`, `059`, `05A`, `061`, `063`, `066`, `068`, `06A`–`070`, `07C`, `07D`, `07F` | Raccorder leurs contrôles Ruby quand l'état de Clonage sera partagé ; vérifier individuellement les exceptions. |
+| Couvertes avec interaction Bouclier Rusé ouverte | `055`, `065`, `066`, `05D`, `05F` | Brancher le prédicat commun de protection, puis tester la cible en double. |
+| Couvertes avec autres interactions à auditer | `067`, `074`, `05C`–`05F` | Transitions immédiates de Gaz Réactif et hooks d'Échange en double ; Pirotecnia avec Lien Parental ; cas Transform et fenêtres d'échec des copies. |
+
+Ne pas confondre ces dettes documentées avec le seul talent formellement
+`partial` de l'audit actuel (`STURDY`). À chaque fermeture, retirer la ligne ou
+le code correspondant seulement après tests du noyau et de la room, mettre à
+jour cette section et la roadmap, puis relancer `prepare:local`.

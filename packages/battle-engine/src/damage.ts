@@ -1,18 +1,12 @@
 import { typeEffectiveness } from "./type-chart.js";
 import { preventsCriticalHit } from "./ability-protection.js";
-import { effectiveMoveType, hasHighCriticalRate, hasMoldBreaker, hasMoveFlag, isCuttingMove,
+import { effectiveMoveCategory, effectiveMoveType, hasHighCriticalRate, hasMoldBreaker, hasMoveFlag, isCuttingMove,
   isKickingMove, isRecklessBoostedMove, isSoundMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
+import { PLATE_TYPES } from "./held-item-types.js";
+import { naturalGiftProfile } from "./natural-gift.js";
 import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
-
-const PLATE_TYPES: Readonly<Record<string, string>> = {
-  FISTPLATE: "FIGHTING", SKYPLATE: "FLYING", TOXICPLATE: "POISON", EARTHPLATE: "GROUND",
-  STONEPLATE: "ROCK", INSECTPLATE: "BUG", SPOOKYPLATE: "GHOST", IRONPLATE: "STEEL",
-  FLAMEPLATE: "FIRE", SPLASHPLATE: "WATER", MEADOWPLATE: "GRASS", ZAPPLATE: "ELECTRIC",
-  MINDPLATE: "PSYCHIC", ICICLEPLATE: "ICE", DRACOPLATE: "DRAGON", DREADPLATE: "DARK",
-  PIXIEPLATE: "FAIRY", TABLANEUTRA: "NORMAL",
-};
 
 /** Exact non-Normal type list named by Pokemon Z's Realeza branch; QMARKS is intentionally excluded. */
 const REALEZA_TYPES = new Set([
@@ -48,9 +42,18 @@ export interface BattleDamageContext {
   readonly waterSport: boolean;
   readonly weather?: BattleEffects["weather"];
   readonly terrain?: BattleEffects["terrain"];
+  readonly magicRoomTurns?: number;
   readonly defenderBerriesBlocked?: boolean;
   /** The defender already acted, or did not select a move, as required by Pokemon Z's Analytic check. */
   readonly defenderAlreadyMoved?: boolean;
+  readonly turn?: number;
+  readonly lastFaintedTurn?: number | null;
+  readonly echoedVoiceCount?: number;
+  /** PP remaining after the source move's cost was paid this turn. */
+  readonly remainingPp?: number;
+  /** Effective speeds at impact, including each side's field effects; supplied by the turn adapter. */
+  readonly attackerEffectiveSpeed?: number;
+  readonly defenderEffectiveSpeed?: number;
   /** Active, conscious partner abilities supplied by the positioned double-battle adapter. */
   readonly attackerPartnerAbility?: BattleAbility | null;
   readonly defenderPartnerAbility?: BattleAbility | null;
@@ -62,8 +65,8 @@ export interface BattleDamageContext {
 
 /** Source-faithful type multiplier shared by damage calculation and pre-damage abilities. */
 export function effectiveTypeMultiplier(attacker: BattlerState, defender: BattlerState, move: BattleMove,
-  weather?: BattleEffects["weather"]): number {
-  const moveType = effectiveMoveType(attacker, move).type;
+  weather?: BattleEffects["weather"], magicRoomTurns = 0): number {
+  const moveType = effectiveMoveType(attacker, move, weather, magicRoomTurns).type;
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
     && (moveType === "NORMAL" || moveType === "FIGHTING")
@@ -106,15 +109,16 @@ export function calculateDamage(
   trace: BattleTrace[],
   context: BattleDamageContext = { reflect: false, lightScreen: false, luckyChant: false, mudSport: false, waterSport: false },
 ): number {
-  const effectiveMove = effectiveMoveType(attacker, move);
-  const attackerItemActive = heldItemIsActive(attacker);
-  const defenderItemActive = heldItemIsActive(defender);
+  if (move.functionCode === "090") move = { ...move, category: effectiveMoveCategory(attacker, move) };
+  const effectiveMove = effectiveMoveType(attacker, move, context.weather, context.magicRoomTurns);
+  const attackerItemActive = heldItemIsActive(attacker, context.magicRoomTurns);
+  const defenderItemActive = heldItemIsActive(defender, context.magicRoomTurns);
   const moveType = effectiveMove.type;
   const activeAbilities = new Set(context.activeAbilities
     ?? [attacker.ability, defender.ability].filter((ability): ability is BattleAbility => ability !== null));
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const currentWeather = ordinaryWeather(context.weather);
-  const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather);
+  const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather, context.magicRoomTurns);
   if (["06A", "06B", "06C", "06E", "070", "071", "072", "073"].includes(move.functionCode)) {
     const fixed = move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
       : move.functionCode === "06C" ? Math.max(1, Math.floor(defender.hp / 2))
@@ -159,6 +163,7 @@ export function calculateDamage(
   const critical = !ignoresDefenderAbility && preventsCriticalHit(defender) ? false
     : !ignoresDefenderAbility && attacker.ability === "MERCILESS" && defender.majorStatus?.kind === "poison" ? true
       : context.luckyChant ? false
+        : move.functionCode === "0A0" ? true
         : draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = defender.ability === "UNAWARE" && !ignoresDefenderAbility ? 0
     : critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
@@ -236,6 +241,30 @@ export function calculateDamage(
     const ratio = Math.floor(effectiveWeight(attacker) / targetWeight);
     power = ratio >= 5 ? 120 : ratio >= 4 ? 100 : ratio >= 3 ? 80 : ratio >= 2 ? 60 : 40;
   }
+  if (move.functionCode === "089") power = Math.max(1, Math.floor((attacker.happiness ?? 0) * 2 / 5));
+  if (move.functionCode === "08A") power = Math.max(1, Math.floor((255 - (attacker.happiness ?? 0)) * 2 / 5));
+  if (move.functionCode === "08B") power = Math.max(1, Math.floor(150 * attacker.hp / attacker.stats.maxHp));
+  if (move.functionCode === "08C") power = Math.max(1, Math.floor(120 * defender.hp / defender.stats.maxHp));
+  if (move.functionCode === "090") power = 70;
+  if (move.functionCode === "096") power = naturalGiftProfile(attacker.heldItem)?.power ?? 1;
+  if (move.functionCode === "097") power = [200, 80, 60, 50, 40][Math.min(4, context.remainingPp ?? 4)]!;
+  if (move.functionCode === "099") {
+    const attackerSpeed = Math.max(1, context.attackerEffectiveSpeed
+      ?? stagedStat(attacker.stats.speed, attacker.stages.speed));
+    const defenderSpeed = Math.max(1, context.defenderEffectiveSpeed
+      ?? stagedStat(defender.stats.speed, defender.stages.speed));
+    const ratio = Math.floor(attackerSpeed / defenderSpeed);
+    power = ratio >= 4 ? 150 : ratio >= 3 ? 120 : ratio >= 2 ? 80 : 60;
+  }
+  const positiveStages = (battler: BattlerState): number => Object.values(battler.stages)
+    .reduce((sum, stage) => sum + Math.max(0, stage), 0);
+  if (move.functionCode === "08E") power = 20 * (1 + positiveStages(attacker));
+  if (move.functionCode === "08F") power = Math.min(200, 20 * (3 + positiveStages(defender)));
+  if (move.functionCode === "084" && context.defenderAlreadyMoved) power *= 2;
+  if (move.functionCode === "085" && context.turn !== undefined
+    && context.lastFaintedTurn === context.turn - 1) power *= 2;
+  if (move.functionCode === "092") power *= Math.max(1, Math.min(5, context.echoedVoiceCount ?? 1));
+  if (move.functionCode === "087" && context.weather !== null && context.weather !== undefined) power *= 2;
   if (move.functionCode === "08D") {
     const speed = (battler: BattlerState): number => {
       let value = stagedStat(battler.stats.speed, battler.stages.speed);
@@ -246,6 +275,12 @@ export function calculateDamage(
     };
     power = Math.max(1, Math.min(150, Math.floor((25 * speed(defender)) / speed(attacker))));
   }
+  if (move.functionCode === "07C" && defender.majorStatus?.kind === "paralysis"
+    || move.functionCode === "07D" && defender.majorStatus?.kind === "sleep"
+    || move.functionCode === "07E" && (attacker.majorStatus?.kind === "poison"
+      || attacker.majorStatus?.kind === "burn" || attacker.majorStatus?.kind === "paralysis")
+    || move.functionCode === "07F" && defender.majorStatus !== null
+    || move.functionCode === "080" && defender.hp <= Math.floor(defender.stats.maxHp / 2)) power *= 2;
   if (move.functionCode === "07B" && defender.majorStatus?.kind === "poison") power *= 2;
   if (move.functionCode === "091") power *= 2 ** Math.max(0, (attacker.volatile?.furyCutterCount ?? 1) - 1);
   if (move.functionCode === "0D3") power *= 2 ** Math.max(0, 4 - (attacker.volatile?.rolloutTurns ?? 4));
@@ -261,8 +296,10 @@ export function calculateDamage(
   result = Math.round(result * effectiveness);
   let statusModifier = 1;
   if (attacker.ability !== "GUTS") {
-    if (attacker.majorStatus?.kind === "burn" && move.category === "Physical") statusModifier *= 0.5;
-    if (attacker.majorStatus?.kind === "frozen" && move.category === "Special") statusModifier *= 0.5;
+    if (attacker.majorStatus?.kind === "burn" && move.category === "Physical"
+      && move.functionCode !== "07E") statusModifier *= 0.5;
+    if (attacker.majorStatus?.kind === "frozen" && move.category === "Special"
+      && move.functionCode !== "07E") statusModifier *= 0.5;
   }
   if (defender.majorStatus?.kind === "caduco" && defender.hp <= Math.floor(defender.stats.maxHp / 2)) statusModifier *= 1.5;
   if (attackerItemActive && attacker.heldItem === "MUSCLEBAND" && move.category === "Physical") statusModifier *= 1.1;
