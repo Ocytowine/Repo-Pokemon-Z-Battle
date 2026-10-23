@@ -3,7 +3,7 @@ import { parseNetworkPlayerProfile } from "./player-profile.js";
 import { parseSourceWorldActors, parseSourceWorldHostState } from "./source-world.js";
 import { parseSourceSceneSnapshot } from "./source-scene.js";
 import { parseSourceBattleContext } from "./source-battle.js";
-import { isHeldItemSupported, isPokemonBallSupported, isPokemonItemUsableInBattle, pokemonItemTargetMode,
+import { isHeldItemSupported, isMoveFunctionSupported, isPokemonBallSupported, isPokemonItemUsableInBattle, pokemonItemTargetMode,
   type BattleTeam } from "@pokemon-z-battle/battle-engine";
 
 const IDENTIFIER = /^[A-Za-z0-9_-]{1,64}$/u;
@@ -86,9 +86,6 @@ function isSourceBattleInventory(value: unknown): boolean {
 
 const BATTLE_STATS = ["maxHp", "attack", "defense", "specialAttack", "specialDefense", "speed"] as const;
 const BATTLE_STAGES = ["attack", "defense", "specialAttack", "specialDefense", "speed", "accuracy", "evasion"] as const;
-const MOVE_FUNCTIONS = new Set(["000", "001", "003", "004", "005", "006", "007", "008", "009", "00A", "00C", "00F", "010", "012", "013", "016", "017",
-  "01C", "01D", "01E", "01F", "020", "021", "022", "023", "027", "028", "030", "033", "034", "042", "043", "044", "045", "046", "047", "048", "049", "04B", "04C", "04D", "04F",
-  "02D", "02F", "05B", "064", "069", "06D", "06F", "077", "07B", "082", "083", "086", "088", "08D", "091", "093", "095", "098", "09A", "09C", "09D", "09E", "0A1", "0A2", "0A3", "0A5", "0A7", "0AA", "0AD", "0B3", "0B9", "0BA", "0BC", "0BD", "0BE", "0C0", "0CF", "0D1", "0D3", "0D5", "0D8", "0DC", "0DD", "0E0", "0E8", "0F0", "0F1", "0F4", "0F8", "0FA", "10D", "10E", "110", "116", "159", "906"]);
 const SOURCE_IDENTIFIER = /^[A-Z][A-Z0-9_]{0,63}$/u;
 
 function boundedString(value: unknown, max = 64): value is string {
@@ -185,7 +182,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "illusion", "capture", "happiness", "canEvolve", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "illusion", "capture", "happiness", "canEvolve", "baseAttack", "hiddenPowerType", "berryFlavorDislike", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -233,6 +230,10 @@ function isBattleTeam(value: unknown): value is BattleTeam {
       || !safeInteger(member.hp, 0, Number(stats.maxHp))
       || member.happiness !== undefined && member.happiness !== null && !safeInteger(member.happiness, 0, 255)
       || member.canEvolve !== undefined && typeof member.canEvolve !== "boolean"
+      || member.baseAttack !== undefined && !safeInteger(member.baseAttack, 1, 999)
+      || member.hiddenPowerType !== undefined && !SOURCE_IDENTIFIER.test(String(member.hiddenPowerType))
+      || member.berryFlavorDislike !== undefined && member.berryFlavorDislike !== null
+        && !["spicy", "sour", "sweet", "dry", "bitter"].includes(String(member.berryFlavorDislike))
       || !isMajorStatus(member.majorStatus)
       || !isBattleVolatile(member.volatile)
       || member.ability !== null && (typeof member.ability !== "string" || !SOURCE_IDENTIFIER.test(member.ability))
@@ -247,7 +248,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
         .every((key) => key in move)
         && Object.keys(move).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags", "targetCode"].includes(key))
         && safeInteger(move.id, 0, 999_999) && boundedString(move.internalName) && boundedString(move.name, 128)
-        && MOVE_FUNCTIONS.has(String(move.functionCode)) && safeInteger(move.power, 0, 999)
+        && isMoveFunctionSupported(String(move.functionCode)) && safeInteger(move.power, 0, 999)
         && boundedString(move.type) && ["Physical", "Special", "Status"].includes(String(move.category))
         && safeInteger(move.accuracy, 0, 100) && safeInteger(move.pp, 1, 99)
         && safeInteger(move.priority, -10, 10) && safeInteger(move.effectChance, 0, 100)

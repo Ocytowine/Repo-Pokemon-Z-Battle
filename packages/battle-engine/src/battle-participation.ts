@@ -492,6 +492,8 @@ export function sharedBattleOwnerSettlement(participation: SharedBattleParticipa
 /** Produces the same owner-scoped resources and K.O. credits when a wild battle ends by escape. */
 export function sharedBattleOwnerEscapeSettlement(participation: SharedBattleParticipation, state: TeamBattleState,
   ledger: SharedBattleLedger, ownerId: string): SharedBattleOwnerSettlement {
-  if (state.status !== "active") throw new Error("La fuite doit être réglée depuis un combat actif.");
+  if (state.status !== "active" && !(state.status === "finished" && state.winner === null)) {
+    throw new Error("La fuite doit être réglée depuis un combat actif ou une capacité de fuite réussie.");
+  }
   return ownerSettlement(participation, state, ledger, ownerId, false);
 }

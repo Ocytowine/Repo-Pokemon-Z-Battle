@@ -29,7 +29,7 @@ export function moveCanTriggerPressure(move: BattleMove): boolean {
   return !["01", "10", "20", "40", "80", "100", "200"].includes(target);
 }
 
-export function isSupportedBerry(item: HeldItem | null): item is HeldItem {
+export function isSupportedBerry(item: HeldItem | null): boolean {
   return item !== null && NATURAL_GIFT_BERRIES.has(item);
 }
 

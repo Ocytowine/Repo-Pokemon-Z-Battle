@@ -536,7 +536,9 @@ export class SourceBattleController {
       const before = this.battle;
       const itemPolicy = { context: "battle" as const, revivalAllowed: true,
         battleHealingAllowed: eventState.switches["666"] !== true };
-      const resolutionRules = { opponentItemTheft: this.localSession?.origin !== "source-wild" };
+      const resolutionRules = { opponentItemTheft: this.localSession?.origin !== "source-wild",
+        wildBattle: this.localSession?.origin === "source-wild",
+        escapable: eventState.pendingEncounter?.escapable === true };
       const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
       let opponentItemChosen = false;
       const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent)
@@ -572,6 +574,33 @@ export class SourceBattleController {
       }
       this.localDoubleActions = [];
       await this.presentation.playTurn(before, result.events);
+      const moveEscaped = result.events.some((event) => event.type === "battleEscaped"
+        || event.type === "positionedActionResolved"
+          && event.events.some((inner) => inner.type === "battleEscaped"));
+      if (moveEscaped) {
+        const battleId = this.localSession?.battleId;
+        const encounterCompletion = this.encounterCompletion;
+        this.recordLocalTurn(before, result.state, result.events);
+        if (battleId !== undefined) this.callbacks.battleReports?.recordTurn({ battleId, before,
+          after: result.state, events: result.events, trace: result.trace, actions: reportedActions });
+        this.callbacks.updateEventState({ ...eventState,
+          party: storeSourceEncounterParty(eventState.party, result.state),
+          pendingEncounter: null, wildEncounterSteps: 0 });
+        if (this.localSession !== null) {
+          this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
+        }
+        await this.presentation.endBattle(null, { escaped: true });
+        if (battleId !== undefined) {
+          this.callbacks.battleReports?.recordSettlement({ battleId,
+            outcome: { escaped: true, experienceNotAwardedReason: "escaped" },
+            moneyBefore: eventState.money, moneyAfter: eventState.money });
+          this.callbacks.battleReports?.finish(battleId, result.state, "escaped");
+        }
+        this.clear();
+        this.callbacks.setNotice("Le combat sauvage est terminé : retour à l'exploration.");
+        encounterCompletion?.(false);
+        return;
+      }
       const replacements = resolveSourceControlledReplacements(result.state);
       const replacementState = replacements.state;
       const replacementEvents = replacements.events;

@@ -6716,6 +6716,95 @@ partielles.** Prochain lot : baies de statut/PP et déclenchement réactif aprè
 impact, puis audit final des objets sous Champ Magique ; si le hook Ruby demeure
 invérifiable, avancer une fonction indépendante sans promouvoir `096`.
 
+## Seizième lot, quatrième tranche : baies de statut, confusion et PP - 2026-10-23
+
+Le noyau commun consomme maintenant `CHESTOBERRY`, `PECHABERRY`,
+`RAWSTBERRY`, `CHERIBERRY`, `ASPEARBERRY`, `PERSIMBERRY`, `LUMBERRY` et
+`LEPPABERRY` selon `pbActivateBerryEffect` : guérison du statut correspondant,
+de la confusion ou des deux pour Lum ; Leppa restaure jusqu'à 10 PP sur la
+première capacité épuisée, plafonnés au `BattleMove.pp` actuellement projeté
+(le supplément de PP éventuel n'a pas de champ de maximum distinct dans
+`MoveSlot`). Aucune baie n'est consommée si son effet ne peut
+pas s'appliquer. Tension adverse, Maladresse, Embargo et Champ Magique
+continuent de suspendre l'effet sans supprimer l'objet. La consommation
+réutilise l'historique Recyclage/Ramassage et Bajoues.
+
+La lecture de `pbBerryCureCheck` et de ses appels Ruby fixe l'ordre : les
+baies de statut/PP et celles de stats sont revérifiées après les coups, tandis
+qu'Oran et Sitrus ne se déclenchent qu'avec `hpcure=true`, notamment au hook
+de fin de tour. Le moteur vérifie les baies réactives entre deux actions et
+après la dernière ; il ne distingue pas encore chaque impact d'une capacité
+multi-coups. Ce point reste une dette précise avant fermeture de `096` et
+`0F9`, avec les autres baies automatiques et les transferts d'objets.
+
+Autorité : noyau appelé par le solo et la room, sans nouvel intent client.
+État : objet et PP personnels projetés dans l'état de combat ; consommation,
+statut et confusion visibles aux participants. Les snapshots de room
+restaurent PP, statut, objet consommé et historique ; tests de noyau simple,
+double, hôte/invité, reconnexion et redémarrage ajoutés. Les présentations
+solo et sandbox distinguent désormais une activation sans effet PV d'un soin
+ou d'un dégât, au lieu d'annoncer « -0 PV ». La recette manuelle
+reste différée tant que `096`/`0F9` sont partielles.
+
+**Compteur inchangé : 186/353 couvertes, 167 non closes, plus `096` et `0F9`
+partielles.** Prochain lot : faire le tour des autres baies atteignables
+(baies de soin/confusion à seuil, Lansat, Micle, Starf et baies défensives),
+puis affiner le hook multi-coups et auditer vols/transferts sous Champ Magique.
+Ne promouvoir `096`/`0F9` qu'après ces contrôles et la validation du test Ruby
+`TotalDamage>0>0` ; si Ruby reste indisponible, avancer une fonction
+indépendante plutôt que déclarer ces deux codes terminés.
+
+## Seizième lot, clôture : Don Naturel `096` et Champ Magique `0F9` - 2026-10-23
+
+Les deux codes sont maintenant inscrits au registre commun d'exécution et
+éligibles à l'intégration des capacités source. Les **64 baies réellement
+définies** ont un test d'intégration de `096` (attaque avec dégâts, type et
+puissance de la table source, puis consommation) ; aucune des trois baies
+absentes du PBS n'est inventée. Don Naturel échoue sans baie active, sous
+Maladresse, Embargo, Tension adverse ou Champ Magique ; une immunité ou une
+attaque sans dégâts conserve la baie. L'expression source
+`TotalDamage>0>0` compare en chaîne un booléen à 0 : il s'agit d'une erreur
+de script, pas d'une condition exécutable fiable. Le port applique son
+intention explicite (`TotalDamage > 0`) et documente ce correctif de source.
+
+Le socle des baies portées comprend à présent les cinq baies de soin/saveur
+(confusion si la saveur est détestée), Lansat, Micle, Starf, Custap, les
+**17 baies de résistance présentes** (dont Chilan à efficacité neutre),
+Enigma, Jaboca et Rowap, en plus des soins, stats, statuts et PP précédents.
+Les autres baies du catalogue n'ont pas d'effet automatique de combat dans
+`pbBerryCureCheck` : elles restent néanmoins utilisables par Don Naturel.
+La saveur détestée est dérivée de la nature personnelle à la projection ;
+seule cette information tactique minimale traverse la room. Rectification
+de la tranche précédente : `BattleMove.pp` est déjà projeté depuis le
+`maxPp` persistant, y compris PP Plus ; Leppa retrouve donc le bon plafond.
+
+Champ Magique supprime les effets des objets portés et l'usage d'objets de
+Dresseur durant son compteur partagé, sans enlever l'objet ni sa forme
+Arceus fondée sur l'objet brut. Le transfert par Larcin fonctionne pendant
+le champ ; l'effet de la baie transférée reste suspendu et reprend après
+expiration. Le script exécutable de Désarmement retire toujours l'objet
+pendant le champ, malgré le commentaire général disant « ne pas jeter » :
+le port conserve la branche exécutable. Les tests couvrent simple, double,
+room hôte/invité, reconnexion/redémarrage et présentation sans faux dégâts
+« -0 PV ». Autorité : noyau partagé en solo et room en Coop ; états PV,
+PP, baies, effets volatils et compteur de champ répliqués et restaurés,
+aucune nouvelle intention client. Audience : participants du combat.
+
+**Après `prepare:local` : 188/353 fonctions couvertes, 165 non couvertes ;
+192 alertes de mécanique, 61 animations absentes, 1 talent partiel et 254
+problèmes globaux ; 696 animations prêtes.** `096` et `0F9` ne sont plus
+partielles dans le registre. La validation visuelle manuelle est préparée
+dans `VALIDATION_MANUELLE_COMBAT.md` et reste à exécuter par le porteur.
+
+Dette transverse hors contrat propre de ces deux fonctions : la vérification
+des baies entre les impacts d'une même capacité multi-coups reste plus
+grossière que le hook Ruby, et `0F4` (Picotement/Picore) ne reproduit pas
+encore tous les effets de baies avalées. Ne pas confondre cette dette avec
+une incapacité de `096` ou `0F9` à résoudre leurs propres actions. Prochain
+lot conséquent : la famille d'objets `0F2`, `0F3`, `0F5`, `0F6`, `0F7` et
+la généralisation de `0F4`, avec le hook multi-coups et les tests de
+transferts/consommation solo, double, hôte/invité et reconnexion.
+
 ### Suivi des fonctions d'attaque à reprendre
 
 Ce tableau est le point de contrôle avant chaque nouvelle promotion dans
@@ -6729,8 +6818,7 @@ fonction annoncée « couverte » peut donc conserver une dette précise à ferm
 | Fermées dans le douzième lot | `085`, `087` | Historique de K.O. et météo effective portés et testés en solo, double et room ; recette visuelle manuelle encore ouverte. |
 | Fermées dans le treizième lot | `090`, `092` | Type dérivé sans IV bruts, catégorie dynamique et compteur de camp restaurable ; recette visuelle manuelle ouverte. |
 | Fermées dans le quatorzième lot | `094`, `097` | Présent : tirages/soin/Gemme/Lien Parental ; As Caché : PP après dépense/Pression. Recette visuelle manuelle ouverte. |
-| Partielle, non promue | `096` | Table et transport des 64 baies réelles, Sitrus et cinq baies de stats ajoutées aux passifs ; autres baies, instant d'activation et hook Ruby de consommation à fermer avant promotion. |
-| Partielle, non promue | `0F9` | Compteur et principales suppressions d'objets portés ; forme Arceus brute confirmée par la source, auditer encore vols/transferts et réactions de baies avant promotion. |
+| Fermées dans le seizième lot | `096`, `0F9` | 64 baies réelles, condition de consommation corrigée, suppressions et compteur partagés ; recette visuelle manuelle ouverte. La précision inter-impact des baies et `0F4` restent des dettes transverses distinctes. |
 | Fermée dans le quatorzième lot | `099` | Rapport des vitesses effectives raccordé en simple et double ; restauration room testée, recette visuelle ouverte. |
 | Fermée dans le quinzième lot | `0A0` | Critique garanti après gardes de critique/Conjuro ; simple, double et room restaurée testés, recette visuelle ouverte. |
 | Couverte avec interaction visuelle ouverte | `09F` | Types des plaques/modules et blocages portés ; variante d'animation Techno Blast et suppression par Champ Magique à raccorder. |
@@ -6742,3 +6830,219 @@ Ne pas confondre ces dettes documentées avec le seul talent formellement
 `partial` de l'audit actuel (`STURDY`). À chaque fermeture, retirer la ligne ou
 le code correspondant seulement après tests du noyau et de la room, mettre à
 jour cette section et la roadmap, puis relancer `prepare:local`.
+
+## Dix-septième lot : famille des objets `0F2`–`0F7` - 2026-10-23
+
+`0F2` échange les deux objets (Trick/Switcheroo), `0F3` donne le sien
+(Bestow), `0F5` détruit baie ou Gemme après impact (Incinerate), `0F6`
+restaure l'objet réellement consommé (Recycle), et `0F7` utilise la classe
+de puissance de l'objet lancé (Fling), son effet secondaire source puis le
+consomme. Le catalogue des objets lançables provient des classes du script
+Ruby, y compris les objets à 10/20/30 et les exceptions à 40–130 ; un objet
+inconnu ne valide pas la capacité. `0F4` mange désormais toute baie du
+catalogue source via un activateur commun : soin, saveur/confusion,
+statistiques, statut, PP, Lansat/Micle/Starf, Enigma et Cheek Pouch. Le vol
+n'accorde jamais un objet recyclable à la cible dépossédée. Les contrôles
+Sticky Hold, Mold Breaker, Klutz, Embargo, Magic Room et Unnerve sont
+raccordés aux branches pertinentes. Les baies de soin, de statistique et de
+réaction sont maintenant contrôlées entre les impacts multi-coups ; les
+dégâts ultérieurs sont recalculés après un boost Défense (Ganlon).
+
+Autorité : le même noyau pur résout l'action en solo et dans la room
+autoritaire. Domaine : objets tenus, dernier objet consommé, propriétaire
+initial et PV/stages de combat ; seul le contrat d'objets du Pokémon est
+persistant après combat selon le type de rencontre. Aucune nouvelle
+intention réseau : les actions de capacité existantes suffisent. La room
+réplique les événements et son état minimal aux deux participants ; les
+échanges et la récupération sont rendus dans la séquence de présentation.
+Tests : simple, refus d'activation, double positionné, hôte/invité,
+reconnexion et redémarrage de room, présentation des échanges/récupérations,
+et baie entre deux coups. La recette visuelle reste à faire par le porteur.
+
+**Après `prepare:local` : 193/353 fonctions couvertes, 160 non couvertes ;
+187 alertes de mécanique, 61 animations absentes, 1 talent partiel et 249
+problèmes globaux ; 703 animations prêtes.**
+
+Dettes précises : Clonage n'a pas encore son état partagé, donc les gardes
+anti-Clonage de Trick/Bestow/Bug Bite/Incinerate/Fling restent à raccorder.
+Le don Symbiosis après Bug Bite n'a pas de contrat d'objet du partenaire en
+double ; il ne faut pas inventer une seconde version locale. Mental Herb
+lancé ne peut pas encore retirer Torment/Heal Block, états absents du noyau.
+Le catalogue complet `pbIsUnlosableItem` (courrier et couples espèce/objet)
+n'est pas encore projeté ; le noyau protège déjà les plaques de Multitype,
+mais les autres interdictions source restent à auditer comme capacité
+générique des objets. L'ingestion de baies par `0F4`/`0F7` ne persiste pas
+encore le drapeau Belch du script source.
+Ces dettes transverses n'empêchent pas les branches usuelles d'exécuter leurs
+fonctions et restent ouvertes dans la roadmap.
+
+Prochain lot proposé, conséquent : `0E1`–`0E7` et `0E9`–`0EF`
+(Memento/Healing Wish/Lunar Dance, Perish Song/Grudge/Destiny Bond,
+False Swipe, Teleport et changements forcés/Baton Pass/U-turn).
+`0E8` Endure est déjà couvert. Traiter en premier les états de fin de tour et
+de remplacement partagés pour que toutes les capacités du lot empruntent le
+même contrat solo/double/Coop, puis tester les deux rôles, le rendu distant
+et la reconnexion.
+
+## Reprise du lot `0E1`–`0EF` — 2026-10-23
+
+Onze fonctions promues : `0E1`–`0E7`, `0E9`, `0ED`–`0EF`.
+Le noyau commun gère le sacrifice à dégâts fixes, Memento, les soins et PP
+du remplaçant, le compte à rebours de Requiem, Grudge/Destiny Bond,
+Faux-Chage, Relais, le pivot après attaque et le piège de Regard Noir.
+Le contrat de remplacement est partagé par le combat simple et double :
+les boosts/états transmissibles de Relais et les vœux de guérison passent
+par `switch-inheritance.ts`. Le piège est levé lorsque sa source quitte
+le terrain. Tests ciblés : 13 scénarios verts, dont un double.
+
+Autorité : le noyau déterministe tranche le tour ; en solo l'adaptateur local
+l'appelle, en Coop la room hôte autoritaire l'appelle. Domaine : volatiles,
+PP, PV et statistiques de combat, puis seuls les PV/statuts/PP projetés
+reviennent à l'équipe persistante. Intentions réseau inchangées : capacité
+sélectionnée, puis choix de remplacement. L'état de combat actif, y compris
+les compteurs et souhaits, est sauvegardé par la room pour reconnexion ;
+les événements vont aux participants et le remplacement est rendu des deux
+côtés. La recette visuelle hôte/invité/reconnexion reste à effectuer.
+
+Après `prepare:local` : **204/353 fonctions couvertes, 149 non couvertes ;
+172 alertes mécaniques, 62 animations absentes, 1 talent partiel et 235
+problèmes globaux ; 721 animations prêtes.** L'augmentation d'une animation
+absente provient d'une capacité devenue éligible à l'audit, pas d'une
+animation inventée.
+
+Restent ouverts dans ce même groupe : `0EA` (Téléport, absent des capacités
+actuellement utilisées dans le rapport), `0EB` (Hurlement/Cyclone) et `0EC`
+(Projection/Draco-Queue). Leurs effets de renvoi contre Dresseur sont amorcés,
+mais la sortie d'une rencontre sauvage n'est pas encore reliée au règlement
+local et Coop ; ils ne figurent donc pas au registre des fonctions couvertes.
+Le timing de remplacement en double reste celui du flux existant (choix après
+le tour), et doit être rapproché de la source pour les pivots forcés.
+Prochain lot conseillé : terminer ces trois fonctions puis traiter les codes
+restants `0D0`–`0DF` (environ dix fonctions), avec tests de fuite et renvoi
+solo, hôte, invité, rendu distant et reconnexion.
+
+## Dix-neuvième lot : fuite sauvage et famille `0D` — 2026-10-23
+
+Les trois fonctions `0EA`–`0EC` sont raccordées : Téléport n'agit que dans
+une rencontre sauvage où la fuite est autorisée ; Hurlement/Cyclone et
+Projection/Draco-Queue provoquent la sortie sauvage si le niveau le permet,
+ou demandent un remplacement adverse contre Dresseur. Suction Cups et
+Enracinement bloquent le renvoi. Le noyau émet `battleEscaped`, identique
+en simple et en double ; l'adaptateur local termine la rencontre sans gain
+ni perte, la room autoritaire utilise le règlement de fuite, le réplique
+aux participants et conserve l'état de sortie après redémarrage. Tests
+locaux, room hôte seul, invité actif et restauration passent.
+
+Les dix codes auparavant ouverts de `0D0`–`0DF` sont promus : Tourbillon
+(`0D0`), Colère (`0D2`), Patience (`0D4`), Atterrissage (`0D6`), Vœu
+(`0D7`), Repos (`0D9`), Anneau Hydro (`0DA`), Enracinement (`0DB`),
+Dévorêve (`0DE`) et Vibra Soin (`0DF`). Les états de compte à rebours,
+soin différé, dégâts cumulés, type temporaire et piège sont des volatiles
+de combat du noyau partagé. Le Vœu suit la position lors d'un remplacement
+solo/double ; Colère et Patience restent verrouillées même si le PP du
+premier tour atteint zéro. Patience retient le dernier attaquant en double.
+
+Contrat : le noyau pur porte les règles et les états ; le client solo et
+la room Coop ne font que soumettre l'action et appliquer les mêmes
+événements. Autorité locale en solo, room en Coop. PV/statut/PP ont leur
+projection persistante habituelle, les volatiles ne durent que le combat
+mais sont inclus dans le snapshot de room restaurable. Intentions réseau
+inchangées ; audience de présentation : participants du combat, chacun
+voyant le même état minimal et les remplacements. Recette visuelle réelle
+hôte/invité encore à effectuer ; voir `VALIDATION_MANUELLE_COMBAT.md`.
+
+Après `prepare:local` : **217/353 fonctions couvertes, 136 restantes ;
+155 alertes mécaniques, 63 animations absentes, 1 talent partiel et 219
+problèmes globaux ; 743 animations prêtes.** Les animations absentes
+restent au fallback, jamais inventées. `0EA` n'a aucune capacité utilisée
+dans le rapport courant, mais la fonction est testée et enregistrée.
+
+Dettes de fidélité à surveiller : le doublement de puissance de Tourbillon
+sur une cible en Plongée attend le portage du mécanisme générique des
+capacités à deux tours (`0C1`–`0CE`). Clonage n'a toujours pas son état
+partagé pour les protections pertinentes. La cadence de remplacement forcé
+en double reste le choix après le tour du flux existant. Ces dettes ne
+doivent pas être masquées par le compteur de fonctions.
+
+Prochain lot conséquent proposé : `0C1`–`0CE` (14 codes de charge,
+semi-invulnérabilité, Power Herb et Sky Drop), à construire autour d'un
+seul contrat d'état actif en solo/double/Coop et à valider par l'audit,
+les deux rôles et la reconnexion.
+
+## Vingtième lot : première tranche des attaques à deux tours — 2026-10-23
+
+`0C2`–`0C8` sont maintenant couverts dans le noyau de combat partagé :
+recharge après dégâts pour `0C2`, charge/verrouillage/PP unique pour
+`0C3`–`0C8`, Soleil immédiat et malus météo pour `0C4`, consommation de
+Power Herb, effets secondaires de `0C5`–`0C7` et Défense initiale de
+`0C8`. Autorité : joueur local en solo, room en Coop ; domaine : état
+éphémère du combat pour charge/recharge, PP et objet personnel répliqués
+par le snapshot autoritaire. Les intentions réseau ne changent pas : le
+second tour est verrouillé dans le même noyau, même après épuisement des
+PP. Participants du combat reçoivent événements et état ; reconnexion
+restaure le snapshot. Tests automatisés simple/double et sérialisation
+passent ; recette visuelle réelle hôte/invité/rendu distant encore à faire.
+
+Après `prepare:local` : **224/353 fonctions enregistrées, 129
+restantes**, 147 capacités avec mécanique absente, 65 animations absentes,
+1 talent partiel, 213 problèmes globaux, 761 animations prêtes. Ce compteur
+est calculé directement depuis le registre (alias `00` inclus, comme au
+jalon précédent). Les trois codes `0C3`, `0C5`, `0C6` n'apparaissent pas dans les
+707 capacités du rapport local, mais leurs fonctions sont testées.
+
+Le lot `0C1`–`0CE` n'est **pas terminé** : `0C1` (participants Beat Up) et
+`0C9`–`0CE` (semi-invulnérabilité, exceptions de coups et Sky Drop)
+restent hors registre. Prochaine tranche : ces sept codes, avec un contrat
+commun de cible et de portage en double, interruption, libération,
+restauration/rendu distant, puis audit. Tourbillon contre Plongée et les
+autres interactions d'attaques semi-invulnérables restent ouverts. Aucune
+animation absente n'a été inventée.
+
+## Vingtième lot, clôture : Beat Up et semi-invulnérabilité — 2026-10-23
+
+Les sept codes restants `0C1`, `0C9`–`0CE` sont enregistrés et exécutés par
+le noyau commun. `0C1` prend les participants vivants et sans statut dans
+l'ordre de l'équipe, ajoute toujours l'utilisateur actif, puis calcule
+chaque puissance à partir de l'Attaque **de base de l'espèce** (valeur
+publique projetée dans le combat, pas IV/EV ni statistique personnelle).
+`0C9`–`0CD` partagent le verrou du second tour, Power Herb, l'état de
+semi-invulnérabilité et les exceptions exactes de la source : air,
+Creusement, Plongée et disparition. Rafale/Vent Violent, Surf/Tourbillon,
+Magnitude, etc. bénéficient des multiplicateurs liés à ces états quand
+leur fonction est portée. `0CD` traverse Protection. `0CE` conserve
+l'identité de sa cible portée, l'empêche d'agir pendant les deux tours,
+la libère au retour, à l'interruption ou au K.O., échoue contre les cibles
+trop lourdes et ne blesse pas les types Vol ou Lévitation. Le champ de
+Gravité est prêt et bloque/annule les attaques aériennes ; sa capacité
+qui le crée n'est pas encore portée.
+
+Autorité : résolution locale en solo, room autoritaire en Coop, mêmes
+fonctions et tirages ; aucune nouvelle intention réseau. Domaine : PP,
+objet, PV et Attaque de base publique minimisée ; charge, cible portée et
+verrou du tour sont volatils du combat. Les ressources du propriétaire
+suivent la persistance existante ; la room restaure ces volatils depuis
+son snapshot après reconnexion/redémarrage. Audience : participants du
+combat, avec événements de charge, libération, esquive et action bloquée ;
+les services personnels et IV restent privés. Le protocole d'entrée ne
+maintient plus une ancienne liste indépendante de fonctions et valide
+désormais le registre unique du moteur : les capacités déjà portées ne
+sont plus rejetées sur les équipes invitées. Tests simple, double,
+protocole, room hôte/invité et restauration passent. Recette visuelle
+réelle encore à exécuter par le porteur.
+
+Après `prepare:local` : **231/353 fonctions couvertes, 122 restantes** ;
+140 capacités à mécanique absente, 65 animations absentes, 1 talent
+partiel, 206 problèmes globaux et 770 animations prêtes. `0CE` ne figure
+pas parmi les 707 capacités du rapport local, mais son contrat est testé.
+Aucune animation manquante n'a été inventée.
+
+Dettes transverses explicites : Clonage n'a pas encore d'état partagé,
+donc le garde anti-Clonage de Sky Drop attend ce chantier ; les fonctions
+`075`, `076` et `078` restent hors registre malgré leurs exceptions déjà
+préparées contre Plongée/Creusement/vol. La validation visuelle réelle
+hôte, invité, rendu distant et reconnexion demeure ouverte dans
+`VALIDATION_MANUELLE_COMBAT.md`. Prochain lot conséquent proposé :
+`075`, `076`, `078`, puis `0A4`, `0A6`, `0A8`, `0A9`, `0AB`, `0AC`,
+`0AE` (dix codes : interactions de semi-invulnérabilité, environnement,
+précision, gardes d'équipe et copie). Clonage reste un chantier générique
+séparé, prioritaire pour fermer ses interactions transverses.

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { NATURAL_GIFT_BERRIES, naturalGiftProfile } from "../src/natural-gift.js";
 import { MINIMAL_MOVE_CATALOG, calculateDamage, createDoubleTeamBattleState, createTeamBattleState,
-  resolveDoubleTeamTurn, resolveTeamTurn, type BattleMove, type BattlerState,
+  isMoveFunctionSupported, resolveDoubleTeamTurn, resolveTeamTurn, type BattleMove, type BattlerState,
   type RandomSource } from "../src/index.js";
 import { effectiveMoveType } from "../src/move-properties.js";
 
@@ -19,6 +19,10 @@ function battler(id: string, heldItem: BattlerState["heldItem"], move = gift): B
 }
 
 describe("Pokemon Z Natural Gift source table", () => {
+  it("registers 096 and 0F9 for source move integration", () => {
+    expect(isMoveFunctionSupported("096")).toBe(true);
+    expect(isMoveFunctionSupported("0F9")).toBe(true);
+  });
   it("contains the 64 berries present in the local 2.12 FR item catalog", () => {
     expect(NATURAL_GIFT_BERRIES.size).toBe(64);
     expect([...NATURAL_GIFT_BERRIES.values()].reduce((counts, entry) => {
@@ -26,6 +30,18 @@ describe("Pokemon Z Natural Gift source table", () => {
       return counts;
     }, {} as Record<number, number>)).toEqual({ 80: 33, 90: 16, 100: 15 });
     expect(new Set([...NATURAL_GIFT_BERRIES.values()].map((entry) => entry.type)).size).toBe(17);
+  });
+
+  it("096 consumes every one of the 64 catalog berries after real damage", () => {
+    for (const item of NATURAL_GIFT_BERRIES.keys()) {
+      const result = resolveTeamTurn(createTeamBattleState({
+        player: [battler("user", item as BattlerState["heldItem"])], opponent: [{ ...battler("target", null, MINIMAL_MOVE_CATALOG.TACKLE),
+          types: ["FIRE"] }],
+      }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+      expect(result.events.some((event) => event.type === "damageApplied" && event.amount > 0), item).toBe(true);
+      expect(result.state.teams.player.members[0]!.heldItem, item).toBeNull();
+      expect(result.state.teams.player.members[0]!.recyclableItem, item).toBe(item);
+    }
   });
 
   it("uses the source type and new-mechanics power for representative berries", () => {
@@ -156,5 +172,29 @@ describe("Pokemon Z Natural Gift source table", () => {
     expect(effectiveMoveType(arceus, judgment).type).toBe("FIRE");
     expect(effectiveMoveType(arceus, judgment, null, 2).type).toBe("NORMAL");
     expect(arceus.heldItem).toBe("FLAMEPLATE");
+  });
+
+  it("0F9 suspends a stolen berry without preventing the source Thief transfer", () => {
+    const thief: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE,
+      internalName: "THIEF", functionCode: "0F1", accuracy: 0 };
+    const base = createTeamBattleState({
+      player: [{ ...battler("thief", null, thief), hp: 70 }],
+      opponent: [battler("target", "SITRUSBERRY", MINIMAL_MOVE_CATALOG.TACKLE)],
+    });
+    const initialized = resolveTeamTurn(base, { player: { kind: "wait" },
+      opponent: { kind: "wait" } }, rng).state.effects!;
+    const active = resolveTeamTurn({ ...base, effects: { ...initialized, magicRoomTurns: 2 } },
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(active.events).toContainEqual(expect.objectContaining({ type: "heldItemTransferred",
+      item: "SITRUSBERRY" }));
+    expect(active.state.teams.player.members[0]).toMatchObject({ heldItem: "SITRUSBERRY", hp: 70 });
+    expect(active.state.effects?.magicRoomTurns).toBe(1);
+    const expired = resolveTeamTurn(active.state, { player: { kind: "wait" },
+      opponent: { kind: "wait" } }, rng);
+    expect(expired.state.effects?.magicRoomTurns).toBe(0);
+    expect(expired.state.teams.player.members[0]!.heldItem).toBe("SITRUSBERRY");
+    const resumed = resolveTeamTurn(expired.state, { player: { kind: "wait" },
+      opponent: { kind: "wait" } }, rng);
+    expect(resumed.state.teams.player.members[0]!.heldItem).toBeNull();
   });
 });

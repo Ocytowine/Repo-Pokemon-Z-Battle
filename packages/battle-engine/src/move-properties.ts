@@ -25,6 +25,12 @@ export function moveTargetsUser(move: BattleMove): boolean {
   return ["01", "10", "20", "40", "80"].includes(code);
 }
 
+/** Mirror Move copies only the target's last move with the source `e` flag. */
+export function mirrorMoveFrom(target: BattlerState | undefined): BattleMove | null {
+  const move = target?.volatile?.lastUsedMove;
+  return move?.flags?.includes("e") === true && move.functionCode !== "0AE" ? move : null;
+}
+
 /** Exact Pokemon Z `isCuttingMove?` catalogue. Kept in the shared move-property layer. */
 const CUTTING_MOVES = new Set([
   "AIRCUTTER", "RAZORSHELL", "CUT", "FURYCUTTER", "SOLARBLADE", "SLASH", "SHADOWCLAW",

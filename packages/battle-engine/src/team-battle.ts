@@ -14,6 +14,7 @@ import { markEnteredMidTurn } from "./ability-end-turn.js";
 import { assertVoluntarySwitchAllowed } from "./ability-switch-trap.js";
 import { reconcileAbilityForm, restoreAbilityForm } from "./ability-form.js";
 import { applyIllusion } from "./ability-illusion.js";
+import { inheritSwitchEffects, releaseSwitchTraps } from "./switch-inheritance.js";
 import type {
   BattleResolutionRules,
   BattleEvent,
@@ -25,6 +26,7 @@ import type {
   RandomSource,
   StatStages,
   TeamBattleEvent,
+  TeamBattleAction,
   TeamBattleState,
   TeamReplacementResult,
   TeamTurnActions,
@@ -193,7 +195,12 @@ function switchPokemon(
   const gasSuppressesIllusion = to.ability !== "NEUTRALIZINGGAS"
     && activePokemon(teams[opponentOf(side)]).hp > 0
     && activePokemon(teams[opponentOf(side)]).ability === "NEUTRALIZINGGAS";
-  teams[side] = applyIllusion({ activeIndex: toIndex, members }, toIndex, gasSuppressesIllusion);
+  teams[side] = applyIllusion({ activeIndex: toIndex,
+    members: members.map((member, index) => index === toIndex ? inheritSwitchEffects(from, member) : member) },
+  toIndex, gasSuppressesIllusion);
+  const trappedSide = opponentOf(side);
+  teams[trappedSide] = { ...teams[trappedSide], members: teams[trappedSide].members.map((member, index) =>
+    index === teams[trappedSide].activeIndex ? releaseSwitchTraps(from, member) : member) };
   const events: TeamBattleEvent[] = [];
   if (healed > 0) {
     events.push({ type: "abilityActivated", side, ability: "REGENERATOR", effect: "heal-on-switch" },
@@ -374,6 +381,17 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   rules: BattleResolutionRules = { opponentItemTheft: true }): TeamTurnResult {
   validateState(state);
   if (state.replacementRequired.length > 0) throw new Error("Resolve required replacements before the next turn.");
+  // Source pbCanShowCommands? forbids switching/items while charging or recharging.
+  const lockedAction = (side: BattleSide): TeamBattleAction => {
+    const battler = activePokemon(state.teams[side]);
+    const charge = battler.volatile?.chargingMove;
+    if (charge == null && (battler.volatile?.rechargeTurns ?? 0) <= 0
+      && battler.volatile?.skyDropCarrierId == null
+      && battler.volatile?.skyDropLockedTurn !== state.turn) return actions[side];
+    const index = charge == null ? 0 : battler.moves.findIndex((slot) => slot.move.internalName === charge);
+    return { kind: "move", moveIndex: Math.max(0, index) };
+  };
+  actions = { player: lockedAction("player"), opponent: lockedAction("opponent") };
   const megaResult = resolveMegaEvolutionIntents(state, SIDES.flatMap((side) => {
     const action = actions[side];
     return action.kind === "move" && action.megaEvolution === true
@@ -424,6 +442,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const target = opponentOf(side);
     const intercepted = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) },
       { [side]: action }, rng, { endOfTurn: false, switchingTarget: target,
+        attackerParty: { [side]: teams[side].members },
         opponentItemTheft: rules.opponentItemTheft });
     storeActiveBattlers(teams, intercepted.state);
     pursuitEvents.push(...withoutTurnEnvelope(intercepted.events));
@@ -482,7 +501,9 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const result = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) }, moveActions, rng,
     { switchingTarget: switchOrder[0] ?? null, opponentItemTheft: rules.opponentItemTheft,
-      attackerCanSwitch: Object.fromEntries(SIDES.map((side) => [side, livingReserve(teams[side])])) });
+      attackerParty: { player: teams.player.members, opponent: teams.opponent.members },
+      attackerCanSwitch: Object.fromEntries(SIDES.map((side) => [side, livingReserve(teams[side])])),
+      wildBattle: rules.wildBattle === true, escapable: rules.escapable !== false });
   storeActiveBattlers(teams, result.state);
   const moveEvents: BattleEvent[] = withoutTurnEnvelope(result.events);
   const trace: TeamTurnResult["trace"] = [...entryTrace, ...pursuitTrace, ...result.trace];
@@ -494,6 +515,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     event.type === "forcedSwitchRequested" && event.side === side) && activePokemon(teams[side]).hp > 0
     && livingReserve(teams[side]));
   const replacementRequired: BattleSide[] = [...pivotRequired];
+  const escaped = moveEvents.some((event) => event.type === "battleEscaped");
   let winner: BattleSide | null = null;
   const livingSides = SIDES.filter((side) => teams[side].members.some((member) => member.hp > 0));
   for (const side of SIDES) {
@@ -524,8 +546,8 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     ...moveEvents,
     ...replacementRequired.map((side): TeamBattleEvent => ({ type: "replacementRequired", side })),
   ];
-  if (draw) events.push({ type: "battleEnded", winner: null });
-  else if (winner !== null) events.push({ type: "battleEnded", winner });
+  if (!escaped && draw) events.push({ type: "battleEnded", winner: null });
+  else if (!escaped && winner !== null) events.push({ type: "battleEnded", winner });
 
   const reconciledEffects = recordSideFaints(reconcileExtremeWeather(result.state.effects,
     [activePokemon(teams.player), activePokemon(teams.opponent)]), state.teams, teams, state.turn);
@@ -534,11 +556,11 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
   return {
     state: {
       turn: nextTurn,
-      status: winner === null && !draw ? "active" : "finished",
-      winner,
+      status: escaped || winner !== null || draw ? "finished" : "active",
+      winner: escaped ? null : winner,
       teams,
-      replacementRequired: winner === null ? replacementRequired : [],
-      pivotRequired: winner === null ? pivotRequired : [],
+      replacementRequired: escaped || winner !== null ? [] : replacementRequired,
+      pivotRequired: escaped || winner !== null ? [] : pivotRequired,
       ...(state.megaEvolution === undefined ? {} : { megaEvolution: state.megaEvolution }),
       ...(reconciledEffects === undefined ? {} : { effects: reconciledEffects }),
     },

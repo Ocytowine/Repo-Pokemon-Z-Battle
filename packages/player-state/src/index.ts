@@ -186,7 +186,7 @@ export function applyHoneyGatherResult(party: PlayerPartyState, pokemonIds: read
 export interface PlayerBattleCatalog {
   readonly pokemon: readonly (Pick<PokemonDefinition, "internalName" | "name" | "types">
     & { readonly captureRate?: number; readonly weight?: number;
-      readonly baseStats?: Pick<PokemonDefinition["baseStats"], "speed">;
+      readonly baseStats?: Pick<PokemonDefinition["baseStats"], "speed"> & Partial<Pick<PokemonDefinition["baseStats"], "attack">>;
       readonly evolutions?: PokemonDefinition["evolutions"] })[];
   readonly moves: readonly (Pick<MoveDefinition, "id" | "internalName" | "name" | "functionCode" | "power" | "type" | "category" | "accuracy" | "pp" | "priority" | "effectChance">
     & { readonly flags?: string; readonly targetCode?: string })[];
@@ -1145,11 +1145,16 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
 function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): BattlerState {
   const definition = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
   if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${member.species}.`);
+  const natureIndex = POKEMON_NATURES.indexOf(member.metadata.nature);
+  const flavorDislikes = ["spicy", "sour", "sweet", "dry", "bitter"] as const;
   return { id: member.id, species: member.species, name: member.nickname ?? definition.name, level: member.level,
     types: [...definition.types], stats: { ...member.stats },
     stages: { attack: 0, defense: 0, specialAttack: 0, specialDefense: 0, speed: 0, accuracy: 0, evasion: 0 },
     hp: member.hp, happiness: member.metadata.happiness,
+    berryFlavorDislike: Math.floor(natureIndex / 5) === natureIndex % 5 ? null
+      : flavorDislikes[natureIndex % 5]!,
     hiddenPowerType: hiddenPowerTypeFromIvs(member.metadata.ivs),
+    ...(definition.baseStats?.attack === undefined ? {} : { baseAttack: definition.baseStats.attack }),
     canEvolve: (definition.evolutions?.length ?? 0) > 0,
     majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),

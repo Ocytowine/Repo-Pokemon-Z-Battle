@@ -133,6 +133,15 @@ describe("multiplayer protocol", () => {
       team: { ...duelTeam, members: [{ ...duelTeam.members[0], hp: 0 }] } }))).toThrow("challengePlayer mal forme");
   });
 
+  it("accepts supported two-turn and Beat Up functions from a guest roster", () => {
+    for (const functionCode of ["0C1", "0C2", "0C4", "0C9", "0CE"]) {
+      const team = { ...duelTeam, members: [{ ...duelTeam.members[0], baseAttack: 55,
+        moves: [{ move: { ...MINIMAL_MOVE_CATALOG.TACKLE, functionCode }, pp: 10 }] }] };
+      expect(parseClientMessage(JSON.stringify({ type: "challengePlayer", version: 15,
+        requestId: "two-turn", team }))).toMatchObject({ team: { members: [{ baseAttack: 55 }] } });
+    }
+  });
+
   it("accepts capture facts in PvP responses and shared battle openings", () => {
     const captureTeam = { ...duelTeam, members: [{ ...duelTeam.members[0],
       capture: { rate: 190, baseSpeed: 90, weight: 69 } }] };

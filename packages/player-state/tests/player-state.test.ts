@@ -264,14 +264,19 @@ describe("persistent player party", () => {
 
   it("restores a reduced battle projection without deleting source-only mechanics", () => {
     const sourceOnlyMove = { internalName: "FUTUREMOVE", pp: 7, maxPp: 10 };
-    const persistent = { ...party, members: [{ ...party.members[0]!, heldItem: "AMULETCOIN",
+    const persistent = { ...party, members: [{ ...party.members[0]!, heldItem: "CUSTOMRELIC",
       moves: [...party.members[0]!.moves, sourceOnlyMove] }] };
     const projected = playerPartyToBattleTeam({ ...party,
       members: [{ ...party.members[0]!, heldItem: null }] }, catalog);
     const result = { ...projected, members: projected.members.map((member) => ({ ...member, hp: 1,
       moves: member.moves.map((slot) => ({ ...slot, pp: 1 })) })) };
     expect(storeProjectedBattleTeam(persistent, result).members[0]).toMatchObject({ hp: 1,
-      heldItem: "AMULETCOIN", moves: [{ internalName: "TACKLE", pp: 1 }, sourceOnlyMove] });
+      heldItem: "CUSTOMRELIC", moves: [{ internalName: "TACKLE", pp: 1 }, sourceOnlyMove] });
+  });
+
+  it("projects ordinary source items that Fling can use", () => {
+    const carrying = { ...party, members: [{ ...party.members[0]!, heldItem: "AMULETCOIN" }] };
+    expect(playerPartyToBattleTeam(carrying, catalog).members[0]!.heldItem).toBe("AMULETCOIN");
   });
 
   it("restores temporary trainer-battle theft but retains wild-battle item transfers", () => {
@@ -358,6 +363,12 @@ describe("persistent player party", () => {
       .toEqual({ rate: 190, baseSpeed: 90, weight: 69 });
   });
 
+  it("projects the public species base Attack required by Beat Up", () => {
+    const beatUpCatalog: PlayerBattleCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+      baseStats: { speed: 90, attack: 55 } }] };
+    expect(playerPartyToBattleTeam(party, beatUpCatalog).members[0]?.baseAttack).toBe(55);
+  });
+
   it("never starts a battle with a fainted active Pokemon", () => {
     const reserve = { ...party.members[0]!, id: "reserve", hp: 3 };
     const team = playerPartyToBattleTeam({ ...party,
@@ -409,6 +420,17 @@ describe("persistent player party", () => {
     ] }).members[0]?.heldItem).toBeNull();
     expect(() => playerPartyToBattleTeam({ ...party, members: [{ ...party.members[0]!,
       heldItem: "KEEBERRY" }] }, catalog)).toThrow("Objet tenu non supporté");
+  });
+
+  it("projects only the nature-derived disliked flavor and the actual PP maximum", () => {
+    const member = party.members[0]!;
+    const sourceParty = { ...party, members: [{ ...member,
+      metadata: { ...member.metadata, nature: "ADAMANT" as const },
+      moves: [{ ...member.moves[0]!, pp: 0, maxPp: 56, ppUps: 3, basePp: 35 }] }] };
+    const projected = playerPartyToBattleTeam(sourceParty, catalog).members[0]!;
+    expect(projected.berryFlavorDislike).toBe("dry");
+    expect(projected.moves[0]).toMatchObject({ pp: 0, move: { pp: 56 } });
+    expect(JSON.stringify(projected)).not.toContain('"nature"');
   });
 
   it("restores tactical item transfers only when the settlement requests it", () => {

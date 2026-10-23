@@ -64,11 +64,11 @@ describe("Coop battle team preparation", () => {
   it("neutralizes an unsupported held item without mutating the personal party", () => {
     const ready = party(["READY"]);
     const withItem = { ...ready, members: ready.members.map((member) => ({ ...member,
-      heldItem: "AMULETCOIN" })) };
+      heldItem: "CUSTOMRELIC" })) };
     const result = prepareSourcePlayerBattleTeam(withItem, catalog);
     expect(result.team?.members[0]?.heldItem).toBeNull();
     expect(result.notice).toContain("objet tenu a été neutralisé");
-    expect(withItem.members[0]?.heldItem).toBe("AMULETCOIN");
+    expect(withItem.members[0]?.heldItem).toBe("CUSTOMRELIC");
   });
 
   it("projects a compatible Mega Stone without consuming or neutralizing it", () => {

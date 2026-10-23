@@ -6,6 +6,7 @@ import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
 import { PLATE_TYPES } from "./held-item-types.js";
 import { naturalGiftProfile } from "./natural-gift.js";
+import { resistBerryApplies } from "./battle-berries.js";
 import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
 
 /** Exact non-Normal type list named by Pokemon Z's Realeza branch; QMARKS is intentionally excluded. */
@@ -61,6 +62,7 @@ export interface BattleDamageContext {
   readonly activeAbilities?: readonly BattleAbility[];
   /** Actual HP lost by the qualifying previous hit, supplied by the turn resolver. */
   readonly retaliationDamage?: number;
+  readonly bideDamage?: number;
 }
 
 /** Source-faithful type multiplier shared by damage calculation and pre-damage abilities. */
@@ -70,7 +72,9 @@ export function effectiveTypeMultiplier(attacker: BattlerState, defender: Battle
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
     && (moveType === "NORMAL" || moveType === "FIGHTING")
-    ? defender.types.filter((type) => type !== "GHOST") : defender.types;
+    ? defender.types.filter((type) => type !== "GHOST")
+    : moveType === "PSYCHIC" && defender.volatile?.miracleEye === true
+      ? defender.types.filter((type) => type !== "DARK") : defender.types;
   const typeEffect = defenderTypes.length === 0 ? 1 : defenderTypes.reduce((multiplier, type) => {
     const component = typeEffectiveness(moveType, [type]);
     return multiplier * (weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
@@ -119,8 +123,10 @@ export function calculateDamage(
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const currentWeather = ordinaryWeather(context.weather);
   const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather, context.magicRoomTurns);
-  if (["06A", "06B", "06C", "06E", "070", "071", "072", "073"].includes(move.functionCode)) {
-    const fixed = move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
+    if (["06A", "06B", "06C", "06E", "070", "071", "072", "073", "0D4", "0E1"].includes(move.functionCode)) {
+      const fixed = move.functionCode === "0D4" ? (context.bideDamage ?? 0) * 2
+        : move.functionCode === "0E1" ? attacker.hp
+        : move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
       : move.functionCode === "06C" ? Math.max(1, Math.floor(defender.hp / 2))
         : move.functionCode === "06E" ? Math.max(0, defender.hp - attacker.hp)
           : move.functionCode === "071" || move.functionCode === "072" ? (context.retaliationDamage ?? 0) * 2
@@ -167,7 +173,7 @@ export function calculateDamage(
         : draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = defender.ability === "UNAWARE" && !ignoresDefenderAbility ? 0
     : critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
-  const defenseStage = attacker.ability === "UNAWARE" ? 0
+  const defenseStage = attacker.ability === "UNAWARE" || move.functionCode === "0A9" ? 0
     : critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
   const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
   let attack = stagedAttack;
@@ -321,8 +327,8 @@ export function calculateDamage(
   if (currentWeather === "sun" && moveType === "WATER" || currentWeather === "rain" && moveType === "FIRE") statusModifier *= 0.5;
   if (attackerItemActive && ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
     || (attacker.heldItem === "BUGGEM" && moveType === "BUG"))) statusModifier *= 1.3;
-  if (!context.defenderBerriesBlocked && defenderItemActive && defender.heldItem === "PAYAPABERRY"
-    && moveType === "PSYCHIC" && effectiveness > 1) statusModifier *= 0.5;
+  if (!context.defenderBerriesBlocked && defenderItemActive
+    && resistBerryApplies(defender.heldItem, moveType, effectiveness)) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
   const defenderGender = defender.appearance?.gender;
   const addAbilityModifier = (ability: ImplementedBattleAbility, multiplier: number): void => {

@@ -1239,6 +1239,82 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   `TotalDamage>0>0` encore à vérifier dans la source. **186 fonctions terminées
   sur 353, plus deux partielles** ; prochain lot baies de statut/PP et activation
   après impact, ou fonction indépendante si la validation Ruby reste bloquée.
+  Seizième lot, quatrième tranche : les baies de statut, confusion et PP
+  (`CHESTO`, `PECHA`, `RAWST`, `CHERI`, `ASPEAR`, `PERSIM`, `LUM`, `LEPPA`)
+  sont portées dans le noyau partagé et respectent les suppressions d'objets.
+  La source Ruby confirme le contrôle après impact pour ces baies et les baies
+  de stats ; Oran/Sitrus relèvent du contrôle `hpcure=true` de fin de tour.
+  Tests simple, double, hôte/invité et reconnexion/restauration ajoutés.
+  **186/353 couvertes, 167 non closes, plus `096`/`0F9` partielles** : baies
+  automatiques restantes, précision multi-coups, transferts sous Champ
+  Magique et condition Ruby de Don Naturel restent ouvertes. Prochain lot :
+  autres baies atteignables, puis audit des transferts et du hook multi-coups ;
+  maximum de PP distinct (PP Plus) à transporter avant fidélité totale de
+  Leppa ; fonction indépendante si la vérification Ruby reste impossible.
+  Clôture du seizième lot : `096` et `0F9` sont promues dans le registre
+  source. Les 64 baies PBS passent Don Naturel ; 5 baies de saveur, Lansat,
+  Micle, Starf, Custap, les 17 résistances présentes, Enigma, Jaboca et
+  Rowap complètent le noyau commun. Champ Magique bloque les objets portés et
+  les objets de Dresseur, mais laisse les transferts de Larcin possibles ;
+  une baie transférée redevient active à l'expiration. Le script Ruby de Don
+  Naturel contient `TotalDamage>0>0`, réparé en condition de dégâts positifs
+  et explicitement signalé dans le handoff. Rectification : Leppa utilise
+  déjà le maximum de PP projeté, PP Plus inclus. Tests simple/double,
+  hôte/invité et room restaurée passent. Après `prepare:local` : **188
+  fonctions couvertes / 165 non couvertes sur 353**, 192 alertes mécaniques,
+  61 animations absentes et 254 problèmes globaux. Recette visuelle manuelle
+  ouverte. Prochain lot préparé : `0F2`, `0F3`, `0F5`, `0F6`, `0F7`,
+  généralisation de `0F4` et précision des baies entre impacts multi-coups.
+  Clôture du dix-septième lot : `0F2`, `0F3`, `0F5`, `0F6` et `0F7` sont
+  promues. Échange/don/récupération/destruction/lancement d'objet et effets
+  de baies volées utilisent le noyau commun ; les baies et dégâts sont
+  réévalués entre impacts. Tests simple, double, room hôte/invité restaurée
+  et présentation passent. Après `prepare:local` : **193/353 fonctions
+  couvertes, 160 non couvertes**, 187 alertes mécaniques, 61 animations
+  absentes et 249 problèmes globaux ; 703 animations prêtes. Recette
+  visuelle ouverte. Dettes transverses explicites : Clonage pour les gardes
+  des capacités à objets, Symbiosis après Bug Bite, Torment/Heal Block
+  pour Mental Herb lancé, catalogue complet des objets inamovibles et
+  drapeau Belch après ingestion. Prochain lot préparé : `0E1`–`0E7` et
+  `0E9`–`0EF` (K.O. différés, transfert de relais et changements forcés),
+  à bâtir sur un état partagé solo/double/Coop avec restauration.
+  Reprise du lot le 2026-10-23 : `0E1`–`0E7`, `0E9` et `0ED`–`0EF`
+  promus via le noyau commun et le contrat de remplacement partagé.
+  `prepare:local` indique **204/353 fonctions couvertes, 149 restantes**,
+  172 alertes mécaniques, 62 animations absentes et 235 problèmes globaux.
+  `0EA`/`0EB`/`0EC` restent ouverts : fuite sauvage et règlement local/Coop
+  non raccordés ; cadence des pivots en double à comparer à la source.
+  Recette manuelle solo/hôte/invité/rendu distant/reconnexion documentée,
+  non encore exécutée. Prochain lot : terminer ces trois codes puis grouper
+  les fonctions restantes `0D0`–`0DF`.
+  Jalon suivant du 2026-10-23 : `0EA`–`0EC` ont maintenant une issue de
+  fuite sauvage commune au solo et à la room Coop (règlement sans EXP/argent,
+  événement répliqué et état restauré) ; les dix fonctions manquantes
+  `0D0`, `0D2`, `0D4`, `0D6`, `0D7`, `0D9`, `0DA`, `0DB`, `0DE`, `0DF`
+  sont promues dans le noyau partagé. Après `prepare:local` : **217/353
+  fonctions couvertes, 136 restantes**, 155 alertes mécaniques,
+  63 animations absentes, 219 problèmes globaux et 743 animations prêtes.
+  La recette manuelle hôte/invité/rendu distant reste ouverte. Dettes :
+  Tourbillon sur Plongée attend les capacités à deux tours ; cadence du
+  remplacement forcé en double et gardes Clonage à recouper. Prochain lot
+  conséquent : `0C1`–`0CE` via un état de charge/semi-invulnérabilité unique
+  pour solo, hôte et invité, avec Power Herb et restauration.
+  Jalon intermédiaire du 2026-10-23 : `0C2`–`0C8` couverts (recharge,
+  charge, Power Herb, Soleil, effets secondaires, PP unique) dans le noyau
+  commun ; tests simple/double et snapshot sérialisé. Après `prepare:local`,
+  **224/353 fonctions enregistrées, 129 restantes**, 147 capacités
+  à mécanique absente, 65 animations absentes, 213 problèmes globaux et
+  761 animations prêtes. `0C1` et `0C9`–`0CE` restent le prochain lot,
+  avec semi-invulnérabilité/Sky Drop et validation manuelle hôte/invité.
+  Clôture du 2026-10-23 : `0C1`, `0C9`–`0CE` portés sur le même état
+  autoritaire (participants Beat Up, semi-invulnérabilité, cible Sky Drop,
+  interruptions, Gravity préparée). Le protocole d'entrée Coop valide
+  désormais le registre commun au lieu de sa liste obsolète. Tests simple,
+  double, hôte/invité et room redémarrée passent. Après `prepare:local` :
+  **231/353 fonctions couvertes, 122 restantes**, 140 alertes mécaniques,
+  65 animations absentes, 206 problèmes globaux et 770 animations prêtes.
+  Clonage et la recette visuelle restent ouverts. Prochain lot : `075`,
+  `076`, `078` puis `0A4`, `0A6`, `0A8`, `0A9`, `0AB`, `0AC`, `0AE`.
   La recette visuelle utilisateur des lots `05C`-`07A`, encore ouverte, est
   consignée dans [`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md).
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les

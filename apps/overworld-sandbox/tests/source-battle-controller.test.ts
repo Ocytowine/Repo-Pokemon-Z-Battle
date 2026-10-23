@@ -58,6 +58,32 @@ function presentation(): SourceBattlePresentation {
 }
 
 describe("source battle controller", () => {
+  it("settles Teleport as a wild escape without defeat or experience", async () => {
+    const teleport = { ...tackle, internalName: "TELEPORT", name: "Téléport", functionCode: "0EA",
+      power: 0, category: "Status" as const, pp: 20 };
+    const localCatalog: PlayerCreationCatalog = { ...catalog, moves: [...catalog.moves, teleport] };
+    const base = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5,
+      localCatalog));
+    let eventState: SourceEventState = { ...createSourceEventState(),
+      party: { ...base, members: [{ ...base.members[0]!, moves: [{ internalName: "TELEPORT", pp: 20, maxPp: 20 }] }] },
+      pendingEncounter: { species: "BIDOOF", level: 2, victorySwitches: {}, escapable: true } };
+    const visuals = presentation();
+    const notices: string[] = [];
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (next) => { eventState = next; },
+      getResources: () => ({ catalog: localCatalog, mapId: 7, battleback: "grass",
+        battleMusic: null, victoryMusic: null }),
+      setNotice: (notice) => { notices.push(notice); }, render: vi.fn(),
+    };
+    const controller = new SourceBattleController(visuals, callbacks);
+    expect(controller.startPendingEncounter(), notices.at(-1)).toBe(true);
+    await controller.submitAction(0);
+    expect(controller.active).toBe(false);
+    expect(eventState.pendingEncounter).toBeNull();
+    expect(visuals.endBattle).toHaveBeenCalledWith(null, { escaped: true });
+  });
+
   it("starts, renders and escapes a pending wild encounter", async () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
     let eventState: SourceEventState = {

@@ -306,11 +306,13 @@ function describeEvent(event: TeamBattleEvent): string {
     case "leechSeedDamage": return `${event.side} subit Vampigraine · ${event.amount} dégâts · ${event.hp} PV`;
     case "curseDamage": return `${event.side} subit la malédiction · ${event.amount} dégâts · ${event.hp} PV`;
     case "recoilDamage": return `${event.side} subit ${event.amount} dégâts de recul avec ${event.move} · ${event.hp} PV`;
-    case "itemActivated": return `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
+    case "itemActivated": return event.effect === "boost" ? `${event.side} utilise ${event.item}`
+      : `${event.side} · ${event.item} · ${event.effect === "heal" ? "+" : "−"}${event.amount} PV · ${event.hp} PV`;
     case "heldItemConsumed": return `${event.side} consomme ${event.item} (${event.effect})`;
     case "heldItemTransferred": return "move" in event
-      ? `${event.target} dérobe ${event.item} à ${event.source} avec ${event.move}`
+      ? `${event.source} transmet ${event.item} à ${event.target} avec ${event.move}`
       : `${event.target} vole ${event.item} à ${event.source}`;
+    case "heldItemRecovered": return `${event.side} récupère ${event.item} (${event.ability})`;
     case "heldItemRemoved": return `${event.source} retire ${event.item} à ${event.target} avec ${event.move}`;
     case "statStageChanged": return `${event.target} · ${event.stat} ${event.delta > 0 ? "+" : ""}${event.delta} · niveau ${event.stage}`;
     case "statStageChangeFailed": return `${event.target} · ${event.stat} ne peut plus varier`;
@@ -522,7 +524,8 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
       await presenter.playImpact(event.side, false);
     } else if (event.type === "itemActivated") {
       updateHealth(event.side, event.hp);
-      presenter.message(`${event.item} ${event.effect === "heal" ? "restaure" : "retire"} ${event.amount} PV.`);
+      presenter.message(event.effect === "boost" ? `${event.item} s'active.`
+        : `${event.item} ${event.effect === "heal" ? "restaure" : "retire"} ${event.amount} PV.`);
       if (event.effect === "damage") await presenter.playImpact(event.side, false);
       else await presenter.pause(420);
     } else if (event.type === "statStageChanged") {
@@ -554,6 +557,9 @@ async function playEvents(events: readonly TeamBattleEvent[]): Promise<void> {
         infatuation: "Le Pokémon est immobilisé par l'amour !",
         disabled: "Cette capacité est neutralisée.",
         taunted: "Provoc empêche cette capacité de statut.",
+        truant: "Le Pokémon flâne ce tour-ci.",
+        recharge: "Le Pokémon doit se reposer après son attaque.",
+        "sky-drop": "Le Pokémon est emporté dans les airs.",
       } as const;
       presenter.message(skipped[event.reason]);
       await presenter.pause(380);

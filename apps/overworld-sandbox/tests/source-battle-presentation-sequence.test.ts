@@ -67,6 +67,29 @@ describe("source battle presentation sequence", () => {
     expect(sequence.at(-1)?.state.teams.opponent.members[0]?.heldItem).toBe("ORANBERRY");
   });
 
+  it("projects both halves of Trick and an item recovered by Recycle", () => {
+    const state = createTeamBattleState({
+      player: [{ ...battler("Héros"), heldItem: "HARDSTONE" }],
+      opponent: [{ ...battler("Cible"), heldItem: "LEFTOVERS" }],
+    });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "heldItemTransferred", source: "player", target: "opponent",
+        item: "HARDSTONE", move: "TRICK" },
+      { type: "heldItemTransferred", source: "opponent", target: "player",
+        item: "LEFTOVERS", move: "TRICK" },
+      { type: "heldItemConsumed", side: "player", item: "LEFTOVERS", effect: "eaten", hp: 20 },
+      { type: "heldItemRecovered", side: "player", item: "LEFTOVERS", ability: "RECYCLE" },
+    ]);
+    expect(sequence.map((step) => step.message)).toEqual([
+      "Héros transmet HARDSTONE à Cible avec TRICK.",
+      "Cible transmet LEFTOVERS à Héros avec TRICK.",
+      "Héros consomme LEFTOVERS.",
+      "Héros récupère LEFTOVERS.",
+    ]);
+    expect(sequence.at(-1)?.state.teams.player.members[0]?.heldItem).toBe("LEFTOVERS");
+    expect(sequence.at(-1)?.state.teams.opponent.members[0]?.heldItem).toBe("HARDSTONE");
+  });
+
   it("presents ability recoil damage and its intermediate HP", () => {
     const state = createTeamBattleState({ player: [battler("Attaquant")], opponent: [battler("Défenseur")] });
     const sequence = buildSourceBattlePresentationSequence(state, [

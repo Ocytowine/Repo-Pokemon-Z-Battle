@@ -141,12 +141,72 @@ Coop et sauvegarde.
   avec hôte et invité, puis après reconnexion. Noter séparément toute variante
   d'animation source absente ou incorrecte ; ne pas en inventer une.
 
-`096` (Don Naturel) et `0F9` (Champ Magique) ne sont pas encore à cocher
-manuellement : les 64 baies source sont transportées et le champ fonctionne
-dans les tests du noyau/room, mais les deux fonctions restent `partial` et ne
-sont pas proposées aux équipes source. Attendre la fermeture des effets
-automatiques des baies, des interactions d'objets et de la consommation Ruby
-avant d'ajouter leur recette en jeu.
+`096` (Don Naturel) et `0F9` (Champ Magique) sont maintenant à valider
+visuellement si les capacités et baies nécessaires sont disponibles :
+
+- [ ] **Solo — Don Naturel (`096`)** : utiliser successivement une baie de
+  type/puissance 80, 90 et 100 du catalogue ; comparer type, efficacité,
+  dégâts, animation et consommation après impact. Vérifier qu'une immunité
+  garde la baie, et que l'attaque échoue sans baie ou sous Tension.
+- [ ] **Solo — Champ Magique (`0F9`)** : lancer le champ avec une baie Sitrus
+  et un objet de type plaque/module, puis contrôler que leurs effets sont
+  suspendus sans perdre les objets. Vérifier l'interdiction d'un objet de
+  Dresseur, l'expiration après cinq fins de tour et l'annulation par un second
+  lancement. Après expiration, la baie doit pouvoir s'activer de nouveau.
+- [ ] **Coop/double — `096`/`0F9`** : faire lancer chaque capacité par l'hôte
+  puis l'invité ; comparer cible, type, dégâts, consommation et compteur chez
+  les deux participants. En double, placer Tension sur le second adversaire,
+  puis tester une baie défensive sous le champ. Recharger l'invité pendant le
+  champ : objet tenu et nombre de tours restants doivent être identiques.
+
+Le script source de Don Naturel contient la condition erronée
+`TotalDamage>0>0` ; le port consomme la baie après des dégâts réellement
+infligés. Noter séparément tout comportement observé qui contredit cette
+réparation explicite.
+
+Les effets de baies déjà portés peuvent être observés dans un combat existant,
+sans utiliser `096` ni `0F9` :
+
+- [ ] **Baies de statut** : empoisonner un porteur de Baie Pecha, endormir un
+  porteur de Baie Chesto, puis répéter avec Baie Lum ; vérifier la disparition
+  du statut et de l'objet, une seule fois, chez l'hôte et l'invité.
+- [ ] **Confusion et PP** : déclencher Baie Persim sous confusion et épuiser une
+  capacité du porteur de Baie Leppa ; vérifier la confusion retirée et les PP
+  restaurés (10 au maximum), puis recharger l'invité avant l'action suivante.
+- [ ] **Seuils après impact** : faire passer un porteur de Baie Salac sous 1/4
+  des PV après un coup ; vérifier le cran de Vitesse avant la prochaine action.
+  Comparer Oran/Sitrus, désormais vérifiées après chaque impact. Répéter en
+  double si ces objets sont disponibles dans une équipe de test.
+
+Si une baie ou un combat de test n'est pas disponible, noter « bloqué » ; ne
+pas modifier une sauvegarde personnelle pour fabriquer ce scénario.
+
+## Recette du lot objets `0F2`–`0F7` (à exécuter)
+
+- [ ] **Solo, transfert** : échanger deux objets différents avec Trick ou
+  Switcheroo, puis donner un objet avec Bestow. Vérifier les deux icônes et
+  messages, l'échec sur cible déjà équipée pour Bestow et le blocage par
+  Sticky Hold. Après combat, contrôler la restitution ou conservation selon
+  le type de rencontre.
+- [ ] **Solo, consommation** : brûler une baie puis une Gemme avec Incinerate,
+  voler une baie Sitrus ou Ganlon avec Bug Bite/Pluck, consommer un objet puis
+  utiliser Recycle. Vérifier PV/stages, disparition du bon objet et absence
+  de récupération d'une baie détruite ou volée.
+- [ ] **Solo, Lancement** : lancer un objet lourd (Pierre Dure ou Boule Fer),
+  une baie, puis Orbe Flamme. Comparer puissance, effet de baie/statut et
+  consommation. Refaire avec Klutz, Champ Magique et sans objet : la capacité
+  doit échouer sans lancer l'objet.
+- [ ] **Multi-coups** : placer Oran/Sitrus ou Ganlon sur la cible d'un coup
+  double. Vérifier l'activation entre les deux impacts et la baisse des
+  dégâts du second coup après Ganlon.
+- [ ] **Double et Coop** : échanger/donner/lancer successivement depuis le
+  slot de l'hôte puis celui de l'invité, vérifier le bon destinataire et le
+  même inventaire tenu sur les deux écrans. Reconnecter l'invité juste après
+  un échange, puis vérifier les objets et leur propriétaire après règlement.
+
+Clonage, Symbiosis après Bug Bite et les états Torment/Heal Block de Mental
+Herb lancé restent des interactions transverses à signaler séparément ; ne
+pas les valider comme closes par les tests ci-dessus.
 
 ## Matrice Coop à répéter sur un ou deux cas représentatifs
 
@@ -163,6 +223,95 @@ avant d'ajouter leur recette en jeu.
   types, capacités et tour courant doivent être cohérents ; aucun tour ne doit
   être rejoué. Après le règlement, vérifier à nouveau l'Équipe propriétaire
   (Sketch durable ; Mimic temporaire).
+
+### Lot sacrifice, Requiem et remplacement (`0E1`–`0EF`, 2026-10-23)
+
+À exécuter en solo, puis en Coop côté hôte et invité ; pour chaque combat,
+observer aussi l'écran distant et recharger un client avant le remplacement
+ou avant l'échéance de Requiem. Ne pas considérer les codes `0EA`/`0EB`/`0EC`
+comme terminés tant que la fuite sauvage n'est pas raccordée.
+
+- [ ] Sacrifice/Final Gambit : dégâts égaux aux PV courants, utilisateur K.O.,
+  remplacement proposé ; vérifier aussi une immunité de type.
+- [ ] Souvenir/Memento : Attaque et Attaque Spéciale -2, utilisateur K.O. ;
+  vérifier un cas de protection aux baisses de statistiques.
+- [ ] Vœu Soin puis Danse-Lune : remplaçant soigné des PV et du statut ;
+  Danse-Lune restaure aussi les PP, Vœu Soin ne les restaure pas.
+- [ ] Requiem : décompte visible sur tous les actifs éligibles, abri de
+  Soundproof et K.O. simultanés ; refaire en double puis après reconnexion.
+- [ ] Grudge/Prélèvement Destin : un coup adverse mettant K.O. le lanceur
+  vide les PP du coup ou met K.O. l'attaquant, respectivement.
+- [ ] Faux-Chage : laisser exactement 1 PV ; vérifier l'affichage des deux
+  joueurs. Regard Noir : interdire le remplacement volontaire de la cible,
+  puis autoriser après le retrait du lanceur.
+- [ ] Relais puis Demi-Tour/Change Éclair : transfert des boosts, choix du
+  remplaçant, rendu du Pokémon entrant chez l'hôte et l'invité ; contrôler
+  l'état après reconnexion. En double, noter tout écart de cadence avec le
+  jeu source (le choix actuel est présenté après le tour).
+
+### Lot fuite sauvage et famille `0D` (2026-10-23)
+
+À faire avec une rencontre sauvage puis un combat de Dresseur en solo,
+et les mêmes essais en Coop avec hôte et invité inversés. Pour chaque
+essai, observer le client distant et reconnecter un participant avant le
+tour de résolution ou avant le soin différé. Noter toute différence de
+cadence du remplacement forcé en double.
+
+- [ ] Téléport dans une rencontre sauvage autorisant la fuite : retour
+  à la carte, sans EXP ni perte d'argent ; vérifier les deux clients et
+  l'état après reconnexion. Vérifier son échec contre Dresseur et quand
+  la rencontre interdit la fuite.
+- [ ] Hurlement/Cyclone puis Projection/Draco-Queue : fuite de cible
+  sauvage de niveau inférieur/égal, échec si niveau supérieur ; contre
+  Dresseur, choix de remplaçant adverse. Vérifier Suction Cups et
+  Enracinement, puis un cas double avec la bonne cible distante.
+- [ ] Tourbillon : dégâts, piège de 5–6 tours, retrait des PV et blocage
+  du changement volontaire ; l'interaction avec Plongée restera à
+  reprendre avec le lot `0C1`–`0CE`.
+- [ ] Colère : 2–3 usages verrouillés, confusion à la fin ; Patience :
+  accumulation de deux tours de dégâts directs, riposte doublée sur le
+  dernier attaquant. Reconnecter pendant le verrouillage.
+- [ ] Atterrissage : soin et retrait temporaire du type Vol en combat,
+  type rétabli au tour suivant. Repos : sommeil et soin complet, refus si
+  l'endormissement est interdit.
+- [ ] Vœu : soin à la fin du tour suivant, y compris sur le remplaçant
+  de la même position ; Anneau Hydro et Enracinement : soin répété,
+  ce dernier interdit le changement volontaire et le renvoi.
+- [ ] Dévorêve : échec sur cible éveillée, dégâts et soin sur cible
+  endormie ; Vibra Soin : soin de la cible, y compris un allié en double.
+
+### Charge et recharge `0C2`–`0C8` (à exécuter)
+
+- [ ] En solo, Hiperrayo ou Giga Impacto qui touche impose un tour de
+  recharge sans nouveau PP ; vérifier qu'un échec ou une immunité ne
+  déclenche pas la recharge.
+- [ ] Tester Rayo Solar/Cuchilla Solar sous soleil (immédiat, Power Herb
+  conservée), puis sous autre météo (charge et puissance réduite).
+- [ ] Tester Cabezazo : Défense +1 pendant la charge, une seule fois ;
+  vérifier qu'une Power Herb permet charge et attaque dans le même tour.
+- [ ] Tester les effets secondaires de `0C5`/`0C6`/`0C7` si ces attaques
+  sont accessibles dans la sauvegarde de test ; sinon noter « bloqué ».
+- [ ] Refaire charge/recharge en Coop hôte puis invité, avec observation
+  distante, et reconnecter le participant entre les deux tours : même
+  verrouillage, même PP, même objet consommé et même résultat.
+
+### Beat Up, semi-invulnérabilité et Sky Drop `0C1`, `0C9`–`0CE` (à exécuter)
+
+- [ ] Beat Up : comparer nombre de coups et puissance avec équipiers
+  indemnes, empoisonnés et K.O. ; refaire avec un allié actif en double.
+- [ ] Vol, Creusement, Plongée, Rebond et Shadow Force : premier tour de
+  charge sans dégâts, esquive d'une attaque ordinaire, second tour forcé
+  sans nouveau PP ; essayer Power Herb, sommeil/interruption et reconnexion.
+- [ ] Vérifier les exceptions source : Rafale sur une cible en vol,
+  Tourbillon sur Plongée, Magnitude sur Creusement ; vérifier le
+  doublement de puissance, et Shadow Force à travers Protection.
+- [ ] Sky Drop : la cible ne joue ni pendant l'enlèvement ni après sa
+  libération au second tour ; tester type Vol/Lévitation, cible lourde,
+  K.O. du porteur et une cible positionnée en double. Reconnecter les
+  deux clients entre enlèvement et libération et comparer le rendu distant.
+- [ ] Refaire une charge aérienne avec Gravité déjà active si une capacité
+  de Gravité est disponible ; sinon marquer « bloqué » (pose de Gravité
+  non encore portée dans le moteur).
 
 ## Observations à reporter
 

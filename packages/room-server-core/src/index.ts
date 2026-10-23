@@ -883,7 +883,8 @@ export class AuthoritativeBattleRoom {
     const beforeState = this.#battleState;
     const itemPolicy = { context: "battle" as const, revivalAllowed: true,
       battleHealingAllowed: source?.healingItemsAllowed ?? true };
-    const resolutionRules = { opponentItemTheft: source?.origin !== "source-wild" };
+    const resolutionRules = { opponentItemTheft: source?.origin !== "source-wild",
+      wildBattle: source?.origin === "source-wild", escapable: source?.escapable === true };
     const resolvedActions: readonly PositionedTeamBattleAction[] = double
       ? [...this.#pendingDoubleActions.values()]
       : [
@@ -922,6 +923,21 @@ export class AuthoritativeBattleRoom {
     output.push({ audience: "all", message: { type: "turnResolved", version: PROTOCOL_VERSION,
       battleId, turn: resolvedTurn, state: result.state, events: result.events,
       trace: result.trace, actions: resolvedActions } });
+
+    const moveEscaped = result.events.some((event) => event.type === "battleEscaped"
+      || event.type === "positionedActionResolved"
+        && event.events.some((inner) => inner.type === "battleEscaped"));
+    if (moveEscaped && source !== null && this.#battleSession !== null) {
+      this.#battleEscaped = true;
+      this.#battleSession = settleEscapedSharedBattleSession(this.#battleSession);
+      this.createSourceBattleSettlements(true, output);
+      this.#revision += 1;
+      output.push({ audience: "all", message: { type: "battleEscaped", version: PROTOCOL_VERSION,
+        battleId, turn: resolvedTurn } });
+      output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION,
+        snapshot: this.snapshot() } });
+      return;
+    }
 
     if (result.state.status === "active" && (result.state.replacementRequired.length > 0
       || (result.state.slotReplacements?.length ?? 0) > 0)) {

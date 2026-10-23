@@ -25,6 +25,19 @@ export function switchTrapAbility(battler: BattlerState,
 
 export function assertVoluntarySwitchAllowed(battler: BattlerState,
   opponents: readonly BattlerState[], magicRoomTurns = 0): void {
+  if (battler.hp > 0 && battler.volatile?.ingrain === true) {
+    throw new Error(`Cannot switch ${battler.id}: rooted by Ingrain.`);
+  }
+  if (battler.hp > 0 && (battler.volatile?.bindingTurns ?? 0) > 0
+    && !battler.types.includes("GHOST")
+    && !(battler.heldItem === "SHEDSHELL" && heldItemIsActive(battler, magicRoomTurns))) {
+    throw new Error(`Cannot switch ${battler.id}: bound by a move.`);
+  }
+  if (battler.hp > 0 && !battler.types.includes("GHOST")
+    && !(battler.heldItem === "SHEDSHELL" && heldItemIsActive(battler, magicRoomTurns))
+    && opponents.some((opponent) => opponent.hp > 0 && opponent.id === battler.volatile?.meanLookBy)) {
+    throw new Error(`Cannot switch ${battler.id}: trapped by Mean Look.`);
+  }
   const ability = switchTrapAbility(battler, opponents, magicRoomTurns);
   if (ability !== null) throw new Error(`Cannot switch ${battler.id}: trapped by ${ability}.`);
 }

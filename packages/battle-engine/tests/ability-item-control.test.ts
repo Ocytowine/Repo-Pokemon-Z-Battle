@@ -2,6 +2,7 @@ import { MINIMAL_MOVE_CATALOG, calculateDamage, createDoubleTeamBattleState, cre
   resolveDoubleTeamTurn, resolveTeamTurn, type BattleMove, type BattleSide, type BattlerState,
   type RandomSource } from "../src/index.js";
 import { describe, expect, it } from "vitest";
+import { RESIST_BERRY_TYPES } from "../src/battle-berries.js";
 
 class ScriptedRandom implements RandomSource {
   private index = 0;
@@ -23,6 +24,158 @@ function pokemon(id: string, side: BattleSide, overrides: Partial<BattlerState> 
 }
 
 describe("source PP and held-item control abilities", () => {
+  it("maps every reachable source type-resistance berry, including Chilan", () => {
+    expect(Object.keys(RESIST_BERRY_TYPES)).toHaveLength(17);
+    expect(RESIST_BERRY_TYPES.PAYAPABERRY).toBe("PSYCHIC");
+    expect(RESIST_BERRY_TYPES.CHILANBERRY).toBe("NORMAL");
+    expect(RESIST_BERRY_TYPES.ROSELIBERRY).toBeUndefined();
+  });
+
+  it("halves a matching super-effective hit once and consumes the resistance berry", () => {
+    const fire = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "FIRE", accuracy: 0 };
+    const fight = (item: BattlerState["heldItem"]) => resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("attacker", "player", { moves: [{ move: fire, pp: fire.pp }] })],
+      opponent: [pokemon("target", "opponent", { types: ["GRASS"], heldItem: item })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    const bare = fight(null);
+    const resisted = fight("OCCABERRY");
+    const hit = (events: typeof bare.events) => events.find((event) => event.type === "damageApplied");
+    const bareHit = hit(bare.events);
+    const resistedHit = hit(resisted.events);
+    if (bareHit?.type !== "damageApplied" || resistedHit?.type !== "damageApplied")
+      throw new Error("Attaque de test sans dégât.");
+    expect(resistedHit.amount).toBeLessThan(bareHit.amount);
+    expect(resisted.state.teams.opponent.members[0]).toMatchObject({ heldItem: null,
+      recyclableItem: "OCCABERRY" });
+    expect(resisted.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item: "OCCABERRY", effect: "weaken" }));
+  });
+
+  it("keeps a resistance berry inert under Magic Room", () => {
+    const fire = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "FIRE", accuracy: 0 };
+    const base = createTeamBattleState({
+      player: [pokemon("attacker", "player", { moves: [{ move: fire, pp: fire.pp }] })],
+      opponent: [pokemon("target", "opponent", { types: ["GRASS"], heldItem: "OCCABERRY" })],
+    });
+    const initialized = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("setup", "player")], opponent: [pokemon("setup-foe", "opponent")],
+    }), { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([])).state.effects!;
+    const result = resolveTeamTurn({ ...base, effects: { ...initialized, magicRoomTurns: 2 } },
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([1, 15]));
+    expect(result.state.teams.opponent.members[0]!.heldItem).toBe("OCCABERRY");
+  });
+
+  it("uses Chilan on a neutral Normal hit, unlike the weakness-only berries", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("attacker", "player", { moves: [{ move, pp: move.pp }] })],
+      opponent: [pokemon("target", "opponent", { heldItem: "CHILANBERRY" })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item: "CHILANBERRY", effect: "weaken" }));
+  });
+
+  it("heals with Enigma after a super-effective hit and retaliates with Jaboca/Rowap", () => {
+    for (const [berry, category] of [["JABOCABERRY", "Physical"], ["ROWAPBERRY", "Special"]] as const) {
+      const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, category, accuracy: 0 };
+      const result = resolveTeamTurn(createTeamBattleState({
+        player: [pokemon("attacker", "player", { moves: [{ move, pp: move.pp }] })],
+        opponent: [pokemon("target", "opponent", { heldItem: berry })],
+      }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+      new ScriptedRandom([1, 15]));
+      expect(result.state.teams.player.members[0]!.hp).toBe(140);
+      expect(result.state.teams.opponent.members[0]!.heldItem).toBeNull();
+      expect(result.events).toContainEqual(expect.objectContaining({ type: "itemActivated",
+        item: berry, effect: "damage", amount: 20 }));
+    }
+    const fire = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "FIRE", accuracy: 0 };
+    const healed = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("attacker", "player", { moves: [{ move: fire, pp: fire.pp }] })],
+      opponent: [pokemon("target", "opponent", { hp: 100, types: ["GRASS"], heldItem: "ENIGMABERRY" })],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([1, 15]));
+    expect(healed.events).toContainEqual(expect.objectContaining({ type: "itemActivated",
+      item: "ENIGMABERRY", effect: "heal", amount: 40 }));
+    expect(healed.state.teams.opponent.members[0]!.heldItem).toBeNull();
+  });
+
+  it("spends Micle's 20% accuracy boost on the next accuracy check", () => {
+    const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 60 };
+    const result = resolveTeamTurn(createTeamBattleState({
+      player: [pokemon("attacker", "player", { hp: 40, heldItem: "MICLEBERRY",
+        moves: [{ move, pp: move.pp }] })],
+      opponent: [pokemon("target", "opponent")],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } },
+    new ScriptedRandom([65, 1, 15]));
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "damageApplied" }));
+    expect(result.state.teams.player.members[0]!.volatile?.micleBerry).toBe(false);
+  });
+
+  it.each([
+    ["FIGYBERRY", "spicy"], ["WIKIBERRY", "dry"], ["MAGOBERRY", "sweet"],
+    ["AGUAVBERRY", "bitter"], ["IAPAPABERRY", "sour"],
+  ] as const)("heals with %s and confuses only a Pokémon disliking %s", (berry, flavor) => {
+    const state = createTeamBattleState({
+      player: [pokemon("berry", "player", { hp: 80, heldItem: berry, berryFlavorDislike: flavor })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([0]));
+    expect(result.state.teams.player.members[0]).toMatchObject({ hp: 100, heldItem: null,
+      volatile: { confusionTurns: 2 } });
+  });
+
+  it("activates Lansat, Micle and Starf at their source pinch threshold", () => {
+    for (const berry of ["LANSATBERRY", "MICLEBERRY", "STARFBERRY"] as const) {
+      const state = createTeamBattleState({
+        player: [pokemon("berry", "player", { hp: 40, heldItem: berry })],
+        opponent: [pokemon("foe", "opponent")],
+      });
+      const result = resolveTeamTurn(state,
+        { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([0]));
+      const member = result.state.teams.player.members[0]!;
+      expect(member.heldItem).toBeNull();
+      if (berry === "LANSATBERRY") expect(member.volatile?.focusEnergy).toBe(2);
+      if (berry === "MICLEBERRY") expect(member.volatile?.micleBerry).toBe(true);
+      if (berry === "STARFBERRY") expect(member.stages.attack).toBe(2);
+    }
+  });
+
+  it("lets a slow Custap holder act first within its priority bracket", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("custap", "player", { hp: 40, heldItem: "CUSTAPBERRY",
+        stats: { ...pokemon("custap", "player").stats, speed: 10 } })],
+      opponent: [pokemon("fast", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "move", moveIndex: 0 } },
+      new ScriptedRandom([1, 15, 1, 15]));
+    expect(result.events.find((event) => event.type === "moveUsed")).toMatchObject({ side: "player" });
+    expect(result.state.teams.player.members[0]).toMatchObject({ heldItem: null,
+      recyclableItem: "CUSTAPBERRY" });
+  });
+
+  it("orders Custap in double battles across the positioned slots", () => {
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("custap", "player", { hp: 40, heldItem: "CUSTAPBERRY",
+        stats: { ...pokemon("custap", "player").stats, speed: 10 } }), pokemon("ally", "player")],
+      opponent: [pokemon("fast", "opponent"), pokemon("foe2", "opponent")],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "player", slot: 0 } } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], new ScriptedRandom([0, 0, 1, 15, 1, 15]));
+    const firstMove = result.events.find((event) => event.type === "positionedActionResolved"
+      && event.events.some((inner) => inner.type === "moveUsed"));
+    expect(firstMove).toMatchObject({ actor: { side: "player", slot: 0 } });
+    expect(result.state.teams.player.members[0]!.heldItem).toBeNull();
+  });
   it("makes an opposing move spend two PP with Pressure but leaves self-targeting moves unchanged", () => {
     const state = createTeamBattleState({
       player: [pokemon("attacker", "player")], opponent: [pokemon("pressure", "opponent", { ability: "PRESSURE" })],
@@ -98,6 +251,102 @@ describe("source PP and held-item control abilities", () => {
       recyclableItem: "SITRUSBERRY" });
     expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
       side: "player", item: "SITRUSBERRY", effect: "heal" }));
+  });
+
+  it.each([
+    ["CHESTOBERRY", "sleep"], ["PECHABERRY", "poison"], ["RAWSTBERRY", "burn"],
+    ["CHERIBERRY", "paralysis"], ["ASPEARBERRY", "frozen"], ["LUMBERRY", "caduco"],
+  ] as const)("cures %s's matching status in the shared battle state", (berry, kind) => {
+    const majorStatus = kind === "sleep" ? { kind, turnsRemaining: 2 } as const
+      : kind === "poison" ? { kind, toxicCounter: null } as const : { kind } as const;
+    const state = createTeamBattleState({
+      player: [pokemon("berry", "player", { majorStatus, heldItem: berry })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.player.members[0]).toMatchObject({ majorStatus: null, heldItem: null,
+      recyclableItem: berry });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "statusCured", side: "player", status: kind }));
+  });
+
+  it("restores the first empty move with Leppa and keeps the restored PP in the snapshot", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("berry", "player", { heldItem: "LEPPABERRY",
+        moves: [{ move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 0 }] })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.player.members[0]).toMatchObject({ heldItem: null,
+      recyclableItem: "LEPPABERRY", moves: [{ pp: 10 }] });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "ppChanged", side: "player", pp: 10 }));
+  });
+
+  it("cures confusion with Persim and both ailments with Lum without losing the second cure", () => {
+    for (const berry of ["PERSIMBERRY", "LUMBERRY"] as const) {
+      const state = createTeamBattleState({
+        player: [pokemon("berry", "player", { heldItem: berry,
+          majorStatus: berry === "LUMBERRY" ? { kind: "burn" } : null,
+          volatile: { confusionTurns: 2, flinched: false, focusEnergy: 0, identified: false,
+            disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
+            bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null } })],
+        opponent: [pokemon("foe", "opponent")],
+      });
+      const result = resolveTeamTurn(state,
+        { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+      expect(result.state.teams.player.members[0]).toMatchObject({ heldItem: null,
+        majorStatus: null, volatile: { confusionTurns: 0 } });
+      expect(result.events).toContainEqual(expect.objectContaining({ type: "volatileEnded",
+        side: "player", effect: "confusion" }));
+    }
+  });
+
+  it("keeps Leppa and a status berry inactive under Unnerve and Magic Room", () => {
+    for (const [berry, blockedByRoom] of [["LEPPABERRY", false], ["PECHABERRY", true]] as const) {
+      const member = pokemon("berry", "player", { heldItem: berry,
+        ...(berry === "LEPPABERRY" ? { moves: [{ move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 0 }] }
+          : { majorStatus: { kind: "poison", toxicCounter: null } }) });
+      const opponent = pokemon("foe", "opponent", blockedByRoom ? {} : { ability: "UNNERVE" });
+      const state = createTeamBattleState({ player: [member], opponent: [opponent] });
+      const initialized = blockedByRoom ? resolveTeamTurn(createTeamBattleState({
+        player: [pokemon("setup", "player")], opponent: [pokemon("setup-foe", "opponent")],
+      }), { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([])).state.effects : undefined;
+      const result = resolveTeamTurn({ ...state,
+        ...(blockedByRoom ? { effects: { ...initialized!, magicRoomTurns: 2 } } : {}) },
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+      expect(result.state.teams.player.members[0]!.heldItem).toBe(berry);
+    }
+  });
+
+  it("activates a pinch stat berry after damage crosses quarter HP, before the next action", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("attacker", "player")],
+      opponent: [pokemon("berry", "opponent", { hp: 41, heldItem: "SALACBERRY" })],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([1, 15]));
+    const damage = result.events.find((event) => event.type === "damageApplied");
+    expect(damage?.type === "damageApplied" && damage.hp).toBeLessThanOrEqual(40);
+    expect(result.state.teams.opponent.members[0]!.heldItem).toBeNull();
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      side: "opponent", item: "SALACBERRY" }));
+  });
+
+  it("applies status berries in double battles to the affected slot only", () => {
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("berry", "player", { heldItem: "PECHABERRY",
+        majorStatus: { kind: "poison", toxicCounter: null } }), pokemon("ally", "player")],
+      opponent: [pokemon("foe1", "opponent"), pokemon("foe2", "opponent")],
+    });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], new ScriptedRandom([]));
+    expect(result.state.teams.player.members[0]).toMatchObject({ majorStatus: null, heldItem: null });
+    expect(result.state.teams.player.members[1]!.heldItem).toBeNull();
   });
 
   it.each([

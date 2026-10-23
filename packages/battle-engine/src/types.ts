@@ -1,4 +1,5 @@
 import { naturalGiftProfile } from "./natural-gift.js";
+import { flingPower } from "./battle-fling.js";
 
 export type BattleSide = "player" | "opponent";
 export type MoveCategory = "Physical" | "Special" | "Status";
@@ -16,13 +17,14 @@ export interface BattleMove {
   readonly id: number;
   readonly internalName: string;
   readonly name: string;
-  readonly functionCode: "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
+  readonly functionCode: "075" | "076" | "078" | "0A4" | "0A6" | "0A8" | "0A9" | "0AB" | "0AC" | "0AE"
+    | "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
     | "02A" | "02B" | "02C" | "02D" | "02E" | "02F" | "032" | "033" | "034" | "035" | "036" | "037" | "038" | "039" | "03A" | "03B" | "03C" | "03D" | "03E" | "03F"
     | "040" | "041" | "042" | "043" | "044" | "045" | "046" | "047" | "048" | "049" | "04A" | "04B" | "04C" | "04D" | "04E" | "04F" | "050" | "051" | "052" | "053" | "054" | "055" | "056" | "057" | "058" | "059" | "05B" | "05C" | "05D" | "05E" | "05F"
     | "05A" | "060" | "061" | "062" | "063" | "064" | "065" | "066" | "067" | "068" | "069" | "06A" | "06B" | "06C" | "06D" | "06E" | "06F" | "070" | "071" | "072" | "073" | "074" | "079" | "07A" | "077" | "07B" | "07C" | "07D" | "07E" | "07F" | "080" | "081" | "082" | "083" | "084" | "085" | "086" | "087" | "088" | "089" | "08A" | "08B" | "08C" | "08D" | "08E" | "08F" | "090" | "091" | "092" | "093" | "094" | "095" | "096" | "097" | "098" | "099" | "09A" | "09B" | "09C" | "09D" | "09E" | "09F" | "0A1" | "0A2" | "0A3" | "0A5" | "0A7"
-    | "0A0" | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0CF" | "0D1" | "0D3" | "0D5" | "0D8" | "0DC" | "0DD" | "0E0" | "0E8" | "0F0" | "0F1" | "0F4" | "0F8"
+    | "0A0" | "0AA" | "0AD" | "0B3" | "0B9" | "0BA" | "0BC" | "0BD" | "0BE" | "0C0" | "0C1" | "0C2" | "0C3" | "0C4" | "0C5" | "0C6" | "0C7" | "0C8" | "0C9" | "0CA" | "0CB" | "0CC" | "0CD" | "0CE" | "0CF" | "0D0" | "0D1" | "0D2" | "0D3" | "0D4" | "0D5" | "0D6" | "0D7" | "0D8" | "0D9" | "0DA" | "0DB" | "0DC" | "0DD" | "0DE" | "0DF" | "0E0" | "0E1" | "0E2" | "0E3" | "0E4" | "0E5" | "0E6" | "0E7" | "0E8" | "0E9" | "0EA" | "0EB" | "0EC" | "0ED" | "0EE" | "0EF" | "0F0" | "0F1" | "0F2" | "0F3" | "0F4" | "0F5" | "0F6" | "0F7" | "0F8"
     | "0F9" | "0FA" | "0FB" | "0FC" | "0FD" | "0FE" | "10B" | "10D" | "10E" | "110" | "116" | "159" | "906";
   readonly power: number;
   readonly type: string;
@@ -52,12 +54,15 @@ export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT",
   "LEFTOVERS", "LIFEORB", "MUSCLEBAND", "ROCKYHELMET", "SCOPELENS", "WIDELENS", "WISEGLASSES",
   "BUGGEM", "CASCOPROTECTOR", "COVERTCLOAK", "EVIOLITE", "FIGHTINGGEM", "HONEY", "LIECHIBERRY", "ORANBERRY", "PAYAPABERRY", "SAFETYGOGGLES", "SHEDSHELL",
   "SHOCKDRIVE", "BURNDRIVE", "CHILLDRIVE", "DOUSEDRIVE",
+  "FLAMEORB", "TOXICORB", "POISONBARB", "LIGHTBALL", "KINGSROCK", "RAZORFANG",
+  "MENTALHERB", "WHITEHERB", "POWERHERB", "IRONBALL", "HARDSTONE", "THICKCLUB", "QUICKCLAW",
   "FISTPLATE", "SKYPLATE", "TOXICPLATE", "EARTHPLATE", "STONEPLATE", "INSECTPLATE", "SPOOKYPLATE", "IRONPLATE", "FLAMEPLATE", "SPLASHPLATE", "MEADOWPLATE", "ZAPPLATE", "MINDPLATE", "ICICLEPLATE", "DRACOPLATE", "DREADPLATE", "PIXIEPLATE", "TABLANEUTRA"] as const;
-/** Other source berries are transportable, but only listed items have their passive effects implemented. */
-export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number] | `${string}BERRY`;
+/** Source item identities are validated at ingestion; Fling also admits its full Ruby item table. */
+export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number] | `${string}BERRY` | (string & {});
 
 export function isHeldItemSupported(value: string): value is HeldItem {
-  return (SUPPORTED_HELD_ITEMS as readonly string[]).includes(value) || naturalGiftProfile(value) !== null;
+  return (SUPPORTED_HELD_ITEMS as readonly string[]).includes(value)
+    || naturalGiftProfile(value) !== null || flingPower(value) !== null;
 }
 
 export interface MoveSlot {
@@ -96,17 +101,28 @@ export interface BattlerState {
   readonly hp: number;
   /** Combat-relevant friendship value; null is preserved for legacy saves. */
   readonly happiness?: number | null;
+  /** Only the nature-derived disliked berry flavor is replicated, never the personal nature itself. */
+  readonly berryFlavorDislike?: "spicy" | "sour" | "sweet" | "dry" | "bitter" | null;
   /** Only the derived Hidden Power type crosses the room boundary; raw personal IVs stay private. */
   readonly hiddenPowerType?: string;
   /** Public species fact needed by Eviolite; it contains no private evolution state. */
   readonly canEvolve?: boolean;
+  /** Public species stat required by Beat Up; unlike the combat Attack it ignores level, IV and stages. */
+  readonly baseAttack?: number;
   readonly majorStatus: MajorStatusState | null;
   /** Temporary battle-only effects. They are authoritative and cleared on switch. */
   readonly volatile?: {
     readonly confusionTurns: number;
     readonly flinched: boolean;
     readonly focusEnergy: number;
+    /** Armed by Micle Berry until the next accuracy check, then cleared. */
+    readonly micleBerry?: boolean;
     readonly identified: boolean;
+    /** Miracle Eye removes Dark immunity to Psychic; Foresight's Ghost rule stays separate. */
+    readonly miracleEye?: boolean;
+    /** Lock-On is stored on its target, tied to the user's identity, until the next round ends. */
+    readonly lockOnBy?: string | null;
+    readonly lockOnTurns?: number;
     readonly disabledMove: string | null;
     readonly disableTurns: number;
     readonly encoreMove: string | null;
@@ -134,6 +150,7 @@ export interface BattlerState {
     readonly enteredMidTurn?: boolean;
     readonly protected?: boolean;
     readonly endured?: boolean;
+    readonly guarded?: boolean;
     /** Source ProtectRate: 1 initially, doubled after each consecutive success. */
     readonly protectRate?: number;
     readonly tauntTurns?: number;
@@ -179,6 +196,35 @@ export interface BattlerState {
     readonly gastroAcid?: boolean;
     /** Autotomize's cumulative weight change in hectograms; cleared on switch. */
     readonly weightChange?: number;
+    /** Shared battle-only effects; the authoritative room persists these through reconnect. */
+    readonly perishTurns?: number;
+    readonly perishSource?: BattleSide | null;
+    readonly grudge?: boolean;
+    readonly destinyBond?: boolean;
+    readonly healingWish?: boolean;
+    readonly lunarDance?: boolean;
+    readonly batonPass?: boolean;
+    readonly meanLookBy?: string | null;
+    readonly ingrain?: boolean;
+    readonly aquaRing?: boolean;
+    readonly wishTurns?: number;
+    readonly wishAmount?: number;
+    readonly wishMaker?: string | null;
+    readonly roostOriginalTypes?: readonly string[] | null;
+    readonly outrageTurns?: number;
+    readonly bideTurns?: number;
+    readonly bideDamage?: number;
+    readonly bideTargetId?: string | null;
+    /** Host-authoritative battle-only lock, replicated in solo and Coop snapshots. */
+    readonly chargingMove?: string | null;
+    /** Called two-turn move while Mirror Move itself remains the selected PP slot. */
+    readonly chargingCalledMove?: BattleMove | null;
+    /** Identity of Sky Drop's carried target; combat-only and restored from the room snapshot. */
+    readonly chargingTargetId?: string | null;
+    readonly skyDropCarrierId?: string | null;
+    /** The carried target loses its action even if released earlier in this round. */
+    readonly skyDropLockedTurn?: number | null;
+    readonly rechargeTurns?: number;
   };
   readonly ability: BattleAbility | null;
   readonly heldItem: HeldItem | null;
@@ -253,6 +299,8 @@ export interface BattleSideEffects {
   readonly stickyWeb?: boolean;
   readonly mistTurns?: number;
   readonly safeguardTurns?: number;
+  readonly quickGuard?: boolean;
+  readonly wideGuard?: boolean;
 }
 
 export interface BattleEffects {
@@ -271,6 +319,7 @@ export interface BattleEffects {
   readonly trickRoomTurns?: number;
   /** Source Magic Room field counter; item suppression is shared by every active battler. */
   readonly magicRoomTurns?: number;
+  readonly gravityTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
   /** Source reciprocal Fusion field markers, shared by all active battlers for this turn only. */
@@ -320,6 +369,10 @@ export interface StatefulRandomSource extends RandomSource {
 export interface BattleResolutionRules {
   /** Wild opposing Pokemon cannot permanently steal a player's held item in Pokemon Z. */
   readonly opponentItemTheft: boolean;
+  /** Explicit source encounter type; switching and escape must not infer this from item policy. */
+  readonly wildBattle?: boolean;
+  /** Wild encounters may be scripted to prohibit ordinary escape/Teleport. */
+  readonly escapable?: boolean;
 }
 
 export type BattleEvent =
@@ -357,6 +410,8 @@ export type BattleEvent =
   | { readonly type: "formChanged"; readonly side: BattleSide; readonly species: string;
       readonly fromForm: number; readonly toForm: number; readonly reason: "ability" }
   | { readonly type: "forcedSwitchRequested"; readonly side: BattleSide; readonly ability: "EMERGENCYEXIT" }
+  | { readonly type: "forcedSwitchRequested"; readonly side: BattleSide; readonly move: string }
+  | { readonly type: "battleEscaped"; readonly side: BattleSide; readonly move: string }
   | { readonly type: "statusApplied"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" | "ability-immune" | "safeguard" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
@@ -367,7 +422,7 @@ export type BattleEvent =
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
   | { readonly type: "heldItemRecovered"; readonly side: BattleSide; readonly item: HeldItem;
-      readonly ability: "PICKUP" | "HARVEST" }
+      readonly ability: "PICKUP" | "HARVEST" | "RECYCLE" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
       readonly item: HeldItem; readonly reason: "pickpocket" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
@@ -391,15 +446,15 @@ export type BattleEvent =
   | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" | "mist" }
   | { readonly type: "fainted"; readonly side: BattleSide }
   | { readonly type: "volatileApplied"; readonly source: BattleSide; readonly target: BattleSide;
-      readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "rage" | "protect" | "endure" | "yawn" | "charge" | "helping-hand" | "uproar" | "embargo";
+      readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "miracle-eye" | "lock-on" | "quick-guard" | "wide-guard" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "rage" | "protect" | "endure" | "yawn" | "charge" | "sky-drop" | "helping-hand" | "uproar" | "embargo" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" | "healing-wish" | "lunar-dance" | "baton-pass" | "wish" | "aqua-ring" | "ingrain" | "roost" | "bide";
       readonly turns: number | null; readonly move: string | null }
   | { readonly type: "volatileEnded"; readonly side: BattleSide;
-      readonly effect: "confusion" | "disable" | "encore" | "binding" | "infatuation" | "leech-seed" | "taunt" | "protect" | "endure" }
+      readonly effect: "confusion" | "disable" | "encore" | "binding" | "infatuation" | "leech-seed" | "taunt" | "protect" | "endure" | "sky-drop" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" }
   | { readonly type: "confusionDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
   | { readonly type: "bindingDamage"; readonly side: BattleSide; readonly move: string; readonly amount: number; readonly hp: number }
   | { readonly type: "leechSeedDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
   | { readonly type: "curseDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
-  | { readonly type: "actionSkipped"; readonly side: BattleSide; readonly reason: "fainted" | "no-pp" | "sleep" | "paralysis" | "item-blocked" | "flinch" | "confusion" | "infatuation" | "disabled" | "taunted" | "truant" }
+  | { readonly type: "actionSkipped"; readonly side: BattleSide; readonly reason: "fainted" | "no-pp" | "sleep" | "paralysis" | "item-blocked" | "flinch" | "confusion" | "infatuation" | "disabled" | "taunted" | "truant" | "recharge" | "sky-drop" }
   | { readonly type: "battleEnded"; readonly winner: BattleSide | null }
   | { readonly type: "turnEnded"; readonly turn: number };
 

@@ -246,6 +246,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         : event.effect === "flinch" ? `${name} a peur.`
           : event.effect === "focus-energy" ? `${name} se concentre.`
             : event.effect === "identified" ? `${name} est identifié.`
+              : event.effect === "miracle-eye" ? `${name} est repéré par Œil Miracle.`
+                : event.effect === "lock-on" ? `${name} est verrouillé comme cible.`
+                  : event.effect === "quick-guard" ? `L'équipe de ${name} se protège des attaques prioritaires.`
+                    : event.effect === "wide-guard" ? `L'équipe de ${name} se protège des attaques de zone.`
               : event.effect === "disable" ? `${event.move ?? "Une capacité"} de ${name} est neutralisée.`
                 : event.effect === "encore" ? `${name} doit répéter ${event.move ?? "sa dernière capacité"}.`
                   : event.effect === "curse" ? `${name} est maudit.`
@@ -253,7 +257,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                       : event.effect === "protect" ? `${name} se protège.`
                         : event.effect === "endure" ? `${name} se prépare à tenir le coup.`
                           : event.effect === "rage" ? `${name} entre en rage.`
-                            : event.effect === "charge" ? `${name} commence à charger de l'énergie.`
+                            : event.effect === "charge" ? `${name} prépare son attaque.`
+                              : event.effect === "sky-drop" ? `${name} est emporté dans les airs.`
                               : event.effect === "helping-hand" ? `${name} reçoit un coup de main.`
                                 : event.effect === "leech-seed" ? `${name} est infecté par Vampigraine.`
                             : `${name} est pris au piège par ${event.move ?? "l'attaque"}.`;
@@ -263,6 +268,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       const text = event.effect === "confusion" ? `${activeName(state, event.side)} n'est plus confus.`
         : event.effect === "disable" ? `${activeName(state, event.side)} peut de nouveau utiliser toutes ses capacités.`
           : event.effect === "encore" ? `${activeName(state, event.side)} n'est plus sous Encore.`
+            : event.effect === "sky-drop" ? `${activeName(state, event.side)} retombe au sol.`
             : `${activeName(state, event.side)} est libéré.`;
       message(text, "status");
     } else if (event.type === "confusionDamage") {
@@ -278,7 +284,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         ? `${activeName(state, event.side)} sacrifie ${event.amount} PV pour se renforcer !`
         : `${activeName(state, event.side)} est blessé par le contrecoup et perd ${event.amount} PV.`);
     } else if (event.type === "itemActivated") {
-      health(event.side, event.hp, event.effect === "heal"
+      if (event.effect === "boost") message(`${activeName(state, event.side)} utilise ${event.item}.`, "status");
+      else health(event.side, event.hp, event.effect === "heal"
         ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
     } else if (event.type === "abilityDamage") {
@@ -290,15 +297,24 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         ? `${activeName(state, event.side)} rate son attaque et s'écrase au sol !`
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause du contrecoup.`);
     } else if (event.type === "heldItemConsumed") {
+      state = withActiveHeldItem(state, event.side, null);
       message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
     } else if (event.type === "heldItemTransferred") {
       const sourceName = activeName(state, event.source);
       const targetName = activeName(state, event.target);
-      state = withActiveHeldItem(withActiveHeldItem(state, event.source, null), event.target, event.item);
+      const sourceMember = state.teams[event.source].members[state.teams[event.source].activeIndex];
+      state = withActiveHeldItem(sourceMember?.heldItem === event.item
+        ? withActiveHeldItem(state, event.source, null) : state, event.target, event.item);
       const item = options.itemName?.(event.item) ?? event.item;
       message("move" in event
-        ? `${targetName} dérobe ${item} avec ${event.move}.`
+        ? `${sourceName} transmet ${item} à ${targetName} avec ${event.move}.`
         : `${targetName} vole ${item} à ${sourceName} !`, "status");
+    } else if (event.type === "heldItemRecovered") {
+      state = withActiveHeldItem(state, event.side, event.item);
+      message(`${activeName(state, event.side)} récupère ${options.itemName?.(event.item) ?? event.item}.`, "status");
+    } else if (event.type === "heldItemRemoved") {
+      state = withActiveHeldItem(state, event.target, null);
+      message(`${activeName(state, event.target)} perd ${options.itemName?.(event.item) ?? event.item}.`, "status");
     } else if (event.type === "trainerItemUsed") {
       const team = state.teams[event.side];
       const target = team.members[event.targetIndex];
@@ -360,6 +376,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
           : event.reason === "no-pp" ? "n'a plus de PP pour cette capacité"
             : event.reason === "item-blocked" ? "est bloqué par son objet"
               : event.reason === "taunted" ? "est provoqué et ne peut pas utiliser cette capacité"
+              : event.reason === "recharge" ? "doit se reposer après son attaque"
+              : event.reason === "sky-drop" ? "ne peut pas agir pendant sa chute libre"
               : "est K.O.";
       const visual = event.reason === "sleep" || event.reason === "paralysis" || event.reason === "confusion"
         || event.reason === "flinch" ? event.reason : null;
