@@ -1231,6 +1231,14 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   696 animations prêtes après `prepare:local`. La validation visuelle reste
   ouverte. Prochain lot : fermeture des baies et de Champ Magique, ou fonction
   indépendante si l'ambiguïté Ruby empêche cette fermeture.
+  Seizième lot, troisième tranche : `SITRUSBERRY` et les cinq baies de stats
+  sont activées par le hook partagé avec seuils source, blocages Tension/
+  Maladresse/Embargo/Champ Magique et historique de consommation. Tests simple,
+  double, hôte/invité et room restaurée ajoutés. `096` et `0F9` restent
+  partielles : autres baies, instant réactif, interactions d'objets et hook Ruby
+  `TotalDamage>0>0` encore à vérifier dans la source. **186 fonctions terminées
+  sur 353, plus deux partielles** ; prochain lot baies de statut/PP et activation
+  après impact, ou fonction indépendante si la validation Ruby reste bloquée.
   La recette visuelle utilisateur des lots `05C`-`07A`, encore ouverte, est
   consignée dans [`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md).
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les

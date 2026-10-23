@@ -1437,26 +1437,39 @@ export function resolveBattlePassiveEndOfTurn(battler: BattlerState, side: Battl
   const events: BattleEvent[] = [];
   let next = battler;
   if (next.hp > 0 && heldItemIsActive(next, magicRoomTurns)) {
-    if (!berriesBlocked && next.heldItem === "ORANBERRY" && next.hp <= Math.floor(next.stats.maxHp / 2)) {
-      const amount = Math.min(10, next.stats.maxHp - next.hp);
-      nextPickupUse += 1;
-      next = consumeHeldItem({ ...next, hp: next.hp + amount }, "ORANBERRY", nextPickupUse);
-      events.push({ type: "itemActivated", side, item: "ORANBERRY", effect: "heal", amount, hp: next.hp });
-      events.push({ type: "heldItemConsumed", side, item: "ORANBERRY", effect: "heal", hp: next.hp });
-      next = applyCheekPouch(next, side, events);
+    if (!berriesBlocked && (next.heldItem === "ORANBERRY" || next.heldItem === "SITRUSBERRY")
+      && next.hp <= Math.floor(next.stats.maxHp / 2)) {
+      const berry = next.heldItem;
+      const amount = Math.min(berry === "ORANBERRY" ? 10 : Math.floor(next.stats.maxHp / 4),
+        next.stats.maxHp - next.hp);
+      if (amount > 0) {
+        nextPickupUse += 1;
+        next = consumeHeldItem({ ...next, hp: next.hp + amount }, berry, nextPickupUse);
+        events.push({ type: "itemActivated", side, item: berry, effect: "heal", amount, hp: next.hp });
+        events.push({ type: "heldItemConsumed", side, item: berry, effect: "heal", hp: next.hp });
+        next = applyCheekPouch(next, side, events);
+      }
     }
     const liechiThreshold = next.ability === "GLUTTONY" ? Math.floor(next.stats.maxHp / 2)
       : Math.floor(next.stats.maxHp / 4);
-    if (!berriesBlocked && next.heldItem === "LIECHIBERRY" && next.hp <= liechiThreshold) {
-      const resolved = resolveStatStageChange(next, "attack", 1);
-      if (resolved === null) return { battler: next, events, nextPickupUse };
-      nextPickupUse += 1;
-      next = consumeHeldItem(resolved.battler, "LIECHIBERRY", nextPickupUse);
-      events.push({ type: "itemActivated", side, item: "LIECHIBERRY", effect: "boost", amount: 0, hp: next.hp });
-      events.push({ type: "heldItemConsumed", side, item: "LIECHIBERRY", effect: "boost", hp: next.hp });
-      events.push({ type: "statStageChanged", source: side, target: side, stat: "attack",
-        delta: resolved.delta, stage: resolved.stage });
-      next = applyCheekPouch(next, side, events);
+    const pinchStats = {
+      LIECHIBERRY: "attack", GANLONBERRY: "defense", SALACBERRY: "speed",
+      PETAYABERRY: "specialAttack", APICOTBERRY: "specialDefense",
+    } as const;
+    if (!berriesBlocked && next.heldItem !== null && next.heldItem in pinchStats
+      && next.hp <= liechiThreshold) {
+      const berry = next.heldItem as keyof typeof pinchStats;
+      const stat = pinchStats[berry];
+      const resolved = resolveStatStageChange(next, stat, 1);
+      if (resolved !== null) {
+        nextPickupUse += 1;
+        next = consumeHeldItem(resolved.battler, berry, nextPickupUse);
+        events.push({ type: "itemActivated", side, item: berry, effect: "boost", amount: 0, hp: next.hp });
+        events.push({ type: "heldItemConsumed", side, item: berry, effect: "boost", hp: next.hp });
+        events.push({ type: "statStageChanged", source: side, target: side, stat,
+          delta: resolved.delta, stage: resolved.stage });
+        next = applyCheekPouch(next, side, events);
+      }
     }
     const heals = next.heldItem === "LEFTOVERS"
       || (next.heldItem === "BLACKSLUDGE" && next.types.includes("POISON"));

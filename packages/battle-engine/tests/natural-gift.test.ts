@@ -3,6 +3,7 @@ import { NATURAL_GIFT_BERRIES, naturalGiftProfile } from "../src/natural-gift.js
 import { MINIMAL_MOVE_CATALOG, calculateDamage, createDoubleTeamBattleState, createTeamBattleState,
   resolveDoubleTeamTurn, resolveTeamTurn, type BattleMove, type BattlerState,
   type RandomSource } from "../src/index.js";
+import { effectiveMoveType } from "../src/move-properties.js";
 
 const rng: RandomSource = { nextInt: (limit) => limit - 1 };
 const gift: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "NATURALGIFT",
@@ -146,5 +147,14 @@ describe("Pokemon Z Natural Gift source table", () => {
     expect(active.state.teams.player.members[0]!.heldItem).toBe("CHERIBERRY");
     const ended = resolveDoubleTeamTurn(active.state, actions, rng);
     expect(ended.state.effects?.magicRoomTurns).toBe(0);
+  });
+
+  it("suppresses an active Plate's 09F type without removing the held item", () => {
+    const judgment: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "JUDGMENT",
+      functionCode: "09F", type: "NORMAL", category: "Special" };
+    const arceus = battler("arceus", "FLAMEPLATE", judgment);
+    expect(effectiveMoveType(arceus, judgment).type).toBe("FIRE");
+    expect(effectiveMoveType(arceus, judgment, null, 2).type).toBe("NORMAL");
+    expect(arceus.heldItem).toBe("FLAMEPLATE");
   });
 });

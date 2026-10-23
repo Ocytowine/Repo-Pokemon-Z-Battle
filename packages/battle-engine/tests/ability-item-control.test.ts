@@ -87,6 +87,54 @@ describe("source PP and held-item control abilities", () => {
     expect(released.state.teams.player.members[0]).toMatchObject({ hp: 70, heldItem: null });
   });
 
+  it("heals with Sitrus only at half HP and preserves its recycling history", () => {
+    const state = createTeamBattleState({
+      player: [pokemon("berry", "player", { hp: 80, heldItem: "SITRUSBERRY" })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.player.members[0]).toMatchObject({ hp: 120, heldItem: null,
+      recyclableItem: "SITRUSBERRY" });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      side: "player", item: "SITRUSBERRY", effect: "heal" }));
+  });
+
+  it.each([
+    ["GANLONBERRY", "defense"], ["SALACBERRY", "speed"],
+    ["PETAYABERRY", "specialAttack"], ["APICOTBERRY", "specialDefense"],
+  ] as const)("boosts %s's %s in the shared passive hook", (berry, stat) => {
+    const state = createTeamBattleState({
+      player: [pokemon("berry", "player", { hp: 40, heldItem: berry })],
+      opponent: [pokemon("foe", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "wait" }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.player.members[0]!.stages[stat]).toBe(1);
+    expect(result.state.teams.player.members[0]!.heldItem).toBeNull();
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed", item: berry }));
+  });
+
+  it("suppresses Sitrus and pinch berries in Magic Room in both double slots", () => {
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("sitrus", "player", { hp: 70, heldItem: "SITRUSBERRY" }),
+        pokemon("salac", "player", { hp: 35, heldItem: "SALACBERRY" })],
+      opponent: [pokemon("foe1", "opponent"), pokemon("foe2", "opponent")],
+    });
+    const suppressed = resolveDoubleTeamTurn({ ...state, effects: { sides: {
+      player: { reflectTurns: 0, luckyChantTurns: 0 },
+      opponent: { reflectTurns: 0, luckyChantTurns: 0 },
+    }, waterSportTurns: 0, magicRoomTurns: 2 } }, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], new ScriptedRandom([]));
+    expect(suppressed.state.teams.player.members.slice(0, 2).map((member) => member.heldItem))
+      .toEqual(["SITRUSBERRY", "SALACBERRY"]);
+    expect(suppressed.state.effects?.magicRoomTurns).toBe(1);
+  });
+
   it("lets one Unnerve bearer block both opposing berries in double battles", () => {
     const state = createDoubleTeamBattleState({
       player: [pokemon("unnerve", "player", { ability: "UNNERVE" }), pokemon("ally", "player")],

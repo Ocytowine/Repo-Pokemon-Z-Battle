@@ -6685,6 +6685,37 @@ Ruby de consommation, puis seulement promouvoir `0F9`/`096` si les matrices
 solo, double et Coop sont closes. Une fonction indépendante peut avancer si
 cette validation source bloque la clôture.
 
+## Seizième lot, troisième tranche : Sitrus et baies de stats - 2026-10-23
+
+Le hook d'objets commun gère maintenant `SITRUSBERRY` (soin de 1/4 des PV
+maximaux au seuil de 1/2) et les cinq baies de stats `LIECHIBERRY`,
+`GANLONBERRY`, `SALACBERRY`, `PETAYABERRY`, `APICOTBERRY` (un cran au seuil
+de 1/4, ou 1/2 avec Gloutonnerie). Un cran déjà au maximum ne consomme pas
+la baie. Ces effets respectent Tension adverse, Maladresse, Embargo et Champ
+Magique via le prédicat d'objet actif ; la consommation conserve l'historique
+pour Recyclage/Ramassage et déclenche Bajoues. Le calcul est dans le noyau
+unique, utilisé par le solo et la room autoritaire. Aucun nouvel état ni
+intention réseau : les baies sont des objets personnels projetés, les PV,
+crans et consommations sont tactiques et présentés aux participants. Les
+snapshots restaurent les baies consommées et les crans ; tests simple, double,
+hôte/invité, reconnexion et redémarrage ajoutés. Le type de Jugement sous Champ
+Magique a aussi une preuve ciblée : la plaque reste tenue mais devient inactive.
+
+La vérification de l'expression Ruby `TotalDamage>0>0` n'a pas pu être faite
+dans le runtime source (Ruby non disponible dans cet environnement). La règle
+provisoire de `096` reste donc explicitement partielle. Les baies de statut,
+PP, confusion, soin à seuils particuliers et réaction après impact ne sont pas
+encore fermées. Le déclenchement des nouvelles baies est actuellement au hook
+passif de fin de tour ; contrôler son instant exact contre `pbBerryCureCheck`
+avant promotion. `0F9` reste partielle tant que toutes ses interactions d'objets
+ne sont pas couvertes ; la forme d'Arceus lit l'objet brut dans le script source
+et n'est pas censée retomber en forme normale pendant Champ Magique.
+
+**Compteur inchangé : 186 fonctions terminées sur 353, plus `096` et `0F9`
+partielles.** Prochain lot : baies de statut/PP et déclenchement réactif après
+impact, puis audit final des objets sous Champ Magique ; si le hook Ruby demeure
+invérifiable, avancer une fonction indépendante sans promouvoir `096`.
+
 ### Suivi des fonctions d'attaque à reprendre
 
 Ce tableau est le point de contrôle avant chaque nouvelle promotion dans
@@ -6698,8 +6729,8 @@ fonction annoncée « couverte » peut donc conserver une dette précise à ferm
 | Fermées dans le douzième lot | `085`, `087` | Historique de K.O. et météo effective portés et testés en solo, double et room ; recette visuelle manuelle encore ouverte. |
 | Fermées dans le treizième lot | `090`, `092` | Type dérivé sans IV bruts, catégorie dynamique et compteur de camp restaurable ; recette visuelle manuelle ouverte. |
 | Fermées dans le quatorzième lot | `094`, `097` | Présent : tirages/soin/Gemme/Lien Parental ; As Caché : PP après dépense/Pression. Recette visuelle manuelle ouverte. |
-| Partielle, non promue | `096` | Table et transport des 64 baies réelles, exécution dans le noyau ; effets automatiques des 61 baies nouvellement transportées et hook Ruby de consommation à fermer avant promotion. |
-| Partielle, non promue | `0F9` | Compteur et principales suppressions d'objets portés ; auditer formes, vols/transferts et baies avant promotion. |
+| Partielle, non promue | `096` | Table et transport des 64 baies réelles, Sitrus et cinq baies de stats ajoutées aux passifs ; autres baies, instant d'activation et hook Ruby de consommation à fermer avant promotion. |
+| Partielle, non promue | `0F9` | Compteur et principales suppressions d'objets portés ; forme Arceus brute confirmée par la source, auditer encore vols/transferts et réactions de baies avant promotion. |
 | Fermée dans le quatorzième lot | `099` | Rapport des vitesses effectives raccordé en simple et double ; restauration room testée, recette visuelle ouverte. |
 | Fermée dans le quinzième lot | `0A0` | Critique garanti après gardes de critique/Conjuro ; simple, double et room restaurée testés, recette visuelle ouverte. |
 | Couverte avec interaction visuelle ouverte | `09F` | Types des plaques/modules et blocages portés ; variante d'animation Techno Blast et suppression par Champ Magique à raccorder. |

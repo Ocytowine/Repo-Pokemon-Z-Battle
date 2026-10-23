@@ -2934,6 +2934,40 @@ describe("authoritative battle room", () => {
     expect(restarted.connect("alice").snapshot.battle?.state).toEqual(expected);
   });
 
+  it("settles Sitrus and Salac for both owners through the authoritative room", () => {
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), hp: 80, heldItem: "SITRUSBERRY" as const,
+        stats: { ...battler("player").stats, maxHp: 160 } }],
+      opponent: [{ ...battler("opponent"), hp: 40, heldItem: "SALACBERRY" as const,
+        stats: { ...battler("opponent").stats, maxHp: 160 } }],
+    });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(24_353), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("pinch-ready-a"));
+    room.receive("bob", ready("pinch-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "pinch-a",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const result = room.receive("bob", { type: "submitAction", version: 15, requestId: "pinch-b",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    expect(result.find((entry) => entry.message.type === "turnResolved")?.message)
+      .toMatchObject({ events: expect.arrayContaining([
+        expect.objectContaining({ type: "heldItemConsumed", side: "player", item: "SITRUSBERRY" }),
+        expect.objectContaining({ type: "heldItemConsumed", side: "opponent", item: "SALACBERRY" }),
+      ]) });
+    const expected = room.snapshot().battle?.state;
+    expect(expected?.teams.player.members[0]).toMatchObject({ hp: 120, heldItem: null,
+      recyclableItem: "SITRUSBERRY" });
+    expect(expected?.teams.opponent.members[0]).toMatchObject({ heldItem: null,
+      recyclableItem: "SALACBERRY", stages: { speed: 1 } });
+    room.disconnect("bob");
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(expected);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restarted.connect("alice").snapshot.battle?.state).toEqual(expected);
+  });
+
   it("keeps both owners' retaliation history and results across reconnect and restart", () => {
     const strike = { ...MINIMAL_MOVE_CATALOG.TACKLE, power: 20, accuracy: 0 };
     const counter = { ...strike, internalName: "COUNTER", name: "Riposte",

@@ -141,11 +141,12 @@ Coop et sauvegarde.
   avec hôte et invité, puis après reconnexion. Noter séparément toute variante
   d'animation source absente ou incorrecte ; ne pas en inventer une.
 
-`096` (Don Naturel) n'est pas encore à cocher manuellement : sa table de 64
-baies est portée et trois cas passent dans le noyau/room de test, mais la
-capacité reste `partial` et n'est pas proposée aux équipes source. Attendre
-le transport des autres baies, Champ Magique complet et la validation de la
-consommation avant d'ajouter sa recette en jeu.
+`096` (Don Naturel) et `0F9` (Champ Magique) ne sont pas encore à cocher
+manuellement : les 64 baies source sont transportées et le champ fonctionne
+dans les tests du noyau/room, mais les deux fonctions restent `partial` et ne
+sont pas proposées aux équipes source. Attendre la fermeture des effets
+automatiques des baies, des interactions d'objets et de la consommation Ruby
+avant d'ajouter leur recette en jeu.
 
 ## Matrice Coop à répéter sur un ou deux cas représentatifs
 
