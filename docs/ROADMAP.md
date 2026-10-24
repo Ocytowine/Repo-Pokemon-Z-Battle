@@ -1315,8 +1315,84 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   65 animations absentes, 206 problèmes globaux et 770 animations prêtes.
   Clonage et la recette visuelle restent ouverts. Prochain lot : `075`,
   `076`, `078` puis `0A4`, `0A6`, `0A8`, `0A9`, `0AB`, `0AC`, `0AE`.
+  Ce lot est clos dans le noyau commun : interactions Surf/Séisme/Twister
+  avec la semi-invulnérabilité, Secret Power selon le terrain, Lock-On,
+  Miracle Eye, défense/esquive ignorées par `0A9`, gardes d'équipe et
+  Mirror Move (y compris zone et charge copiées). Tests simple, double,
+  hôte/invité et room restaurée passent. Après `prepare:local` :
+  **241/353 fonctions couvertes, 112 restantes**, 126 alertes mécaniques,
+  67 animations absentes, 194 problèmes globaux et 788 animations prêtes.
+  Recette visuelle réelle encore ouverte, notamment les variantes
+  d'animation de Secret Power et les interactions Clonage/Bouclier Rusé.
+  Prochain lot : `0AF`–`0B2`, `0B4`–`0B8`, `0BB` (dix fonctions de copie,
+  renvoi, vol et restriction des capacités).
+  Première tranche du 2026-10-23 : `0B1`, `0B7`, `0B8`, `0BB` dans le
+  noyau partagé, tests simple/double et snapshots ; **245/353 couvertes,
+  108 restantes**, 122 alertes mécaniques, 67 animations absentes,
+  190 problèmes globaux, 793 animations prêtes. La recette visuelle
+  hôte/invité demeure ouverte. Le lot de dix reste en cours : finir
+  `0AF`, `0B0`, `0B2`, `0B4`, `0B5`, `0B6` avec un catalogue et un suivi
+  des capacités appelées communs au solo et à la room autoritaire.
+  Deuxième tranche du 2026-10-23 : `0AF`, `0B0`, `0B2`, `0B4`, `0B5`
+  portés dans le noyau commun (dernier coup global, choix adverse,
+  détournement, tirage équipe), tests simple/double et room restaurée
+  hôte/invité. **250/353 couvertes, 103 restantes**, 118 alertes
+  mécaniques, 67 animations absentes, 186 problèmes globaux,
+  797 animations prêtes. Le dixième code `0B6` Metronome reste ouvert :
+  catalogue complet absent de la room et tirages possibles vers des
+  fonctions non portées ; ne pas le simuler sur le sous-ensemble connu.
+  Prochain lot indépendant proposé : `0BF`, `10A`, `122`, `144`, `019`,
+  `112`, `114`, `140`, après audit des variantes source.
+  Troisième tranche du 2026-10-23 : neuf codes portés dans le noyau
+  commun, avec `113` Relâche requis par Stockpile et la collision locale
+  du code `140` traitée selon la catégorie. Soins d'équipe partagés entre
+  combat simple et Duo, état autoritaire sauvegardé/reconnecté en Coop.
+  **259/353 fonctions couvertes, 94 restantes** ; 99 alertes mécaniques,
+  71 animations absentes, 1 talent partiel, 171 problèmes globaux et 818
+  animations prêtes après `prepare:local`. Immunité Herbivore du partenaire
+  actif testée ; recette visuelle à vérifier. Prochain lot proposé :
+  `002`, `00B`, `00D`, `00E`, `011`, `014`, `015`, `018`, `01A`, `01B`.
+  Quatrième tranche du 2026-10-24 : ces dix codes sont portés dans le
+  noyau commun (Lutte sans type et sans PP, deux Crocs à effets
+  indépendants, précision météo, Ronflement, Babil, Refresh, Voile
+  Sacré, Psycho Shift). Tests simple/Duo et room hôte/invité restaurée
+  pour le compteur de garde. **269/353 fonctions couvertes, 84 restantes** ;
+  90 alertes mécaniques, 72 animations absentes, 1 talent partiel,
+  163 problèmes globaux et 828 animations prêtes après `prepare:local`.
+  Recette visuelle utilisateur ouverte. Prochain lot proposé :
+  `0FF`–`105`, `118`, `119`, `11F` (météo, pièges et effets de terrain).
   La recette visuelle utilisateur des lots `05C`-`07A`, encore ouverte, est
   consignée dans [`VALIDATION_MANUELLE_COMBAT.md`](VALIDATION_MANUELLE_COMBAT.md).
+  Cinquième tranche du 2026-10-24 : `0FF`–`105`, `118`, `119`, `11F`
+  portés (climats, pièges, Gravité, Vol Magnétik, Distorsion), avec
+  changements et KO d'entrée partagés simple/Duo, room restaurée
+  hôte/invité. **279/353 fonctions couvertes, 74 restantes** ; 80 alertes
+  mécaniques, 72 animations absentes, 1 talent partiel, 153 problèmes
+  globaux et 841 animations prêtes après `prepare:local`. Dette : le
+  remplacement imposé en Duo retourne seulement un état, sans événement
+  narratif de dégâts de piège ; contrat d'état/réplication conservé,
+  raccord d'événement et recette visuelle encore ouverts. Prochain lot
+  proposé : `11A`–`11C`, `124`, `153`–`156`, `905`, `927`.
+  Sixième tranche du 2026-10-24 : ces dix codes de terrain/placement
+  portés dans le noyau commun (Télékinésie, Uppercut/Anti-Air, Zone
+  Étrange, Toile Gluante, quatre champs et Voile Aurore). Même calcul
+  solo/Duo/room, état autoritaire restauré hôte/invité ; recette visuelle
+  réelle encore ouverte. **289/353 fonctions couvertes, 64 restantes** ;
+  69 alertes mécaniques, 73 animations absentes, 1 talent partiel,
+  143 problèmes globaux et 854 animations prêtes après `prepare:local`.
+  La dette de narration du remplacement imposé en Duo sur piège reste
+  ouverte. Prochain lot proposé : `121`, `123`, `135`, `13A`, `13C`,
+  `13D`, `142`, `143`, `902`, `904`.
+  Septième tranche du 2026-10-24 : ces dix codes sont portés dans le
+  noyau commun (Jeu Déloyal, Synchronoise, Liofilisation, trois baisses
+  de stats, deux ajouts de type, Absorbeforce et Poudre Magique).
+  État/PV/types autoritaires en solo, Duo et room hôte/invité restaurée ;
+  recette visuelle ouverte. **299/353 fonctions couvertes, 54 restantes** ;
+  59 alertes mécaniques, 74 animations absentes, 1 talent partiel,
+  134 problèmes globaux et 867 animations prêtes après `prepare:local`.
+  Dette de narration du KO sur piège lors du remplacement imposé en Duo
+  toujours ouverte. Prochain lot proposé : `175`, `1B9`, `201`, `207`,
+  `211`, `303`, `304`, `911`, `931`, `942`.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

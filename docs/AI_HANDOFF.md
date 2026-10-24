@@ -7046,3 +7046,299 @@ hôte, invité, rendu distant et reconnexion demeure ouverte dans
 `0AE` (dix codes : interactions de semi-invulnérabilité, environnement,
 précision, gardes d'équipe et copie). Clonage reste un chantier générique
 séparé, prioritaire pour fermer ses interactions transverses.
+
+## Vingt et unième lot : terrain, ciblage, gardes et copie — 2026-10-23
+
+Les dix codes annoncés `075`, `076`, `078`, `0A4`, `0A6`, `0A8`, `0A9`,
+`0AB`, `0AC`, `0AE` sont enregistrés. Surf, Séisme et Twister exploitent
+les exceptions de semi-invulnérabilité du lot précédent ; Séisme perd
+également la moitié de sa puissance sur Champ Herbu et `078` peut apeurer.
+Secret Power (`0A4`) applique l'effet de terrain/environnement ; Lock-On
+conserve l'identité du lanceur jusqu'au prochain tour ; Miracle Eye
+distingue l'immunité Ténèbres du type Spectre ; `0A9` ignore Défense,
+Défense Spéciale et esquive augmentées. Quick Guard et Wide Guard sont
+des états d'équipe d'un seul tour ; ils protègent l'allié en double et
+sont effacés en fin de tour. Mirror Move copie la dernière capacité de
+la cible marquée `e`, conserve son ciblage de zone et son coût PP propre ;
+une attaque copiée à deux tours est mémorisée pendant la charge.
+
+Contrat : noyau déterministe partagé, autorité locale en solo et room
+autoritaire en Coop ; intentions réseau inchangées. Les états de
+Lock-On, Miracle Eye, gardes et capacité appelée sont des volatils de
+combat, répliqués aux participants et inclus dans le snapshot room.
+PV, PP et statuts conservent leur persistance propriétaire habituelle.
+Tests simple/double, hôte/invité et redémarrage de room passent ; rendu
+distant réel et reconnexion visuelle sont à valider manuellement selon
+`VALIDATION_MANUELLE_COMBAT.md`.
+
+Après `prepare:local` : **241 fonctions couvertes / 112 restantes sur
+353** ; 126 capacités à mécanique absente, 67 animations absentes,
+1 talent partiel, 194 problèmes globaux et 788 animations prêtes.
+Les animations absentes restent au fallback. Les variantes visuelles
+par environnement de Secret Power et les interactions avec Clonage et
+Bouclier Rusé attendent une recette ou un état partagé ; ne pas les
+confondre avec la mécanique enregistrée.
+
+Prochain lot conséquent proposé : `0AF`–`0B2`, `0B4`–`0B8` et `0BB`
+(dix codes : appel/copie, renvoi et vol de capacités, puis contraintes
+de choix). La capacité copiée et la liste de cibles doivent continuer
+à dépendre du même noyau solo/Coop ; Clonage reste une dette transverse.
+
+## Vingt-deuxième lot, première tranche : contraintes et renvoi — 2026-10-23
+
+Quatre des dix codes annoncés sont portés : `0B1` Magic Coat, `0B7`
+Torment, `0B8` Imprison et `0BB` Heal Block. Magic Coat renvoie les
+capacités de statut marquées réfléchissables pendant le tour courant ;
+Torment interdit de répéter une capacité (sans interrompre sa charge) ;
+Imprison interdit aux adversaires les capacités connues de son lanceur,
+y compris aux deux adversaires en double ; Heal Block empêche les
+capacités de soin marquées dans la source, Anneau Hydro, Racines,
+Vœu, Vampigraine et Soin Poison pendant cinq tours source. Les PP
+restent inchangés lorsqu'une capacité est interdite. Les états sont
+inclus dans le snapshot de combat et les messages sont présentés aux
+participants.
+
+Autorité : même noyau déterministe en solo et dans la room hôte/invité ;
+intentions Coop inchangées. Domaine : volatils de combat partagés avec
+les participants, non persistés dans l'équipe propriétaire après le
+combat ; la room les restaure sur reconnexion. Tests simple et double,
+restauration JSON, suite room et build passent ; rendu distant réel et
+reconnexion visuelle restent dans la recette manuelle.
+
+Après `prepare:local` : **245/353 fonctions couvertes, 108 restantes** ;
+122 capacités à mécanique absente, 67 animations absentes, 1 talent
+partiel, 190 problèmes globaux et 793 animations prêtes. Aucun fichier
+source ni animation de substitution n'a été ajouté à Git.
+
+Le lot de dix n'est **pas clos** : `0AF` Copycat, `0B0` Me First, `0B2`
+Snatch, `0B4` Sleep Talk, `0B5` Assist et `0B6` Metronome restent à
+porter. Ils appellent d'autres capacités et exigent un contrat partagé
+pour le dernier coup global, les choix avant action, l'équipe disponible
+et le catalogue complet de Metronome dans la room ; ne pas les déclarer
+supportés sur la seule base d'un appel local ou d'un catalogue partiel.
+Prochain travail : finir ces six codes comme seconde tranche du même
+lot, puis reprendre la sélection du lot suivant dans l'audit.
+
+## Vingt-deuxième lot, deuxième tranche : capacités appelées — 2026-10-23
+
+Cinq codes supplémentaires sont portés : `0AF` Copycat, `0B0` Me First,
+`0B2` Snatch, `0B4` Sleep Talk et `0B5` Assist. Le noyau partage le
+dernier coup global dans l'état du combat, restauré par la room ; Me
+First consulte l'action adverse prévue et majore la puissance de la
+capacité copiée ; Snatch détourne vers son lanceur une capacité de
+statut marquée `d` puis se consomme ; Sleep Talk choisit parmi les
+capacités utilisables du dormeur ; Assist choisit parmi celles des
+autres membres de son équipe, même K.O. Le PP payé reste celui de la
+capacité déclencheuse. La sélection aléatoire est tracée et déterministe.
+En double, la capacité appelée conserve son ciblage de zone et Snatch
+choisit un adversaire actif guetteur ; l'état de charge copié de Me
+First est inclus dans le snapshot.
+
+Contrat : autorité locale en solo, room hôte en Coop, même noyau pour
+invité et joueur local. Domaine : dernier coup global et états d'appel
+volatils du combat ; PP/PV propriétaires persistent selon le contrat
+existant. Les intentions sont celles des capacités choisies, sans
+nouvelle intention réseau. Audience : participants et rendu distant
+via événements de capacité utilisée ou volée. Tests simple/double,
+source globale après sérialisation, room hôte/invité reconnectée puis
+redémarrée passent ; la recette visuelle réelle reste ouverte.
+
+Après `prepare:local` : **250/353 fonctions couvertes, 103 restantes** ;
+118 capacités à mécanique absente, 67 animations absentes, 1 talent
+partiel, 186 problèmes globaux et 797 animations prêtes. Le lot initial
+de dix reste **ouvert pour `0B6` Metronome seulement**. Cette fonction
+tire dans le catalogue complet, pas dans les seules quatre capacités
+présentes au combat : la room ne reçoit pas encore ce catalogue et
+plusieurs résultats du tirage portent une fonction non implémentée.
+Ne pas enregistrer `0B6` avant un transport/persistance du catalogue
+autoritaire et un traitement explicite des résultats non portés ; un
+tirage artificiellement restreint fausserait les probabilités source.
+
+Prochain lot de mécanique proposé en parallèle de cette dette :
+`0BF`, `10A`, `122`, `144`, `019`, `112`, `114`, `140` (huit codes,
+attaques multi-coups et défensives, soins/stockage et dégâts spéciaux).
+Auditer les variantes source propres à chaque code avant de les déclarer
+supportées. `0B6` reste séparé jusqu'au raccord du catalogue complet.
+
+## Vingt-troisième lot : multi-coups, écrans, réserves et stockage — 2026-10-23
+
+Neuf codes supplémentaires sont enregistrés dans le noyau partagé : `0BF`
+(Triple Pied, précision propre à chaque frappe et puissance croissante),
+`10A` (Casse-Brique ignore puis détruit Protection/Mur Lumière), `122`
+(attaque spéciale sur Défense physique), `144` (Flying Press cumule les
+efficacités Combat/Vol et profite de Lilliput), `112`/`113`/`114`
+(Stockpile/Relâche/Avale, compte et bonus défensifs restitués), `019`
+(Aromathérapie/Glas de Soin jusqu'aux réserves) et `140`. Ce dernier code
+est partagé par les données locales entre le Dernier Recours physique et
+Venom Drench statut : la catégorie discrimine les deux règles ; Dernier
+Recours exige l'essai préalable de chaque autre capacité connue, Venom
+Drench abaisse Attaque/Attaque Spéciale/Vitesse des cibles empoisonnées,
+y compris les deux adversaires en Duo.
+
+Contrat : même résolution déterministe pour solo et room hôte ; PP, PV,
+statuts, compteurs Stockpile, historique d'utilisation et stades sont
+autoritaires dans le snapshot. Les soins de réserve utilisent un seul
+réducteur commun aux adaptateurs simple et Duo. Aucun message d'intention
+réseau nouveau : seule la capacité choisie est transmise. Les événements
+du combat et les snapshots répliquent les changements aux deux participants
+et au rendu distant ; la reconnexion et le redémarrage de room restaurent
+les statuts. Tests noyau simple/Duo, y compris partenaire actif Herbivore
+qui ignore Aromathérapie, et room hôte/invité passés ; recette visuelle
+réelle encore à effectuer (check-list ci-dessous).
+
+Après `prepare:local` : **259/353 fonctions couvertes, 94 restantes** ;
+99 capacités à mécanique absente, 71 animations absentes, 1 talent partiel,
+171 problèmes globaux et 818 animations prêtes. Les animations non importées
+restent en fallback et ne sont pas inventées. `0B6` Metronome demeure ouvert.
+
+Prochain lot conséquent proposé : les dix codes `002`, `00B`, `00D`,
+`00E`, `011`, `014`, `015`, `018`, `01A`, `01B` (Lutte, variantes de morsure
+et de météo, Ronflement/Babil, soin et garde/transfert de statut). Auditer
+les données source et les interactions de statut avant d'enregistrer chaque
+code ; si une dépendance transversale bloque l'un d'eux, la signaler et
+poursuivre les autres sans déclarer le code couvert.
+
+## Vingt-quatrième lot : fonctions précoces de statut et météo — 2026-10-24
+
+Les dix codes prévus sont portés dans le noyau partagé. `002` Lutte est
+sans type, utilisable à zéro PP et inflige un recul d'un quart des PV
+maximum après impact. `00B`/`00E` Crocs de Feu/Glace tirent séparément
+statut et apeurement. `00D` Blizzard touche sans tirage sous grêle ; `015`
+Vent Violent touche sans tirage sous pluie et passe à 50 % sous soleil.
+`011` Ronflement n'agit que pendant le sommeil et peut apeurer ; `014`
+Babil confond après impact selon les nouvelles mécaniques source. `018`
+Refresh guérit brûlure, poison ou paralysie. `01A` Voile Sacré
+protège le camp cinq tours et échoue s'il est déjà actif. `01B`
+Psycho Shift transmet uniquement un statut compatible, puis guérit le
+lanceur ; si la cible résiste, le statut du lanceur reste inchangé.
+
+Contrat : solo local et room hôte utilisent le même calcul, avec les
+intentions de capacité déjà existantes. Statuts personnels, compteurs
+de camp et PV/PP sont autoritaires et persistés dans le snapshot ;
+événements de combat destinés aux participants et au rendu distant.
+Tests noyau simple/Duo et room hôte/invité avec reconnexion/redémarrage
+pour Voile Sacré passent ; recette visuelle réelle non effectuée et
+documentée dans `VALIDATION_MANUELLE_COMBAT.md`.
+
+Après `prepare:local` : **269/353 fonctions couvertes, 84 restantes** ;
+90 capacités à mécanique absente, 72 animations absentes, 1 talent
+partiel, 163 problèmes globaux et 828 animations prêtes. `0B6`
+Metronome demeure ouvert pour son catalogue complet autoritaire.
+
+Prochain lot conséquent proposé : `0FF`–`105` (quatre climats et trois
+pièges d'entrée) puis `118`, `119`, `11F` (Gravité, Vol Magnétik,
+Distorsion) : dix codes de terrain liés à l'état partagé et à la
+reconnexion. Réutiliser les effets météo/pièges existants ; auditer les
+durées source et les interactions Duo avant de les déclarer couverts.
+
+## Vingt-cinquième lot : climats, pièges et terrain — 2026-10-24
+
+Les dix codes `0FF`–`105`, `118`, `119`, `11F` sont portés dans le noyau
+commun. Soleil, pluie, sable et grêle durent cinq tours, ou huit avec la
+roche dédiée ; les climats extrêmes bloquent leur remplacement. Picots
+(trois couches), Pics Toxik (deux) et Piège de Roc agissent à l'entrée
+selon l'ancrage, les types, les immunités et les Grosses Bottes ; un
+entrant Poison au sol retire les Pics Toxik. Gravité dure cinq tours,
+ramène au sol les combattants actifs, interrompt les états aériens et
+augmente la précision ; Vol Magnétik dure cinq tours et immunise au Sol
+hors Gravité. Distorsion inverse l'ordre de Vitesse et se désactive au
+second emploi. Les KO sur piège redemandent un remplaçant en simple et
+en Duo ; les pièges renvoyables sont pris en compte en Duo.
+
+Autorité : le noyau déterministe est utilisé par le solo et la room hôte ;
+l'invité transmet l'intention de capacité/changement existante. Climat,
+terrain, pièges et comptes volatils appartiennent au snapshot autoritaire,
+répliqué aux participants et restauré après reconnexion/redémarrage.
+L'audience des événements et PV est celle des participants du combat ;
+les tests couvrent simple, Duo et room hôte/invité restaurée. Dette
+précise : `replaceFaintedDoublePokemon` expose seulement le nouvel état ;
+un KO par piège pendant ce remplacement imposé est bien restauré et le
+slot reste demandé, mais son événement de dégâts n'est pas encore envoyé
+pour la narration/animation à cet instant. La recette visuelle réelle,
+y compris ce cas, demeure ouverte dans `VALIDATION_MANUELLE_COMBAT.md`.
+
+Après `prepare:local` : **279/353 fonctions couvertes, 74 restantes** ;
+80 capacités à mécanique absente, 72 animations absentes, 1 talent
+partiel, 153 problèmes globaux et 841 animations prêtes. `0B6`
+Metronome reste ouvert.
+
+Prochain lot conséquent proposé : dix codes de terrain et de placement,
+`11A`–`11C` (Télékinésie, Uppercut, Anti-Air), `124` (Zone Étrange),
+`153` (Toile Gluante), `154`–`156` (trois champs), `905` (Champ Psychique)
+et `927` (Voile Aurore). Auditer d'abord les données source et les
+interactions avec Gravité, les pièges et les immunités avant couverture.
+
+## Vingt-sixième lot : terrain et placement — 2026-10-24
+
+Les dix codes prévus sont portés dans le noyau partagé. `11A` Télékinésie
+élève sa cible trois tours, garantit la précision contre elle et cesse
+sous Gravité ; `11B` Uppercut touche les cibles en Vol/Bond/Caída Libre ;
+`11C` Anti-Air/Mille Flèches touche les cibles aériennes, double sa
+puissance contre une cible en charge aérienne et l'ancre après impact.
+`124` Zone Étrange échange les Défenses de base cinq tours et se coupe
+au second emploi. `153` Toile Gluante baisse la Vitesse des entrants au
+sol avec les réactions de talent usuelles. `154`–`156` et `905` posent
+respectivement les champs Électrik, Herbu, Brumeux et Psychique cinq
+tours, se remplacent mutuellement et appliquent leurs effets de dégâts,
+soin, statut et priorité aux seuls combattants concernés. `927` Voile
+Aurore pose les deux écrans sous grêle, selon la durée et la condition
+réellement codées dans la source.
+
+Autorité : les intentions de capacité/changement existantes vont à la
+room hôte ; elle emploie le même calcul que le solo. États de camp,
+terrain et comptes volatils sont répliqués aux participants et restaurés
+après reconnexion/redémarrage ; aucun état de terrain personnel nouveau
+n'est transmis. Les tests couvrent simple, Duo et room hôte/invité,
+mais pas encore la recette visuelle réelle. La dette d'événement lors
+d'un remplacement imposé en Duo tombant sur un piège, signalée au lot
+précédent, reste ouverte.
+
+Après `prepare:local` : **289/353 fonctions couvertes, 64 restantes** ;
+69 capacités à mécanique absente, 73 animations absentes, 1 talent
+partiel, 143 problèmes globaux et 854 animations prêtes. Les animations
+absentes restent en fallback ; `0B6` Metronome demeure ouvert.
+
+Prochain lot conséquent proposé : dix codes de calcul et d'altération,
+`121` Foul Play, `123` Synchronoise, `135` Freeze-Dry, `13A` Noble Roar,
+`13C` Confide, `13D` Eerie Impulse, `142` Trick-or-Treat,
+`143` Forest's Curse, `902` Strength Sap et `904` Magic Powder.
+Auditer les interactions de types, stats, talents et formes avant
+d'enregistrer ces codes ; conserver les tests room restaurée.
+
+## Vingt-septième lot : dégâts, statistiques et types — 2026-10-24
+
+Les dix codes `121`, `123`, `135`, `13A`, `13C`, `13D`, `142`, `143`,
+`902` et `904` sont portés dans le noyau commun. Jeu Déloyal utilise
+l'Attaque et les stades de la cible ; Synchronoise vérifie chaque cible
+partageant un type, y compris en Duo ; Liofilisation est super efficace
+sur Eau et peut geler. Rugissement de Guerre, Confidence et Onde
+Anormale abaissent les bonnes statistiques avec les protections et
+réactions de talent partagées. Halloween et Malédiction Sylvestre posent
+ou remplacent un troisième type temporaire ; Poudre Magique change
+la cible en type Psy, conformément au **code source** malgré son
+commentaire source contradictoire. Les types d'origine sont restaurés
+à la sortie du terrain. Absorbeforce soigne selon l'Attaque de la cible
+avant sa baisse, respecte Grosse Racine/Bloc Soin et inflige des dégâts
+au lanceur contre Suintement.
+
+Contrat : mêmes calculs dans le solo et la room hôte, intention de
+capacité existante depuis l'invité, statistiques/PV/types et origine
+temporaire répliqués aux participants dans le snapshot autoritaire.
+Tests simple, Duo et room hôte/invité avec reconnexion/redémarrage pour
+Poudre Magique et Absorbeforce passent. Les événements déjà typés de
+types, stades, soins et dégâts alimentent le rendu distant. Recette
+visuelle réelle non effectuée ; voir `VALIDATION_MANUELLE_COMBAT.md`.
+La dette antérieure de narration du KO par piège au remplacement Duo
+reste ouverte.
+
+Après `prepare:local` : **299/353 fonctions couvertes, 54 restantes** ;
+59 capacités à mécanique absente, 74 animations absentes, 1 talent
+partiel, 134 problèmes globaux et 867 animations prêtes. `0B6`
+Metronome reste ouvert ; aucun fallback d'animation n'est inventé.
+
+Prochain lot conséquent proposé : dix variantes offensives `175`
+(Body Press), `1B9` (Toxic Thread), `201` (Rising Voltage), `207`
+(Expanding Force), `211` (Grassy Glide), `303` (Bolt Beak/Fishious Rend),
+`304` (Steel Beam/Chloroblast), `911` (Dire Claw), `931` (Make It Rain)
+et `942` (Surging Strikes). Auditer les variantes source, les cibles Duo
+et le calcul multi-impact avant d'enregistrer chaque code.

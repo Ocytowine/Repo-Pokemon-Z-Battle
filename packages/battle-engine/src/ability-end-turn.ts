@@ -31,7 +31,8 @@ export function resolvePoisonHeal(battler: BattlerState, side: BattleSide): {
   if (battler.hp <= 0 || battler.ability !== "POISONHEAL" || battler.majorStatus?.kind !== "poison") return null;
   const status = battler.majorStatus.toxicCounter === null ? battler.majorStatus
     : { kind: "poison" as const, toxicCounter: Math.min(15, battler.majorStatus.toxicCounter + 1) };
-  const amount = Math.min(battler.stats.maxHp - battler.hp, Math.max(1, Math.floor(battler.stats.maxHp / 8)));
+  const amount = (battler.volatile?.healBlockTurns ?? 0) > 0 ? 0
+    : Math.min(battler.stats.maxHp - battler.hp, Math.max(1, Math.floor(battler.stats.maxHp / 8)));
   const next = { ...battler, hp: battler.hp + amount, majorStatus: status };
   if (amount === 0) return { battler: next, events: [] };
   return { battler: next, events: [

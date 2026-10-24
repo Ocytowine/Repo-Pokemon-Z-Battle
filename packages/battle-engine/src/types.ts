@@ -17,7 +17,12 @@ export interface BattleMove {
   readonly id: number;
   readonly internalName: string;
   readonly name: string;
-  readonly functionCode: "075" | "076" | "078" | "0A4" | "0A6" | "0A8" | "0A9" | "0AB" | "0AC" | "0AE"
+  readonly functionCode: "075" | "076" | "078" | "0A4" | "0A6" | "0A8" | "0A9" | "0AB" | "0AC" | "0AE" | "0AF" | "0B0" | "0B1" | "0B2" | "0B4" | "0B5" | "0B7" | "0B8" | "0BB" | "0BF" | "019" | "10A" | "112" | "113" | "114" | "122" | "140" | "144"
+    | "002" | "00B" | "00D" | "00E" | "011" | "014" | "015" | "018" | "01A" | "01B"
+    | "0FF" | "100" | "101" | "102" | "103" | "104" | "105" | "118" | "119" | "11F"
+    | "11A" | "11B" | "11C" | "124" | "153" | "154" | "155" | "156" | "905" | "927"
+    | "121" | "123" | "135" | "13A" | "13C" | "13D" | "142" | "143" | "902" | "904"
+    | "109" | "175" | "1B9" | "201" | "207" | "211" | "303" | "304" | "911" | "931" | "942"
     | "000" | "001" | "003" | "004" | "005" | "006" | "007" | "008" | "009" | "00A" | "00C"
     | "00F" | "010" | "012" | "013" | "016" | "017"
     | "01C" | "01D" | "01E" | "01F" | "020" | "021" | "022" | "023" | "024" | "025" | "026" | "027" | "028" | "029" | "030" | "031"
@@ -131,6 +136,8 @@ export interface BattlerState {
     readonly bindingTurns: number;
     readonly cursed: boolean;
     readonly lastMoveUsed: string | null;
+    /** Battle-local history for moves whose availability depends on previously attempted moves. */
+    readonly usedMoveNames?: readonly string[];
     /** Actual move/type most recently attempted, including effective type for Conversion 2. */
     readonly lastUsedMove?: BattleMove | null;
     readonly lastMoveUsedType?: string | null;
@@ -154,6 +161,15 @@ export interface BattlerState {
     /** Source ProtectRate: 1 initially, doubled after each consecutive success. */
     readonly protectRate?: number;
     readonly tauntTurns?: number;
+    readonly tormented?: boolean;
+    readonly imprisoning?: boolean;
+    readonly magicCoat?: boolean;
+    readonly snatching?: boolean;
+    readonly healBlockTurns?: number;
+    readonly stockpileCount?: number;
+    readonly stockpileDefense?: number;
+    readonly stockpileSpecialDefense?: number;
+    readonly minimized?: boolean;
     readonly rage?: boolean;
     /** Fire boost armed by Flash Fire until this battler leaves combat. */
     readonly flashFire?: boolean;
@@ -165,6 +181,8 @@ export interface BattlerState {
     readonly abilityReplacementActive?: boolean;
     /** Types restored when a temporary Protean/Color Change user leaves the field. */
     readonly originalTypes?: readonly string[] | null;
+    /** Third temporary type installed by Trick-or-Treat or Forest's Curse. */
+    readonly addedType?: string | null;
     /** Source side for Leech Seed; legacy snapshots omit it. */
     readonly leechSeededBy?: BattleSide | null;
     /** Active slot occupied by the Leech Seed user; relevant in double battles. */
@@ -206,6 +224,12 @@ export interface BattlerState {
     readonly batonPass?: boolean;
     readonly meanLookBy?: string | null;
     readonly ingrain?: boolean;
+    /** Five-round airborne state, removed by Gravity and on withdrawal. */
+    readonly magnetRiseTurns?: number;
+    /** Target is raised for three rounds and attacks cannot miss it. */
+    readonly telekinesisTurns?: number;
+    /** Grounding remains until withdrawal after Smack Down/Thousand Arrows. */
+    readonly smackDown?: boolean;
     readonly aquaRing?: boolean;
     readonly wishTurns?: number;
     readonly wishAmount?: number;
@@ -305,10 +329,14 @@ export interface BattleSideEffects {
 
 export interface BattleEffects {
   readonly sides: Readonly<Record<BattleSide, BattleSideEffects>>;
+  /** Last successfully called/used move, shared across both sides and restored with the battle. */
+  readonly lastMoveUsed?: BattleMove | null;
   readonly waterSportTurns: number;
   /** Tactical transfers retained for owner-scoped persistence at battle settlement. */
   readonly itemTransfers?: readonly { readonly item: HeldItem; readonly sourceId: string;
     readonly targetId: string; readonly reason: "pickpocket" }[];
+  /** Pay Day coins earned by battler identity; settled only for each winning owner. */
+  readonly scatteredCoins?: Readonly<Record<string, number>>;
   /** Monotonic source ordering used when Pickup has several eligible items. */
   readonly nextPickupUse?: number;
   /** Optional for backward-compatible snapshots created before Route 3. */
@@ -320,6 +348,7 @@ export interface BattleEffects {
   /** Source Magic Room field counter; item suppression is shared by every active battler. */
   readonly magicRoomTurns?: number;
   readonly gravityTurns?: number;
+  readonly wonderRoomTurns?: number;
   readonly weather?: "sun" | "rain" | "sand" | "hail" | "heavy-rain" | "harsh-sun" | "strong-winds" | null;
   readonly weatherTurns?: number;
   /** Source reciprocal Fusion field markers, shared by all active battlers for this turn only. */
@@ -416,8 +445,13 @@ export type BattleEvent =
   | { readonly type: "statusApplicationFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly status: MajorStatusState["kind"]; readonly reason: "already-status" | "type-immune" | "ability-immune" | "safeguard" }
   | { readonly type: "statusContinued"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusCured"; readonly side: BattleSide; readonly status: MajorStatusState["kind"] }
+  | { readonly type: "partyStatusCureRequested"; readonly side: BattleSide; readonly move: string }
+  | { readonly type: "partyStatusCured"; readonly side: BattleSide; readonly memberId: string;
+      readonly status: MajorStatusState["kind"] }
   | { readonly type: "statusDamage"; readonly side: BattleSide; readonly status: "poison" | "burn" | "frozen"; readonly amount: number; readonly hp: number }
   | { readonly type: "weatherDamage"; readonly side: BattleSide; readonly weather: "sand"; readonly amount: number; readonly hp: number }
+  | { readonly type: "entryHazardDamage"; readonly side: BattleSide;
+      readonly hazard: "spikes" | "stealth-rock"; readonly amount: number; readonly hp: number }
   | { readonly type: "itemActivated"; readonly side: BattleSide; readonly item: HeldItem; readonly effect: "heal" | "damage" | "boost"; readonly amount: number; readonly hp: number }
   | { readonly type: "heldItemConsumed"; readonly side: BattleSide; readonly item: HeldItem;
       readonly effect: "survive" | "boost" | "weaken" | "heal" | "eaten"; readonly hp: number }
@@ -435,7 +469,7 @@ export type BattleEvent =
       readonly move: string; readonly amount: number; readonly pp: number }
   | { readonly type: "battleEffectChanged"; readonly side: BattleSide | null;
       readonly effect: "reflect" | "light-screen" | "lucky-chant" | "mud-sport" | "water-sport"
-        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "tailwind" | "terrain" | "trick-room" | "magic-room" | "weather";
+        | "spikes" | "toxic-spikes" | "stealth-rock" | "sticky-web" | "mist" | "safeguard" | "tailwind" | "terrain" | "trick-room" | "magic-room" | "wonder-room" | "gravity" | "weather";
       readonly turns: number }
   | { readonly type: "captureAttempted"; readonly side: BattleSide; readonly ballId: string;
       readonly target: string; readonly shakes: number; readonly critical: boolean; readonly success: boolean;
@@ -443,24 +477,26 @@ export type BattleEvent =
   | { readonly type: "statStageChanged"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly delta: number; readonly stage: number }
   | { readonly type: "battleStatsChanged"; readonly source: BattleSide; readonly target: BattleSide;
       readonly move: string; readonly stats: readonly ("attack" | "defense" | "specialAttack" | "specialDefense")[] }
-  | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" | "mist" }
+  | { readonly type: "statStageChangeFailed"; readonly source: BattleSide; readonly target: BattleSide; readonly stat: BattleStat; readonly reason: "limit" | "mist" | "item" }
   | { readonly type: "fainted"; readonly side: BattleSide }
   | { readonly type: "volatileApplied"; readonly source: BattleSide; readonly target: BattleSide;
-      readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "miracle-eye" | "lock-on" | "quick-guard" | "wide-guard" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "rage" | "protect" | "endure" | "yawn" | "charge" | "sky-drop" | "helping-hand" | "uproar" | "embargo" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" | "healing-wish" | "lunar-dance" | "baton-pass" | "wish" | "aqua-ring" | "ingrain" | "roost" | "bide";
+      readonly effect: "confusion" | "flinch" | "focus-energy" | "identified" | "miracle-eye" | "lock-on" | "quick-guard" | "wide-guard" | "disable" | "encore" | "binding" | "curse" | "infatuation" | "leech-seed" | "taunt" | "torment" | "imprison" | "magic-coat" | "snatch" | "heal-block" | "stockpile" | "rage" | "protect" | "endure" | "yawn" | "charge" | "sky-drop" | "helping-hand" | "uproar" | "embargo" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" | "healing-wish" | "lunar-dance" | "baton-pass" | "wish" | "aqua-ring" | "ingrain" | "magnet-rise" | "telekinesis" | "smack-down" | "roost" | "bide";
       readonly turns: number | null; readonly move: string | null }
   | { readonly type: "volatileEnded"; readonly side: BattleSide;
-      readonly effect: "confusion" | "disable" | "encore" | "binding" | "infatuation" | "leech-seed" | "taunt" | "protect" | "endure" | "sky-drop" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" }
+      readonly effect: "confusion" | "disable" | "encore" | "binding" | "infatuation" | "leech-seed" | "taunt" | "protect" | "endure" | "sky-drop" | "perish-song" | "grudge" | "destiny-bond" | "mean-look" | "heal-block" | "stockpile" | "magnet-rise" | "telekinesis" }
   | { readonly type: "confusionDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
   | { readonly type: "bindingDamage"; readonly side: BattleSide; readonly move: string; readonly amount: number; readonly hp: number }
   | { readonly type: "leechSeedDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
   | { readonly type: "curseDamage"; readonly side: BattleSide; readonly amount: number; readonly hp: number }
-  | { readonly type: "actionSkipped"; readonly side: BattleSide; readonly reason: "fainted" | "no-pp" | "sleep" | "paralysis" | "item-blocked" | "flinch" | "confusion" | "infatuation" | "disabled" | "taunted" | "truant" | "recharge" | "sky-drop" }
+  | { readonly type: "actionSkipped"; readonly side: BattleSide; readonly reason: "fainted" | "no-pp" | "sleep" | "paralysis" | "item-blocked" | "flinch" | "confusion" | "infatuation" | "disabled" | "taunted" | "tormented" | "imprisoned" | "heal-blocked" | "truant" | "recharge" | "sky-drop" }
+  | { readonly type: "moveReflected"; readonly source: BattleSide; readonly target: BattleSide; readonly move: string }
+  | { readonly type: "moveSnatched"; readonly source: BattleSide; readonly target: BattleSide; readonly move: string }
   | { readonly type: "battleEnded"; readonly winner: BattleSide | null }
   | { readonly type: "turnEnded"; readonly turn: number };
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "present" | "acupressure" | "conversion" | "conversion2"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "present" | "acupressure" | "conversion" | "conversion2" | "called-move"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean;
       readonly abilityModifier?: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;

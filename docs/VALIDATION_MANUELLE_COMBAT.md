@@ -313,6 +313,159 @@ cadence du remplacement forcé en double.
   de Gravité est disponible ; sinon marquer « bloqué » (pose de Gravité
   non encore portée dans le moteur).
 
+### Terrain, ciblage et gardes `075`, `076`, `078`, `0A4`, `0A6`, `0A8`, `0A9`, `0AB`, `0AC`, `0AE` (à exécuter)
+
+- [ ] En solo, vérifier Surf sur Plongée, Séisme sur Creusement et Twister
+  sur Vol/Rebond : coup malgré la semi-invulnérabilité et dégâts accrus.
+  Refaire Séisme sous Champ Herbu : dégâts réduits.
+- [ ] Tester Secret Power sur plusieurs terrains (électrique, herbu,
+  brumeux) et environnements accessibles : effet secondaire, message,
+  animation et fallback si l'animation spécifique manque.
+- [ ] Verrouiller une cible avec Lock-On, puis employer une attaque peu
+  précise au tour suivant ; reconnecter entre les deux tours. Vérifier
+  Miracle Eye sur Ténèbres et `0A9` face aux hausses de Défense/esquive.
+- [ ] En double, Quick Guard doit protéger le partenaire d'une attaque
+  prioritaire, Wide Guard d'une attaque de zone, puis expirer au tour
+  suivant. Refaire en hôte puis invité, observer le rendu distant.
+- [ ] Mirror Move : copier une capacité admissible, refuser une capacité
+  non copiable, vérifier PP propre, cibles multiples et attaque à deux
+  tours copiée. Reconnecter pendant la charge et comparer les deux vues.
+
+## Contraintes et renvoi `0B1`, `0B7`, `0B8`, `0BB` (à exécuter)
+
+- [ ] En solo, utiliser Magic Coat avant une capacité de statut réfléchissable :
+  elle doit revenir au lanceur et ne pas être réfléchie en boucle. Refaire
+  avec une capacité non réfléchissable, puis au tour suivant.
+- [ ] Appliquer Torment : la dernière capacité ne doit pas être répétable,
+  une autre reste possible ; une capacité à deux tours ne doit pas être
+  interrompue entre sa charge et son impact.
+- [ ] En double, Imprison doit verrouiller une capacité commune chez les
+  deux adversaires, mais non chez son partenaire ; vérifier la fin au switch.
+- [ ] Appliquer Heal Block avant un soin direct, Anneau Hydro, Racines et
+  Vœu ; aucun soin ne doit passer avant expiration. Vérifier le retour du
+  soin et le compteur de tours après reconnexion.
+- [ ] Refaire ces cas comme hôte puis invité, comparer le rendu distant
+  et reconnecter chaque client pendant l'effet actif. Consigner tout KO,
+  animation absente ou message incohérent ci-dessous.
+
+## Capacités appelées `0AF`, `0B0`, `0B2`, `0B4`, `0B5` (à exécuter)
+
+- [ ] Copycat après une capacité adverse, puis après une capacité alliée :
+  vérifier la dernière capacité globale, les PP et le ciblage en double.
+  Reconnecter avant le tour de Copycat.
+- [ ] Me First avant et après la cible : copie seulement si la cible n'a
+  pas agi, dégâts majorés ; vérifier une attaque copiée à deux tours
+  après reconnexion entre charge et impact.
+- [ ] Snatch avant une hausse de statistiques, un soin et une garde
+  d'équipe marqués `d` : effet reçu par le guetteur, pas l'utilisateur.
+  Vérifier deux guetteurs adverses en double et l'expiration en fin de tour.
+- [ ] Sleep Talk endormi puis réveillé : tirage admissible, PP correct,
+  message et animation ; Assist avec un partenaire actif puis un membre
+  de réserve K.O. Faire chaque cas comme hôte puis invité et comparer
+  le rendu distant après reconnexion.
+- [ ] Metronome `0B6` : **ne pas encore valider** ; la mécanique reste
+  non portée tant que le catalogue complet n'est pas autoritaire en Coop.
+
+## Fonctions `0BF`, `10A`, `122`, `144`, `019`, `112`–`114`, `140` (à exécuter)
+
+- [ ] Triple Pied : vérifier trois impacts croissants et l'arrêt à la première
+  frappe manquée ; Casse-Brique : dégâts identiques avec/sans écrans et
+  disparition de Protection/Mur Lumière après impact.
+- [ ] Choc Psy : comparer un adversaire à Défense faible et Défense Spéciale
+  forte ; Flying Press : tester une cible Plante, puis une cible après
+  Lilliput (précision et dégâts).
+- [ ] Stockpile trois fois, puis Avale à PV entamés ; recommencer avec
+  Relâche. Vérifier compteurs, défenses et leur retour à zéro après
+  utilisation et après reconnexion.
+- [ ] Aromathérapie/Glas de Soin : empoisonner le lanceur, son partenaire
+  actif en Duo et une réserve ; vérifier chaque guérison en solo, côté
+  hôte, côté invité, puis après reconnexion. Essayer un partenaire dont le
+  talent immunise au type Plante et signaler tout écart.
+- [ ] Dernier Recours : échoue avant les autres capacités connues puis
+  touche après leur usage ; Venom Drench : seul l'adversaire empoisonné
+  perd Attaque, Attaque Spéciale et Vitesse, y compris en Duo.
+- [ ] Pour chaque cas, comparer les deux clients Coop, le rendu du joueur
+  distant, puis restaurer la room et constater le même état.
+
+## Fonctions `002`, `00B`, `00D`, `00E`, `011`, `014`, `015`, `018`, `01A`, `01B` (à exécuter)
+
+- [ ] À zéro PP, Lutte doit pouvoir toucher un Spectre, sans bonus de type,
+  puis retirer un quart des PV maximum du lanceur après impact.
+- [ ] Crocs de Feu/Glace : vérifier séparément brûlure/gel et apeurement ;
+  tester un adversaire immunisé au statut puis un talent empêchant
+  l'apeurement.
+- [ ] Blizzard sous grêle ; Vent Violent sous pluie puis soleil : comparer
+  précision et confusion. Ronflement doit échouer éveillé, attaquer
+  endormi ; Babil doit pouvoir confondre après son impact.
+- [ ] Refresh guérit brûlure, poison ou paralysie et échoue sans statut
+  compatible. Voile Sacré protège le camp, refuse un second lancement
+  et expire après cinq tours. Psycho Shift transfère un statut valide,
+  mais le conserve si la cible est immunisée ou déjà affectée.
+- [ ] Répéter en solo, comme hôte puis invité Coop ; comparer le rendu
+  distant, reconnecter chaque client puis restaurer la room pendant
+  Voile Sacré. Consigner les écarts visuels et les animations fallback.
+
+## Fonctions `0FF`–`105`, `118`, `119`, `11F` (à exécuter)
+
+- [ ] Poser soleil/pluie/sable/grêle, vérifier cinq tours puis huit avec
+  la roche dédiée ; vérifier qu'un climat extrême refuse le remplacement.
+- [ ] Empiler trois couches de Picots et deux de Pics Toxik, puis changer
+  vers un Pokémon au sol, volant, avec Grosses Bottes et de type Poison.
+  Vérifier les dégâts, l'empoisonnement et l'absorption. Tester Piège de
+  Roc sur plusieurs sensibilités au type Roche et un KO à l'entrée.
+- [ ] En Duo, renvoyer des pièges avec Miroir Magik sur le second
+  adversaire ; vérifier les deux emplacements et un remplacement imposé
+  qui tombe aussitôt sur les pièges. La demande du slot doit persister ;
+  noter explicitement l'absence connue d'événement narratif de dégâts
+  pendant ce remplacement imposé.
+- [ ] Activer Vol Magnétik puis une attaque Sol ; activer Gravité, vérifier
+  l'atterrissage, la nouvelle précision et l'attaque Sol. Activer puis
+  désactiver Distorsion et comparer l'ordre de deux Vitesse distinctes.
+- [ ] Répéter solo, hôte et invité ; comparer les PV/effets affichés aux
+  deux clients, déconnecter/reconnecter puis redémarrer la room pendant
+  un piège ou un effet de terrain. Noter les animations en fallback.
+
+## Fonctions `11A`–`11C`, `124`, `153`–`156`, `905`, `927` (à exécuter)
+
+- [ ] Télékinésie sur une cible au sol : vérifier trois tours, précision
+  garantie et immunité au Sol ; activer Gravité puis vérifier la chute.
+  Uppercut doit toucher un adversaire en Vol/Bond ; Anti-Air ou Mille
+  Flèches doit l'atteindre puis le rendre vulnérable au Sol.
+- [ ] Zone Étrange : comparer une attaque physique sur une cible à
+  Défense et Défense Spéciale différentes, puis couper l'effet au second
+  lancement. Vérifier son expiration après cinq tours.
+- [ ] Toile Gluante : entrant au sol, volant, avec Grosses Bottes et
+  talent Contestation/Clear Body ; vérifier Vitesse et annonces en Duo.
+- [ ] Poser successivement les quatre champs, vérifier leur remplacement
+  et expiration. Tester soin sous Champ Herbu, sommeil/statut sous champs
+  Électrik/Brumeux, puis une attaque prioritaire sous Champ Psychique.
+- [ ] Voile Aurore : échec sans grêle, deux écrans actifs sous grêle ;
+  comparer les dégâts physiques/spéciaux et le compte de tours.
+- [ ] Répéter les cas pertinents en solo, comme hôte puis invité Coop ;
+  comparer le rendu distant, reconnecter les deux clients et redémarrer
+  la room pendant un effet actif. Noter toute animation en fallback.
+
+## Fonctions `121`, `123`, `135`, `13A`, `13C`, `13D`, `142`, `143`, `902`, `904` (à exécuter)
+
+- [ ] Jeu Déloyal : comparer deux adversaires de même Défense mais
+  d'Attaque faible/forte, puis modifier leurs stades d'Attaque.
+  Synchronoise : attaquer en simple et Duo des cibles qui partagent ou
+  non un type avec le lanceur ; vérifier chaque cible séparément.
+- [ ] Liofilisation : comparer une cible Eau et une cible neutre,
+  puis vérifier le gel éventuel et les immunités au statut.
+- [ ] Rugissement de Guerre, Confidence, Onde Anormale : comparer les
+  stades d'Attaque/Attaque Spéciale, les protections, Anti-Bruit et
+  une immunité Électrik sur Onde Anormale.
+- [ ] Halloween puis Malédiction Sylvestre : vérifier l'ajout puis le
+  remplacement du troisième type et le retour aux types initiaux au
+  changement. Poudre Magique doit rendre la cible **Psy** et échouer
+  sur un Pokémon déjà exclusivement Psy.
+- [ ] Absorbeforce : vérifier soin avant baisse de l'Attaque adverse,
+  bonus Grosse Racine, Bloc Soin et dégâts sous Suintement.
+- [ ] Répéter comme hôte puis invité, comparer le rendu distant et
+  les événements de type/stade/PV ; reconnecter et redémarrer la room
+  avec un type temporaire et une baisse d'Attaque encore actifs.
+
 ## Observations à reporter
 
 Pour chaque case testée, noter : date, solo/hôte/invité, combat et Pokémon

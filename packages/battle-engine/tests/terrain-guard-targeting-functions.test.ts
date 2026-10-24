@@ -19,7 +19,7 @@ function pokemon(id: string, side: BattleSide, code: BattleMove["functionCode"] 
 }
 const use = { player: { kind: "move" as const, moveIndex: 0 },
   opponent: { kind: "move" as const, moveIndex: 0 } };
-const field = (terrain: "electric" | "grassy" | "misty") => ({
+const field = (terrain: "electric" | "grassy" | "misty" | "psychic") => ({
   sides: { player: { reflectTurns: 0, luckyChantTurns: 0 },
     opponent: { reflectTurns: 0, luckyChantTurns: 0 } },
   waterSportTurns: 0, terrain, terrainTurns: 3,
@@ -58,6 +58,10 @@ describe("terrain, targeting and team guards", () => {
     const misty = resolveTeamTurn({ ...base, effects: field("misty") },
       { ...use, opponent: { kind: "wait" } }, rng);
     expect(misty.state.teams.opponent.members[0]?.stages.specialAttack).toBe(-1);
+    const psychicOverGrass = resolveTeamTurn({ ...base,
+      effects: { ...field("psychic"), environment: "grass" as const } },
+    { ...use, opponent: { kind: "wait" } }, rng);
+    expect(psychicOverGrass.state.teams.opponent.members[0]?.majorStatus?.kind).toBe("sleep");
   });
 
   it("Lock-On guarantees only the next round's attack and survives a snapshot", () => {
@@ -140,6 +144,22 @@ describe("terrain, targeting and team guards", () => {
     const second = resolveDoubleTeamTurn(restored, actions.map((entry) => entry.actor.side === "player"
       ? { ...entry, action: { kind: "wait" as const } } : entry), rng);
     expect(second.state.teams.player.members[1]!.hp).toBeLessThan(400);
+  });
+
+  it("Wide Guard also shields its own team from an ally's spread move", () => {
+    const guard = pokemon("guard", "player", "0AC", { moves: [{ move: move("0AC",
+      { category: "Status", power: 0, priority: 3, targetCode: "10" }), pp: 10 }] });
+    const ally = pokemon("ally", "player", "000", { moves: [{ move: move("000",
+      { targetCode: "08" }), pp: 10 }] });
+    const result = resolveDoubleTeamTurn(createDoubleTeamBattleState({ player: [guard, ally],
+      opponent: [pokemon("enemy-a", "opponent"), pokemon("enemy-b", "opponent")] }), [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "move", moveIndex: 0 } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.state.teams.player.members[0]!.hp).toBe(400);
+    expect(result.state.teams.opponent.members[0]!.hp).toBeLessThan(400);
   });
 
   it("Mirror Move copies the target's last eligible move without spending its PP", () => {

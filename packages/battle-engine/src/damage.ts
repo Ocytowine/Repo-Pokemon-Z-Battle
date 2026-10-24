@@ -44,6 +44,8 @@ export interface BattleDamageContext {
   readonly weather?: BattleEffects["weather"];
   readonly terrain?: BattleEffects["terrain"];
   readonly magicRoomTurns?: number;
+  readonly gravityTurns?: number;
+  readonly wonderRoomTurns?: number;
   readonly defenderBerriesBlocked?: boolean;
   /** The defender already acted, or did not select a move, as required by Pokemon Z's Analytic check. */
   readonly defenderAlreadyMoved?: boolean;
@@ -67,7 +69,8 @@ export interface BattleDamageContext {
 
 /** Source-faithful type multiplier shared by damage calculation and pre-damage abilities. */
 export function effectiveTypeMultiplier(attacker: BattlerState, defender: BattlerState, move: BattleMove,
-  weather?: BattleEffects["weather"], magicRoomTurns = 0): number {
+  weather?: BattleEffects["weather"], magicRoomTurns = 0, gravityTurns = 0): number {
+  if (move.functionCode === "002") return 1;
   const moveType = effectiveMoveType(attacker, move, weather, magicRoomTurns).type;
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const defenderTypes = (defender.volatile?.identified === true || attacker.ability === "SCRAPPY")
@@ -75,11 +78,19 @@ export function effectiveTypeMultiplier(attacker: BattlerState, defender: Battle
     ? defender.types.filter((type) => type !== "GHOST")
     : moveType === "PSYCHIC" && defender.volatile?.miracleEye === true
       ? defender.types.filter((type) => type !== "DARK") : defender.types;
-  const typeEffect = defenderTypes.length === 0 ? 1 : defenderTypes.reduce((multiplier, type) => {
-    const component = typeEffectiveness(moveType, [type]);
+  const grounded = gravityTurns > 0 || defender.volatile?.ingrain === true
+    || defender.volatile?.smackDown === true || move.functionCode === "11C";
+  const effectiveDefenderTypes = grounded && moveType === "GROUND"
+    ? defenderTypes.filter((type) => type !== "FLYING") : defenderTypes;
+  const typeEffect = effectiveDefenderTypes.length === 0 ? 1 : effectiveDefenderTypes.reduce((multiplier, type) => {
+    const component = move.functionCode === "135" && type === "WATER"
+      ? 2 : typeEffectiveness(moveType, [type]);
     return multiplier * (weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
   }, 1);
-  return !ignoresDefenderAbility && defender.ability === "LEVITATE" && moveType === "GROUND" ? 0 : typeEffect;
+  return moveType === "GROUND" && !grounded
+    && (!ignoresDefenderAbility && defender.ability === "LEVITATE"
+      || (defender.volatile?.magnetRiseTurns ?? 0) > 0
+      || heldItemIsActive(defender, magicRoomTurns) && defender.heldItem === "AIRBALLOON") ? 0 : typeEffect;
 }
 
 /** Pokemon Z effective weight in hectograms, shared by every weight-based move. */
@@ -122,7 +133,8 @@ export function calculateDamage(
     ?? [attacker.ability, defender.ability].filter((ability): ability is BattleAbility => ability !== null));
   const ignoresDefenderAbility = hasMoldBreaker(attacker);
   const currentWeather = ordinaryWeather(context.weather);
-  const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather, context.magicRoomTurns);
+  const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather,
+    context.magicRoomTurns, context.gravityTurns);
     if (["06A", "06B", "06C", "06E", "070", "071", "072", "073", "0D4", "0E1"].includes(move.functionCode)) {
       const fixed = move.functionCode === "0D4" ? (context.bideDamage ?? 0) * 2
         : move.functionCode === "0E1" ? attacker.hp
@@ -153,7 +165,9 @@ export function calculateDamage(
       abilityModifiers: [], result });
     return result;
   }
-  const attackKey = move.category === "Physical" ? "attack" : "specialAttack";
+  const attackKey = move.functionCode === "175" ? "defense"
+    : move.category === "Physical" ? "attack" : "specialAttack";
+  const attackOwner = move.functionCode === "121" ? defender : attacker;
   const usesPhysicalDefense = move.category === "Physical" || (move.functionCode as string) === "122";
   const defenseKey = usesPhysicalDefense ? "defense" : "specialDefense";
   const abilityModifiers: { ability: ImplementedBattleAbility; multiplier: number }[] = [];
@@ -169,13 +183,13 @@ export function calculateDamage(
   const critical = !ignoresDefenderAbility && preventsCriticalHit(defender) ? false
     : !ignoresDefenderAbility && attacker.ability === "MERCILESS" && defender.majorStatus?.kind === "poison" ? true
       : context.luckyChant ? false
-        : move.functionCode === "0A0" ? true
+        : move.functionCode === "0A0" || move.functionCode === "942" ? true
         : draw(rng, trace, "critical", [16, 8, 2, 1, 1][criticalStage] ?? 16) === 0;
   const attackStage = defender.ability === "UNAWARE" && !ignoresDefenderAbility ? 0
-    : critical && attacker.stages[attackKey] < 0 ? 0 : attacker.stages[attackKey];
+    : critical && attackOwner.stages[attackKey] < 0 ? 0 : attackOwner.stages[attackKey];
   const defenseStage = attacker.ability === "UNAWARE" || move.functionCode === "0A9" ? 0
     : critical && defender.stages[defenseKey] > 0 ? 0 : defender.stages[defenseKey];
-  const stagedAttack = stagedStat(attacker.stats[attackKey], attackStage);
+  const stagedAttack = stagedStat(attackOwner.stats[attackKey], attackStage);
   let attack = stagedAttack;
   if (attacker.ability === "GUTS" && attacker.majorStatus !== null && move.category === "Physical") attack = Math.round(attack * 1.5);
   if (attacker.ability === "HUSTLE" && move.category === "Physical") attack = Math.round(attack * 1.5);
@@ -215,7 +229,9 @@ export function calculateDamage(
     attack = Math.round(attack * 1.5);
     recordAbilityModifier("FLOWERGIFT", 1.5);
   }
-  let defense = Math.max(1, stagedStat(defender.stats[defenseKey], defenseStage));
+  const roomDefenseKey = (context.wonderRoomTurns ?? 0) > 0
+    ? defenseKey === "defense" ? "specialDefense" : "defense" : defenseKey;
+  let defense = Math.max(1, stagedStat(defender.stats[roomDefenseKey], defenseStage));
   if (currentWeather === "sand" && move.category === "Special" && !usesPhysicalDefense
     && defender.types.includes("ROCK")) defense = Math.round(defense * 1.5);
   if (currentWeather === "hail" && move.category === "Physical" && defender.types.includes("ICE")) defense = Math.round(defense * 1.5);
@@ -294,7 +310,7 @@ export function calculateDamage(
   if (move.functionCode === "0F0" && defender.heldItem !== null) power = Math.floor(power * 1.5);
   const baseDamage = Math.floor(Math.floor((Math.floor((2 * attacker.level) / 5 + 2) * power * attack) / defense) / 50) + 2;
   const variance = 85 + draw(rng, trace, "damage-variance", 16);
-  const stab = attacker.types.includes(moveType) ? 1.5 : 1;
+  const stab = move.functionCode !== "002" && attacker.types.includes(moveType) ? 1.5 : 1;
   let result = baseDamage;
   if (critical) result = Math.round(result * 1.5);
   result = Math.floor((result * variance) / 100);
@@ -321,8 +337,16 @@ export function calculateDamage(
   if (context.lightScreen && move.category === "Special" && !critical) statusModifier *= 0.5;
   if (context.mudSport && moveType === "ELECTRIC") statusModifier /= 3;
   if (context.waterSport && moveType === "FIRE") statusModifier /= 3;
-  if (context.terrain === "electric" && moveType === "ELECTRIC"
-    && !attacker.types.includes("FLYING") && attacker.ability !== "LEVITATE") statusModifier *= 1.5;
+  const grounded = (battler: BattlerState): boolean => (context.gravityTurns ?? 0) > 0
+    || battler.volatile?.ingrain === true || battler.volatile?.smackDown === true
+    || !battler.types.includes("FLYING") && battler.ability !== "LEVITATE"
+      && (battler.volatile?.magnetRiseTurns ?? 0) === 0
+      && (battler.volatile?.telekinesisTurns ?? 0) === 0
+      && !(heldItemIsActive(battler, context.magicRoomTurns) && battler.heldItem === "AIRBALLOON");
+  if (context.terrain === "electric" && moveType === "ELECTRIC" && grounded(attacker)) statusModifier *= 1.5;
+  if (context.terrain === "grassy" && moveType === "GRASS" && grounded(attacker)) statusModifier *= 1.5;
+  if (context.terrain === "psychic" && moveType === "PSYCHIC" && grounded(attacker)) statusModifier *= 1.5;
+  if (context.terrain === "misty" && moveType === "DRAGON" && grounded(defender)) statusModifier *= 0.5;
   if (currentWeather === "sun" && moveType === "FIRE" || currentWeather === "rain" && moveType === "WATER") statusModifier *= 1.5;
   if (currentWeather === "sun" && moveType === "WATER" || currentWeather === "rain" && moveType === "FIRE") statusModifier *= 0.5;
   if (attackerItemActive && ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")

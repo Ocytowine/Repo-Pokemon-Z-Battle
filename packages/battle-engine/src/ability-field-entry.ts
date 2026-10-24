@@ -7,8 +7,26 @@ function effectsBase(effects: BattleEffects | undefined): BattleEffects {
   }, waterSportTurns: 0 };
 }
 
-export function isGrounded(battler: BattlerState): boolean {
-  return !battler.types.includes("FLYING") && battler.ability !== "LEVITATE";
+export function isGrounded(battler: BattlerState, effects?: BattleEffects): boolean {
+  if ((effects?.gravityTurns ?? 0) > 0 || battler.volatile?.ingrain === true
+    || battler.volatile?.smackDown === true) return true;
+  return !battler.types.includes("FLYING") && battler.ability !== "LEVITATE"
+    && (battler.volatile?.magnetRiseTurns ?? 0) === 0
+    && (battler.volatile?.telekinesisTurns ?? 0) === 0
+    && !(battler.heldItem === "AIRBALLOON" && (effects?.magicRoomTurns ?? 0) === 0);
+}
+
+export function resolveGrassyTerrainHealing(battler: BattlerState, side: BattleSide,
+  effects?: BattleEffects): { battler: BattlerState; events: readonly BattleEvent[] } {
+  if (effects?.terrain !== "grassy" || battler.hp <= 0 || battler.hp >= battler.stats.maxHp
+    || !isGrounded(battler, effects) || (battler.volatile?.healBlockTurns ?? 0) > 0) {
+    return { battler, events: [] };
+  }
+  const amount = Math.min(battler.stats.maxHp - battler.hp,
+    Math.max(1, Math.floor(battler.stats.maxHp / 16)));
+  return { battler: { ...battler, hp: battler.hp + amount },
+    events: [{ type: "hpRestored", side, source: "move", move: "GRASSYTERRAIN",
+      amount, hp: battler.hp + amount }] };
 }
 
 export function applyEntryFieldAbility(battler: BattlerState, side: BattleSide,

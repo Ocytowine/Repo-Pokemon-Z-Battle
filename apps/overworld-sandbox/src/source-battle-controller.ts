@@ -682,12 +682,18 @@ export class SourceBattleController {
         }
         let moneyNotice = "";
         let moneyDelta = 0;
+        const scatteredCoins = winner === "player" ? before.teams.player.members.reduce((sum, member) =>
+          sum + (this.battle?.effects?.scatteredCoins?.[member.id] ?? 0), 0) : 0;
         if (winner === "player" && trainerCompletion !== null) {
           const amount = sourceTrainerReward(before.teams.opponent.members.map((member) => member.level),
-            this.trainerAudio?.baseMoney ?? 0);
+            this.trainerAudio?.baseMoney ?? 0) + scatteredCoins;
           nextState = addSourceMoney(nextState, amount);
           moneyDelta = amount;
           if (amount > 0) moneyNotice = ` · +${amount.toLocaleString("fr-FR")} ₽`;
+        } else if (winner === "player" && scatteredCoins > 0) {
+          nextState = addSourceMoney(nextState, scatteredCoins);
+          moneyDelta = scatteredCoins;
+          moneyNotice = ` · +${scatteredCoins.toLocaleString("fr-FR")} ₽`;
         } else if (winner !== "player") {
           const amount = sourceDefeatLoss(nextState);
           nextState = { ...nextState, money: nextState.money - amount };

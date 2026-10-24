@@ -173,6 +173,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       const move = battler?.moves.find((slot) => slot.move.internalName === event.move)?.move;
       steps.push({ kind: "action", side: event.side, move: event.move,
         message: `${activeName(state, event.side)} utilise ${move?.name ?? event.move} !`, state });
+    } else if (event.type === "moveReflected") {
+      message(`${activeName(state, event.target)} renvoie ${event.move} !`, "status");
+    } else if (event.type === "moveSnatched") {
+      message(`${activeName(state, event.target)} vole l'effet de ${event.move} !`, "status");
     } else if (event.type === "damageApplied") {
       const targetName = activeName(state, event.target);
       steps.push({ kind: "impact", side: event.target, effectiveness: event.effectiveness, state });
@@ -219,7 +223,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
         "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
         mist: "Brume", safeguard: "Rune Protect", tailwind: "Vent Arrière", terrain: "Le terrain",
-        "trick-room": "Distorsion", "magic-room": "Zone Magique", weather: "La météo",
+        "trick-room": "Distorsion", "magic-room": "Zone Magique", "wonder-room": "Zone Étrange", gravity: "Gravité", weather: "La météo",
       };
       const label = labels[event.effect];
       message(event.turns !== 0 ? `${label} agit sur le combat.` : `${label} ne fait plus effet.`, "status");
@@ -240,6 +244,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de ${STATUS_NAMES[event.status]} et perd ${event.amount} PV.`);
     } else if (event.type === "weatherDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} est blessé par la tempête de sable et perd ${event.amount} PV.`);
+    } else if (event.type === "entryHazardDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} perd ${event.amount} PV à cause ${event.hazard === "spikes" ? "des Picots" : "du Piège de Roc"}.`);
     } else if (event.type === "volatileApplied") {
       const name = activeName(state, event.target);
       const text = event.effect === "confusion" ? `${name} devient confus.`
@@ -250,6 +256,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                 : event.effect === "lock-on" ? `${name} est verrouillé comme cible.`
                   : event.effect === "quick-guard" ? `L'équipe de ${name} se protège des attaques prioritaires.`
                     : event.effect === "wide-guard" ? `L'équipe de ${name} se protège des attaques de zone.`
+                      : event.effect === "torment" ? `${name} est soumis à Tourmente.`
+                        : event.effect === "imprison" ? `${name} scelle les capacités communes.`
+                          : event.effect === "magic-coat" ? `${name} se prépare à renvoyer les capacités.`
+                            : event.effect === "snatch" ? `${name} guette une capacité à voler.`
+                            : event.effect === "heal-block" ? `${name} ne peut plus se soigner.`
+                              : event.effect === "magnet-rise" ? `${name} s'élève par magnétisme.`
+                                : event.effect === "telekinesis" ? `${name} est soulevé dans les airs.`
+                                  : event.effect === "smack-down" ? `${name} est ramené au sol.`
               : event.effect === "disable" ? `${event.move ?? "Une capacité"} de ${name} est neutralisée.`
                 : event.effect === "encore" ? `${name} doit répéter ${event.move ?? "sa dernière capacité"}.`
                   : event.effect === "curse" ? `${name} est maudit.`
@@ -269,6 +283,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         : event.effect === "disable" ? `${activeName(state, event.side)} peut de nouveau utiliser toutes ses capacités.`
           : event.effect === "encore" ? `${activeName(state, event.side)} n'est plus sous Encore.`
             : event.effect === "sky-drop" ? `${activeName(state, event.side)} retombe au sol.`
+              : event.effect === "heal-block" ? `${activeName(state, event.side)} peut de nouveau se soigner.`
+                : event.effect === "magnet-rise" ? `${activeName(state, event.side)} retombe au sol.`
+                  : event.effect === "telekinesis" ? `${activeName(state, event.side)} retombe au sol.`
             : `${activeName(state, event.side)} est libéré.`;
       message(text, "status");
     } else if (event.type === "confusionDamage") {
@@ -376,6 +393,9 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
           : event.reason === "no-pp" ? "n'a plus de PP pour cette capacité"
             : event.reason === "item-blocked" ? "est bloqué par son objet"
               : event.reason === "taunted" ? "est provoqué et ne peut pas utiliser cette capacité"
+              : event.reason === "tormented" ? "ne peut pas répéter cette capacité sous Tourmente"
+              : event.reason === "imprisoned" ? "ne peut pas utiliser une capacité scellée"
+                : event.reason === "heal-blocked" ? "ne peut pas utiliser une capacité de soin"
               : event.reason === "recharge" ? "doit se reposer après son attaque"
               : event.reason === "sky-drop" ? "ne peut pas agir pendant sa chute libre"
               : "est K.O.";

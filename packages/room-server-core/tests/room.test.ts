@@ -2341,6 +2341,34 @@ describe("authoritative battle room", () => {
     expect(room.snapshot().battle).toMatchObject({ escaped: true });
   });
 
+  it("settles Pay Day coins only for their winning owner and restores them after reconnect", () => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(5), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "coins-open",
+      context: sourceBattleContext("alice"), playerTeam: initial.teams.player,
+      opponentTeam: { ...initial.teams.opponent, members: [{ ...initial.teams.opponent.members[0]!, hp: 1 }] } });
+    const battleId = room.snapshot().battle!.id;
+    const payDay = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "PAYDAY", functionCode: "109" as const };
+    const guest = { ...battler("player"), id: "guest-payday", moves: [{ move: payDay, pp: payDay.pp }] };
+    room.receive("bob", { type: "proposeBattleJoin", version: 15, requestId: "coins-propose",
+      battleId, side: "player", team: { activeIndex: 0, members: [guest] },
+      finalMemberIds: ["player", guest.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 15,
+      requestId: "coins-accept", battleId, accept: true });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "coins-host-wait",
+      battleId, turn: 1, activeSlot: 0, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "coins-guest-hit",
+      battleId, turn: 1, activeSlot: 1, action: { kind: "move", moveIndex: 0 } });
+    expect(room.connect("alice").settlement?.money).toEqual({ kind: "none" });
+    expect(room.connect("bob").settlement?.money).toEqual({ kind: "fixed", amount: 250 });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle,
+      new SeededRandom(persisted.rngState), worldWithSource, persisted);
+    expect(restored.connect("bob").settlement?.money).toEqual({ kind: "fixed", amount: 250 });
+  });
+
   it("keeps one private settlement per owner while a disconnected guest catches up", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(4), worldWithSource);
     room.connect("alice");
@@ -3316,6 +3344,234 @@ describe("authoritative battle room", () => {
       expect(restored.snapshot().battle?.state.teams[target].members[0]?.hp).toBeLessThan(200);
       expect(restored.connect(owner).snapshot.battle?.state.teams[target].members[0]?.volatile?.lockOnTurns)
         .toBe(0);
+    }
+  });
+  it("restores the global Copycat source for either Coop owner after room restart", () => {
+    const copycat = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "COPYCAT", name: "Copion",
+      functionCode: "0AF" as const, category: "Status" as const, power: 0, accuracy: 0 };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: copycat, pp: 10 },
+        { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: copycat, pp: 10 },
+        { move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 10 }] }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(44), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`copycat-ready-a-${owner}`));
+      room.receive("bob", ready(`copycat-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `copycat-first-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "wait" } : { kind: "move", moveIndex: 1 },
+      });
+      expect(room.snapshot().battle?.state.effects?.lastMoveUsed?.internalName).toBe("TACKLE");
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.effects?.lastMoveUsed?.internalName).toBe("TACKLE");
+      const persisted = room.exportState();
+      const restored = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      restored.connect("alice"); restored.connect("bob");
+      for (const id of ["alice", "bob"] as const) restored.receive(id, {
+        type: "submitAction", version: 15, requestId: `copycat-follow-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 2,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const target = owner === "alice" ? "opponent" : "player";
+      expect(restored.snapshot().battle?.state.teams[target].members[0]?.hp).toBeLessThan(100);
+    }
+  });
+  it("replicates party-wide status curing for either Coop owner after reconnect and room restart", () => {
+    const bell = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "HEALBELL", name: "Cascabel Cura",
+      functionCode: "019" as const, category: "Status" as const, power: 0, accuracy: 0, targetCode: "40" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), majorStatus: { kind: "poison" as const, toxicCounter: null },
+        moves: [{ move: bell, pp: 10 }] },
+      { ...battler("player"), id: "player-reserve",
+        majorStatus: { kind: "paralysis" as const } }],
+      opponent: [{ ...battler("opponent"), majorStatus: { kind: "poison" as const, toxicCounter: null },
+        moves: [{ move: bell, pp: 10 }] },
+      { ...battler("opponent"), id: "opponent-reserve",
+        majorStatus: { kind: "paralysis" as const } }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(46), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`bell-ready-a-${owner}`));
+      room.receive("bob", ready(`bell-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `bell-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const side = owner === "alice" ? "player" : "opponent";
+      expect(room.snapshot().battle?.state.teams[side].members.map((member) => member.majorStatus))
+        .toEqual([null, null]);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.teams[side].members[1]?.majorStatus).toBeNull();
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      expect(restarted.connect(owner).snapshot.battle?.state.teams[side].members[1]?.majorStatus).toBeNull();
+    }
+  });
+  it("restores Safeguard for either Coop owner after reconnect and room restart", () => {
+    const safeguard = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "SAFEGUARD", name: "Velo Sagrado",
+      functionCode: "01A" as const, category: "Status" as const, power: 0, accuracy: 0, targetCode: "40" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: safeguard, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: safeguard, pp: 10 }] }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(47), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`guard-ready-a-${owner}`));
+      room.receive("bob", ready(`guard-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `guard-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const side = owner === "alice" ? "player" : "opponent";
+      expect(room.snapshot().battle?.state.effects?.sides[side].safeguardTurns).toBe(4);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.effects?.sides[side].safeguardTurns).toBe(4);
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      expect(restarted.connect(owner).snapshot.battle?.state.effects?.sides[side].safeguardTurns).toBe(4);
+    }
+  });
+  it("restores entry hazards and applies them after either Coop owner sets them", () => {
+    const spikes = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "SPIKES", name: "Picots",
+      functionCode: "103" as const, category: "Status" as const, power: 0, accuracy: 0, targetCode: "80" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: spikes, pp: 10 }] },
+        { ...battler("player"), id: "player-reserve" }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: spikes, pp: 10 }] },
+        { ...battler("opponent"), id: "opponent-reserve" }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(48), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`spikes-ready-a-${owner}`));
+      room.receive("bob", ready(`spikes-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `spikes-set-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const target = owner === "alice" ? "opponent" : "player";
+      expect(room.snapshot().battle?.state.effects?.sides[target].spikesLayers).toBe(1);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.effects?.sides[target].spikesLayers).toBe(1);
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      restarted.connect("alice"); restarted.connect("bob");
+      for (const id of ["alice", "bob"] as const) restarted.receive(id, {
+        type: "submitAction", version: 15, requestId: `spikes-enter-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 2,
+        action: id === owner ? { kind: "wait" } : { kind: "switch", teamIndex: 1 },
+      });
+      expect(restarted.connect(owner).snapshot.battle?.state.teams[target].members[1]?.hp).toBeLessThan(100);
+    }
+  });
+  it("restores each owner's terrain and Sticky Web in the authoritative Coop snapshot", () => {
+    const terrain = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "ELECTRICTERRAIN",
+      functionCode: "154" as const, category: "Status" as const, power: 0, accuracy: 0,
+      targetCode: "01" };
+    const web = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "STICKYWEB",
+      functionCode: "153" as const, category: "Status" as const, power: 0, accuracy: 0,
+      targetCode: "80", flags: "c" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: terrain, pp: 10 }, { move: web, pp: 10 }] },
+        { ...battler("player"), id: "player-reserve" }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: terrain, pp: 10 }, { move: web, pp: 10 }] },
+        { ...battler("opponent"), id: "opponent-reserve" }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(49), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`terrain-ready-a-${owner}`));
+      room.receive("bob", ready(`terrain-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `terrain-set-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      expect(room.snapshot().battle?.state.effects?.terrain).toBe("electric");
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `web-set-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 2,
+        action: id === owner ? { kind: "move", moveIndex: 1 } : { kind: "wait" },
+      });
+      const target = owner === "alice" ? "opponent" : "player";
+      expect(room.snapshot().battle?.state.effects?.sides[target].stickyWeb).toBe(true);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.effects?.terrain).toBe("electric");
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      expect(restarted.connect(owner).snapshot.battle?.state.effects?.sides[target].stickyWeb).toBe(true);
+    }
+  });
+  it("restores Magic Powder type changes for host and guest after room restart", () => {
+    const powder = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "MAGICPOWDER",
+      functionCode: "904" as const, category: "Status" as const, power: 0,
+      accuracy: 100, type: "PSYCHIC", targetCode: "00", flags: "bce" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), moves: [{ move: powder, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), moves: [{ move: powder, pp: 10 }] }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(50), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`powder-ready-a-${owner}`));
+      room.receive("bob", ready(`powder-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `powder-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const target = owner === "alice" ? "opponent" : "player";
+      expect(room.snapshot().battle?.state.teams[target].members[0]?.types).toEqual(["PSYCHIC"]);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.teams[target].members[0]?.types).toEqual(["PSYCHIC"]);
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      expect(restarted.connect(owner).snapshot.battle?.state.teams[target].members[0]?.types).toEqual(["PSYCHIC"]);
+    }
+  });
+  it("restores Strength Sap healing and Attack drops for either Coop owner", () => {
+    const sap = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "STRENGTHSAP",
+      functionCode: "902" as const, category: "Status" as const, power: 0,
+      accuracy: 100, type: "GRASS", targetCode: "00", flags: "bc" };
+    const initial = () => createTeamBattleState({
+      player: [{ ...battler("player"), hp: 50, moves: [{ move: sap, pp: 10 }] }],
+      opponent: [{ ...battler("opponent"), hp: 50, moves: [{ move: sap, pp: 10 }] }],
+    });
+    for (const owner of ["alice", "bob"] as const) {
+      const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(51), world);
+      room.connect("alice"); room.connect("bob");
+      room.receive("alice", ready(`sap-ready-a-${owner}`));
+      room.receive("bob", ready(`sap-ready-b-${owner}`));
+      for (const id of ["alice", "bob"] as const) room.receive(id, {
+        type: "submitAction", version: 15, requestId: `sap-${owner}-${id}`,
+        battleId: "ABC234-1", turn: 1,
+        action: id === owner ? { kind: "move", moveIndex: 0 } : { kind: "wait" },
+      });
+      const own = owner === "alice" ? "player" : "opponent";
+      const target = owner === "alice" ? "opponent" : "player";
+      expect(room.snapshot().battle?.state.teams[own].members[0]?.hp).toBeGreaterThan(50);
+      expect(room.snapshot().battle?.state.teams[target].members[0]?.stages.attack).toBe(-1);
+      room.disconnect(owner);
+      expect(room.connect(owner).snapshot.battle?.state.teams[target].members[0]?.stages.attack).toBe(-1);
+      const persisted = room.exportState();
+      const restarted = new AuthoritativeBattleRoom("ABC234", initial,
+        new SeededRandom(persisted.rngState), world, persisted);
+      expect(restarted.connect(owner).snapshot.battle?.state.teams[target].members[0]?.stages.attack).toBe(-1);
     }
   });
 });

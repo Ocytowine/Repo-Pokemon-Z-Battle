@@ -31,6 +31,24 @@ export function mirrorMoveFrom(target: BattlerState | undefined): BattleMove | n
   return move?.flags?.includes("e") === true && move.functionCode !== "0AE" ? move : null;
 }
 
+const COPYCAT_EXCLUDED = new Set([
+  "069", "071", "072", "073", "09C", "0AA", "0AD", "0B2", "0E7", "0E8", "0EB", "0EC",
+  "0F1", "0F2", "0F3", "115", "117", "158", "0C3", "0C4", "0C5", "0C6", "0C7",
+  "0C8", "0C9", "0CA", "0CB", "0CC", "0CD", "0CE", "14D", "14E",
+]);
+
+export function copycatMoveFrom(effects: BattleEffects | undefined): BattleMove | null {
+  const move = effects?.lastMoveUsed;
+  return move !== undefined && move !== null && !COPYCAT_EXCLUDED.has(move.functionCode) ? move : null;
+}
+
+const ME_FIRST_EXCLUDED = new Set(["002", "014", "071", "072", "073", "0B0", "0F1", "115", "158"]);
+
+export function meFirstMoveFrom(move: BattleMove | undefined, alreadyMoved: boolean): BattleMove | null {
+  return move !== undefined && !alreadyMoved && move.category !== "Status"
+    && !ME_FIRST_EXCLUDED.has(move.functionCode) ? move : null;
+}
+
 /** Exact Pokemon Z `isCuttingMove?` catalogue. Kept in the shared move-property layer. */
 const CUTTING_MOVES = new Set([
   "AIRCUTTER", "RAZORSHELL", "CUT", "FURYCUTTER", "SOLARBLADE", "SLASH", "SHADOWCLAW",
@@ -98,6 +116,7 @@ export interface EffectiveMoveType {
 /** Mirrors Pokemon Z's pbModifyType order, including its broad Liquid Voice branch. */
 export function effectiveMoveType(attacker: BattlerState, move: BattleMove,
   weather?: BattleEffects["weather"], magicRoomTurns = 0): EffectiveMoveType {
+  if (move.functionCode === "002") return { type: "TYPELESS", abilityBoost: 1 };
   if (move.functionCode === "096") return { type: naturalGiftProfile(attacker.heldItem)?.type ?? "NORMAL",
     abilityBoost: 1 };
   // The source move class replaces the base type before ability conversions.
@@ -138,8 +157,10 @@ export function hasMoldBreaker(attacker: BattlerState): boolean {
 }
 
 /** Shared priority modifiers used by both single and positioned team battles. */
-export function effectiveMovePriority(attacker: BattlerState, move: BattleMove): number {
+export function effectiveMovePriority(attacker: BattlerState, move: BattleMove,
+  terrain?: BattleEffects["terrain"]): number {
   return move.priority
+    + (move.functionCode === "211" && terrain === "grassy" ? 1 : 0)
     + (attacker.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0)
     + (attacker.ability === "GALEWINGS" && move.type === "FLYING" ? 1 : 0)
     + (attacker.ability === "TRIAGE" && isTriageMove(move) ? 3 : 0);

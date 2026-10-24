@@ -1,8 +1,12 @@
-import { applyPerishSongToBattler, resolveBattlePassiveEndOfTurn, resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
+import { applyPerishSongToBattler, clearAirborneEffects, resolveBattlePassiveEndOfTurn,
+  resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
+import { assistMoveFrom, sleepTalkMoveFrom } from "./called-move-selection.js";
+import { applyEntryHazards } from "./entry-hazards.js";
+import { curePartyStatuses } from "./party-status-cure.js";
 import { recordSideFaints } from "./side-faint-history.js";
 import { cureStatusBlockedByAbility } from "./ability-protection.js";
 import { resolveEntryAbility } from "./ability-entry.js";
-import { applyEntryFieldAbility } from "./ability-field-entry.js";
+import { applyEntryFieldAbility, resolveGrassyTerrainHealing } from "./ability-field-entry.js";
 import { activateWindAbility } from "./ability-wind.js";
 import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather,
   resolveWeatherEndOfTurn, weatherSpeedMultiplier } from "./ability-weather.js";
@@ -20,9 +24,10 @@ import { inheritSwitchEffects, releaseSwitchTraps } from "./switch-inheritance.j
 import { clearStatStages } from "./ability-stat-reactions.js";
 import { berriesBlockedBy, consumeHeldItem, isSupportedBerry, moveCanTriggerPressure } from "./ability-item-control.js";
 import { custapBerryReady } from "./battle-berries.js";
-import { effectiveMovePriority, effectiveMoveType, mirrorMoveFrom, moveTargetsUser } from "./move-properties.js";
+import { copycatMoveFrom, effectiveMovePriority, effectiveMoveType, hasMoveFlag, meFirstMoveFrom,
+  mirrorMoveFrom, moveTargetsUser } from "./move-properties.js";
 import type {
-  BattleEvent, BattleMove, BattlePosition, BattleResolutionRules, BattleSide, BattleState, BattleTeam, BattlerState, DoubleBattleEvent,
+  BattleEvent, BattleMove, BattlePosition, BattleResolutionRules, BattleSide, BattleState, BattleTeam, BattleTrace, BattlerState, DoubleBattleEvent,
   DoubleTurnResult, PositionedTeamBattleAction, RandomSource, TeamBattleAction, TeamBattleState,
 } from "./types.js";
 
@@ -191,8 +196,10 @@ function mirrorSourceMove(state: TeamBattleState, actor: BattlePosition,
   action: Extract<TeamBattleAction, { kind: "move" }>): BattleMove | null {
   const user = battlerAtPosition(state, actor);
   if (user?.moves[action.moveIndex]?.move.functionCode !== "0AE") return null;
-  if (user.volatile?.chargingMove === user.moves[action.moveIndex]?.move.internalName
-    && user.volatile.chargingCalledMove != null) return user.volatile.chargingCalledMove;
+  if (user.volatile?.chargingCalledMove != null
+    && user.volatile.chargingMove === user.moves[action.moveIndex]?.move.internalName) {
+    return user.volatile.chargingCalledMove;
+  }
   const opponents = activeTeamIndices(state.teams[otherSide(actor.side)])
     .map((_, slot) => ({ side: otherSide(actor.side), slot }))
     .filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
@@ -201,12 +208,36 @@ function mirrorSourceMove(state: TeamBattleState, actor: BattlePosition,
   return source === undefined ? null : mirrorMoveFrom(battlerAtPosition(state, source));
 }
 
+function calledMoveForAction(state: TeamBattleState, actor: BattlePosition,
+  action: Extract<TeamBattleAction, { kind: "move" }>, submitted: readonly PositionedTeamBattleAction[],
+  resolved: ReadonlySet<string>, rng: RandomSource, trace: BattleTrace[]): BattleMove | null {
+  const user = battlerAtPosition(state, actor);
+  const selected = user?.moves[action.moveIndex]?.move;
+  if (selected === undefined) return null;
+  if (selected.functionCode === "0AE") return mirrorSourceMove(state, actor, action);
+  if (selected.functionCode === "0AF") return copycatMoveFrom(state.effects);
+  if (selected.functionCode === "0B4") return sleepTalkMoveFrom(user!, rng, trace);
+  if (selected.functionCode === "0B5") return assistMoveFrom(user!, state.teams[actor.side].members, rng, trace);
+  if (selected.functionCode !== "0B0") return null;
+  if (user?.volatile?.chargingMove === selected.internalName
+    && user.volatile.chargingCalledMove != null) return user.volatile.chargingCalledMove;
+  const opponents = activeTeamIndices(state.teams[otherSide(actor.side)])
+    .map((_, slot) => ({ side: otherSide(actor.side), slot }))
+    .filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
+  const target = action.target !== undefined && opponents.some((position) => key(position) === key(action.target!))
+    ? action.target : opponents[0];
+  const chosen = submitted.find((entry) => target !== undefined && key(entry.actor) === key(target));
+  const move = chosen?.action.kind === "move"
+    ? battlerAtPosition(state, target!)?.moves[chosen.action.moveIndex]?.move : undefined;
+  return meFirstMoveFrom(move, target === undefined || resolved.has(key(target)));
+}
+
 function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extract<TeamBattleAction, { kind: "move" }>,
-  rng: RandomSource): readonly BattlePosition[] {
+  rng: RandomSource, calledMove?: BattleMove | null): readonly BattlePosition[] {
   const user = battlerAtPosition(state, actor);
   const selectedMove = user?.moves[action.moveIndex]?.move;
   if (user === undefined || selectedMove === undefined) throw new Error("Capacite ou combattant double invalide.");
-  const move = mirrorSourceMove(state, actor, action) ?? selectedMove;
+  const move = calledMove ?? mirrorSourceMove(state, actor, action) ?? selectedMove;
   const enemies = activeTeamIndices(state.teams[otherSide(actor.side)]).map((_, slot) => ({ side: otherSide(actor.side), slot }))
     .filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
   const allies = activeTeamIndices(state.teams[actor.side]).map((_, slot) => ({ side: actor.side, slot }))
@@ -232,8 +263,24 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
       === user.volatile?.chargingTargetId);
     if (carried !== undefined) return [carried];
   }
-  if (code === "04") return enemies;
+  if (code === "04" || move.functionCode === "207" && state.effects?.terrain === "psychic") return enemies;
+  if (move.functionCode === "140" && move.category === "Status") return enemies;
   if (code === "08") return [...enemies, ...allies];
+  if (hasMoveFlag(move, "d")) {
+    const snatcher = enemies.filter((position) => battlerAtPosition(state, position)?.volatile?.snatching === true)
+      .sort((left, right) => effectiveSpeed(battlerAtPosition(state, right)!, state.effects,
+        hasWeatherSuppressor(activeBattlerList(state)), right.side)
+        - effectiveSpeed(battlerAtPosition(state, left)!, state.effects,
+          hasWeatherSuppressor(activeBattlerList(state)), left.side))[0];
+    if (snatcher !== undefined) return [snatcher];
+  }
+  if (code === "80" && hasMoveFlag(move, "c")) {
+    const reflector = enemies.find((position) => {
+      const opponent = battlerAtPosition(state, position);
+      return opponent?.volatile?.magicCoat === true || opponent?.ability === "MAGICBOUNCE";
+    });
+    if (reflector !== undefined) return [reflector];
+  }
   if (moveTargetsUser(move)) return [actor];
   if (code === "100") {
     const intended = allies[0];
@@ -270,7 +317,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     readonly resolvedPositions: ReadonlySet<string>;
     readonly roundMultiplier: number;
     readonly helpingHandMultiplier: number;
-    readonly mirroredMove?: BattleMove | null;
+    readonly calledMove?: BattleMove | null;
   },
 ): { readonly events: readonly BattleEvent[]; readonly trace: DoubleTurnResult["trace"];
   readonly effects: TeamBattleState["effects"]; readonly damagedTargets: ReadonlySet<string> } {
@@ -278,7 +325,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
   const trace: DoubleTurnResult["trace"][number][] = [];
   const damagedTargets = new Set<string>();
   let first = true;
-  const selectedMove = context?.mirroredMove
+  const selectedMove = context?.calledMove
     ?? teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]
       ?.moves[action.moveIndex]?.move;
   const selfDestruct = selectedMove?.functionCode === "0E0";
@@ -319,6 +366,10 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         switchingTarget: targetEntry?.action.kind === "switch" ? target.side : null,
         opponentItemTheft: rules.opponentItemTheft,
         attackerParty: { [miniSide]: teams[actor.side].members },
+        opponentImprisonMoves: activeTeamIndices(teams[otherSide(actor.side)])
+          .map((index) => teams[otherSide(actor.side)].members[index]!)
+          .filter((member) => member.hp > 0 && member.volatile?.imprisoning === true)
+          .flatMap((member) => member.moves.map((slot) => slot.move.internalName)),
         wildBattle: rules.wildBattle === true,
         escapable: rules.escapable !== false,
         targetTookDamageThisTurn: context?.damagedPositions.has(key(target)) ?? false,
@@ -348,7 +399,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
             && !activeTeamIndices(teams[target.side]).includes(index)) },
         ppCost: first ? pressureCost : 1,
         ...(targetAction === undefined ? {} : { targetPlannedAction: targetAction }),
-        ...(context?.mirroredMove === undefined ? {} : { mirroredMove: context.mirroredMove }) });
+        ...(context?.calledMove === undefined ? {} : { calledMove: context.calledMove }) });
     if (result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
       damagedTargets.add(key(target));
     }
@@ -382,6 +433,26 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
           leechSeededBy: actor.side, leechSeededBySlot: actor.slot } };
       }
       storeBattler(teams, target, nextTarget);
+    }
+    if (result.events.some((event) => event.type === "partyStatusCureRequested")) {
+      const blocked = new Set(selectedMove?.type === "GRASS"
+        ? activeTeamIndices(teams[actor.side]).map((index) => teams[actor.side].members[index]!)
+          .filter((member) => member.id !== nextAttacker.id && member.ability === "SAPSIPPER")
+          .map((member) => member.id) : []);
+      const cured = curePartyStatuses(teams[actor.side], actor.side, new Set([nextAttacker.id]), blocked);
+      teams[actor.side] = cured.team;
+      events.push(...cured.events);
+    }
+    if (result.events.some((event) => event.type === "battleEffectChanged"
+      && event.effect === "gravity" && event.turns > 0)) {
+      for (const side of SIDES) for (const index of activeTeamIndices(teams[side])) {
+        const member = teams[side].members[index]!;
+        const grounded = clearAirborneEffects(member, side);
+        if (grounded.battler === member) continue;
+        teams[side] = { ...teams[side], members: teams[side].members.map((candidate, at) =>
+          at === index ? grounded.battler : candidate) };
+        events.push(...grounded.events);
+      }
     }
     const resolvedEvents = result.events.filter((event) => {
       if (["turnStarted", "actionOrdered", "turnEnded", "battleEnded"].includes(event.type)) return false;
@@ -426,7 +497,7 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   rng: RandomSource, trace: DoubleTurnResult["trace"][number][], enteredMidTurn = true,
   reason: "voluntary" | "replacement" | "forced" = enteredMidTurn ? "voluntary" : "replacement",
   effects?: TeamBattleState["effects"]):
-  readonly DoubleBattleEvent[] {
+  { readonly events: readonly DoubleBattleEvent[]; readonly effects: TeamBattleState["effects"] } {
   const team = teams[actor.side];
   const indices = [...activeTeamIndices(team)];
   const fromIndex = indices[actor.slot];
@@ -477,6 +548,12 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
   }
   output.push({ type: "pokemonSwitched", side: actor.side, fromIndex, toIndex: teamIndex,
     from: team.members[fromIndex]!.id, to: team.members[teamIndex]!.id, reason });
+  const hazard = applyEntryHazards(teams[actor.side].members[teamIndex]!, actor.side, effects);
+  teams[actor.side] = { ...teams[actor.side], members: teams[actor.side].members.map((member, index) =>
+    index === teamIndex ? hazard.battler : member) };
+  effects = hazard.effects;
+  output.push(...hazard.events);
+  if (hazard.battler.hp <= 0) return { events: output, effects };
   const cured = cureStatusBlockedByAbility(teams[actor.side].members[teamIndex]!);
   if (cured !== null) {
     teams[actor.side] = { ...teams[actor.side], members: teams[actor.side].members.map((member, index) =>
@@ -501,7 +578,7 @@ function switchAt(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition, 
       index === teamIndex ? markEnteredMidTurn(member) : member) };
   }
   output.push(...entry.events);
-  return output;
+  return { events: output, effects };
 }
 
 function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, actor: BattlePosition,
@@ -510,6 +587,7 @@ function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, actor: Battl
   const index = activeTeamIndices(teams[actor.side])[actor.slot];
   if (index === undefined) return { events: [], effects };
   const active = teams[actor.side].members[index]!;
+  if (active.hp <= 0) return { events: [], effects };
   const events: DoubleBattleEvent[] = [];
   if (active.ability === "IMPOSTER") {
     const targets = activeTeamIndices(teams[otherSide(actor.side)]);
@@ -579,9 +657,12 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       inner.push({ type: "statusContinued", side: position.side, status: status.kind });
     }
     if (battler.hp > 0) {
-      const volatile = resolveBattleVolatileEndOfTurn(battler, position.side, effects?.terrain);
+      const volatile = resolveBattleVolatileEndOfTurn(battler, position.side, effects);
       battler = volatile.battler;
       inner.push(...volatile.events);
+      const grassy = resolveGrassyTerrainHealing(battler, position.side, effects);
+      battler = grassy.battler;
+      inner.push(...grassy.events);
     }
     if (battler.hp > 0) {
       const weatherResult = resolveWeatherEndOfTurn(battler, position.side, weather, effects?.magicRoomTurns ?? 0);
@@ -612,7 +693,7 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
     if (drained !== undefined && seededBy !== undefined && seededBy !== null) {
       const receiverPosition = { side: seededBy, slot: seededBySlot };
       const receiver = battlerAtPosition({ ...state, teams }, receiverPosition);
-      if (receiver !== undefined && receiver.hp > 0) {
+      if (receiver !== undefined && receiver.hp > 0 && (receiver.volatile?.healBlockTurns ?? 0) === 0) {
         const amount = Math.min(drained.amount, receiver.stats.maxHp - receiver.hp);
         if (amount > 0) {
           const healed = { ...receiver, hp: receiver.hp + amount };
@@ -809,9 +890,11 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     pursuitKeys.add(key(entry.actor));
   }
   for (const entry of switchEntries) {
-    events.push(...switchAt(teams, entry.actor,
+    const switched = switchAt(teams, entry.actor,
       (entry.action as Extract<TeamBattleAction, {kind:"switch"}>).teamIndex, rng, trace,
-      true, "voluntary", effects));
+      true, "voluntary", effects);
+    events.push(...switched.events);
+    effects = switched.effects;
     const entered = applyEntryAbilities(teams, entry.actor, effects);
     effects = entered.effects;
     events.push(...entered.events);
@@ -841,7 +924,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     .map((entry) => { let battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
       const move = battler.moves[entry.action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
-      const priority = effectiveMovePriority(battler, move);
+      const priority = effectiveMovePriority(battler, move, effects?.terrain);
       const opponents = activeTeamIndices(teams[otherSide(entry.actor.side)])
         .map((index) => teams[otherSide(entry.actor.side)].members[index]!);
       const custap = custapBerryReady(battler, opponents, effects?.magicRoomTurns ?? 0);
@@ -905,12 +988,13 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   const roundUses: Record<BattleSide, number> = { player: 0, opponent: 0 };
   for (let moveIndex = 0; moveIndex < moves.length; moveIndex += 1) {
     const entry = moves[moveIndex]!;
-    const liveState: TeamBattleState = { ...state, teams };
+    const liveState: TeamBattleState = { ...state, teams, ...(effects === undefined ? {} : { effects }) };
     if ((battlerAtPosition(liveState, entry.actor)?.hp ?? 0) <= 0) continue;
-    const targets = moveTargets(liveState, entry.actor, entry.action, rng);
+    const calledMove = calledMoveForAction(liveState, entry.actor, entry.action, effectiveSubmitted,
+      resolvedPositions, rng, trace);
+    const targets = moveTargets(liveState, entry.actor, entry.action, rng, calledMove);
     const actor = battlerAtPosition(liveState, entry.actor)!;
-    const mirroredMove = mirrorSourceMove(liveState, entry.actor, entry.action);
-    const selectedMove = mirroredMove ?? actor.moves[entry.action.moveIndex]!.move;
+    const selectedMove = calledMove ?? actor.moves[entry.action.moveIndex]!.move;
     if (selectedMove.functionCode === "09C") {
       const target = targets[0];
       const targetSubmission = target === undefined ? undefined
@@ -941,7 +1025,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       resolvedPositions,
       roundMultiplier: selectedMove.functionCode === "083" ? 2 ** roundUses[entry.actor.side] : 1,
       helpingHandMultiplier: helpedPositions.has(key(entry.actor)) ? 1.5 : 1,
-      mirroredMove,
+      calledMove,
     });
     effects = result.effects;
     const presentedTargets = selectedMove.functionCode === "05B"
@@ -1114,10 +1198,17 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   terrainTurns: Math.max(0, (effects.terrainTurns ?? 0) - 1),
   trickRoomTurns: Math.max(0, (effects.trickRoomTurns ?? 0) - 1),
   magicRoomTurns: Math.max(0, (effects.magicRoomTurns ?? 0) - 1),
+  wonderRoomTurns: Math.max(0, (effects.wonderRoomTurns ?? 0) - 1),
   gravityTurns: Math.max(0, (effects.gravityTurns ?? 0) - 1),
   weather: (effects.weatherTurns ?? 0) < 0 ? effects.weather ?? null
     : (effects.weatherTurns ?? 0) <= 1 ? null : effects.weather ?? null,
   weatherTurns: (effects.weatherTurns ?? 0) < 0 ? effects.weatherTurns ?? -1 : Math.max(0, (effects.weatherTurns ?? 0) - 1) };
+  if ((state.effects?.gravityTurns ?? 0) === 1) events.push({ type: "battleEffectChanged",
+    side: null, effect: "gravity", turns: 0 });
+  if ((state.effects?.terrainTurns ?? 0) === 1) events.push({ type: "battleEffectChanged",
+    side: null, effect: "terrain", turns: 0 });
+  if ((state.effects?.wonderRoomTurns ?? 0) === 1) events.push({ type: "battleEffectChanged",
+    side: null, effect: "wonder-room", turns: 0 });
   events.push(...reconcileDoubleForms(state, teams, effects));
   effects = recordSideFaints(effects, state.teams, teams, state.turn);
   events.push({ type: "turnEnded", turn: state.turn });
@@ -1134,14 +1225,22 @@ export function replaceFaintedDoublePokemon(state: TeamBattleState, position: Ba
     throw new Error("Aucun remplacement n'est requis a cet emplacement.");
   }
   const teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
-  switchAt(teams, position, teamIndex, rng, [], false,
+  const switched = switchAt(teams, position, teamIndex, rng, [], false,
     state.slotPivotReplacements?.some((entry) => key(entry) === key(position)) ? "forced" : "replacement",
     state.effects);
-  const entered = applyEntryAbilities(teams, position, state.effects);
+  const entered = applyEntryAbilities(teams, position, switched.effects);
   const effects = reconcileExtremeWeather(entered.effects, activeBattlerList(state, teams));
   const formEvents = reconcileDoubleForms(state, teams, effects);
   void formEvents;
+  const activeIndex = activeTeamIndices(teams[position.side])[position.slot];
+  const fainted = activeIndex !== undefined && teams[position.side].members[activeIndex]!.hp <= 0;
+  const reserveAvailable = teams[position.side].members.some((member, index) => member.hp > 0
+    && !activeTeamIndices(teams[position.side]).includes(index));
+  const awaitingReplacement = fainted && reserveAvailable;
+  const defeated = fainted && !reserveAvailable;
   return { ...state, teams, ...(effects === undefined ? {} : { effects }),
-    slotReplacements: state.slotReplacements.filter((entry) => key(entry) !== key(position)),
+    ...(defeated ? { status: "finished" as const, winner: otherSide(position.side) } : {}),
+    slotReplacements: awaitingReplacement ? state.slotReplacements
+      : state.slotReplacements.filter((entry) => key(entry) !== key(position)),
     slotPivotReplacements: state.slotPivotReplacements?.filter((entry) => key(entry) !== key(position)) ?? [] };
 }

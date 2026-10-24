@@ -1926,8 +1926,15 @@ export class AuthoritativeBattleRoom {
         : sharedBattleOwnerSettlement(participation, state, ledger, ownerId);
       const ownerIsNarrative = ownerId === context.narrativeOwnerId;
       const narrativeWon = !escaped && narrativeSide !== undefined && state.winner === narrativeSide;
-      const money = !ownerIsNarrative || escaped ? { kind: "none" as const }
-        : narrativeWon && trainerReward > 0 ? { kind: "fixed" as const, amount: trainerReward }
+      const scatteredCoins = tactical.won && !escaped
+        ? (["player", "opponent"] as const).flatMap((side) =>
+          participation.camps[side].members.filter((member) => member.ownerId === ownerId)
+            .map((member) => member.battler.id))
+          .reduce((sum, id) => sum + (state.effects?.scatteredCoins?.[id] ?? 0), 0) : 0;
+      const awardedMoney = (ownerIsNarrative && narrativeWon ? trainerReward : 0) + scatteredCoins;
+      const money = escaped ? { kind: "none" as const }
+        : awardedMoney > 0 ? { kind: "fixed" as const, amount: awardedMoney }
+          : !ownerIsNarrative ? { kind: "none" as const }
           : !narrativeWon ? { kind: "source-defeat" as const } : { kind: "none" as const };
       const ownedMemberIds = new Set(((["player", "opponent"] as const).flatMap((side) =>
         participation.camps[side].members.filter((member) => member.ownerId === ownerId)
