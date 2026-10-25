@@ -1142,6 +1142,19 @@ function battleMove(slot: PersistentMoveSlot, catalog: PlayerBattleCatalog): Bat
     ...(definition.flags === undefined ? {} : { flags: definition.flags }), targetCode };
 }
 
+/** Complete supported source move data for authoritative called-move effects. */
+export function battleMoveCatalog(catalog: PlayerBattleCatalog): readonly BattleMove[] {
+  const normalize = (code: string): string => /^[0-9A-F]{1,3}$/u.test(code)
+    ? code.padStart(3, "0") : code;
+  const unsupported = catalog.moves.filter((definition) => !isMoveFunctionSupported(normalize(definition.functionCode)));
+  if (unsupported.length > 0 && catalog.moves.some((definition) => normalize(definition.functionCode) === "0B6")) {
+    throw new Error(`Catalogue Metronome incomplet : ${unsupported[0]!.internalName} (${unsupported[0]!.functionCode}).`);
+  }
+  return catalog.moves.filter((definition) => isMoveFunctionSupported(normalize(definition.functionCode)))
+    .map((definition) => battleMove({ internalName: definition.internalName,
+    pp: definition.pp, maxPp: definition.pp }, catalog));
+}
+
 function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): BattlerState {
   const definition = catalog.pokemon.find((candidate) => candidate.internalName === member.species);
   if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${member.species}.`);
@@ -1302,9 +1315,13 @@ export function storeBattleTeam(party: PlayerPartyState, team: BattleTeam): Play
   const members = party.members.map((member) => {
     const result = byId.get(member.id);
     if (result === undefined) throw new Error(`Résultat de combat incomplet pour ${member.id}.`);
+    const persistentForm = result.moveFormPersistent === true ? result.appearance?.form : undefined;
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
-      metadata: result.happiness === undefined ? member.metadata
-        : { ...member.metadata, happiness: result.happiness },
+      metadata: { ...member.metadata,
+        ...(result.happiness === undefined ? {} : { happiness: result.happiness }),
+        ...(persistentForm === undefined ? {} : { form: persistentForm }) },
+      stats: persistentForm === undefined ? member.stats
+        : result.moveFormStats?.[persistentForm as 0 | 1] ?? member.stats,
       heldItem: settledHeldItem(result, false),
       moves: settledMoveSlots(member, result, true) };
   });
@@ -1325,9 +1342,13 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
     const result = byId.get(member.id);
     if (result === undefined) return member;
     const preserveHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
+    const persistentForm = result.moveFormPersistent === true ? result.appearance?.form : undefined;
     return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
-      metadata: result.happiness === undefined ? member.metadata
-        : { ...member.metadata, happiness: result.happiness },
+      metadata: { ...member.metadata,
+        ...(result.happiness === undefined ? {} : { happiness: result.happiness }),
+        ...(persistentForm === undefined ? {} : { form: persistentForm }) },
+      stats: persistentForm === undefined ? member.stats
+        : result.moveFormStats?.[persistentForm as 0 | 1] ?? member.stats,
       heldItem: preserveHeldItem ? member.heldItem
         : settledHeldItem(result, options.retainTransferredHeldItems === true),
       moves: settledMoveSlots(member, result) };
@@ -1364,9 +1385,13 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     const result = owned.get(pokemon.id)?.battler;
     if (result === undefined) return pokemon;
     const preserveSourceHeldItem = pokemon.heldItem !== null && !isHeldItemSupported(pokemon.heldItem);
+    const persistentForm = result.moveFormPersistent === true ? result.appearance?.form : undefined;
     return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
-      metadata: result.happiness === undefined ? pokemon.metadata
-        : { ...pokemon.metadata, happiness: result.happiness },
+      metadata: { ...pokemon.metadata,
+        ...(result.happiness === undefined ? {} : { happiness: result.happiness }),
+        ...(persistentForm === undefined ? {} : { form: persistentForm }) },
+      stats: persistentForm === undefined ? pokemon.stats
+        : result.moveFormStats?.[persistentForm as 0 | 1] ?? pokemon.stats,
       heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem
         : settledHeldItem(result, retainTransferredHeldItems),
       moves: settledMoveSlots(pokemon, result) };

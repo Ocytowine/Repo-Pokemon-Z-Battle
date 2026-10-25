@@ -1439,7 +1439,9 @@ export class AuthoritativeBattleRoom {
         : createTeamBattleState({ player: message.playerTeam.members,
           opponent: message.opponentTeam.members }, { player: message.playerTeam.activeIndex,
           opponent: message.opponentTeam.activeIndex });
-      this.#battleState = { ...this.#battleState, teams: { ...this.#battleState.teams,
+      this.#battleState = { ...this.#battleState,
+        ...(message.moveCatalog === undefined ? {} : { moveCatalog: message.moveCatalog }),
+        teams: { ...this.#battleState.teams,
         opponent: { ...this.#battleState.teams.opponent, items: [...(message.opponentTeam.items ?? [])] } } };
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;

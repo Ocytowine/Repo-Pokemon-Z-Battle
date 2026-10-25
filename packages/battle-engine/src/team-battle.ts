@@ -534,6 +534,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const result = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) }, moveActions, rng,
     { switchingTarget: switchOrder[0] ?? null, opponentItemTheft: rules.opponentItemTheft,
+      ...(state.moveCatalog === undefined ? {} : { moveCatalog: state.moveCatalog }),
       attackerParty: { player: teams.player.members, opponent: teams.opponent.members },
       attackerCanSwitch: Object.fromEntries(SIDES.map((side) => [side, livingReserve(teams[side])])),
       wildBattle: rules.wildBattle === true, escapable: rules.escapable !== false });
@@ -600,6 +601,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
       teams,
       replacementRequired: escaped || winner !== null ? [] : replacementRequired,
       pivotRequired: escaped || winner !== null ? [] : pivotRequired,
+      ...(state.moveCatalog === undefined ? {} : { moveCatalog: state.moveCatalog }),
       ...(state.megaEvolution === undefined ? {} : { megaEvolution: state.megaEvolution }),
       ...(reconciledEffects === undefined ? {} : { effects: reconciledEffects }),
     },

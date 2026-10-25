@@ -42,6 +42,7 @@ export function consumeHeldItem(battler: BattlerState, item: HeldItem, pickupUse
     volatile: {
       ...battler.volatile!,
       unburdened: true,
+      ...(isSupportedBerry(item) ? { belchReady: true } : {}),
       ...(options.pickup === false ? {} : { pickupItem: item, pickupUse }),
     },
   };

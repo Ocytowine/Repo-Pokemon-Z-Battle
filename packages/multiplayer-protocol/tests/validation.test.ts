@@ -271,6 +271,13 @@ describe("multiplayer protocol", () => {
     const message: ClientMessage = { type: "openSourceBattle", version: 15, requestId: "source-battle-1",
       context, playerTeam: duelTeam, opponentTeam: duelTeam, battleItems: { POTION: 2 } };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
+    const moveFormStats = { 0: duelTeam.members[0]!.stats,
+      1: { ...duelTeam.members[0]!.stats, attack: 35 } };
+    const withCatalog = { ...message, moveCatalog: [duelTeam.members[0]!.moves[0]!.move],
+      playerTeam: { ...duelTeam, members: [{ ...duelTeam.members[0], moveFormStats }] } };
+    expect(parseClientMessage(JSON.stringify(withCatalog))).toMatchObject({
+      moveCatalog: [{ id: duelTeam.members[0]!.moves[0]!.move.id }],
+      playerTeam: { members: [{ moveFormStats }] } });
     expect(parseClientMessage(JSON.stringify({ ...message, opponentTeam: { ...duelTeam,
       members: [{ ...duelTeam.members[0], ability: "CHEEKPOUCH" }] } })))
       .toMatchObject({ opponentTeam: { members: [{ ability: "CHEEKPOUCH" }] } });

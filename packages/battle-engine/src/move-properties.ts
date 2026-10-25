@@ -145,7 +145,7 @@ export function effectiveMoveType(attacker: BattlerState, move: BattleMove,
 
 /** Pokemon Z 090 compares raw Attack/Sp. Attack plus their stage integers, not staged stats. */
 export function effectiveMoveCategory(attacker: BattlerState, move: BattleMove): MoveCategory {
-  return move.functionCode === "090"
+  return move.functionCode === "090" || move.functionCode === "1001"
     ? attacker.stats.attack + attacker.stages.attack > attacker.stats.specialAttack + attacker.stages.specialAttack
       ? "Physical" : "Special"
     : move.category;
@@ -161,6 +161,7 @@ export function effectiveMovePriority(attacker: BattlerState, move: BattleMove,
   terrain?: BattleEffects["terrain"]): number {
   return move.priority
     + (move.functionCode === "211" && terrain === "grassy" ? 1 : 0)
+    + (move.functionCode === "208" && terrain === "misty" ? 1 : 0)
     + (attacker.ability === "PRANKSTER" && move.category === "Status" ? 1 : 0)
     + (attacker.ability === "GALEWINGS" && move.type === "FLYING" ? 1 : 0)
     + (attacker.ability === "TRIAGE" && isTriageMove(move) ? 3 : 0);

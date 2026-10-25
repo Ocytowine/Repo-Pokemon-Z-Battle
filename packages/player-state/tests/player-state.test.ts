@@ -274,6 +274,18 @@ describe("persistent player party", () => {
       heldItem: "CUSTOMRELIC", moves: [{ internalName: "TACKLE", pp: 1 }, sourceOnlyMove] });
   });
 
+  it("persists a move-driven form and its precomputed stats after combat", () => {
+    const projected = playerPartyToBattleTeam(party, catalog);
+    const current = projected.members[0]!;
+    const alternate = { ...current.stats, attack: current.stats.attack + 20 };
+    const changed = { ...projected, members: [{ ...current, stats: alternate,
+      moveFormStats: { 0: current.stats, 1: alternate }, moveFormPersistent: true,
+      appearance: { form: 1, shiny: false, gender: current.appearance?.gender ?? null } }] };
+    const stored = storeProjectedBattleTeam(party, changed).members[0]!;
+    expect(stored.metadata.form).toBe(1);
+    expect(stored.stats).toEqual(alternate);
+  });
+
   it("projects ordinary source items that Fling can use", () => {
     const carrying = { ...party, members: [{ ...party.members[0]!, heldItem: "AMULETCOIN" }] };
     expect(playerPartyToBattleTeam(carrying, catalog).members[0]!.heldItem).toBe("AMULETCOIN");

@@ -145,7 +145,8 @@ export interface SourceBattleCallbacks {
   readonly onPokemonCaptured?: (pokemonId: string) => Promise<void> | void;
   readonly openSharedBattle?: (draft: { readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
     readonly playerTeam: TeamBattleState["teams"]["player"];
-    readonly opponentTeam: TeamBattleState["teams"]["opponent"] }) => boolean;
+    readonly opponentTeam: TeamBattleState["teams"]["opponent"];
+    readonly moveCatalog?: TeamBattleState["moveCatalog"] }) => boolean;
 }
 
 export interface SourceTrainerBattleAudio {
@@ -234,7 +235,7 @@ export class SourceBattleController {
         opponentTrainer: null });
       this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
-        opponentTeam: battle.teams.opponent }) === true) {
+        opponentTeam: battle.teams.opponent, moveCatalog: battle.moveCatalog }) === true) {
         this.sharedOpening = true;
         this.sharedContinuationPending = true;
         this.encounterCompletion = onComplete;
@@ -297,7 +298,7 @@ export class SourceBattleController {
         battleMusic: audio.battleMusic, victoryMusic: audio.victoryMusic, defeatText: audio.defeatText });
       this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
-        opponentTeam: battle.teams.opponent }) === true) {
+        opponentTeam: battle.teams.opponent, moveCatalog: battle.moveCatalog }) === true) {
         this.sharedOpening = true;
         this.sharedContinuationPending = true;
         this.trainerCompletion = onComplete;

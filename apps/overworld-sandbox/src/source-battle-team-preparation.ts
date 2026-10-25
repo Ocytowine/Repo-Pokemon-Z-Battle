@@ -10,6 +10,23 @@ export interface SourceBattleTeamPreparation {
   readonly notice: string | null;
 }
 
+function withMoveFormStats(battler: BattlerState, member: PersistentPokemon,
+  catalog: PlayerBattleCatalog): BattlerState {
+  if (member.species !== "CONSTELLAR") return battler;
+  const definition = catalog.pokemon.find((entry) => entry.internalName === member.species);
+  if (definition?.baseStats === undefined) return battler;
+  const base: Partial<Parameters<typeof calculatePokemonStats>[0]["baseStats"]> = definition.baseStats;
+  if (base.hp === undefined || base.speed === undefined || base.attack === undefined || base.defense === undefined
+    || base.specialAttack === undefined || base.specialDefense === undefined) return battler;
+  const alternate = { hp: base.hp, speed: base.speed,
+    attack: base.specialAttack, defense: base.specialDefense,
+    specialAttack: base.attack, specialDefense: base.defense };
+  const formZero = calculatePokemonStats({ baseStats: base as Required<typeof base> },
+    member.level, member.metadata);
+  const formOne = calculatePokemonStats({ baseStats: alternate }, member.level, member.metadata);
+  return { ...battler, moveFormStats: { 0: formZero, 1: formOne } };
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error && error.message.trim() !== "" ? error.message : "Mécanique de combat non prise en charge.";
 }
@@ -23,7 +40,7 @@ function projectJoinMember(party: PlayerPartyState, member: PersistentPokemon,
     const conscious = candidate.hp > 0 ? candidate : { ...candidate, hp: 1 };
     const battler = playerPartyToBattleTeam(
       { ...party, activeIndex: 0, members: [conscious] }, catalog).members[0]!;
-    return { ...battler, hp: candidate.hp,
+    return { ...withMoveFormStats(battler, candidate, catalog), hp: candidate.hp,
       ...(megaEvolution === undefined ? {} : { megaEvolution: {
         heldItem: megaEvolution.heldItem, form: megaEvolution.form,
         stats: calculatePokemonStats({ baseStats: megaEvolution.baseStats }, member.level, member.metadata),
@@ -68,7 +85,8 @@ export function prepareSourcePlayerBattleTeam(party: PlayerPartyState,
     return { team: { ...team, members: team.members.map((battler, index) => {
       const member = party.members[index]!;
       const megaEvolution = sourceMegaEvolutionForPokemon(megaCatalog, member.species, member.heldItem);
-      return megaEvolution === undefined ? battler : { ...battler,
+      const moveForm = withMoveFormStats(battler, member, catalog);
+      return megaEvolution === undefined ? moveForm : { ...moveForm,
         megaEvolution: { heldItem: megaEvolution.heldItem, form: megaEvolution.form,
           stats: calculatePokemonStats({ baseStats: megaEvolution.baseStats }, member.level, member.metadata),
           types: [...megaEvolution.types], ability: megaEvolution.ability, activationAvailable: megaActivationAvailable } };

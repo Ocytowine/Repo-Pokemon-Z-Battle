@@ -6,7 +6,7 @@ import { activeTeamIndices, attemptSourceBattleEscape, chooseSourceBattleAction,
   type SharedBattleParticipation, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState,
   type TeamReplacementResult, type TeamTurnActions,
   type TeamTurnResult } from "@pokemon-z-battle/battle-engine";
-import { addPokemonToParty, applyHoneyGather, applySharedBattleExperience, createEmptyPlayerParty, createPersistentPokemon,
+import { addPokemonToParty, applyHoneyGather, applySharedBattleExperience, battleMoveCatalog, createEmptyPlayerParty, createPersistentPokemon,
   grantPokemonExperience, healPlayerParty, playerPartyToBattleTeam, pokemonLevelEvolutionCandidates,
   storeOwnedBattleResults, storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState,
   type PokemonZExperiencePolicy, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
@@ -65,7 +65,7 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
       { player: player.activeIndex, opponent: opponent.activeIndex });
   const environment: BattleEnvironment = encounter.method === "cave" || encounter.method === "rock-smash" ? "cave"
     : encounter.method === "fishing" ? "moving-water" : encounter.method === "land" ? "grass" : "none";
-  const contextualState = withEnvironment(state, environment);
+  const contextualState = withEnvironment({ ...state, moveCatalog: battleMoveCatalog(catalog) }, environment);
   if (encounter.initialStages === undefined) return contextualState;
   const opponentTeam = contextualState.teams.opponent;
   const withInitialStages = (member: (typeof opponentTeam.members)[number]) => {
@@ -121,7 +121,7 @@ export function createSourceTrainerBattle(party: PlayerPartyState, trainer: Sour
     ? createDoubleTeamBattleState({ player: player.members, opponent: opponent.members })
     : createTeamBattleState({ player: player.members, opponent: opponent.members },
       { player: player.activeIndex, opponent: opponent.activeIndex });
-  return withEnvironment({ ...state, teams: { ...state.teams,
+  return withEnvironment({ ...state, moveCatalog: battleMoveCatalog(catalog), teams: { ...state.teams,
     opponent: { ...state.teams.opponent, items: [...(trainer.items ?? [])] } } }, environment);
 }
 

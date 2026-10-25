@@ -132,5 +132,6 @@ describe("offensive function batch", () => {
     const hits = result.events.filter((event) => event.type === "damageApplied");
     expect(hits).toHaveLength(3);
     expect(hits.every((event) => event.type === "damageApplied" && event.critical)).toBe(true);
+    expect(result.state.teams.opponent.members[0]?.volatile?.protected).toBe(false);
   });
 });

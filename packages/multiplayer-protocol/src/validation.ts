@@ -96,6 +96,20 @@ function safeInteger(value: unknown, minimum: number, maximum: number): value is
   return Number.isSafeInteger(value) && Number(value) >= minimum && Number(value) <= maximum;
 }
 
+function isBattleMove(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  return ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance"]
+    .every((key) => key in value)
+    && Object.keys(value).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags", "targetCode"].includes(key))
+    && safeInteger(value.id, 0, 999_999) && boundedString(value.internalName) && boundedString(value.name, 128)
+    && isMoveFunctionSupported(String(value.functionCode)) && safeInteger(value.power, 0, 999)
+    && boundedString(value.type) && ["Physical", "Special", "Status"].includes(String(value.category))
+    && safeInteger(value.accuracy, 0, 100) && safeInteger(value.pp, 1, 99)
+    && safeInteger(value.priority, -10, 10) && safeInteger(value.effectChance, 0, 100)
+    && (value.flags === undefined || typeof value.flags === "string")
+    && (value.targetCode === undefined || /^[0-9A-F]{1,3}$/u.test(String(value.targetCode)));
+}
+
 function isMajorStatus(value: unknown): boolean {
   if (value === null) return true;
   if (!isRecord(value) || typeof value.kind !== "string") return false;
@@ -116,7 +130,7 @@ function isBattleVolatile(value: unknown): boolean {
     "furyCutterCount", "rolloutTurns", "uproarTurns", "embargoTurns",
     "unburdened", "pickupItem", "pickupUse", "enteredMidTurn", "flashFire",
     "entryAbilityResolved", "traceOriginalAbility", "originalAbility", "abilityReplacementActive", "originalTypes",
-    "originalForm", "originalStats", "truantLoafing", "choiceLockedMove", "yawnBypassesAbility"];
+    "originalForm", "originalStats", "truantLoafing", "choiceLockedMove", "yawnBypassesAbility", "substituteHp"];
   if (!isRecord(value) || !legacy.every((key) => key in value)
     || !Object.keys(value).every((key) => legacy.includes(key) || optional.includes(key))) return false;
   return safeInteger(value.confusionTurns, 0, 5) && typeof value.flinched === "boolean"
@@ -163,6 +177,7 @@ function isBattleVolatile(value: unknown): boolean {
     && (value.truantLoafing === undefined || typeof value.truantLoafing === "boolean")
     && (value.choiceLockedMove === undefined || value.choiceLockedMove === null || boundedString(value.choiceLockedMove))
     && (value.yawnBypassesAbility === undefined || typeof value.yawnBypassesAbility === "boolean")
+    && (value.substituteHp === undefined || safeInteger(value.substituteHp, 0, 999_999))
     && (value.traceOriginalAbility === undefined || value.traceOriginalAbility === null
       || typeof value.traceOriginalAbility === "string" && SOURCE_IDENTIFIER.test(value.traceOriginalAbility));
 }
@@ -182,7 +197,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
   const valid = value.members.every((member) => {
     const memberKeys = ["id", "species", "name", "level", "types", "stats", "stages", "hp", "majorStatus", "ability", "heldItem", "moves"];
     if (!isRecord(member) || !memberKeys.every((key) => key in member)
-      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "illusion", "capture", "happiness", "canEvolve", "baseAttack", "hiddenPowerType", "berryFlavorDislike", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem"].includes(key))
+      || !Object.keys(member).every((key) => [...memberKeys, "appearance", "illusion", "capture", "happiness", "canEvolve", "baseAttack", "hiddenPowerType", "berryFlavorDislike", "volatile", "megaEvolution", "heldItemTransfer", "recyclableItem", "moveFormStats", "moveFormPersistent"].includes(key))
       || !boundedString(member.id) || !boundedString(member.species) || !boundedString(member.name, 128)
       || !safeInteger(member.level, 1, 100) || !Array.isArray(member.types) || member.types.length < 1
       || member.types.length > 2 || !member.types.every((type) => boundedString(type))
@@ -225,6 +240,12 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     }
     const stats = member.stats;
     const stages = member.stages;
+    if (member.moveFormStats !== undefined && (!isRecord(member.moveFormStats)
+      || !Object.keys(member.moveFormStats).every((form) => form === "0" || form === "1")
+      || !Object.values(member.moveFormStats).every((formStats) => isRecord(formStats)
+        && hasExactKeys(formStats, BATTLE_STATS)
+        && BATTLE_STATS.every((stat) => safeInteger(formStats[stat], 1, 999_999))))) return false;
+    if (member.moveFormPersistent !== undefined && typeof member.moveFormPersistent !== "boolean") return false;
     if (!hasExactKeys(stats, BATTLE_STATS) || !BATTLE_STATS.every((stat) => safeInteger(stats[stat], 1, 999_999))
       || !hasExactKeys(stages, BATTLE_STAGES) || !BATTLE_STAGES.every((stat) => safeInteger(stages[stat], -6, 6))
       || !safeInteger(member.hp, 0, Number(stats.maxHp))
@@ -244,17 +265,7 @@ function isBattleTeam(value: unknown): value is BattleTeam {
     return member.moves.every((slot) => {
       if (!isRecord(slot) || !hasExactKeys(slot, ["move", "pp"]) || !isRecord(slot.move)) return false;
       const move = slot.move;
-      return ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance"]
-        .every((key) => key in move)
-        && Object.keys(move).every((key) => ["id", "internalName", "name", "functionCode", "power", "type", "category", "accuracy", "pp", "priority", "effectChance", "flags", "targetCode"].includes(key))
-        && safeInteger(move.id, 0, 999_999) && boundedString(move.internalName) && boundedString(move.name, 128)
-        && isMoveFunctionSupported(String(move.functionCode)) && safeInteger(move.power, 0, 999)
-        && boundedString(move.type) && ["Physical", "Special", "Status"].includes(String(move.category))
-        && safeInteger(move.accuracy, 0, 100) && safeInteger(move.pp, 1, 99)
-        && safeInteger(move.priority, -10, 10) && safeInteger(move.effectChance, 0, 100)
-        && (move.flags === undefined || typeof move.flags === "string")
-        && (move.targetCode === undefined || /^[0-9A-F]{1,3}$/u.test(String(move.targetCode)))
-        && safeInteger(slot.pp, 0, Number(move.pp));
+      return isBattleMove(move) && safeInteger(slot.pp, 0, Number(move.pp));
     });
   });
   return valid && Number((value.members[value.activeIndex] as Record<string, unknown>).hp) > 0;
@@ -456,8 +467,12 @@ export function parseClientMessage(payload: string): ClientMessage {
       }
       return value as unknown as ClientMessage;
     case "openSourceBattle":
-      if (!hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam", "battleItems"])
+      if (!(hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam", "battleItems"])
+        || hasExactKeys(value, ["type", "version", "requestId", "context", "playerTeam", "opponentTeam", "moveCatalog", "battleItems"]))
         || !isIdentifier(value.requestId) || !isBattleTeam(value.playerTeam) || !isBattleTeam(value.opponentTeam)
+        || value.moveCatalog !== undefined && (!Array.isArray(value.moveCatalog)
+          || value.moveCatalog.length > 1_000 || !value.moveCatalog.every(isBattleMove)
+          || new Set(value.moveCatalog.map((move: Record<string, unknown>) => move.id)).size !== value.moveCatalog.length)
         || !isSourceBattleInventory(value.battleItems)) {
         return invalid("openSourceBattle mal forme");
       }

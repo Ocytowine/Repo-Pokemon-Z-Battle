@@ -7342,3 +7342,275 @@ Prochain lot conséquent proposé : dix variantes offensives `175`
 `304` (Steel Beam/Chloroblast), `911` (Dire Claw), `931` (Make It Rain)
 et `942` (Surging Strikes). Auditer les variantes source, les cibles Duo
 et le calcul multi-impact avant d'enregistrer chaque code.
+
+### 9.7 — Huitième tranche offensive du 2026-10-24
+
+Les dix codes annoncés (`175`, `1B9`, `201`, `207`, `211`, `303`,
+`304`, `911`, `931`, `942`) sont dans le noyau commun. `109` (Pay Day)
+est ajouté comme dépendance réelle de `931` : les pièces sont cumulées
+par identifiant de combattant dans l'état tactique, puis attribuées au
+seul propriétaire gagnant. En solo, la récompense rejoint la bourse à
+la victoire sauvage ou contre Dresseur ; en Coop, la room calcule un
+règlement privé pour l'hôte et chaque invité, conservé après reconnexion
+et redémarrage. Les intentions de capacité restent celles du protocole
+existant ; terrain, priorité, dégâts, statut, PV, stades, pièces et
+événements de combat sont autoritaires et répliqués par le même état.
+
+Cas particuliers vérifiés par tests : Corps Perdu emploie la Défense du
+lanceur ; Fil Toxique conserve la baisse de Vitesse si le poison échoue ;
+les deux attaques de terrain gagnent leur puissance, Vaste Force cible
+les deux adversaires en Duo, Fitoimpulso gagne sa priorité, Bolt Beak
+double seulement avant l'action choisie de sa cible, Metaláser retire
+la moitié des PV sauf Garde Magik, Garra Nociva tire son statut,
+Fiebre Dorada baisse l'Attaque Spéciale et disperse les pièces, Azote
+Torrencial frappe trois fois en critique à travers Abri. Le cas source
+`304` est appliqué après le coup ; aucun remboursement sur défaite.
+
+Après `prepare:local`, le rapport réel indique **306/353 fonctions
+couvertes, 47 restantes** ; 46 alertes de mécanique de capacité,
+77 animations absentes, 1 talent partiel, 124 problèmes globaux et
+880 animations prêtes. Le précédent 299/353 était le dernier chiffre
+documenté ; ce rapport est la source du compteur courant. La recette
+visuelle et la validation manuelle à deux navigateurs restent ouvertes,
+ainsi que la dette de narration du KO sur piège en Duo.
+
+Prochain lot conséquent proposé : `204` (Poltergeist), `208`
+(Bruma Explosiva), `240` (Pirueta Helada), `307` (Sable Ardiente),
+`900` (Stone Axe), `914` (Infernal Parade), `915` (Barb Barrage),
+`918` (Triple Arrows), `922` (Jaw Lock), `938` (Fickle Beam).
+Contrôler en particulier l'audience des pièges, les deux effets
+additionnels de `918`, le tirage RNG de `938` et les cibles Duo.
+
+### 9.7 — Neuvième tranche offensive du 2026-10-24
+
+Les dix codes `204`, `208`, `240`, `307`, `900`, `914`, `915`,
+`918`, `922` et `938` sont raccordés au noyau tactique commun.
+Poltergeist exige un objet tenu actif (Maladresse, Embargo et Champ
+Magique inclus). `208` gagne +1 priorité sous **Champ Brumeux** : c'est
+la condition du code d'ordonnancement source, malgré le commentaire
+erroné dans la classe de capacité. Pirueta Helada supprime le terrain
+après impact ; Stone Axe pose Piège de Roc sur le camp adverse ; Jaw
+Lock piège les deux combattants survivants, sauf cible Spectre ou déjà
+piégée. Sable Ardiente, Infernal Parade et Barb Barrage utilisent les
+statuts réels pour leurs puissances ; les deux derniers conservent leur
+effet secondaire. Triple Arrows tire séparément sa baisse de Défense
+et sa peur. Fickle Beam double sa puissance sur un tirage source sur
+trois, conservé dans la trace RNG autoritaire.
+
+Autorité : moteur partagé utilisé par le solo et la room ; intentions de
+capacité existantes, effets personnels de statut/PV/stades et effets de
+camp/terrain répliqués dans le snapshot. Les événements typés de piège,
+terrain, dégâts et volatils servent au rendu distant. Les tests couvrent
+simple, Duo et capacité d'invité `900`/`922` visible de l'hôte et
+restaurée après reconnexion/redémarrage de room. Aucune validation
+visuelle réelle n'est encore revendiquée ; la recette est inscrite dans
+`VALIDATION_MANUELLE_COMBAT.md`. Les dépendances transverses de
+Clonage/Bouclier Rusé et la narration du KO sur piège en Duo restent
+ouvertes, sans être cachées par cette tranche.
+
+Après `prepare:local` : **316/353 fonctions couvertes, 37 restantes** ;
+36 capacités à mécanique absente, 83 animations absentes, 1 talent
+partiel, 120 problèmes globaux et 886 animations prêtes. L'augmentation
+des animations absentes provient de l'éligibilité automatique des
+capacités nouvellement supportées ; aucune animation n'est inventée.
+
+Prochain lot conséquent proposé : `10F` (Nightmare), `150` (Fell
+Stinger), `151` (Parting Shot), `15A` (Escaramuza), `262`
+(CargaGresion), `300` (Atrapamoscas), `305` (Disparo Espina), `907`
+(Ceaseless Edge/Georrafaga), `912` (Mortal Spin) et `CF14`
+(Tearful Look). Prévoir un contrat persistant pour Nightmare et
+Escaramuza, puis vérifier les retraits de pièges et les pivots Duo.
+
+### 9.7 — Dixième tranche de fonctions du 2026-10-24
+
+Les dix codes annoncés (`10F`, `150`, `151`, `15A`, `262`, `300`,
+`305`, `907`, `912`, `CF14`) sont intégrés au noyau solo/Coop. Nightmare
+est un volatil de combat répliqué : quart des PV maximaux perdu à la
+fin du tour tant que la cible dort, fin au réveil/retrait, immunité aux
+dégâts par Garde Magik. La présentation distante reçoit les événements
+de pose, de fin et de perte de PV. Escaramuza n'est disponible que lors
+de la première occasion d'agir après l'entrée ; un changement normal
+consomme un tour sans interdire cette première action, tandis qu'un
+autre mouvement utilisé l'interdit. Ces états sont restaurés par la
+room.
+
+Fell Stinger gagne deux crans d'Attaque après un K.O. dommageable.
+Parting Shot baisse Attaque/Attaque Spéciale puis demande un pivot du
+propriétaire, y compris contre Anti-Bruit lorsque la baisse est bloquée ;
+le renvoi par Miroir Magik reste sur le même circuit de baisse/pivot.
+CargaGresion réutilise Charge et son cran de Défense Spéciale. Les
+classes source vides d'Atrapamoscas/Disparo Espina empruntent le calcul
+standard, sans effet inventé. Ceaseless Edge/Georrafaga posent jusqu'à
+trois couches de Picots sur le camp adverse. Mortal Spin empoisonne les
+cibles survivantes et retire entrave, Vampigraine, Roc/Picots/Picots
+Toxik/Toile du camp du lanceur dès qu'il a infligé des dégâts, y compris
+sur un K.O. ; ce nettoyage partage le chemin de Tour Rapide. Tearful
+Look baisse les deux attaques avec précision garantie. `150`/`912` ne
+déclenchent pas le bonus Sans Limite malgré `effectChance=100` dans les
+données : leurs effets sont `pbEffect`/`pbEffectAfterHit`, non
+`pbAdditionalEffect`.
+
+Les tests couvrent simple, Duo (Mortal Spin multi-cible), room hôte et
+invité, rendu d'événement typé et reconnexion/redémarrage avec Nightmare
+actif. Le scénario visuel réel reste à exécuter selon la recette
+manuelle. Clonage/Bouclier Rusé et narration du KO sur piège au
+remplacement Duo restent des dettes transverses, non masquées.
+
+Après `prepare:local` : **326/353 fonctions couvertes, 27 restantes** ;
+27 capacités à mécanique absente, 87 animations absentes, 1 talent
+partiel, 115 problèmes globaux et 896 animations prêtes. Les animations
+absentes augmentent lorsque de nouvelles capacités deviennent
+éligibles automatiquement ; le fallback reste explicite.
+
+Prochain lot conséquent proposé : `115` (Focus Punch), `117`
+(Follow Me/Rage Powder), `11D` (After You), `11E` (Quash), `120`
+(Ally Switch), `190` (Meteor Beam), `212` (Dragon Darts), `903`
+(Baneful Bunker), `908` (Lanza Relampago), `937` (Electro Shot).
+Préparer un contrat d'ordre et de ciblage partagé avant de déclarer
+les cinq premières fonctions closes ; les trois charges utilisent le
+même état et Power Herb en solo comme en Coop.
+
+### Lot suivant du 2026-10-24 : initiative, redirection et charges
+
+Les dix fonctions annoncées (`115`, `117`, `11D`, `11E`, `120`, `190`,
+`212`, `903`, `908`, `937`) utilisent désormais le noyau de combat
+commun. Focus Punch échoue après une perte de PV dans le tour. Follow
+Me/Rage Powder redirigent les attaques à cible unique en Duo, avec
+l'immunité au pollen (Plante, Overcoat, Safety Goggles) ; l'ordre de la
+dernière activation prime. After You et Quash déplacent l'action encore
+en attente dans la file Duo. Ally Switch permute les places actives et
+conserve l'action à venir avec son Pokémon. Dragon Darts frappe deux
+fois en simple et répartit ses deux coups en Duo. Baneful Bunker partage
+le compteur de protection et empoisonne une attaque de contact bloquée.
+
+Meteor Beam, Lanza Relampago et Electro Shot reprennent le verrou de
+charge partagé : bonus de statistique au premier tour, PP dépensé une
+seule fois, Power Herb immédiate ; Electro Shot est aussi immédiat sous
+la pluie. L'hôte/room reste autoritaire sur l'ordre et les cibles ; le
+volatile de charge est répliqué et restauré après reconnexion. Les
+volatiles de redirection et de protection expirent en fin de tour.
+Les événements typés nourrissent la même présentation solo et distante.
+
+Tests ciblés : dix scénarios solo/Duo ; test room avec charge lancée
+par l'invité, vue par l'hôte et restaurée par reconnexion/redémarrage.
+`corepack pnpm test` et `corepack pnpm build` passent. La recette
+visuelle réelle est documentée dans `VALIDATION_MANUELLE_COMBAT.md` et
+reste à exécuter. Après `prepare:local` : **336/353 fonctions couvertes,
+17 restantes** ; 18 alertes de capacité à mécanique absente, 89
+animations absentes, 1 talent partiel, 108 problèmes globaux et 909
+animations prêtes. Les animations sans correspondance restent en
+fallback explicite. Les dettes Clonage/Bouclier Rusé déjà signalées
+restent ouvertes.
+
+Prochain lot proposé, neuf codes : `0` (Dragon Hammer), `106`/`107`/
+`108` (combinaisons Pledge), `14B` (King's Shield), `14C` (Spiky Shield),
+`158` (Dulce Festín), `162` (Belch), `306` (Truco Huevo). Les huit autres
+codes à préparer ensuite : `0B6`, `10C`, `111`, `302`, `909`, `1000`,
+`1001`, `1002`.
+
+### Lot du 2026-10-25 : Pledge, protections et mouvement appelé
+
+Les neuf codes annoncés (`0`, `106`, `107`, `108`, `14B`, `14C`, `158`,
+`162`, `306`) sont portés, avec `111` Future Sight ajouté comme
+dépendance du pool de Truco Huevo. Dragon Hammer (`0`) et le code `162`
+suivent le calcul standard. Le script Ruby ne définit une condition
+« baie mangée » que pour `158`, utilisé par Dulce Festín dans les données ;
+`162` désigne Belch dans le PBS mais n'a pas de classe source dédiée.
+Le drapeau de baie consommée est donc conservé pour `158` dans le
+volatile de combat, sans inventer une condition Ruby pour `162`.
+
+En Duo, les trois Pledge font attendre le premier utilisateur, avancent
+l'action de l'allié et font porter au second le type combiné, la
+puissance doublée et l'effet de camp. Mer de flammes inflige des dégâts
+résiduels aux non-Feu, Marécage réduit la Vitesse à un quart et
+Arc-en-ciel double la probabilité des effets additionnels. Leurs
+compteurs sont dans `BattleEffects.sides`, donc communs au solo et à la
+room ; un Pledge isolé reste une attaque ordinaire. King's Shield et
+Spiky Shield partagent le compteur des protections : le premier laisse
+passer les capacités de statut et baisse l'Attaque de contact de deux
+crans, le second blesse l'attaquant de contact d'un huitième des PV
+maximaux. Le retour et les fins de terrain émettent des événements
+typés pour la présentation locale et distante.
+
+Truco Huevo tire parmi les 18 mouvements du pool source, dans son ordre
+source, via le RNG traçable ; le mouvement appelé ne dépense pas un
+second PP. Burbuja appelée touche les deux adversaires en Duo. Future
+Sight (`111`) garde une attaque différée par emplacement cible dans
+l'état de camp : le coup survit au changement de Pokémon, à la
+reconnexion et au redémarrage de room, puis frappe l'occupant de cette
+place deux tours plus tard. L'hôte reste seul autoritaire ; les
+intentions réseau restent les actions de capacité existantes et les
+deux participants reçoivent état et événements. Aucun fichier source
+ni `.pokemon-z/` n'est versionné.
+
+Les tests ciblés couvrent les trois combinaisons, leurs PV/PP, les deux
+protections, les deux codes liés à la baie, le tirage d'Agilité,
+Future Sight et Burbuja, le remplacement Duo, puis les instantanés
+room hôte/invité après baie et Future Sight, reconnexion et redémarrage.
+`corepack pnpm test` et `corepack pnpm build` passent. Les essais visuels
+réels restent ouverts dans `VALIDATION_MANUELLE_COMBAT.md`.
+Après `prepare:local` : **346/353 fonctions couvertes, 7 restantes** ;
+9 alertes de capacités à mécanique absente, 90 animations absentes,
+1 talent partiel, 100 problèmes globaux et 921 animations prêtes.
+
+Prochain lot proposé, les sept derniers codes : `0B6` (Metronome),
+`10C` (Substitute), `302` (famille Burn Up), `909` (Condena de Mago),
+`1000` (Petromazazo), `1001` (Eclipse), `1002` (Corazón Roto).
+Metronome nécessite un catalogue autoritaire complet des mouvements
+appelables ; Substitute doit devenir un état partagé qui protège aussi
+les autres fonctions, avant de fermer les sept codes.
+
+### Lot du 2026-10-25 : sept derniers codes de fonction
+
+Les codes `0B6`, `10C`, `302`, `909`, `1000`, `1001` et `1002` sont
+portés dans le noyau de combat commun. Metronome tire un identifiant
+numérique sur le catalogue complet des 730 mouvements source, puis
+rejette les fonctions et mouvements de la liste Ruby ; le tirage et les
+retraits sont traçables par le RNG autoritaire. Le catalogue est fourni
+au combat solo, envoyé à l'ouverture du combat source Coop, validé par
+le protocole et persisté dans le snapshot de la room. Le mouvement
+appelé utilise le ciblage simple/Duo et les PP de Metronome, y compris
+pour une charge poursuivie au tour suivant. Aucun catalogue de seules
+capacités d'équipe ni liste d'animations synthétique n'est utilisé.
+
+Substitute conserve ses PV de bouclier dans le volatile de combat :
+quart des PV totaux payé à la création, interception des dégâts et des
+capacités de statut dirigées vers lui, exceptions Son et Infiltrator, transfert
+avec Relais, disparition à zéro PV et restitution après reconnexion.
+Les changements du bouclier ont un événement typé pour la présentation
+locale et distante. La famille `302` retire le type de sa cible après
+usage, même en cas d'esquive ; Condena de Mago (`909`) donne le type Feu
+après dégâts ; Petromazazo (`1000`) multiplie par l'efficacité Plante ;
+Corazón Roto (`1002`) exige au plus un quart des PV et reprend la porte
+OHKO de niveau, précision et Fermeté/Brise Moule.
+
+Eclipse (`1001`) choisit la catégorie par la comparaison source des
+statistiques offensives et alterne la forme de Constellar après un coup
+réussi. Les statistiques des deux formes sont calculées à partir des
+statistiques de base et des métadonnées individuelles lors de la
+préparation des équipes, puis répliquées. Baguetazo (`302`) déclenche
+aussi la forme de Sirfetch'd. Ces formes sont conservées lors du retrait
+et inscrites dans la sauvegarde personnelle à la fin du combat ; les
+formes transitoires dues aux talents gardent leur règle existante.
+
+Autorité : le joueur envoie seulement l'intention de capacité ; le
+noyau calcule effets et RNG, la room tranche en Coop, puis diffuse les
+événements et l'état tactique aux participants. Le catalogue des
+capacités, le bouclier, les types et les formes sont restaurés depuis
+le snapshot de room lors d'une reconnexion ou d'un redémarrage. Les
+tests ciblés couvrent simple/Duo, tirage Metronome et ses exclusions,
+Substitute, formes, OHKO, validation réseau, restauration de room et
+sauvegarde de forme. `corepack pnpm test` et `corepack pnpm build`
+passent ; `prepare:local` et `audit:combat` donnent **353/353 fonctions
+couvertes, 0 restante**, 0 alerte de mécanique de capacité, 94
+animations sans correspondance source, 1 talent partiel, 95 problèmes
+globaux et 929 animations prêtes. Les essais visuels réels restent à
+effectuer suivant `VALIDATION_MANUELLE_COMBAT.md`.
+
+Prochain lot proposé : validation réelle des sept fonctions chez hôte
+et invité, contrôle des interactions transverses du bouclier (capacités
+à plusieurs coups, statuts, Relais, réapparition après reconnexion),
+formes Constellar/Sirfetch'd et charge appelée par Metronome ; puis
+résorption du talent Fermeté encore partiel. Les 94 animations non
+mappées gardent le fallback explicite tant que la source ne fournit pas
+de correspondance.

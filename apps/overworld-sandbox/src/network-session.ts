@@ -5,7 +5,7 @@ import { PROTOCOL_VERSION, normalizeRoomCode, parseClientMessage, parseSourceWor
   type SourceBattleInventory,
   type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
-import type { BattleTeam, BattleTrace, DoubleBattleEvent, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import type { BattleMove, BattleTeam, BattleTrace, DoubleBattleEvent, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import {
   buildWebSocketUrl,
   normalizeServerUrl,
@@ -61,6 +61,7 @@ export interface SourceBattleNetworkDraft {
   readonly context: Omit<SourceBattleContext, "narrativeOwnerId">;
   readonly playerTeam: BattleTeam;
   readonly opponentTeam: BattleTeam;
+  readonly moveCatalog?: readonly BattleMove[];
   readonly battleItems: SourceBattleInventory;
 }
 
@@ -373,7 +374,8 @@ export class OverworldNetworkSession {
       rewards: { ...draft.context.rewards,
         opponents: draft.context.rewards.opponents.filter((opponent) => opponentIds.has(opponent.memberId)) } };
     const request = { type: "openSourceBattle" as const, version: PROTOCOL_VERSION,
-      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam, battleItems: draft.battleItems };
+      requestId: crypto.randomUUID(), context, playerTeam, opponentTeam,
+      moveCatalog: draft.moveCatalog, battleItems: draft.battleItems };
     const payload = JSON.stringify(request);
     try {
       parseClientMessage(payload);

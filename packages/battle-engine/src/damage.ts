@@ -124,7 +124,8 @@ export function calculateDamage(
   trace: BattleTrace[],
   context: BattleDamageContext = { reflect: false, lightScreen: false, luckyChant: false, mudSport: false, waterSport: false },
 ): number {
-  if (move.functionCode === "090") move = { ...move, category: effectiveMoveCategory(attacker, move) };
+  if (move.functionCode === "090" || move.functionCode === "1001")
+    move = { ...move, category: effectiveMoveCategory(attacker, move) };
   const effectiveMove = effectiveMoveType(attacker, move, context.weather, context.magicRoomTurns);
   const attackerItemActive = heldItemIsActive(attacker, context.magicRoomTurns);
   const defenderItemActive = heldItemIsActive(defender, context.magicRoomTurns);
@@ -135,7 +136,7 @@ export function calculateDamage(
   const currentWeather = ordinaryWeather(context.weather);
   const effectiveness = effectiveTypeMultiplier(attacker, defender, move, context.weather,
     context.magicRoomTurns, context.gravityTurns);
-    if (["06A", "06B", "06C", "06E", "070", "071", "072", "073", "0D4", "0E1"].includes(move.functionCode)) {
+    if (["06A", "06B", "06C", "06E", "070", "071", "072", "073", "0D4", "0E1", "1002"].includes(move.functionCode)) {
       const fixed = move.functionCode === "0D4" ? (context.bideDamage ?? 0) * 2
         : move.functionCode === "0E1" ? attacker.hp
         : move.functionCode === "06A" ? 20 : move.functionCode === "06B" ? 40
@@ -380,7 +381,8 @@ export function calculateDamage(
       activeAbilities.has("AURABREAK") ? 2 / 3 : 4 / 3);
   }
   if (attacker.ability === "WATERBUBBLE" && moveType === "WATER") addAbilityModifier("WATERBUBBLE", 2);
-  if (attacker.ability === "SHEERFORCE" && move.effectChance > 0) addAbilityModifier("SHEERFORCE", 1.3);
+  if (attacker.ability === "SHEERFORCE" && move.effectChance > 0
+    && !["150", "912"].includes(move.functionCode)) addAbilityModifier("SHEERFORCE", 1.3);
   if (attacker.ability === "RECKLESS" && isRecklessBoostedMove(move)) addAbilityModifier("RECKLESS", 1.2);
   if (attacker.ability === "TINTEDLENS" && effectiveness < 1) addAbilityModifier("TINTEDLENS", 2);
   if (attacker.ability === "RIVALRY"

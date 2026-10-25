@@ -22,6 +22,8 @@ export type SourceBattlePresentationStep =
   | { readonly kind: "mega-evolution"; readonly side: BattleSide; readonly teamIndex: number;
       readonly activationMessage: string; readonly message: string;
       readonly beforeState: TeamBattleState; readonly state: TeamBattleState }
+  | { readonly kind: "form-change"; readonly side: BattleSide;
+      readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "faint"; readonly side: BattleSide; readonly message: string; readonly state: TeamBattleState }
   | { readonly kind: "replacement"; readonly side: BattleSide; readonly message: string;
       readonly state: TeamBattleState }
@@ -186,6 +188,12 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       if (event.critical) message("Coup critique !");
       const effectiveness = effectivenessMessage(event.effectiveness);
       if (effectiveness !== null) message(effectiveness);
+    } else if (event.type === "substituteChanged") {
+      const name = activeName(state, event.side);
+      health(event.side, event.battlerHp, event.move === "SUBSTITUTE"
+        ? `${name} crée un substitut.`
+        : event.hp > 0 ? `Le substitut de ${name} absorbe le coup.`
+          : `Le substitut de ${name} disparaît.`);
     } else if (event.type === "collateralDamage") {
       health(event.target, event.hp,
         `Les flammes atteignent aussi ${activeName(state, event.target)} : ${event.amount} PV perdus.`);
@@ -211,6 +219,15 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         members: team.members.map((member, index) => index === team.activeIndex
           ? { ...member, types: [...event.types] } : member) } } };
       message(`Le type de ${activeName(state, event.target)} change.`, "status");
+    } else if (event.type === "formChanged") {
+      const team = state.teams[event.side];
+      state = { ...state, teams: { ...state.teams, [event.side]: { ...team,
+        members: team.members.map((member, index) => index === team.activeIndex
+          ? { ...member, appearance: { form: event.toForm,
+            shiny: member.appearance?.shiny ?? false,
+            gender: member.appearance?.gender ?? null } } : member) } } };
+      steps.push({ kind: "form-change", side: event.side,
+        message: `${activeName(state, event.side)} change de forme.`, state });
     } else if (event.type === "moveCopied") {
       message(`${activeName(state, event.side)} apprend ${event.copiedMove}${event.permanent ? " définitivement" : " temporairement"}.`, "status");
     } else if (event.type === "ppReduced") {
@@ -222,7 +239,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         reflect: "Reflet", "light-screen": "Mur Lumière", "lucky-chant": "Air Veinard",
         "mud-sport": "Lance-Boue", "water-sport": "Tourniquet", spikes: "Picots",
         "toxic-spikes": "Pics Toxik", "stealth-rock": "Piège de Roc", "sticky-web": "Toile Gluante",
-        mist: "Brume", safeguard: "Rune Protect", tailwind: "Vent Arrière", terrain: "Le terrain",
+        mist: "Brume", safeguard: "Rune Protect", tailwind: "Vent Arrière",
+        "sea-of-fire": "La mer de flammes", swamp: "Le marécage", rainbow: "L'arc-en-ciel",
+        "future-sight": "L'attaque différée",
+        terrain: "Le terrain",
         "trick-room": "Distorsion", "magic-room": "Zone Magique", "wonder-room": "Zone Étrange", gravity: "Gravité", weather: "La météo",
       };
       const label = labels[event.effect];
@@ -267,6 +287,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
               : event.effect === "disable" ? `${event.move ?? "Une capacité"} de ${name} est neutralisée.`
                 : event.effect === "encore" ? `${name} doit répéter ${event.move ?? "sa dernière capacité"}.`
                   : event.effect === "curse" ? `${name} est maudit.`
+                    : event.effect === "nightmare" ? `${name} est tourmenté par un cauchemar.`
                     : event.effect === "taunt" ? `${name} est provoqué.`
                       : event.effect === "protect" ? `${name} se protège.`
                         : event.effect === "endure" ? `${name} se prépare à tenir le coup.`
@@ -274,6 +295,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                             : event.effect === "charge" ? `${name} prépare son attaque.`
                               : event.effect === "sky-drop" ? `${name} est emporté dans les airs.`
                               : event.effect === "helping-hand" ? `${name} reçoit un coup de main.`
+                                : event.effect === "follow-me" ? `${name} attire l'attention.`
+                                  : event.effect === "after-you" ? `${name} agit ensuite.`
+                                    : event.effect === "quash" ? `${name} agira en dernier.`
+                                      : event.effect === "ally-switch" ? `${name} échange sa position avec son allié.`
                                 : event.effect === "leech-seed" ? `${name} est infecté par Vampigraine.`
                             : `${name} est pris au piège par ${event.move ?? "l'attaque"}.`;
       message(text, "status", event.effect === "confusion" || event.effect === "flinch"
@@ -286,7 +311,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
               : event.effect === "heal-block" ? `${activeName(state, event.side)} peut de nouveau se soigner.`
                 : event.effect === "magnet-rise" ? `${activeName(state, event.side)} retombe au sol.`
                   : event.effect === "telekinesis" ? `${activeName(state, event.side)} retombe au sol.`
-            : `${activeName(state, event.side)} est libéré.`;
+            : event.effect === "nightmare" ? `${activeName(state, event.side)} n'est plus tourmenté par son cauchemar.`
+              : `${activeName(state, event.side)} est libéré.`;
       message(text, "status");
     } else if (event.type === "confusionDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} se blesse dans sa confusion et perd ${event.amount} PV.`);
@@ -296,6 +322,14 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       health(event.side, event.hp, `${activeName(state, event.side)} perd ${event.amount} PV à cause de Vampigraine.`);
     } else if (event.type === "curseDamage") {
       health(event.side, event.hp, `${activeName(state, event.side)} souffre de la malédiction et perd ${event.amount} PV.`);
+    } else if (event.type === "nightmareDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} souffre d'un cauchemar et perd ${event.amount} PV.`);
+    } else if (event.type === "pledgeDamage") {
+      health(event.side, event.hp, `${activeName(state, event.side)} perd ${event.amount} PV dans la mer de flammes.`);
+    } else if (event.type === "futureSightHit") {
+      message(`${event.move} frappe ${activeName(state, event.target)} !`, "attack");
+    } else if (event.type === "calledMoveTriggered") {
+      message(`${activeName(state, event.side)} déclenche ${event.move} !`, "attack");
     } else if (event.type === "recoilDamage") {
       health(event.side, event.hp, event.reason === "belly-drum"
         ? `${activeName(state, event.side)} sacrifie ${event.amount} PV pour se renforcer !`

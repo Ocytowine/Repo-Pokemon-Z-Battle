@@ -1,6 +1,7 @@
 import { applyPerishSongToBattler, clearAirborneEffects, resolveBattlePassiveEndOfTurn,
-  resolveBattleVolatileEndOfTurn, resolveSelectedMoves } from "./resolve-turn.js";
-import { assistMoveFrom, sleepTalkMoveFrom } from "./called-move-selection.js";
+  resolveBattleVolatileEndOfTurn, resolveEggTrickCalledMove, resolveFutureSightStrike,
+  resolveSelectedMoves } from "./resolve-turn.js";
+import { assistMoveFrom, eggTrickMoveNamed, metronomeMoveFrom, sleepTalkMoveFrom } from "./called-move-selection.js";
 import { applyEntryHazards } from "./entry-hazards.js";
 import { curePartyStatuses } from "./party-status-cure.js";
 import { recordSideFaints } from "./side-faint-history.js";
@@ -133,6 +134,8 @@ function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects
       : battler.majorStatus?.kind === "paralysis" ? Math.max(1, Math.round(staged / 4)) : staged;
   if (battler.ability === "UNBURDEN" && battler.heldItem === null && battler.volatile?.unburdened === true) speed *= 2;
   if (side !== undefined && (effects?.sides[side].tailwindTurns ?? 0) > 0) speed *= 2;
+  if (side !== undefined && (effects?.sides[side].swampTurns ?? 0) > 0)
+    speed = Math.max(1, Math.floor(speed / 4));
   if (battler.ability === "SURGESURFER" && effects?.terrain === "electric") speed *= 2;
   if (battler.ability === "SILVANO" && effects?.terrain === "grassy") speed = Math.max(1, Math.round(speed * 1.3));
   if (battler.ability === "SLOWSTART" && (battler.volatile?.activeTurns ?? 0) <= 5) {
@@ -218,6 +221,9 @@ function calledMoveForAction(state: TeamBattleState, actor: BattlePosition,
   if (selected.functionCode === "0AF") return copycatMoveFrom(state.effects);
   if (selected.functionCode === "0B4") return sleepTalkMoveFrom(user!, rng, trace);
   if (selected.functionCode === "0B5") return assistMoveFrom(user!, state.teams[actor.side].members, rng, trace);
+  if (selected.functionCode === "0B6") return user?.volatile?.chargingMove === selected.internalName
+    && user.volatile.chargingCalledMove != null ? user.volatile.chargingCalledMove
+    : metronomeMoveFrom(state.moveCatalog, rng, trace);
   if (selected.functionCode !== "0B0") return null;
   if (user?.volatile?.chargingMove === selected.internalName
     && user.volatile.chargingCalledMove != null) return user.volatile.chargingCalledMove;
@@ -263,6 +269,7 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
       === user.volatile?.chargingTargetId);
     if (carried !== undefined) return [carried];
   }
+  if (move.functionCode === "212" && enemies.length > 1) return enemies;
   if (code === "04" || move.functionCode === "207" && state.effects?.terrain === "psychic") return enemies;
   if (move.functionCode === "140" && move.category === "Status") return enemies;
   if (code === "08") return [...enemies, ...allies];
@@ -282,6 +289,9 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
     if (reflector !== undefined) return [reflector];
   }
   if (moveTargetsUser(move)) return [actor];
+  if (move.functionCode === "11D" && action.target?.side === actor.side
+    && key(action.target) !== key(actor) && validPosition(state, action.target)
+    && (battlerAtPosition(state, action.target)?.hp ?? 0) > 0) return [action.target];
   if (code === "100") {
     const intended = allies[0];
     return intended === undefined ? [] : [redirectedElementalTarget(state, actor, intended, moveType)];
@@ -299,6 +309,17 @@ function moveTargets(state: TeamBattleState, actor: BattlePosition, action: Extr
   else if (action.target !== undefined && action.target.side === otherSide(actor.side)
     && validPosition(state, action.target) && (battlerAtPosition(state, action.target)?.hp ?? 0) > 0) intended = action.target;
   else intended = enemies[0];
+  if (intended !== undefined && code === "00") {
+    const redirector = enemies.filter((position) => {
+      const battler = battlerAtPosition(state, position);
+      if (battler === undefined || (battler.volatile?.followMeOrder ?? 0) <= 0) return false;
+      return !battler.volatile?.followMePowder || !(user.types.includes("GRASS")
+        || user.ability === "OVERCOAT" || user.heldItem === "SAFETYGOGGLES"
+          && (state.effects?.magicRoomTurns ?? 0) <= 0);
+    }).sort((left, right) => (battlerAtPosition(state, right)?.volatile?.followMeOrder ?? 0)
+      - (battlerAtPosition(state, left)?.volatile?.followMeOrder ?? 0))[0];
+    if (redirector !== undefined) intended = redirector;
+  }
   return intended === undefined ? [] : [redirectedElementalTarget(state, actor, intended, moveType)];
 }
 
@@ -318,6 +339,9 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     readonly roundMultiplier: number;
     readonly helpingHandMultiplier: number;
     readonly calledMove?: BattleMove | null;
+    readonly otherUnmovedMove?: boolean;
+    readonly pledgeWait?: boolean;
+    readonly pledgeFirstCode?: "106" | "107" | "108";
   },
 ): { readonly events: readonly BattleEvent[]; readonly trace: DoubleTurnResult["trace"];
   readonly effects: TeamBattleState["effects"]; readonly damagedTargets: ReadonlySet<string> } {
@@ -361,7 +385,8 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
       return partner !== undefined && partner.hp > 0 ? partner.ability : null;
     };
     const result = resolveSelectedMoves(mini, { [miniSide]: action }, rng,
-      { endOfTurn: false, damageMultiplier: targets.length > 1 ? 0.75 : 1,
+      { endOfTurn: false, damageMultiplier: targets.length > 1 && selectedMove?.functionCode !== "212" ? 0.75 : 1,
+        ...(state.moveCatalog === undefined ? {} : { moveCatalog: state.moveCatalog }),
         attackerHeldItemAfterDamage: targetIndex === targets.length - 1,
         switchingTarget: targetEntry?.action.kind === "switch" ? target.side : null,
         opponentItemTheft: rules.opponentItemTheft,
@@ -373,6 +398,15 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
         wildBattle: rules.wildBattle === true,
         escapable: rules.escapable !== false,
         targetTookDamageThisTurn: context?.damagedPositions.has(key(target)) ?? false,
+        targetSlot: target.slot,
+        attackerTookDamageThisTurn: context?.damagedPositions.has(key(actor)) ?? false,
+        dragonDartsSplit: selectedMove?.functionCode === "212" && targets.length > 1,
+        doubleBattle: true,
+        attackerPartnerPresent: activeTeamIndices(teams[actor.side]).some((_, slot) =>
+          slot !== actor.slot && (battlerAtPosition({ ...state, teams }, { side: actor.side, slot })?.hp ?? 0) > 0),
+        otherUnmovedMove: context?.otherUnmovedMove ?? false,
+        pledgeWait: context?.pledgeWait ?? false,
+        ...(context?.pledgeFirstCode === undefined ? {} : { pledgeFirstCode: context.pledgeFirstCode }),
         roundMultiplier: context?.roundMultiplier ?? 1,
         helpingHandMultiplier: context?.helpingHandMultiplier ?? 1,
         weatherSuppressed: hasWeatherSuppressor(activeBattlerList(state, teams)),
@@ -785,7 +819,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   state = initializeMegaEvolutionState(state);
   let teams: Record<BattleSide, BattleTeam> = { player: cloneTeam(state.teams.player), opponent: cloneTeam(state.teams.opponent) };
   const required = activeBattlePositions(state).filter((position) => (battlerAtPosition(state, position)?.hp ?? 0) > 0);
-  const effectiveSubmitted = submitted.map((entry): PositionedTeamBattleAction => {
+  let effectiveSubmitted = submitted.map((entry): PositionedTeamBattleAction => {
     const battler = battlerAtPosition(state, entry.actor);
     const volatile = battler?.volatile;
     if (battler === undefined || volatile === undefined) return entry;
@@ -986,6 +1020,9 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   const helpedPositions = new Set<string>();
   const resolvedPositions = new Set<string>();
   const roundUses: Record<BattleSide, number> = { player: 0, opponent: 0 };
+  const moveNext = new Set<string>();
+  const quashed = new Set<string>();
+  const pledgeStarts = new Map<string, "106" | "107" | "108">();
   for (let moveIndex = 0; moveIndex < moves.length; moveIndex += 1) {
     const entry = moves[moveIndex]!;
     const liveState: TeamBattleState = { ...state, teams, ...(effects === undefined ? {} : { effects }) };
@@ -995,6 +1032,18 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const targets = moveTargets(liveState, entry.actor, entry.action, rng, calledMove);
     const actor = battlerAtPosition(liveState, entry.actor)!;
     const selectedMove = calledMove ?? actor.moves[entry.action.moveIndex]!.move;
+    const isPledge = (code: string): code is "106" | "107" | "108" =>
+      code === "106" || code === "107" || code === "108";
+    const pledgeFirstCode = pledgeStarts.get(key(entry.actor));
+    pledgeStarts.delete(key(entry.actor));
+    const pledgePartnerIndex = isPledge(selectedMove.functionCode) && pledgeFirstCode === undefined
+      ? moves.findIndex((candidate, index) => index > moveIndex
+        && candidate.actor.side === entry.actor.side && candidate.actor.slot !== entry.actor.slot
+        && (battlerAtPosition(liveState, candidate.actor)?.hp ?? 0) > 0
+        && isPledge(battlerAtPosition(liveState, candidate.actor)
+          ?.moves[candidate.action.moveIndex]?.move.functionCode ?? "")
+        && battlerAtPosition(liveState, candidate.actor)
+          ?.moves[candidate.action.moveIndex]?.move.functionCode !== selectedMove.functionCode) : -1;
     if (selectedMove.functionCode === "09C") {
       const target = targets[0];
       const targetSubmission = target === undefined ? undefined
@@ -1025,12 +1074,110 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       resolvedPositions,
       roundMultiplier: selectedMove.functionCode === "083" ? 2 ** roundUses[entry.actor.side] : 1,
       helpingHandMultiplier: helpedPositions.has(key(entry.actor)) ? 1.5 : 1,
+      otherUnmovedMove: moves.some((candidate, candidateIndex) => candidateIndex > moveIndex
+        && (battlerAtPosition({ ...state, teams }, candidate.actor)?.hp ?? 0) > 0),
+      pledgeWait: pledgePartnerIndex >= 0,
+      ...(pledgeFirstCode === undefined ? {} : { pledgeFirstCode }),
       calledMove,
     });
     effects = result.effects;
     const presentedTargets = selectedMove.functionCode === "05B"
       ? activeTeamIndices(teams[entry.actor.side]).map((_, slot) => ({ side: entry.actor.side, slot })) : targets;
     events.push({ type: "positionedActionResolved", actor: entry.actor, targets: presentedTargets, events: result.events });
+    let traceRecorded = false;
+    if (selectedMove.functionCode === "306"
+      && result.events.some((event) => event.type === "calledMoveTriggered" && event.move === "BUBBLE")) {
+      trace.push(...result.trace);
+      traceRecorded = true;
+      const bubble = eggTrickMoveNamed("BUBBLE")!;
+      const extraTargets = activeTeamIndices(teams[otherSide(entry.actor.side)])
+        .map((_, slot) => ({ side: otherSide(entry.actor.side), slot }))
+        .filter((position) => !targets.some((target) => key(target) === key(position))
+          && (battlerAtPosition({ ...state, teams }, position)?.hp ?? 0) > 0);
+      for (const target of extraTargets) {
+        const source = battlerAtPosition({ ...state, teams }, entry.actor)!;
+        const defender = battlerAtPosition({ ...state, teams }, target)!;
+        const extra = resolveEggTrickCalledMove(source, defender, bubble, entry.actor.side,
+          effects!, state.turn, rng, { targetSlot: target.slot, damageMultiplier: 0.75,
+            activeAbilities: activeBattlerList(state, teams)
+              .filter((active) => active.hp > 0 && active.ability !== null)
+              .map((active) => active.ability as NonNullable<BattlerState["ability"]>) });
+        storeBattler(teams, entry.actor, extra.attacker);
+        storeBattler(teams, target, extra.defender);
+        effects = extra.effects;
+        trace.push(...extra.trace);
+        events.push({ type: "positionedActionResolved", actor: entry.actor,
+          targets: [target], events: extra.events });
+        if (extra.events.some((event) => event.type === "damageApplied" && event.amount > 0))
+          damagedPositions.add(key(target));
+      }
+    }
+    if (pledgePartnerIndex > moveIndex
+      && result.events.some((event) => event.type === "moveUsed" && event.move === selectedMove.internalName)) {
+      const [partner] = moves.splice(pledgePartnerIndex, 1);
+      if (partner !== undefined) {
+        moves.splice(moveIndex + 1, 0, partner);
+        pledgeStarts.set(key(partner.actor), selectedMove.functionCode as "106" | "107" | "108");
+      }
+    }
+    const succeeded = result.events.some((event) => event.type === "volatileApplied"
+      && event.move === selectedMove.internalName);
+    if (succeeded && selectedMove.functionCode === "117") {
+      const current = battlerAtPosition({ ...state, teams }, entry.actor)!;
+      const partnerOrder = activeTeamIndices(teams[entry.actor.side])
+        .map((_, slot) => slot === entry.actor.slot ? 0
+          : battlerAtPosition({ ...state, teams }, { side: entry.actor.side, slot })
+            ?.volatile?.followMeOrder ?? 0);
+      storeBattler(teams, entry.actor, { ...current, volatile: { ...current.volatile!,
+        followMeOrder: 1 + Math.max(0, ...partnerOrder) } });
+    }
+    if (succeeded && ["11D", "11E"].includes(selectedMove.functionCode)) {
+      const target = targets[0];
+      const targetKey = target === undefined ? null : key(target);
+      const targetIndex = targetKey === null ? -1 : moves.findIndex((candidate, candidateIndex) =>
+        candidateIndex > moveIndex && key(candidate.actor) === targetKey);
+      if (targetIndex > moveIndex && targetKey !== null) {
+        const next = selectedMove.functionCode === "11D";
+        if (next ? !moveNext.has(targetKey) : !quashed.has(targetKey)) {
+          const [shifted] = moves.splice(targetIndex, 1);
+          if (shifted !== undefined) moves.splice(next ? moveIndex + 1 : moves.length, 0, shifted);
+          if (next) { moveNext.add(targetKey); quashed.delete(targetKey); }
+          else { quashed.add(targetKey); moveNext.delete(targetKey); }
+        }
+      }
+    }
+    if (succeeded && selectedMove.functionCode === "120") {
+      const side = entry.actor.side;
+      const partnerSlot = entry.actor.slot === 0 ? 1 : 0;
+      const indices = [...activeTeamIndices(teams[side])];
+      if (indices[partnerSlot] !== undefined && teams[side].members[indices[partnerSlot]!]!.hp > 0) {
+        [indices[entry.actor.slot], indices[partnerSlot]] = [indices[partnerSlot]!, indices[entry.actor.slot]!];
+        teams[side] = { ...teams[side], activeIndex: indices[0]!, activeIndices: indices };
+        for (const affectedSide of SIDES) teams[affectedSide] = { ...teams[affectedSide],
+          members: teams[affectedSide].members.map((member) => {
+            const volatile = member.volatile;
+            if (volatile?.leechSeededBy !== side || volatile.leechSeededBySlot == null) return member;
+            return { ...member, volatile: { ...volatile,
+              leechSeededBySlot: volatile.leechSeededBySlot === entry.actor.slot
+                ? partnerSlot : entry.actor.slot } };
+          }) };
+        const swapPosition = (position: BattlePosition): BattlePosition => position.side === side
+          ? { ...position, slot: position.slot === entry.actor.slot ? partnerSlot : entry.actor.slot }
+          : position;
+        moves = moves.map((candidate, index) => index > moveIndex
+          ? { ...candidate, actor: swapPosition(candidate.actor) } : candidate);
+        effectiveSubmitted = effectiveSubmitted.map((candidate) => ({ ...candidate,
+          actor: swapPosition(candidate.actor) }));
+        for (const set of [damagedPositions, helpedPositions, resolvedPositions, moveNext, quashed]) {
+          const a = `${side}:${entry.actor.slot}`;
+          const b = `${side}:${partnerSlot}`;
+          const hadA = set.delete(a);
+          const hadB = set.delete(b);
+          if (hadA) set.add(b);
+          if (hadB) set.add(a);
+        }
+      }
+    }
     if (result.events.some((event) => event.type === "battleEscaped")) {
       trace.push(...result.trace);
       events.push({ type: "turnEnded", turn: state.turn });
@@ -1089,7 +1236,7 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
         }
       }
     }
-    trace.push(...result.trace);
+    if (!traceRecorded) trace.push(...result.trace);
     for (const targetKey of result.damagedTargets) damagedPositions.add(targetKey);
     if (selectedMove.functionCode === "083"
       && result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
@@ -1135,6 +1282,20 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   events.push(...endOfTurn.events);
   effects = endOfTurn.effects;
   effects = reconcileExtremeWeather(effects, activeBattlerList(state, teams));
+  if (effects !== undefined) for (const side of SIDES) {
+    for (const pending of effects.sides[side].futureSight ?? []) {
+      if (pending.turns !== 1) continue;
+      const target = { side, slot: pending.slot };
+      const defender = battlerAtPosition({ ...state, teams }, target);
+      if (defender === undefined || defender.hp <= 0) continue;
+      const strike = resolveFutureSightStrike(pending, defender, effects, state.turn, rng);
+      storeBattler(teams, target, strike.defender);
+      effects = strike.effects;
+      trace.push(...strike.trace);
+      events.push({ type: "positionedActionResolved", actor: target, targets: [target],
+        events: strike.events });
+    }
+  }
   let winner: BattleSide | null = null;
   const livingSides = SIDES.filter((side) => teams[side].members.some((member) => member.hp > 0));
   if (livingSides.length === 1) winner = livingSides[0]!;
@@ -1184,13 +1345,25 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
       luckyChantTurns: Math.max(0, effects.sides.player.luckyChantTurns - 1),
       mistTurns: Math.max(0, (effects.sides.player.mistTurns ?? 0) - 1),
       safeguardTurns: Math.max(0, (effects.sides.player.safeguardTurns ?? 0) - 1),
-      tailwindTurns: Math.max(0, (effects.sides.player.tailwindTurns ?? 0) - 1), quickGuard: false, wideGuard: false },
+      tailwindTurns: Math.max(0, (effects.sides.player.tailwindTurns ?? 0) - 1),
+      seaOfFireTurns: Math.max(0, (effects.sides.player.seaOfFireTurns ?? 0) - 1),
+      swampTurns: Math.max(0, (effects.sides.player.swampTurns ?? 0) - 1),
+      rainbowTurns: Math.max(0, (effects.sides.player.rainbowTurns ?? 0) - 1),
+      futureSight: (effects.sides.player.futureSight ?? []).flatMap((pending) => pending.turns > 1
+        ? [{ ...pending, turns: pending.turns - 1 }] : []),
+      quickGuard: false, wideGuard: false },
     opponent: { ...effects.sides.opponent, reflectTurns: Math.max(0, effects.sides.opponent.reflectTurns - 1),
       lightScreenTurns: Math.max(0, (effects.sides.opponent.lightScreenTurns ?? 0) - 1),
       luckyChantTurns: Math.max(0, effects.sides.opponent.luckyChantTurns - 1),
       mistTurns: Math.max(0, (effects.sides.opponent.mistTurns ?? 0) - 1),
       safeguardTurns: Math.max(0, (effects.sides.opponent.safeguardTurns ?? 0) - 1),
-      tailwindTurns: Math.max(0, (effects.sides.opponent.tailwindTurns ?? 0) - 1), quickGuard: false, wideGuard: false },
+      tailwindTurns: Math.max(0, (effects.sides.opponent.tailwindTurns ?? 0) - 1),
+      seaOfFireTurns: Math.max(0, (effects.sides.opponent.seaOfFireTurns ?? 0) - 1),
+      swampTurns: Math.max(0, (effects.sides.opponent.swampTurns ?? 0) - 1),
+      rainbowTurns: Math.max(0, (effects.sides.opponent.rainbowTurns ?? 0) - 1),
+      futureSight: (effects.sides.opponent.futureSight ?? []).flatMap((pending) => pending.turns > 1
+        ? [{ ...pending, turns: pending.turns - 1 }] : []),
+      quickGuard: false, wideGuard: false },
   }, fusionBoltTurn: null, fusionFlareTurn: null,
   mudSportTurns: Math.max(0, (effects.mudSportTurns ?? 0) - 1),
   waterSportTurns: Math.max(0, effects.waterSportTurns - 1),

@@ -12,6 +12,20 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("renders a move-driven form and Substitute HP from authoritative events", () => {
+    const state = createTeamBattleState({ player: [battler("CONSTELLAR")],
+      opponent: [battler("Cible")] });
+    const steps = buildSourceBattlePresentationSequence(state, [
+      { type: "substituteChanged", side: "player", hp: 5,
+        battlerHp: 15, move: "SUBSTITUTE" },
+      { type: "formChanged", side: "player", species: "CONSTELLAR",
+        fromForm: 0, toForm: 1, reason: "move" },
+    ]);
+    expect(steps.map((step) => step.kind)).toEqual(["health", "form-change"]);
+    expect(steps.at(-1)?.state.teams.player.members[0]?.appearance?.form).toBe(1);
+    expect(steps.at(-1)?.state.teams.player.members[0]?.hp).toBe(15);
+  });
+
   it("presents Flame Burst collateral HP on the positioned partner", () => {
     const state = createDoubleTeamBattleState({ player: [battler("Héros"), battler("Allié")],
       opponent: [battler("Cible"), battler("Partenaire")] });

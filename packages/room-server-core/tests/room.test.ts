@@ -1899,6 +1899,65 @@ describe("authoritative battle room", () => {
       sourceContext: { origin: "source-wild" } });
   });
 
+  it("persists Metronome's full move catalog across room restart and resolves its draw on the host", () => {
+    const metronome = { ...MINIMAL_MOVE_CATALOG.TACKLE, id: 1, internalName: "METRONOME",
+      name: "Métronome", functionCode: "0B6" as const, power: 0,
+      category: "Status" as const, targetCode: "01" };
+    const agility = { ...MINIMAL_MOVE_CATALOG.TACKLE, id: 2, internalName: "AGILITY",
+      name: "Agilité", functionCode: "030" as const, power: 0,
+      category: "Status" as const, targetCode: "10" };
+    const base = initialBattle();
+    const playerTeam = { ...base.teams.player, members: base.teams.player.members.map((member) => ({
+      ...member, moves: [{ move: metronome, pp: 10 }] })) };
+    const room = new AuthoritativeBattleRoom("METRO", initialBattle, new SeededRandom(8), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "metro-open",
+      context: sourceBattleContext("alice"), playerTeam, opponentTeam: base.teams.opponent,
+      moveCatalog: [metronome, agility] });
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("METRO", initialBattle,
+      new SeededRandom(persisted.rngState), worldWithSource, persisted);
+    const battle = restored.snapshot().battle!;
+    expect(battle.state.moveCatalog).toHaveLength(2);
+    restored.receive("alice", { type: "closeBattleJoinWindow", version: 15,
+      requestId: "metro-close", battleId: battle.id });
+    restored.receive("alice", { type: "submitAction", version: 15, requestId: "metro-turn",
+      battleId: battle.id, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    expect(restored.snapshot().battle?.state.teams.player.members[0]?.stages.speed).toBe(2);
+    expect(restored.snapshot().battle?.state.moveCatalog).toHaveLength(2);
+  });
+
+  it("replicates Substitute's remaining shield to the guest after reconnect", () => {
+    const substitute = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "SUBSTITUTE",
+      name: "Clonage", functionCode: "10C" as const, power: 0,
+      category: "Status" as const, targetCode: "10" };
+    const base = initialBattle();
+    const playerTeam = { ...base.teams.player, members: base.teams.player.members.map((member) => ({
+      ...member, moves: [{ move: substitute, pp: 10 }] })) };
+    const opponentTeam = { ...base.teams.opponent, members: base.teams.opponent.members.map((member) => ({
+      ...member, stats: { ...member.stats, attack: 1 },
+      moves: member.moves.map((slot) => ({ ...slot, move: { ...slot.move, power: 1 } })) })) };
+    const room = new AuthoritativeBattleRoom("SUBROOM", initialBattle,
+      new SeededRandom(13), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", { type: "openSourceBattle", version: 15, requestId: "sub-open",
+      context: sourceBattleContext("alice"), playerTeam, opponentTeam });
+    const battleId = room.snapshot().battle!.id;
+    room.receive("alice", { type: "closeBattleJoinWindow", version: 15,
+      requestId: "sub-close", battleId });
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "sub-turn",
+      battleId, turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const shield = room.snapshot().battle?.state.teams.player.members[0]?.volatile?.substituteHp ?? 0;
+    expect(shield).toBeGreaterThan(0);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("SUBROOM", initialBattle,
+      new SeededRandom(persisted.rngState), worldWithSource, persisted);
+    expect(restored.snapshot().battle?.state.teams.player.members[0]?.volatile?.substituteHp)
+      .toBe(shield);
+  });
+
   it("enforces the source Pickpocket theft rule in the authoritative room", () => {
     const contactMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, flags: "a" };
     const sourceState = createTeamBattleState({
@@ -2367,6 +2426,170 @@ describe("authoritative battle room", () => {
     const restored = new AuthoritativeBattleRoom("ABC234", initialBattle,
       new SeededRandom(persisted.rngState), worldWithSource, persisted);
     expect(restored.connect("bob").settlement?.money).toEqual({ kind: "fixed", amount: 250 });
+  });
+
+  it.each(["900", "922"] as const)("replicates guest move %s to the host and restores its state", (code) => {
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(31), worldWithSource);
+    room.connect("alice");
+    room.connect("bob");
+    const initial = initialBattle();
+    room.receive("alice", { type: "openSourceBattle", version: 15,
+      requestId: `modern-${code}-open`, context: sourceBattleContext("alice"),
+      playerTeam: initial.teams.player, opponentTeam: initial.teams.opponent });
+    const battleId = room.snapshot().battle!.id;
+    const selected = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: `MODERN${code}`,
+      functionCode: code, power: code === "900" ? 65 : 95, accuracy: 0 };
+    const guest = { ...battler("player"), id: `guest-${code}`,
+      moves: [{ move: selected, pp: selected.pp }] };
+    room.receive("bob", { type: "proposeBattleJoin", version: 15,
+      requestId: `modern-${code}-propose`, battleId, side: "player",
+      team: { activeIndex: 0, members: [guest] }, finalMemberIds: ["player", guest.id] });
+    room.receive("alice", { type: "respondBattleJoin", version: 15,
+      requestId: `modern-${code}-accept`, battleId, accept: true });
+    room.receive("alice", { type: "submitAction", version: 15,
+      requestId: `modern-${code}-host-wait`, battleId, turn: 1, activeSlot: 0,
+      action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15,
+      requestId: `modern-${code}-guest-move`, battleId, turn: 1, activeSlot: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    const snapshot = room.snapshot().battle?.state;
+    expect(snapshot).toBeDefined();
+    if (code === "900") expect(snapshot?.effects?.sides.opponent.stealthRock).toBe(true);
+    else {
+      expect(snapshot?.teams.player.members.find((member) => member.id === guest.id)?.volatile?.meanLookBy)
+        .toBe("opponent");
+      expect(snapshot?.teams.opponent.members[0]?.volatile?.meanLookBy).toBe(guest.id);
+    }
+    room.disconnect("bob");
+    expect(room.connect("alice").snapshot.battle?.state).toEqual(snapshot);
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+    const persisted = room.exportState();
+    const restarted = new AuthoritativeBattleRoom("ABC234", initialBattle,
+      new SeededRandom(persisted.rngState), worldWithSource, persisted);
+    expect(restarted.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+  });
+
+  it("keeps an invited Nightmare and its residual HP loss through host and guest reconnection", () => {
+    const nightmare = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "NIGHTMARE",
+      functionCode: "10F" as const, category: "Status" as const, power: 0,
+      type: "GHOST", accuracy: 0 };
+    const initial = () => createTeamBattleState({ player: [{ ...battler("player"),
+      hp: 300, stats: { ...battler("player").stats, maxHp: 300 },
+      majorStatus: { kind: "sleep" as const, turnsRemaining: 4 } }],
+    opponent: [{ ...battler("opponent"), moves: [{ move: nightmare, pp: 10 }] }] });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(32), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("nightmare-ready-a"));
+    room.receive("bob", ready("nightmare-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "nightmare-host-wait",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const output = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "nightmare-guest-use", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(output.map((entry) => entry.message.type)).toContain("turnResolved");
+    const snapshot = room.snapshot().battle?.state;
+    expect(snapshot?.teams.player.members[0]?.volatile?.nightmare).toBe(true);
+    expect(snapshot?.teams.player.members[0]?.hp).toBe(225);
+    room.disconnect("bob");
+    expect(room.connect("alice").snapshot.battle?.state).toEqual(snapshot);
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+  });
+
+  it("restores an invited Meteor Beam charge for host, guest and restarted room", () => {
+    const beam = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "METEORBEAM",
+      functionCode: "190" as const, type: "ROCK", category: "Special" as const,
+      power: 120, accuracy: 0 };
+    const initial = () => createTeamBattleState({ player: [battler("player")],
+      opponent: [{ ...battler("opponent"), moves: [{ move: beam, pp: 10 }] }] });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(33), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("beam-ready-a"));
+    room.receive("bob", ready("beam-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "beam-host-wait",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const output = room.receive("bob", { type: "submitAction", version: 15,
+      requestId: "beam-guest-use", battleId: "ABC234-1", turn: 1,
+      action: { kind: "move", moveIndex: 0 } });
+    expect(output.map((entry) => entry.message.type)).toContain("turnResolved");
+    const snapshot = room.snapshot().battle?.state;
+    expect(snapshot?.teams.opponent.members[0]?.volatile?.chargingMove).toBe("METEORBEAM");
+    expect(snapshot?.teams.opponent.members[0]?.stages.specialAttack).toBe(1);
+    room.disconnect("bob");
+    expect(room.connect("alice").snapshot.battle?.state).toEqual(snapshot);
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+  });
+
+  it("restores an invited berry unlock used by source function 158", () => {
+    const sweet = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DULCEFESTIN",
+      functionCode: "158" as const, type: "FAIRY", power: 110 };
+    const initial = () => createTeamBattleState({ player: [battler("player")],
+      opponent: [{ ...battler("opponent"), hp: 1, heldItem: "ORANBERRY" as const,
+        moves: [{ move: sweet, pp: 10 }] }] });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(34), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("sweet-ready-a"));
+    room.receive("bob", ready("sweet-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "sweet-host-wait",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "sweet-guest-wait",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    const snapshot = room.snapshot().battle?.state;
+    expect(snapshot?.teams.opponent.members[0]?.volatile?.belchReady).toBe(true);
+    room.disconnect("bob");
+    expect(room.connect("alice").snapshot.battle?.state).toEqual(snapshot);
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    expect(restored.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+  });
+
+  it("restores an invited Future Sight across reconnect and room restart until its strike", () => {
+    const sight = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "FUTURESIGHT",
+      functionCode: "111" as const, type: "PSYCHIC", category: "Special" as const,
+      power: 130, accuracy: 100, effectChance: 0, flags: "" };
+    const initial = () => createTeamBattleState({ player: [battler("player")],
+      opponent: [{ ...battler("opponent"), moves: [{ move: sight, pp: 10 }] }] });
+    const room = new AuthoritativeBattleRoom("ABC234", initial, new SeededRandom(35), world);
+    room.connect("alice");
+    room.connect("bob");
+    room.receive("alice", ready("sight-ready-a"));
+    room.receive("bob", ready("sight-ready-b"));
+    room.receive("alice", { type: "submitAction", version: 15, requestId: "sight-host-wait-1",
+      battleId: "ABC234-1", turn: 1, action: { kind: "wait" } });
+    room.receive("bob", { type: "submitAction", version: 15, requestId: "sight-guest-use",
+      battleId: "ABC234-1", turn: 1, action: { kind: "move", moveIndex: 0 } });
+    const snapshot = room.snapshot().battle?.state;
+    expect(snapshot?.effects?.sides.player.futureSight?.[0]?.turns).toBe(2);
+    room.disconnect("bob");
+    expect(room.connect("alice").snapshot.battle?.state).toEqual(snapshot);
+    expect(room.connect("bob").snapshot.battle?.state).toEqual(snapshot);
+    const persisted = room.exportState();
+    const restored = new AuthoritativeBattleRoom("ABC234", initial,
+      new SeededRandom(persisted.rngState), world, persisted);
+    restored.connect("alice");
+    restored.connect("bob");
+    for (const turn of [2, 3]) {
+      restored.receive("alice", { type: "submitAction", version: 15,
+        requestId: `sight-host-wait-${turn}`, battleId: "ABC234-1", turn,
+        action: { kind: "wait" } });
+      restored.receive("bob", { type: "submitAction", version: 15,
+        requestId: `sight-guest-wait-${turn}`, battleId: "ABC234-1", turn,
+        action: { kind: "wait" } });
+    }
+    expect(restored.snapshot().battle?.state.teams.player.members[0]?.hp)
+      .toBeLessThan(snapshot!.teams.player.members[0]!.hp);
   });
 
   it("keeps one private settlement per owner while a disconnected guest catches up", () => {

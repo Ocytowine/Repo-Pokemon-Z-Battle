@@ -466,7 +466,136 @@ cadence du remplacement forcé en double.
   les événements de type/stade/PV ; reconnecter et redémarrer la room
   avec un type temporaire et une baisse d'Attaque encore actifs.
 
+## Lot offensif `175`–`942` — à exécuter
+
+- [ ] En solo, comparer Corps Perdu avec Défense faible/forte ; Fil Toxique
+  contre une cible immunisée au poison puis non immunisée ; Bolt Beak
+  avant/après l'action adverse ; Garra Nociva sur plusieurs essais.
+- [ ] En solo, activer Champ Électrifié/Psychique/Herbu : contrôler la
+  puissance de Rising Voltage/Expanding Force et la priorité de Grassy
+  Glide. Vérifier le coût de Metaláser avec/sans Garde Magik, puis les
+  trois impacts critiques d'Azote Torrencial à travers Abri.
+- [ ] En Duo, confirmer que Vaste Force touche les deux adversaires
+  seulement sous Champ Psychique et que Make It Rain baisse l'Attaque
+  Spéciale et produit des pièces pour chaque cible effectivement touchée.
+- [ ] Gagner puis perdre un combat avec Pay Day/Make It Rain : contrôler
+  la somme d'argent, son plafond et l'absence de gain à la défaite.
+  Répéter comme hôte puis invité ; vérifier le règlement privé, le rendu
+  distant et la même récompense après reconnexion et redémarrage de room.
+
+## Lot offensif `204`–`938` — à exécuter
+
+- [ ] En solo, faire échouer Poltergeist sans objet, sous Embargo, sous
+  Champ Magique et avec Maladresse, puis vérifier qu'il touche une cible
+  portant un objet actif.
+- [ ] Comparer la priorité de Bruma Explosiva sur Champ Brumeux et sur
+  les autres champs. Avec Pirueta Helada, contrôler la disparition du
+  champ seulement après un coup réussi.
+- [ ] Comparer les dégâts de Sable Ardiente sur cible normale/brûlée/
+  paralysée, puis Infernal Parade et Barb Barrage avec/sans le statut
+  requis ; vérifier brûlure/poison secondaires et leurs immunités.
+- [ ] En Duo, faire poser Piège de Roc par Stone Axe puis changer un
+  Pokémon adverse ; vérifier le camp touché, un seul piège actif et les
+  événements reçus par les deux joueurs.
+- [ ] Tester Triple Arrows sur plusieurs coups : baisse de Défense et
+  peur peuvent se produire séparément. Tester Fickle Beam sur plusieurs
+  coups pour voir les deux puissances ; comparer la trace de l'hôte.
+- [ ] Avec Jaw Lock, tenter un changement volontaire des deux côtés,
+  puis essayer une cible Spectre et un piège déjà actif. Refaire comme
+  hôte et invité ; reconnecter et redémarrer la room pendant que le
+  piège ou les rocs sont encore actifs, puis vérifier le rendu distant.
+
+## Lot `10F`–`CF14` — à exécuter
+
+- [ ] Endormir une cible, appliquer Nightmare, vérifier la perte d'un
+  quart des PV en fin de tour, son arrêt au réveil/retrait et Garde
+  Magik. Refaire comme invité ; comparer le texte et les PV chez l'hôte,
+  puis après reconnexion et redémarrage de la room.
+- [ ] Faire achever une cible par Fell Stinger puis comparer l'Attaque
+  gagnée au cas où la cible survit. Tester Escaramuza à l'entrée, après
+  un autre mouvement et après un changement normal sans action préalable.
+- [ ] Tester Parting Shot avec et sans remplaçant, sous Anti-Bruit et
+  Miroir Magik ; vérifier les deux baisses et le choix de remplacement
+  personnel en solo, hôte et invité.
+- [ ] Vérifier que CargaGresion augmente la Défense Spéciale et que le
+  prochain coup Électrik profite de Charge. Atrapamoscas et Disparo
+  Espina doivent infliger leurs seuls dégâts standard.
+- [ ] En simple et Duo, poser Ceaseless Edge/Georrafaga jusqu'à trois
+  couches de Picots, puis utiliser Mortal Spin sur une ou deux cibles.
+  Vérifier poison, retrait des pièges/Vampigraine/entrave de son propre
+  camp et nettoyage même si la cible tombe K.O.
+- [ ] Tearful Look doit baisser Attaque et Attaque Spéciale malgré une
+  esquive adverse élevée ; contrôler le rendu des deux changements de
+  cran chez les participants.
+
+## Lot `115`–`937` — à exécuter
+
+- [ ] En simple, vérifier que Focus Punch échoue après avoir reçu des
+  dégâts dans le tour et réussit sans dégâts. Comparer la perte de PP.
+- [ ] En Duo, cibler l'allié derrière Follow Me puis Rage Powder ;
+  vérifier la redirection, l'immunité Plante/Overcoat/Safety Goggles au
+  pollen et la dernière activation lorsque les deux alliés l'utilisent.
+- [ ] En Duo, faire agir After You sur un allié lent, puis Quash sur un
+  adversaire rapide ; vérifier l'ordre visible chez hôte et invité.
+  Tester Ally Switch avant une attaque ciblée et après reconnexion.
+- [ ] Comparer Dragon Darts en simple et Duo : deux coups au total, un
+  sur chaque adversaire vivant en Duo, dégâts et animations cohérents.
+- [ ] Bloquer une attaque de contact avec Baneful Bunker : aucun dégât
+  reçu, attaquant empoisonné si vulnérable. Vérifier l'échec si personne
+  ne peut encore agir et les usages consécutifs.
+- [ ] Tester Meteor Beam, Lanza Relampago et Electro Shot sans objet,
+  avec Power Herb et Electro Shot sous pluie : statistique gagnée une
+  seule fois, PP consommé une seule fois, dégâts au bon tour. Refaire
+  comme hôte et invité ; reconnecter/redémarrer la room pendant la
+  charge et comparer l'état et le rendu distant.
+
+## Lot Pledge, boucliers et Truco Huevo — à exécuter
+
+- [ ] En simple, vérifier Dragon Hammer, les trois Pledge isolés et
+  Belch (`162`) ; vérifier séparément que Dulce Festín (`158`) échoue
+  avant une baie mangée et réussit après, sans perdre le drapeau lors
+  d'une reconnexion. Noter l'écart de codes entre PBS et script Ruby.
+- [ ] En Duo, jouer les trois paires de Pledge dans les deux ordres.
+  Vérifier la file d'actions, les PP, le type et les dégâts du coup
+  combiné, puis Mer de flammes, Marécage et Arc-en-ciel sur plusieurs
+  tours chez l'hôte et l'invité, y compris après reconnexion.
+- [ ] Vérifier King's Shield contre attaque de contact et capacité de
+  statut, puis Spiky Shield contre contact et attaquant Garde Magik.
+  Répéter les protections plusieurs tours pour contrôler le taux de
+  réussite et le rendu distant.
+- [ ] Utiliser Truco Huevo plusieurs fois pour voir ses mouvements
+  appelés, notamment Agilité, Burbuja en Duo, Viraje et Future Sight.
+  Vérifier l'absence de PP supplémentaire et l'animation correspondant
+  au tirage réel ; pour Future Sight, changer la cible de place puis
+  reconnecter/redémarrer la room avant le coup différé.
+
+## Lot des sept dernières fonctions — à exécuter
+
+- [ ] Utiliser Metronome plusieurs fois en solo, puis comme hôte et
+  invité Coop. Comparer mouvement tiré, PP consommés, cible et animation
+  affichée. Vérifier un mouvement appelé à charge, puis reconnecter la
+  room entre les deux tours.
+- [ ] Créer un Substitute avec plus d'un quart des PV, puis tenter une
+  attaque, un statut, un mouvement sonore, Infiltrator et une capacité à
+  plusieurs coups. Vérifier les PV du bouclier, sa disparition, Relais,
+  puis reconnexion/redémarrage côté hôte et invité.
+- [ ] Vérifier Burn Up/Electropalmas/Baguetazo avec et sans type requis :
+  dégâts, retrait du type même sur esquive, refus du second usage et
+  forme de Sirfetch'd après Baguetazo. Contrôler retrait/remplacement,
+  sauvegarde et rendu distant.
+- [ ] Vérifier Condena de Mago sur cible ordinaire, Feu pur, Multitype
+  et Substitute ; comparer type, messages et rendu chez les participants.
+- [ ] Comparer Petromazazo contre une cible faible et résistante au type
+  Plante à efficacité Roche équivalente ; vérifier le multiplicateur.
+- [ ] Utiliser Eclipse avec Attaque supérieure, puis Attaque Spéciale
+  supérieure ; vérifier catégorie, dégâts, alternance de forme et
+  statistiques de Constellar, sauvegarde et reconnexion Coop.
+- [ ] Tenter Corazón Roto au-dessus puis au-dessous d'un quart des PV,
+  contre cible de niveau supérieur, Fermeté, puis Brise Moule. Vérifier
+  précision, K.O. et état distant.
+
 ## Observations à reporter
+
 
 Pour chaque case testée, noter : date, solo/hôte/invité, combat et Pokémon
 utilisés, capacité, tour, résultat **OK / KO / bloqué / non concluant**,
@@ -475,8 +604,9 @@ de journal. Ne pas inclure `.pokemon-z/`, les fichiers du jeu source ou une
 sauvegarde personnelle dans Git. Un défaut visuel ou de synchronisation doit
 rester ouvert même si le calcul des dégâts est correct.
 
-Limites déjà connues, à ne pas confondre avec un nouveau défaut : Clonage et
-Bouclier Rusé n'ont pas encore tous leurs raccords transverses ; l'interaction
+Limites déjà connues, à ne pas confondre avec un nouveau défaut : les
+interactions visuelles de Clonage restent à valider en jeu ; Bouclier Rusé
+garde des raccords transverses ouverts ; l'interaction
 Pirotecnia/Lien Parental requiert un audit source dédié ; les animations absentes
 de `move2anim.dat`, dont `SMELLINGSALT`, utilisent un fallback explicite, jamais
 une animation inventée.

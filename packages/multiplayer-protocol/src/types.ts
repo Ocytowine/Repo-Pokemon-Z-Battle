@@ -1,4 +1,4 @@
-import type { BattleJoinProposal, BattleSide, BattleTeam, BattleTrace, DoubleBattleEvent, SharedBattleLedger,
+import type { BattleJoinProposal, BattleMove, BattleSide, BattleTeam, BattleTrace, DoubleBattleEvent, SharedBattleLedger,
   SharedBattleParticipation, SharedBattleSession, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent,
   TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import type { Direction, OverworldEvent, OverworldState } from "@pokemon-z-battle/overworld-engine";
@@ -109,6 +109,7 @@ export type ClientMessage =
       readonly name: string; readonly volume: number; readonly pitch: number })
   | (RequestedMessage & { readonly type: "openSourceBattle"; readonly context: SourceBattleContext;
       readonly playerTeam: BattleTeam; readonly opponentTeam: BattleTeam;
+      readonly moveCatalog?: readonly BattleMove[];
       readonly battleItems?: SourceBattleInventory })
   | (RequestedMessage & { readonly type: "ackBattleSettlement"; readonly settlementId: string })
   | (RequestedMessage & { readonly type: "closeSourceBattle"; readonly battleId: string })

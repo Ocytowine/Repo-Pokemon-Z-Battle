@@ -1242,7 +1242,8 @@ const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   setNotice: (notice) => { importedNotice = notice; },
   battleReports: sourceBattleReports,
   render,
-  openSharedBattle: (draft) => multiplayer.openSourceBattle({ ...draft, battleItems: battleItemInventory() }),
+  openSharedBattle: ({ moveCatalog, ...draft }) => multiplayer.openSourceBattle({ ...draft,
+    ...(moveCatalog === undefined ? {} : { moveCatalog }), battleItems: battleItemInventory() }),
 });
 sourceSequenceEffects = new SourceSequenceEffects({
   getEventState: () => sourceEventState,

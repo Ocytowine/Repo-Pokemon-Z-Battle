@@ -1393,6 +1393,69 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   Dette de narration du KO sur piège lors du remplacement imposé en Duo
   toujours ouverte. Prochain lot proposé : `175`, `1B9`, `201`, `207`,
   `211`, `303`, `304`, `911`, `931`, `942`.
+  Huitième tranche du 2026-10-24 : les dix codes sont portés, avec
+  `109` (Pay Day) pour la monnaie héritée de Make It Rain. Les pièces
+  par propriétaire sont persistées dans l'état autoritaire et réglées
+  séparément en solo/Coop, même après reconnexion. Tests simple, Duo et
+  room hôte/invité passés ; recette visuelle réelle encore ouverte.
+  **306/353 fonctions couvertes, 47 restantes** ; 46 alertes mécaniques,
+  77 animations absentes, 1 talent partiel, 124 problèmes globaux et
+  880 animations prêtes après `prepare:local`. La dette de narration
+  du KO sur piège lors du remplacement imposé en Duo reste ouverte.
+  Prochain lot proposé : `204`, `208`, `240`, `307`, `900`, `914`,
+  `915`, `918`, `922`, `938`.
+  Neuvième tranche du 2026-10-24 : ces dix codes offensifs sont portés
+  sur le noyau solo/Coop. La priorité de `208` suit le Champ Brumeux
+  réellement lu dans le script source ; impacts, statuts, pièges et
+  tirages RNG sont autoritaires. Tests simple/Duo et room hôte/invité
+  restaurée pour Stone Axe/Jaw Lock passent ; recette visuelle ouverte.
+  **316/353 fonctions couvertes, 37 restantes** ; 36 alertes
+  mécaniques, 83 animations absentes, 1 talent partiel, 120 problèmes
+  globaux et 886 animations prêtes après `prepare:local`. Clonage,
+  Bouclier Rusé et la narration du KO sur piège en Duo restent des
+  dettes transverses. Prochain lot proposé : `10F`, `150`, `151`,
+  `15A`, `262`, `300`, `305`, `907`, `912`, `CF14`.
+  Dixième tranche du 2026-10-24 : ces dix codes sont portés avec
+  Nightmare persistant pendant le sommeil, premier tour d'Escaramuza,
+  pivot de Parting Shot, Charge offensive, Picots et nettoyage de Mortal
+  Spin. Les états et événements sont partagés par le solo et la room ;
+  tests simple/Duo et hôte/invité restauré passent. Recette visuelle
+  réelle ouverte. **326/353 fonctions couvertes, 27 restantes** ;
+  27 alertes mécaniques, 87 animations absentes, 1 talent partiel,
+  115 problèmes globaux et 896 animations prêtes après `prepare:local`.
+  Prochain lot proposé : `115`, `117`, `11D`, `11E`, `120`, `190`,
+  `212`, `903`, `908`, `937`, centré sur ordre d'action, ciblage et charge.
+  Onzième tranche du 2026-10-24 : ces dix fonctions couvrent l'ordre
+  d'action Duo, la redirection, l'échange de positions, Dragon Darts,
+  Baneful Bunker et les trois charges à bonus. Les tests du noyau et de
+  la room passent ; recette visuelle réelle ouverte. **336/353 fonctions
+  couvertes, 17 restantes** ; 18 alertes mécaniques, 89 animations
+  absentes, 1 talent partiel, 108 problèmes globaux et 909 animations
+  prêtes après `prepare:local`. Prochain lot proposé : `0`, `106`, `107`,
+  `108`, `14B`, `14C`, `158`, `162`, `306`. Puis les huit codes restants
+  `0B6`, `10C`, `111`, `302`, `909`, `1000`, `1001`, `1002`.
+  Douzième tranche du 2026-10-25 : `0`, `106`, `107`, `108`, `14B`,
+  `14C`, `158`, `162`, `306` et leur dépendance `111` sont intégrés.
+  Pledge partage ses effets de camp, les deux protections le même
+  compteur, et Truco Huevo utilise son pool source avec Future Sight
+  différé par emplacement. Tests solo/Duo, room hôte/invité et
+  restauration passent ; recette visuelle réelle ouverte.
+  **346/353 fonctions couvertes, 7 restantes** ; 9 alertes mécaniques,
+  90 animations absentes, 1 talent partiel, 100 problèmes globaux et
+  921 animations prêtes après `prepare:local`. Prochain lot proposé :
+  `0B6`, `10C`, `302`, `909`, `1000`, `1001`, `1002`.
+  Treizième tranche du 2026-10-25 : les sept derniers codes sont portés
+  dans le moteur partagé. Metronome reçoit le catalogue source complet
+  par le protocole et le snapshot autoritaire, Substitute protège via un
+  volatile persistant, les effets de type/efficacité/OHKO suivent le
+  script Ruby, et Eclipse/Sirfetch'd transportent leurs changements de
+  forme et de statistiques jusqu'à la sauvegarde. Tests solo/Duo,
+  protocole, room restaurée et sauvegarde locale passent ; recette
+  visuelle réelle ouverte. **353/353 fonctions couvertes, 0 restante** ;
+  0 alerte mécanique, 94 animations non mappées, 1 talent partiel,
+  95 problèmes globaux et 929 animations prêtes après `prepare:local`.
+  Prochain lot : validation réelle des sept fonctions et des interactions
+  transverses de Substitute/Metronome, puis traitement de Fermeté.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par

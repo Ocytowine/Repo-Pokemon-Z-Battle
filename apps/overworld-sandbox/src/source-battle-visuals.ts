@@ -645,6 +645,10 @@ export class SourceBattleVisuals {
             ? Promise.resolve() : this.playStatusVisual(step.side, step.visual, step.state),
           readableMessageDelay(850),
         ]);
+      } else if (step.kind === "form-change") {
+        await this.render(step.state, this.#battleback);
+        this.message(step.message);
+        await readableMessageDelay(850);
       } else if (step.kind === "mega-evolution") {
         this.message(step.activationMessage);
         await readableMessageDelay(850);
