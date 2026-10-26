@@ -39,7 +39,8 @@ import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, ro
   isGrassTerrain, sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
   type SourceEncounterMethod } from "./source-wild-encounter.js";
 import { advanceSourceTypeAmulet } from "./source-type-amulet.js";
-import { useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
+import { advanceSourceRepel, sourceRepelBlocksEncounter,
+  useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
@@ -456,15 +457,17 @@ function checkSourceWildEncounter(): boolean {
       .find((candidate) => candidate.internalName === species)?.types ?? [],
   };
   const roll = rollStepEncounter(importedAssets.encounter, terrain, sourceEventState.wildEncounterSteps, rng,
-    typeBias);
+    typeBias, sourceEventState.fieldItemEffects.flute);
+  const encounter = roll.encounter !== null && sourceRepelBlocksEncounter(sourceEventState, roll.encounter.level)
+    ? null : roll.encounter;
   sourceEventState = { ...sourceEventState, wildEncounterSteps: roll.steps, wildEncounterRngState: rng.snapshot(),
-    pendingEncounter: roll.encounter === null ? null : { ...roll.encounter,
+    pendingEncounter: encounter === null ? null : { ...encounter,
       method: importedAssets.encounter?.methods.some((entry) => entry.method === "Cave") === true ? "cave" : "land",
       victorySwitches: {}, escapable: true } };
   persistSourceEventState();
-  if (roll.encounter === null) return false;
-  const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === roll.encounter?.species);
-  importedNotice = `Rencontre sauvage : ${definition?.name ?? roll.encounter.species} niveau ${roll.encounter.level}.`;
+  if (encounter === null) return false;
+  const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === encounter.species);
+  importedNotice = `Rencontre sauvage : ${definition?.name ?? encounter.species} niveau ${encounter.level}.`;
   resumePendingWildEncounter();
   return true;
 }
@@ -480,7 +483,9 @@ function startSourceRandomTableEncounter(method: SourceEncounterMethod,
     speciesTypes: (species: string): readonly string[] => importedAssets!.battleCatalog.pokemon
       .find((candidate) => candidate.internalName === species)?.types ?? [],
   };
-  const encounter = triggered ? rollEncounterForMethod(importedAssets.encounter, method, rng, typeBias) : null;
+  const rolled = triggered ? rollEncounterForMethod(importedAssets.encounter, method, rng, typeBias,
+    sourceEventState.fieldItemEffects.flute) : null;
+  const encounter = rolled !== null && sourceRepelBlocksEncounter(sourceEventState, rolled.level) ? null : rolled;
   sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot(),
     pendingEncounter: encounter === null ? null : { ...encounter,
       method: method === "Cave" ? "cave" : method === "RockSmash" ? "rock-smash"
@@ -514,6 +519,10 @@ function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: nu
     sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y));
   sourceEventState = typeAmuletAdvance.state;
   if (typeAmuletAdvance.expired) pendingSourceFieldNotice = "L’amulette a cessé de faire effet.";
+  const repelAdvance = advanceSourceRepel(sourceEventState,
+    sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y));
+  sourceEventState = repelAdvance.state;
+  if (repelAdvance.expired) pendingSourceFieldNotice = "Le Repousse a cessé de faire effet.";
   const happinessSteps = sourceEventState.happinessSteps + 1;
   if (happinessSteps >= 128) {
     const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
@@ -2265,8 +2274,11 @@ function requestSourceFishing(rod: SourceFishingRod): void {
     speciesTypes: (species: string): readonly string[] => importedAssets!.battleCatalog.pokemon
       .find((candidate) => candidate.internalName === species)?.types ?? [],
   };
-  const attempt = planFishingAttempt(importedAssets.encounter, method, lead?.ability ?? null, rng, encounterMethod,
-    typeBias);
+  const rolledAttempt = planFishingAttempt(importedAssets.encounter, method, lead?.ability ?? null, rng,
+    encounterMethod, typeBias, sourceEventState.fieldItemEffects.flute);
+  const attempt = rolledAttempt.encounter !== null
+    && sourceRepelBlocksEncounter(sourceEventState, rolledAttempt.encounter.level)
+    ? { ...rolledAttempt, encounter: null } : rolledAttempt;
   sourceEventState = { ...sourceEventState, wildEncounterRngState: rng.snapshot() };
   persistSourceEventState();
   sourceScenes.closeMenu();
@@ -3197,8 +3209,24 @@ function useSourceFieldItem(itemId: string): {
       publishCurrentSourceWorld();
       publishCurrentSourceActors();
     }
+    if (result.transfer !== undefined) {
+      sourceScenes.closeMenu();
+      void followSourceTransfer({ eventId: 0, pageIndex: 0, eventX: importedAvatar.x, eventY: importedAvatar.y,
+        targetMapId: result.transfer.mapId, targetX: result.transfer.x, targetY: result.transfer.y,
+        direction: ({ down: 2, left: 4, right: 6, up: 8 } as const)[result.transfer.direction] });
+    }
+    if (result.encounterRequested === true) {
+      sourceScenes.closeMenu();
+      const terrain = terrainTagAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
+      const method: SourceEncounterMethod | null = importedAssets.encounter?.methods
+        .some((entry) => entry.method === "Cave") === true && terrain !== 12 ? "Cave"
+          : isGrassTerrain(terrain) ? "Land" : null;
+      const started = method !== null && startSourceRandomTableEncounter(method, () => {});
+      if (!started) return { ok: true, message: "Le parfum se dissipe : aucun Pokémon n’apparaît.",
+        eventState: sourceEventState };
+    }
   }
-  return { ok: result.ok, message: result.message, eventState: result.state };
+  return { ok: result.ok, message: result.message, eventState: sourceEventState };
 }
 
 function setSourcePartyLead(pokemonId: string): void {
@@ -3706,7 +3734,21 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
   renderImportedView();
   try {
+    const fromOutdoor = importedAssets?.mapMetadata.outdoor === true;
+    const entrance = importedAssets === null ? null : { mapId: importedAssets.map.id,
+      x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction };
     const next = await loadSourceTransfer(importedAssets, importedAvatar, transfer);
+    const toCave = next.assets.encounter?.methods.some((entry) => entry.method === "Cave") === true;
+    if (fromOutdoor && toCave && entrance !== null) {
+      sourceEventState = { ...sourceEventState, fieldItemEffects: {
+        ...sourceEventState.fieldItemEffects, escapePoint: entrance } };
+      persistSourceEventState();
+    } else if (next.assets.mapMetadata.outdoor === true
+      && sourceEventState.fieldItemEffects.escapePoint !== null) {
+      sourceEventState = { ...sourceEventState, fieldItemEffects: {
+        ...sourceEventState.fieldItemEffects, escapePoint: null } };
+      persistSourceEventState();
+    }
     const requestedTransferMode = pendingTransferMovementMode;
     pendingTransferMovementMode = null;
     activateSourceWorld(next);

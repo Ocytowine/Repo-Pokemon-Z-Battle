@@ -69,7 +69,7 @@ describe("engine support report", () => {
       { key: "PICKPOCKET", extracted: true, engineSupport: "supported" },
       { key: "RIVALRY", extracted: true, engineSupport: "supported" },
       { key: "SHIELDDUST", extracted: true, engineSupport: "supported" },
-      { key: "STURDY", extracted: true, engineSupport: "partial" },
+      { key: "STURDY", extracted: true, engineSupport: "supported" },
       { key: "TINTEDLENS", extracted: true, engineSupport: "supported" },
     ]);
   });

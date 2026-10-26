@@ -23,6 +23,7 @@ import {
   type SourceTrainerDefinition,
 } from "./source-encounter.js";
 import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
+import { finishSourceWildBattleFieldEffects } from "./source-field-item.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 import type { SourceBattleReportStore } from "./source-battle-report.js";
 import { sourceMegaActivationAvailable, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
@@ -227,9 +228,9 @@ export class SourceBattleController {
         crypto.randomUUID(), resources.megaEvolutions,
         resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
           eventState.inventory, eventState.switches),
-        resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
+        { ...resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
           mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
-        }));
+        }), ...(eventState.fieldItemEffects.shinyNextWildEncounter ? { shiny: true as const } : {}) });
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
         opponentTrainer: null });
@@ -352,12 +353,12 @@ export class SourceBattleController {
       if (result.escaped) {
         const battleId = this.localSession?.battleId;
         const encounterCompletion = this.encounterCompletion;
-        this.callbacks.updateEventState({
+        this.callbacks.updateEventState(finishSourceWildBattleFieldEffects({
           ...eventState,
           party: storeSourceEncounterParty(eventState.party, before),
           pendingEncounter: null,
           wildEncounterSteps: 0,
-        });
+        }));
         if (this.localSession !== null) {
           this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
         }
@@ -434,12 +435,12 @@ export class SourceBattleController {
     const encounterCompletion = this.encounterCompletion;
     const trainerCompletion = this.trainerCompletion;
     if (continuation === "pending-encounter") {
-      const current = this.callbacks.getEventState();
+      const current = finishSourceWildBattleFieldEffects(this.callbacks.getEventState());
       if (outcome === "escaped") {
         this.callbacks.updateEventState({ ...current, pendingEncounter: null, wildEncounterSteps: 0 });
       } else if (won) {
         this.callbacks.updateEventState(completePendingEncounter(current));
-      }
+      } else this.callbacks.updateEventState(current);
     }
     this.clear();
     this.callbacks.setNotice(outcome === "escaped"
@@ -584,9 +585,9 @@ export class SourceBattleController {
         this.recordLocalTurn(before, result.state, result.events);
         if (battleId !== undefined) this.callbacks.battleReports?.recordTurn({ battleId, before,
           after: result.state, events: result.events, trace: result.trace, actions: reportedActions });
-        this.callbacks.updateEventState({ ...eventState,
+        this.callbacks.updateEventState(finishSourceWildBattleFieldEffects({ ...eventState,
           party: storeSourceEncounterParty(eventState.party, result.state),
-          pendingEncounter: null, wildEncounterSteps: 0 });
+          pendingEncounter: null, wildEncounterSteps: 0 }));
         if (this.localSession !== null) {
           this.localSession = closeSharedBattleSession(settleEscapedSharedBattleSession(this.localSession));
         }
@@ -638,7 +639,7 @@ export class SourceBattleController {
             { retainTransferredHeldItems: true });
           const capturedState = { ...eventState, party,
             ranch: addPokemonToStorage(eventState.ranch, pokemon) };
-          const nextState = completePendingEncounter(capturedState);
+          const nextState = completePendingEncounter(finishSourceWildBattleFieldEffects(capturedState));
           const encounterCompletion = this.encounterCompletion;
           const battleId = this.localSession?.battleId;
           this.closeFinishedLocalSession(this.battle);
@@ -719,7 +720,10 @@ export class SourceBattleController {
             ? { trainerDefeatText: this.trainerAudio.defeatText } : {}),
         };
         await this.presentation.endBattle(winner, outcome);
-        if (trainerCompletion === null && wildSettlement?.completed === true) nextState = completePendingEncounter(nextState);
+        if (trainerCompletion === null) {
+          nextState = finishSourceWildBattleFieldEffects(nextState);
+          if (wildSettlement?.completed === true) nextState = completePendingEncounter(nextState);
+        }
         this.callbacks.updateEventState(nextState);
         if (battleId !== undefined) {
           this.callbacks.battleReports?.recordSettlement({ battleId, outcome,

@@ -377,11 +377,30 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
                 ({ ...slot, pp: event.movePp?.[moveIndex] ?? slot.pp })),
               stages: event.statRaised === null ? member.stages : { ...member.stages,
                 [event.statRaised]: member.stages[event.statRaised] + event.stagesRaised },
+              volatile: event.focusEnergyRaised || event.confusionCured || event.infatuationCured
+                ? { ...member.volatile!, ...(event.focusEnergyRaised
+                  ? { focusEnergy: (member.volatile?.focusEnergy ?? 0) + event.focusEnergyRaised } : {}),
+                  ...(event.confusionCured ? { confusionTurns: 0 } : {}),
+                  ...(event.infatuationCured ? { infatuated: false } : {}) }
+                : member.volatile,
               ...(event.statusCured === null ? {} : { majorStatus: null }) } : member) } } };
+        if (event.mistTurnsStarted) {
+          const sides = state.effects?.sides ?? { player: { reflectTurns: 0, luckyChantTurns: 0 },
+            opponent: { reflectTurns: 0, luckyChantTurns: 0 } };
+          state = { ...state, effects: { ...state.effects,
+            sides: { ...sides, [event.side]: { ...sides[event.side], mistTurns: event.mistTurnsStarted } },
+            waterSportTurns: state.effects?.waterSportTurns ?? 0 } };
+        }
         const effect = event.hpRestored > 0 ? ` et récupère ${event.hpRestored} PV`
           : event.ppRestored > 0 ? ` et récupère ${event.ppRestored} PP`
-            : event.statRaised === null ? "" : ` : ${STAT_NAMES[event.statRaised]} augmente`;
-        message(`${target.name} reçoit ${event.itemId}${effect}.`, "status");
+            : event.statRaised !== null ? ` : ${STAT_NAMES[event.statRaised]} augmente`
+              : event.focusEnergyRaised ? " et augmente sa concentration"
+                : event.confusionCured ? " et n'est plus confus"
+                  : event.infatuationCured ? " et n'est plus amoureux"
+                    : event.mistTurnsStarted ? " et protège son équipe des baisses de statistiques" : "";
+        const itemName = options.itemName?.(event.itemId) ?? event.itemId;
+        message(event.escaped ? `${target.name} utilise ${itemName} et quitte le combat.`
+          : `${target.name} reçoit ${itemName}${effect}.`, "status");
       }
     } else if (event.type === "captureAttempted") {
       const target = Object.values(state.teams).flatMap((team) => team.members)

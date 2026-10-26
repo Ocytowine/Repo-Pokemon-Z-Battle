@@ -11,7 +11,8 @@ import { applyEntryFieldAbility, resolveGrassyTerrainHealing } from "./ability-f
 import { activateWindAbility } from "./ability-wind.js";
 import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather,
   resolveWeatherEndOfTurn, weatherSpeedMultiplier } from "./ability-weather.js";
-import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
+import { applyPokemonItemEffect, applyTrainerItemSideEffect, pokemonItemTargetMode,
+  type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import { restoreMimickedMoves, restoreMoveModifiedStats, restoreTransformedBattler,
@@ -939,10 +940,19 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     const team = teams[entry.actor.side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error("Cible d'objet double invalide.");
+    if (pokemonItemTargetMode(action.itemId) === "active"
+      && !(team.activeIndices ?? [team.activeIndex]).includes(action.targetTeamIndex)) {
+      throw new Error(`Objet ${action.itemId} réservé à un Pokémon actif.`);
+    }
     if ((effects?.magicRoomTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: Magic Room.`);
     if ((target.volatile?.embargoTurns ?? 0) > 0) throw new Error(`Objet ${action.itemId} inutilisable : embargo.`);
-    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
+    const applied = applyPokemonItemEffect(target, action.itemId,
+      { ...itemPolicy, sideMistTurns: effects?.sides[entry.actor.side].mistTurns ?? 0,
+        wildBattle: rules.wildBattle === true && entry.actor.side === "player",
+        escapable: rules.escapable !== false },
+      action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Objet ${action.itemId} inutilisable : ${applied}.`);
+    effects = applyTrainerItemSideEffect(effects, entry.actor.side, applied.effect);
     teams[entry.actor.side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };
     if (team.items !== undefined) {
@@ -952,6 +962,18 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
     }
     events.push({ type: "trainerItemUsed", side: entry.actor.side, itemId: action.itemId,
       targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
+    if ((applied.effect.mistTurnsStarted ?? 0) > 0) events.push({ type: "battleEffectChanged",
+      side: entry.actor.side, effect: "mist", turns: applied.effect.mistTurnsStarted! });
+    if (applied.effect.escaped) events.push({ type: "battleEscaped",
+      side: entry.actor.side, move: action.itemId });
+  }
+  if (events.some((event) => event.type === "battleEscaped")) {
+    events.push({ type: "teamActionOrdered", order: itemEntries.map((entry) =>
+      ({ side: entry.actor.side, kind: "item" as const })) },
+    { type: "turnEnded", turn: state.turn });
+    return { state: { ...state, turn: state.turn + 1, status: "finished", winner: null, teams,
+      replacementRequired: [], slotReplacements: [], ...(effects === undefined ? {} : { effects }) },
+    events, trace };
   }
   let moves = effectiveSubmitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } =>
     entry.action.kind === "move" && !pursuitKeys.has(key(entry.actor)))

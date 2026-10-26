@@ -1,4 +1,4 @@
-import type { BattleStat, BattlerState, MajorStatusState } from "./types.js";
+import type { BattleEffects, BattleSide, BattleStat, BattlerState, MajorStatusState } from "./types.js";
 
 export type PokemonItemUseFailure = "unsupported-item" | "no-effect" | "revival-disabled"
   | "battle-healing-disabled";
@@ -7,6 +7,10 @@ export interface PokemonItemUsePolicy {
   readonly context: "field" | "battle";
   readonly revivalAllowed: boolean;
   readonly battleHealingAllowed?: boolean;
+  /** Current side state for team-wide battle items; supplied by either battle adapter. */
+  readonly sideMistTurns?: number;
+  readonly wildBattle?: boolean;
+  readonly escapable?: boolean;
 }
 
 export interface PokemonItemUseEffect {
@@ -19,6 +23,11 @@ export interface PokemonItemUseEffect {
   readonly statRaised: BattleStat | null;
   readonly stagesRaised: number;
   readonly happinessChanged: number;
+  readonly focusEnergyRaised?: number;
+  readonly confusionCured?: boolean;
+  readonly infatuationCured?: boolean;
+  readonly mistTurnsStarted?: number;
+  readonly escaped?: boolean;
 }
 
 export type PokemonItemTargetMode = "pokemon" | "move" | "active";
@@ -32,7 +41,11 @@ type ItemEffect =
   | { readonly kind: "revive"; readonly amount: "half" | "full"; readonly happiness?: HappinessChange;
     readonly bypassRevivalRestriction?: boolean; readonly fieldOnly?: boolean }
   | { readonly kind: "restore-pp"; readonly amount: number | "full"; readonly allMoves: boolean }
-  | { readonly kind: "raise-stage"; readonly stat: BattleStat; readonly amount: number };
+  | { readonly kind: "raise-stage"; readonly stat: BattleStat; readonly amount: number }
+  | { readonly kind: "focus-energy"; readonly level: number }
+  | { readonly kind: "cure-volatile"; readonly effect: "confusion" | "infatuation" }
+  | { readonly kind: "mist" }
+  | { readonly kind: "escape" };
 
 type HappinessChange = "powder" | "energy-root" | "revival-herb";
 
@@ -104,6 +117,13 @@ registerStages(["XACCURACY"], "accuracy", 1);
 registerStages(["XACCURACY2"], "accuracy", 2);
 registerStages(["XACCURACY3"], "accuracy", 3);
 registerStages(["XACCURACY6"], "accuracy", 6);
+register(["DIREHIT"], { kind: "focus-energy", level: 1 });
+register(["DIREHIT2"], { kind: "focus-energy", level: 2 });
+register(["DIREHIT3"], { kind: "focus-energy", level: 3 });
+register(["GUARDSPEC"], { kind: "mist" });
+register(["YELLOWFLUTE"], { kind: "cure-volatile", effect: "confusion" });
+register(["REDFLUTE"], { kind: "cure-volatile", effect: "infatuation" });
+register(["POKEDOLL", "FLUFFYTAIL", "POKETOY"], { kind: "escape" });
 
 export function isPokemonItemUseSupported(item: string): boolean {
   return ITEM_EFFECTS.has(item);
@@ -117,12 +137,28 @@ export function isPokemonItemUsableInBattle(item: string): boolean {
 export function pokemonItemTargetMode(item: string): PokemonItemTargetMode | null {
   const definition = ITEM_EFFECTS.get(item);
   if (definition === undefined) return null;
-  if (definition.kind === "raise-stage") return "active";
+  if (definition.kind === "raise-stage" || definition.kind === "focus-energy"
+    || definition.kind === "mist" || definition.kind === "escape") return "active";
   return definition.kind === "restore-pp" && !definition.allMoves ? "move" : "pokemon";
 }
 
 export function isPokemonItemUsableInField(item: string): boolean {
-  return pokemonItemTargetMode(item) !== "active" && ITEM_EFFECTS.has(item);
+  const definition = ITEM_EFFECTS.get(item);
+  return definition !== undefined && definition.kind !== "cure-volatile"
+    && pokemonItemTargetMode(item) !== "active";
+}
+
+/** Applies the shared side effect after a successful trainer-item transaction. */
+export function applyTrainerItemSideEffect(effects: BattleEffects | undefined, side: BattleSide,
+  effect: PokemonItemUseEffect): BattleEffects | undefined {
+  if ((effect.mistTurnsStarted ?? 0) <= 0) return effects;
+  const sides = effects?.sides ?? {
+    player: { reflectTurns: 0, luckyChantTurns: 0 },
+    opponent: { reflectTurns: 0, luckyChantTurns: 0 },
+  };
+  return { ...effects, sides: { ...sides,
+    [side]: { ...sides[side], mistTurns: effect.mistTurnsStarted } },
+  waterSportTurns: effects?.waterSportTurns ?? 0 };
 }
 
 function healingAmount(pokemon: Pick<BattlerState, "hp" | "stats">,
@@ -136,11 +172,24 @@ type PokemonItemMoveSlot = { readonly pp: number; readonly maxPp?: number;
   readonly move?: { readonly pp: number } };
 type PokemonItemState = Pick<BattlerState, "hp" | "stats" | "majorStatus">
   & { readonly moves?: readonly PokemonItemMoveSlot[]; readonly stages?: BattlerState["stages"];
+    readonly volatile?: BattlerState["volatile"];
     readonly happiness?: number | null; readonly metadata?: { readonly happiness: number | null } };
 
 function emptyEffect(): PokemonItemUseEffect {
   return { hpRestored: 0, ppRestored: 0, movePp: null, targetMoveIndex: null, statusCured: null,
-    revived: false, statRaised: null, stagesRaised: 0, happinessChanged: 0 };
+    revived: false, statRaised: null, stagesRaised: 0, happinessChanged: 0,
+    focusEnergyRaised: 0, confusionCured: false, infatuationCured: false, mistTurnsStarted: 0 };
+}
+
+const EMPTY_ITEM_VOLATILE: NonNullable<BattlerState["volatile"]> = {
+  confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
+  disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
+  bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null,
+};
+
+function withItemVolatile<T extends PokemonItemState>(pokemon: T,
+  change: Partial<NonNullable<BattlerState["volatile"]>>): T {
+  return { ...pokemon, volatile: { ...EMPTY_ITEM_VOLATILE, ...pokemon.volatile, ...change } } as T;
 }
 
 function withHappiness<T extends PokemonItemState>(pokemon: T, effect: PokemonItemUseEffect,
@@ -173,9 +222,38 @@ export function applyPokemonItemEffect<T extends PokemonItemState>(
   if (policy.context === "battle" && definition.kind === "revive" && definition.fieldOnly === true) {
     return "unsupported-item";
   }
-  if (policy.context === "field" && definition.kind === "raise-stage") return "unsupported-item";
+  if (policy.context === "field" && (definition.kind === "raise-stage"
+    || definition.kind === "focus-energy" || definition.kind === "mist"
+    || definition.kind === "cure-volatile" || definition.kind === "escape")) return "unsupported-item";
   if (policy.context === "battle" && policy.battleHealingAllowed === false
-    && definition.kind !== "raise-stage") return "battle-healing-disabled";
+    && definition.kind !== "raise-stage" && definition.kind !== "focus-energy"
+    && definition.kind !== "mist" && definition.kind !== "cure-volatile"
+    && definition.kind !== "escape") return "battle-healing-disabled";
+  if (definition.kind === "escape") {
+    if (policy.wildBattle !== true || policy.escapable === false || pokemon.hp <= 0) return "no-effect";
+    return { pokemon, effect: { ...emptyEffect(), escaped: true } };
+  }
+  if (definition.kind === "focus-energy") {
+    const current = pokemon.volatile?.focusEnergy ?? 0;
+    if (pokemon.hp <= 0 || current >= definition.level) return "no-effect";
+    return { pokemon: withItemVolatile(pokemon, { focusEnergy: definition.level }),
+      effect: { ...emptyEffect(), focusEnergyRaised: definition.level - current } };
+  }
+  if (definition.kind === "cure-volatile") {
+    if (pokemon.hp <= 0) return "no-effect";
+    if (definition.effect === "confusion") {
+      if ((pokemon.volatile?.confusionTurns ?? 0) <= 0) return "no-effect";
+      return { pokemon: withItemVolatile(pokemon, { confusionTurns: 0 }),
+        effect: { ...emptyEffect(), confusionCured: true } };
+    }
+    if (pokemon.volatile?.infatuated !== true) return "no-effect";
+    return { pokemon: withItemVolatile(pokemon, { infatuated: false }),
+      effect: { ...emptyEffect(), infatuationCured: true } };
+  }
+  if (definition.kind === "mist") {
+    if (pokemon.hp <= 0 || (policy.sideMistTurns ?? 0) > 0) return "no-effect";
+    return { pokemon, effect: { ...emptyEffect(), mistTurnsStarted: 5 } };
+  }
   if (definition.kind === "heal-hp") {
     if (pokemon.hp <= 0 || pokemon.hp >= pokemon.stats.maxHp) return "no-effect";
     const configured = policy.context === "battle" && definition.battleAmount !== undefined
@@ -186,16 +264,25 @@ export function applyPokemonItemEffect<T extends PokemonItemState>(
       { ...emptyEffect(), hpRestored }, definition.happiness);
   }
   if (definition.kind === "cure-status") {
-    if (pokemon.hp <= 0 || pokemon.majorStatus === null
-      || definition.status !== "all" && pokemon.majorStatus.kind !== definition.status) return "no-effect";
-    return withHappiness({ ...pokemon, majorStatus: null },
-      { ...emptyEffect(), statusCured: pokemon.majorStatus.kind }, definition.happiness);
+    const confusionCured = policy.context === "battle" && definition.status === "all"
+      && (pokemon.volatile?.confusionTurns ?? 0) > 0;
+    const statusMatches = pokemon.majorStatus !== null
+      && (definition.status === "all" || pokemon.majorStatus.kind === definition.status);
+    if (pokemon.hp <= 0 || !statusMatches && !confusionCured) return "no-effect";
+    const next = confusionCured ? withItemVolatile(pokemon, { confusionTurns: 0 }) : pokemon;
+    return withHappiness({ ...next, majorStatus: statusMatches ? null : pokemon.majorStatus } as T,
+      { ...emptyEffect(), statusCured: statusMatches ? pokemon.majorStatus!.kind : null,
+        confusionCured }, definition.happiness);
   }
   if (definition.kind === "full-restore") {
-    if (pokemon.hp <= 0 || pokemon.hp >= pokemon.stats.maxHp && pokemon.majorStatus === null) return "no-effect";
+    const confusionCured = policy.context === "battle" && (pokemon.volatile?.confusionTurns ?? 0) > 0;
+    if (pokemon.hp <= 0 || pokemon.hp >= pokemon.stats.maxHp && pokemon.majorStatus === null
+      && !confusionCured) return "no-effect";
     const hpRestored = pokemon.stats.maxHp - pokemon.hp;
-    return { pokemon: { ...pokemon, hp: pokemon.stats.maxHp, majorStatus: null },
-      effect: { ...emptyEffect(), hpRestored, statusCured: pokemon.majorStatus?.kind ?? null } };
+    const next = confusionCured ? withItemVolatile(pokemon, { confusionTurns: 0 }) : pokemon;
+    return { pokemon: { ...next, hp: pokemon.stats.maxHp, majorStatus: null } as T,
+      effect: { ...emptyEffect(), hpRestored, statusCured: pokemon.majorStatus?.kind ?? null,
+        confusionCured } };
   }
   if (definition.kind === "revive") {
     if (!policy.revivalAllowed && definition.bypassRevivalRestriction !== true) return "revival-disabled";

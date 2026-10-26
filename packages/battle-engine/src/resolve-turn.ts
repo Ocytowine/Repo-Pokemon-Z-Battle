@@ -3946,12 +3946,14 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         continue;
       }
       if (slot.move.functionCode === "088" && options.switchingTarget === targetSide) hitDamage *= 2;
-      const sashOnThisHit: boolean = !focusSash && heldItemIsActive(defender, effects.magicRoomTurns) && defender.heldItem === "FOCUSSASH"
-        && hp === defender.stats.maxHp && hitDamage >= hp;
-      const sturdyOnThisHit: boolean = !sturdy && defender.ability === "STURDY"
+      const enduresThisHit = targetVolatile.endured && hitDamage >= hp;
+      const sturdyOnThisHit: boolean = !enduresThisHit && !sturdy && defender.ability === "STURDY"
         && !hasMoldBreaker(battlers[side])
         && hp === defender.stats.maxHp && hitDamage >= hp;
-      if (sashOnThisHit || sturdyOnThisHit || targetVolatile.endured && hitDamage >= hp) hitDamage = Math.max(0, hp - 1);
+      const sashOnThisHit: boolean = !enduresThisHit && !sturdyOnThisHit && !focusSash
+        && heldItemIsActive(defender, effects.magicRoomTurns) && defender.heldItem === "FOCUSSASH"
+        && hp === defender.stats.maxHp && hitDamage >= hp;
+      if (enduresThisHit || sturdyOnThisHit || sashOnThisHit) hitDamage = Math.max(0, hp - 1);
       if (slot.move.functionCode === "0E9") hitDamage = Math.min(hitDamage, Math.max(0, hp - 1));
       focusSash = focusSash || sashOnThisHit;
       sturdy = sturdy || sturdyOnThisHit;

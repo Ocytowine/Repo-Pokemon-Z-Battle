@@ -7,7 +7,8 @@ import { resolveEntryAbility } from "./ability-entry.js";
 import { applyEntryFieldAbility } from "./ability-field-entry.js";
 import { activateWindAbility } from "./ability-wind.js";
 import { applyEntryWeatherAbility, effectiveBattleWeather, hasWeatherSuppressor, reconcileExtremeWeather } from "./ability-weather.js";
-import { applyPokemonItemEffect, type PokemonItemUsePolicy } from "./pokemon-item.js";
+import { applyPokemonItemEffect, applyTrainerItemSideEffect, pokemonItemTargetMode,
+  type PokemonItemUsePolicy } from "./pokemon-item.js";
 import { attemptPokemonCapture } from "./pokemon-capture.js";
 import { initializeMegaEvolutionState, resolveMegaEvolutionIntents } from "./mega-evolution.js";
 import { restoreMimickedMoves, restoreMoveModifiedStats, restoreTransformedBattler,
@@ -498,15 +499,38 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const team = teams[side];
     const target = team.members[action.targetTeamIndex];
     if (target === undefined) throw new Error(`Invalid item target for ${side}.`);
+    if (pokemonItemTargetMode(action.itemId) === "active" && action.targetTeamIndex !== team.activeIndex) {
+      throw new Error(`Item ${action.itemId} requires the active Pokemon.`);
+    }
     if ((effects?.magicRoomTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: Magic Room.`);
     if ((target.volatile?.embargoTurns ?? 0) > 0) throw new Error(`Item ${action.itemId} cannot be used: embargo.`);
-    const applied = applyPokemonItemEffect(target, action.itemId, itemPolicy, action.targetMoveIndex);
+    const applied = applyPokemonItemEffect(target, action.itemId,
+      { ...itemPolicy, sideMistTurns: effects?.sides[side].mistTurns ?? 0,
+        wildBattle: rules.wildBattle === true && side === "player",
+        escapable: rules.escapable !== false }, action.targetMoveIndex);
     if (typeof applied === "string") throw new Error(`Item ${action.itemId} cannot be used: ${applied}.`);
+    effects = applyTrainerItemSideEffect(effects, side, applied.effect);
     teams[side] = { ...team, members: team.members.map((member, index) =>
       index === action.targetTeamIndex ? applied.pokemon : member) };
     teams[side] = consumeTrainerItem(teams[side], action.itemId);
     itemEvents.push({ type: "trainerItemUsed", side, itemId: action.itemId,
       targetIndex: action.targetTeamIndex, target: target.id, ...applied.effect });
+    if ((applied.effect.mistTurnsStarted ?? 0) > 0) itemEvents.push({ type: "battleEffectChanged",
+      side, effect: "mist", turns: applied.effect.mistTurnsStarted! });
+    if (applied.effect.escaped) itemEvents.push({ type: "battleEscaped", side, move: action.itemId });
+  }
+
+  if (itemEvents.some((event) => event.type === "battleEscaped")) {
+    return { state: { ...state, turn: state.turn + 1, status: "finished", winner: null, teams,
+      replacementRequired: [], pivotRequired: [], ...(effects === undefined ? {} : { effects }) },
+    events: [{ type: "turnStarted", turn: state.turn },
+      { type: "teamActionOrdered", order: [
+        ...pursuitSides.map((side) => ({ side, kind: "move" as const })),
+        ...switchOrder.map((side) => ({ side, kind: "switch" as const })),
+        ...itemOrder.map((side) => ({ side, kind: "item" as const })),
+      ] }, ...entryEvents, ...megaResult.events, ...pursuitEvents, ...switchEvents,
+    ...itemEvents, { type: "turnEnded", turn: state.turn }],
+    trace: [...entryTrace, ...pursuitTrace] };
   }
 
   for (const side of captureOrder) {

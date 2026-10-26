@@ -11,6 +11,7 @@ import { extractWorldMaps } from "./extract-world-maps.js";
 import { extractEvents } from "./extract-events.js";
 import { extractScriptHooks } from "./extract-script-hooks.js";
 import { createMegaIntegrationAudit } from "./mega-integration-audit.js";
+import { writeBattleOnlyItemCoverage } from "./item-coverage-audit.js";
 
 export interface LocalTestPreparationResult {
   readonly outputDirectory: string;
@@ -18,6 +19,8 @@ export interface LocalTestPreparationResult {
   readonly manifestPath: string;
   readonly battleAnimationCount: number;
   readonly battleIntegrationIssues: number;
+  readonly battleOnlyItemsSupported: number;
+  readonly battleOnlyItemsTotal: number;
 }
 
 export interface LocalTestPaths {
@@ -108,11 +111,14 @@ export async function prepareLocalTest(
   await extractAssets(paths.source, paths.output);
   await extractWorldMaps(paths.source, paths.output);
   await createMegaIntegrationAudit(paths.output);
+  const items = await writeBattleOnlyItemCoverage(paths.output);
   await extractScriptHooks(paths.source, paths.output);
   const manifestPath = await writeLocalDataManifest(paths.output);
   const configPath = await writeLocalTestConfiguration(invocationDirectory,
     { sourceDirectory: paths.source, outputDirectory: paths.output });
   return { outputDirectory: paths.output, configPath, manifestPath,
     battleAnimationCount: runtime.battleAnimationCount,
-    battleIntegrationIssues: runtime.battleIntegrationIssues };
+    battleIntegrationIssues: runtime.battleIntegrationIssues,
+    battleOnlyItemsSupported: items.battleOnly.summary.supported,
+    battleOnlyItemsTotal: items.battleOnly.summary.actionable };
 }

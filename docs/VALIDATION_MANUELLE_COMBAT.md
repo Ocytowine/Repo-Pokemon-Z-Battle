@@ -1,16 +1,15 @@
 # Validation manuelle des fonctions de combat
 
-État au 2026-10-23 : **à exécuter par le porteur du projet**. Les tests automatisés et
+État au 2026-10-26 : **à exécuter par le porteur du projet**. Les tests automatisés et
 le build passent, mais ils ne remplacent pas la vérification visuelle en jeu.
-Cette fiche couvre les fonctions récemment portées `05C`-`05F`, `071`-`074`,
-`079`, `07A`, `07C`-`081`, `084` et `089`-`08C`. Ajouter ici les prochains lots avant de demander une validation
-manuelle. La mécanique et les limites connues sont détaillées dans
+Cette fiche rassemble les lots de fonctions de combat à vérifier en jeu.
+La mécanique et les limites connues sont détaillées dans
 [AI_HANDOFF.md](AI_HANDOFF.md) ; le suivi général est dans [ROADMAP.md](ROADMAP.md).
 
 ## Préparation sans toucher à la sauvegarde principale
 
 1. Utiliser une sauvegarde de test ou une copie de la sauvegarde personnelle.
-   **Sketch modifie durablement la capacité du Pokémon** ; le menu « Test dev »
+   **Gribouille modifie durablement la capacité du Pokémon** ; le menu « Test dev »
    ajoute aussi réellement les Pokémon et objets obtenus.
 2. Dans ce dépôt, lancer `corepack pnpm prepare:local` si les données locales
    manquent, puis `corepack pnpm sandbox:overworld`. Pour la Coop, lancer dans
@@ -25,22 +24,24 @@ manuelle. La mécanique et les limites connues sont détaillées dans
 
 | Fonction | Pokémon de test issu des données locales | Capacité attendue |
 | --- | --- | --- |
-| `05C` Mimic | M. Mime niveau 15 | Mimético |
-| `05D` Sketch | Queulorior niveau 1 | Esquema |
-| `05E`/`05F` Conversions | Porygon-Z niveau 1 | Conversión, Conversión2 et Maquinación (type Ténèbres) |
-| `071`/`072` Représailles | Qulbutoké niveau 1 | Contrataque, Manto Espejo |
-| `073` Metal Burst | Dinoclier niveau 37 | Repr. Metal |
-| `074` Flame Burst | Chamallot niveau 15 | Pirotecnia |
-| `079`/`07A` Fusion | Zekrom et Reshiram niveau 50 | Rayo Fusión, Llama Fusión |
-| `07C`/`07D` Statut guéri | Makuhita niveau 34 | Estímulo, Espabila |
-| `07E`/`07F` Statut et puissance | Sapereau niveau 47, Branette niveau 26 | Imagen, Infortunio |
-| `080` PV de la cible | Mamanbo niveau 41 | Salmuera |
-| `081` Attaquant du tour | Grelaçon niveau 39, Cradopaud niveau 22 | Alud, Desquite |
+| `05C` Mimique | M. Mime niveau 15 | Mimique |
+| `05D` Gribouille | Queulorior niveau 1 | Gribouille |
+| `05E`/`05F` Conversions | Porygon-Z niveau 1 | Conversion, Conversion2 et Machination (type Ténèbres) |
+| `071`/`072` Représailles | Qulbutoké niveau 1 | Riposte, Voile Miroir |
+| `073` Fulmifer | Dinoclier niveau 37 | Fulmifer |
+| `074` Rebondifeu | Chamallot niveau 15 | Rebondifeu |
+| `079`/`07A` Fusion | Zekrom et Reshiram niveau 50 | Éclair Croix, Flamme Croix |
+| `07C`/`07D` Statut guéri | Makuhita niveau 34 | Stimulant, Réveil Forcé |
+| `07E`/`07F` Statut et puissance | Sapereau niveau 47, Branette niveau 26 | Façade, Châtiment |
+| `080` PV de la cible | Mamanbo niveau 41 | Saumure |
+| `081` Attaquant du tour | Grelaçon niveau 39, Cradopaud niveau 22 | Avalanche, Vendetta |
 
-Les noms affichés peuvent dépendre de la traduction chargée ; les codes et noms
-internes (`MIMIC`, `SKETCH`, `CONVERSION`, `CONVERSION2`, `COUNTER`,
-`MIRRORCOAT`, `METALBURST`, `FLAMEBURST`, `FUSIONBOLT`, `FUSIONFLARE`) sont les
-repères fiables. Le Battle Sandbox autonome utilise un catalogue minimal : ne
+Les noms de capacités ci-dessous viennent de la traduction française locale
+utilisée par le jeu. Les codes et noms internes (`MIMIC`, `SKETCH`, `CONVERSION`,
+`CONVERSION2`, `COUNTER`, `MIRRORCOAT`, `METALBURST`, `FLAMEBURST`,
+`FUSIONBOLT`, `FUSIONFLARE`) servent à distinguer les cas où la traduction
+affiche le même nom, notamment `MIMIC` et `MIRRORMOVE` (« Mimique »).
+Le Battle Sandbox autonome utilise un catalogue minimal : ne
 pas l'employer comme preuve d'absence de ces capacités dans l'Overworld.
 
 ## Parcours prioritaire (environ quelques combats)
@@ -52,64 +53,64 @@ ici, vérifier surtout sélection, messages, animation, barres de PV, audience
 Coop et sauvegarde.
 
 - [ ] **Solo — copie temporaire (`05C`)** : laisser l'adversaire employer une
-  capacité que M. Mime ne connaît pas, puis utiliser Mimético. La capacité
-  copiée remplace Mimético pendant sa présence sur le terrain. Changer de
-  Pokémon : Mimético revient, avec ses PP dépensés, et la capacité copiée
+  capacité que M. Mime ne connaît pas, puis utiliser Mimique. La capacité
+  copiée remplace Mimique pendant sa présence sur le terrain. Changer de
+  Pokémon : Mimique revient, avec ses PP dépensés, et la capacité copiée
   n'apparaît pas durablement dans Équipe après le combat.
 - [ ] **Solo — apprentissage durable (`05D`)** : faire jouer une capacité à
-  l'adversaire, puis utiliser Esquema avec Queulorior. Vérifier le nom affiché
+  l'adversaire, puis utiliser Gribouille avec Queulorior. Vérifier le nom affiché
   de la capacité apprise, changer de Pokémon et terminer le combat. Dans
-  Équipe, Esquema doit être remplacé par cette capacité ; sauvegarder/recharger
+  Équipe, Gribouille doit être remplacé par cette capacité ; sauvegarder/recharger
   la sauvegarde de test et vérifier que l'apprentissage reste présent.
-- [ ] **Solo — types (`05E`/`05F`)** : avec Porygon-Z, utiliser Conversión ; son
+- [ ] **Solo — types (`05E`/`05F`)** : avec Porygon-Z, utiliser Conversion ; son
   type doit devenir celui d'une autre de ses capacités éligibles. Pour
-  Conversión2, laisser d'abord l'adversaire attaquer, puis vérifier un type
+  Conversion2, laisser d'abord l'adversaire attaquer, puis vérifier un type
   résistant ou immunisé au type de ce dernier coup. Après retrait, le type
-  d'origine doit revenir. Sans attaque adverse préalable, Conversión2 doit
+  d'origine doit revenir. Sans attaque adverse préalable, Conversion2 doit
   échouer clairement, sans changement de type.
 - [ ] **Solo — représailles (`071`-`073`)** : avec Qulbutoké ou Dinoclier,
-  laisser l'adversaire frapper avant la riposte. Contrataque répond à un coup
-  physique, Manto Espejo à un coup spécial ; Repr. Metal répond au dernier
+  laisser l'adversaire frapper avant la riposte. Riposte répond à un coup
+  physique, Voile Miroir à un coup spécial ; Fulmifer répond au dernier
   coup dommageable. Sans coup admissible dans ce tour, l'action échoue. Vérifier
   que la barre de PV et le message d'échec correspondent à l'action réellement
   choisie ; ne pas comparer des dégâts bruts entre combats de niveaux différents.
 - [ ] **Solo/Coop — Fusion (`079`/`07A`)** : dans un combat où Zekrom et
   Reshiram peuvent agir au même tour (par exemple un duel PvP préparé), faire
-  toucher une cible avec Rayo Fusión, puis utiliser Llama Fusión dans ce même
+  toucher une cible avec Éclair Croix, puis utiliser Flamme Croix dans ce même
   tour ; refaire dans l'ordre inverse si possible. La deuxième attaque doit
   profiter du bonus. Au tour suivant, un coup isolé ne doit pas conserver ce
   bonus. Une immunité ou un échec du premier coup ne doit pas l'amorcer.
   Les tirages aléatoires et les types empêchent d'exiger exactement « deux fois
   moins de PV » à l'écran : noter l'ordre, la cible et les PV observés.
-- [ ] **Double — Pirotecnia (`074`)** : dans **Test dev → Combats narratifs →
+- [ ] **Double — Rebondifeu (`074`)** : dans **Test dev → Combats narratifs →
   TP duo Hector et Zaida**, engager le combat double avec Chamallot. Quand
-  Pirotecnia touche l'un des adversaires, son partenaire encore vivant perd
+  Rebondifeu touche l'un des adversaires, son partenaire encore vivant perd
   aussi des PV (environ 1/16 de ses PV maximaux) et c'est **sa** barre qui
   s'anime. Un coup raté ou immunisé ne doit pas infliger ces dégâts annexes.
   Si le partenaire a Garde Magik actif, aucun dégât annexe ne doit être appliqué
   (cas avancé : ne pas bloquer le reste si cette équipe n'est pas disponible).
-- [ ] **Solo — statuts et seuil de PV (`07C`-`080`)** : comparer Estímulo face
-  à une cible paralysée et saine, puis Espabila face à une cible endormie et
+- [ ] **Solo — statuts et seuil de PV (`07C`-`080`)** : comparer Stimulant face
+  à une cible paralysée et saine, puis Réveil Forcé face à une cible endormie et
   éveillée. Après un impact non fatal, le statut concerné doit disparaître et le
-  message de guérison doit viser la cible. Vérifier aussi le bonus d'Imagen avec
-  un porteur empoisonné/brûlé/paralysé, d'Infortunio face à une cible affectée et
-  de Salmuera à la moitié des PV ou moins. Un K.O. par Estímulo/Espabila ne doit
+  message de guérison doit viser la cible. Vérifier aussi le bonus de Façade avec
+  un porteur empoisonné/brûlé/paralysé, de Châtiment face à une cible affectée et
+  de Saumure à la moitié des PV ou moins. Un K.O. par Stimulant/Réveil Forcé ne doit
   pas afficher ensuite une guérison du statut.
 - [ ] **Double/Coop — attaquants du tour (`081`)** : faire subir au porteur de
-  Desquite ou Alud des dégâts provenant des deux adversaires pendant le même tour,
+  Vendetta ou Avalanche des dégâts provenant des deux adversaires pendant le même tour,
   puis cibler celui qui n'a pas infligé le dernier impact. Le bonus doit quand
   même s'appliquer à cette cible. Au tour suivant sans nouveau dégât de sa part,
   le bonus ne doit pas être conservé. Recharger l'invité avant la réponse et
   vérifier que l'historique autoritaire n'est ni perdu ni rejoué.
 - [ ] **Solo/Coop — puissance variable (`084`, `089`-`08C`)** : vérifier
-  Vendetta après une action adverse puis avant celle-ci, Retour/Frustration avec
+  Représailles après une action adverse puis avant celle-ci, Retour/Frustration avec
   des bonheurs distincts, Éruption/Giclédo avec PV pleins puis réduits et
   Presse/Essorage sur une cible saine puis blessée. Répéter une attaque comme
   hôte et une comme invité, puis reconnecter pendant le combat pour comparer
   les mêmes PV et le même ordre d'action.
-- [ ] **Solo/Coop — Represalia et Meteorobola (`085`, `087`)** : après le K.O.
-  d'un allié, vérifier que Represalia est renforcée uniquement au tour suivant,
-  y compris en double et après reconnexion. Tester Meteorobola sous soleil,
+- [ ] **Solo/Coop — Vengeance et Ball'Météo (`085`, `087`)** : après le K.O.
+  d'un allié, vérifier que Vengeance est renforcée uniquement au tour suivant,
+  y compris en double et après reconnexion. Tester Ball'Météo sous soleil,
   pluie, sable, grêle et Vents Forts, puis avec Ciel Gris ou Air Lock ; comparer
   type, puissance, messages et PV sur les écrans hôte et invité.
 - [ ] **Solo/Coop — Force Ajoutée et Punition (`08E`, `08F`)** : cumuler des
@@ -132,23 +133,23 @@ Coop et sauvegarde.
   lorsque la cible bénéficie de Vent Arrière ; vérifier la même cible et les
   mêmes PV chez l'hôte et l'invité, puis après reconnexion.
 - [ ] **Solo/Coop — critiques garantis (`0A0`)** : utiliser Souffle Glacé ou
-  Yama Arashi contre une cible ordinaire, puis sous Conjuro et avec
+  Yama Arashi contre une cible ordinaire, puis sous Air Veinard et avec
   Armurbaston/Coque Armure ; vérifier l'indicateur de critique et les PV.
   Refaire en double avec une action de l'hôte et une de l'invité, puis recharger.
-- [ ] **Solo/Coop — Jugement et Techno Blast (`09F`)** : comparer une plaque,
+- [ ] **Solo/Coop — Jugement et Techno-Buster (`09F`)** : comparer une plaque,
   chacun des quatre modules, un objet non correspondant et aucun objet ; vérifier
   type, efficacité, animation et PV. Répéter sous Embargo/Maladresse, en double
   avec hôte et invité, puis après reconnexion. Noter séparément toute variante
   d'animation source absente ou incorrecte ; ne pas en inventer une.
 
-`096` (Don Naturel) et `0F9` (Champ Magique) sont maintenant à valider
+`096` (Don Naturel) et `0F9` (Zone Magique) sont maintenant à valider
 visuellement si les capacités et baies nécessaires sont disponibles :
 
 - [ ] **Solo — Don Naturel (`096`)** : utiliser successivement une baie de
   type/puissance 80, 90 et 100 du catalogue ; comparer type, efficacité,
   dégâts, animation et consommation après impact. Vérifier qu'une immunité
   garde la baie, et que l'attaque échoue sans baie ou sous Tension.
-- [ ] **Solo — Champ Magique (`0F9`)** : lancer le champ avec une baie Sitrus
+- [ ] **Solo — Zone Magique (`0F9`)** : lancer le champ avec une baie Sitrus
   et un objet de type plaque/module, puis contrôler que leurs effets sont
   suspendus sans perdre les objets. Vérifier l'interdiction d'un objet de
   Dresseur, l'expiration après cinq fins de tour et l'annulation par un second
@@ -183,18 +184,18 @@ pas modifier une sauvegarde personnelle pour fabriquer ce scénario.
 
 ## Recette du lot objets `0F2`–`0F7` (à exécuter)
 
-- [ ] **Solo, transfert** : échanger deux objets différents avec Trick ou
-  Switcheroo, puis donner un objet avec Bestow. Vérifier les deux icônes et
-  messages, l'échec sur cible déjà équipée pour Bestow et le blocage par
-  Sticky Hold. Après combat, contrôler la restitution ou conservation selon
+- [ ] **Solo, transfert** : échanger deux objets différents avec Tour de Magie ou
+  Passe-Passe, puis donner un objet avec Passe-Cadeau. Vérifier les deux icônes et
+  messages, l'échec sur cible déjà équipée pour Passe-Cadeau et le blocage par
+  Glu. Après combat, contrôler la restitution ou conservation selon
   le type de rencontre.
-- [ ] **Solo, consommation** : brûler une baie puis une Gemme avec Incinerate,
-  voler une baie Sitrus ou Ganlon avec Bug Bite/Pluck, consommer un objet puis
-  utiliser Recycle. Vérifier PV/stages, disparition du bon objet et absence
+- [ ] **Solo, consommation** : brûler une baie puis une Gemme avec Calcination,
+  voler une baie Sitrus ou Ganlon avec Piqûre/Picore, consommer un objet puis
+  utiliser Recyclage. Vérifier PV/stages, disparition du bon objet et absence
   de récupération d'une baie détruite ou volée.
 - [ ] **Solo, Lancement** : lancer un objet lourd (Pierre Dure ou Boule Fer),
   une baie, puis Orbe Flamme. Comparer puissance, effet de baie/statut et
-  consommation. Refaire avec Klutz, Champ Magique et sans objet : la capacité
+  consommation. Refaire avec Klutz, Zone Magique et sans objet : la capacité
   doit échouer sans lancer l'objet.
 - [ ] **Multi-coups** : placer Oran/Sitrus ou Ganlon sur la cible d'un coup
   double. Vérifier l'activation entre les deux impacts et la baisse des
@@ -204,7 +205,7 @@ pas modifier une sauvegarde personnelle pour fabriquer ce scénario.
   même inventaire tenu sur les deux écrans. Reconnecter l'invité juste après
   un échange, puis vérifier les objets et leur propriétaire après règlement.
 
-Clonage, Symbiosis après Bug Bite et les états Torment/Heal Block de Mental
+Clonage, Symbiosis après Piqûre et les états Tourmente/Anti-Soin de Mental
 Herb lancé restent des interactions transverses à signaler séparément ; ne
 pas les valider comme closes par les tests ci-dessus.
 
@@ -213,16 +214,16 @@ pas les valider comme closes par les tests ci-dessus.
 - [ ] **Hôte** : l'hôte joue une capacité du lot dans un combat partagé ;
   l'invité voit le même Pokémon ciblé, le même message et les mêmes PV.
 - [ ] **Invité** : l'invité joue à son tour une capacité du lot ; l'hôte voit
-  son action sans lancer localement une seconde résolution. Pour Sketch, seul
+  son action sans lancer localement une seconde résolution. Pour Gribouille, seul
   le propriétaire du Queulorior conserve la nouvelle capacité dans son Équipe.
 - [ ] **Double et rendu distant** : si les deux joueurs participent au duo,
-  vérifier que Pirotecnia touche la barre du bon partenaire adverse chez les
+  vérifier que Rebondifeu touche la barre du bon partenaire adverse chez les
   deux joueurs, sans abîmer le partenaire allié.
 - [ ] **Reconnexion** : après une action du lot et avant de quitter le combat,
   recharger l'onglet de l'invité puis, si possible, celui de l'hôte. Les PV,
   types, capacités et tour courant doivent être cohérents ; aucun tour ne doit
   être rejoué. Après le règlement, vérifier à nouveau l'Équipe propriétaire
-  (Sketch durable ; Mimic temporaire).
+  (Gribouille durable ; Mimique temporaire).
 
 ### Lot sacrifice, Requiem et remplacement (`0E1`–`0EF`, 2026-10-23)
 
@@ -231,15 +232,15 @@ observer aussi l'écran distant et recharger un client avant le remplacement
 ou avant l'échéance de Requiem. Ne pas considérer les codes `0EA`/`0EB`/`0EC`
 comme terminés tant que la fuite sauvage n'est pas raccordée.
 
-- [ ] Sacrifice/Final Gambit : dégâts égaux aux PV courants, utilisateur K.O.,
+- [ ] Sacrifice/Tout ou Rien : dégâts égaux aux PV courants, utilisateur K.O.,
   remplacement proposé ; vérifier aussi une immunité de type.
-- [ ] Souvenir/Memento : Attaque et Attaque Spéciale -2, utilisateur K.O. ;
+- [ ] Souvenir/Souvenir : Attaque et Attaque Spéciale -2, utilisateur K.O. ;
   vérifier un cas de protection aux baisses de statistiques.
 - [ ] Vœu Soin puis Danse-Lune : remplaçant soigné des PV et du statut ;
   Danse-Lune restaure aussi les PP, Vœu Soin ne les restaure pas.
 - [ ] Requiem : décompte visible sur tous les actifs éligibles, abri de
-  Soundproof et K.O. simultanés ; refaire en double puis après reconnexion.
-- [ ] Grudge/Prélèvement Destin : un coup adverse mettant K.O. le lanceur
+  Anti-Bruit et K.O. simultanés ; refaire en double puis après reconnexion.
+- [ ] Rancune/Prélèvement Destin : un coup adverse mettant K.O. le lanceur
   vide les PP du coup ou met K.O. l'attaquant, respectivement.
 - [ ] Faux-Chage : laisser exactement 1 PV ; vérifier l'affichage des deux
   joueurs. Regard Noir : interdire le remplacement volontaire de la cible,
@@ -263,7 +264,7 @@ cadence du remplacement forcé en double.
   la rencontre interdit la fuite.
 - [ ] Hurlement/Cyclone puis Projection/Draco-Queue : fuite de cible
   sauvage de niveau inférieur/égal, échec si niveau supérieur ; contre
-  Dresseur, choix de remplaçant adverse. Vérifier Suction Cups et
+  Dresseur, choix de remplaçant adverse. Vérifier Ventouse et
   Enracinement, puis un cas double avec la bonne cible distante.
 - [ ] Tourbillon : dégâts, piège de 5–6 tours, retrait des PV et blocage
   du changement volontaire ; l'interaction avec Plongée restera à
@@ -282,66 +283,64 @@ cadence du remplacement forcé en double.
 
 ### Charge et recharge `0C2`–`0C8` (à exécuter)
 
-- [ ] En solo, Hiperrayo ou Giga Impacto qui touche impose un tour de
+- [ ] En solo, Ultralaser ou Giga Impact qui touche impose un tour de
   recharge sans nouveau PP ; vérifier qu'un échec ou une immunité ne
   déclenche pas la recharge.
-- [ ] Tester Rayo Solar/Cuchilla Solar sous soleil (immédiat, Power Herb
+- [ ] Tester Lance Soleil/Lame Solaire sous soleil (immédiat, Herbe Pouvoir
   conservée), puis sous autre météo (charge et puissance réduite).
-- [ ] Tester Cabezazo : Défense +1 pendant la charge, une seule fois ;
-  vérifier qu'une Power Herb permet charge et attaque dans le même tour.
+- [ ] Tester Coud'Krâne : Défense +1 pendant la charge, une seule fois ;
+  vérifier qu'une Herbe Pouvoir permet charge et attaque dans le même tour.
 - [ ] Tester les effets secondaires de `0C5`/`0C6`/`0C7` si ces attaques
   sont accessibles dans la sauvegarde de test ; sinon noter « bloqué ».
 - [ ] Refaire charge/recharge en Coop hôte puis invité, avec observation
   distante, et reconnecter le participant entre les deux tours : même
   verrouillage, même PP, même objet consommé et même résultat.
 
-### Beat Up, semi-invulnérabilité et Sky Drop `0C1`, `0C9`–`0CE` (à exécuter)
+### Baston et semi-invulnérabilité `0C1`, `0C9`–`0CE` (à exécuter)
 
-- [ ] Beat Up : comparer nombre de coups et puissance avec équipiers
+- [ ] Baston : comparer nombre de coups et puissance avec équipiers
   indemnes, empoisonnés et K.O. ; refaire avec un allié actif en double.
-- [ ] Vol, Creusement, Plongée, Rebond et Shadow Force : premier tour de
+- [ ] Vol, Creusement, Plongée, Rebond et Revenant : premier tour de
   charge sans dégâts, esquive d'une attaque ordinaire, second tour forcé
-  sans nouveau PP ; essayer Power Herb, sommeil/interruption et reconnexion.
+  sans nouveau PP ; essayer Herbe Pouvoir, sommeil/interruption et reconnexion.
 - [ ] Vérifier les exceptions source : Rafale sur une cible en vol,
-  Tourbillon sur Plongée, Magnitude sur Creusement ; vérifier le
-  doublement de puissance, et Shadow Force à travers Protection.
-- [ ] Sky Drop : la cible ne joue ni pendant l'enlèvement ni après sa
-  libération au second tour ; tester type Vol/Lévitation, cible lourde,
-  K.O. du porteur et une cible positionnée en double. Reconnecter les
-  deux clients entre enlèvement et libération et comparer le rendu distant.
+  Tourbillon sur Plongée, Ampleur sur Creusement ; vérifier le
+  doublement de puissance, et Revenant à travers Protection.
+- [ ] Fonction `0CE` : aucune capacité correspondante n'est présente dans
+  les données locales ; noter « bloqué » tant qu'aucune capacité source
+  ne permet de préparer ce cas.
 - [ ] Refaire une charge aérienne avec Gravité déjà active si une capacité
-  de Gravité est disponible ; sinon marquer « bloqué » (pose de Gravité
-  non encore portée dans le moteur).
+  de Gravité est disponible ; sinon marquer « bloqué ».
 
 ### Terrain, ciblage et gardes `075`, `076`, `078`, `0A4`, `0A6`, `0A8`, `0A9`, `0AB`, `0AC`, `0AE` (à exécuter)
 
-- [ ] En solo, vérifier Surf sur Plongée, Séisme sur Creusement et Twister
+- [ ] En solo, vérifier Surf sur Plongée, Séisme sur Creusement et Ouragan
   sur Vol/Rebond : coup malgré la semi-invulnérabilité et dégâts accrus.
   Refaire Séisme sous Champ Herbu : dégâts réduits.
-- [ ] Tester Secret Power sur plusieurs terrains (électrique, herbu,
+- [ ] Tester Force Cachée sur plusieurs terrains (électrique, herbu,
   brumeux) et environnements accessibles : effet secondaire, message,
   animation et fallback si l'animation spécifique manque.
-- [ ] Verrouiller une cible avec Lock-On, puis employer une attaque peu
+- [ ] Verrouiller une cible avec Verrouillage, puis employer une attaque peu
   précise au tour suivant ; reconnecter entre les deux tours. Vérifier
-  Miracle Eye sur Ténèbres et `0A9` face aux hausses de Défense/esquive.
-- [ ] En double, Quick Guard doit protéger le partenaire d'une attaque
-  prioritaire, Wide Guard d'une attaque de zone, puis expirer au tour
+  Oeil Miracle sur Ténèbres et `0A9` face aux hausses de Défense/esquive.
+- [ ] En double, Prévention doit protéger le partenaire d'une attaque
+  prioritaire, Garde Large d'une attaque de zone, puis expirer au tour
   suivant. Refaire en hôte puis invité, observer le rendu distant.
-- [ ] Mirror Move : copier une capacité admissible, refuser une capacité
+- [ ] Mimique : copier une capacité admissible, refuser une capacité
   non copiable, vérifier PP propre, cibles multiples et attaque à deux
   tours copiée. Reconnecter pendant la charge et comparer les deux vues.
 
 ## Contraintes et renvoi `0B1`, `0B7`, `0B8`, `0BB` (à exécuter)
 
-- [ ] En solo, utiliser Magic Coat avant une capacité de statut réfléchissable :
+- [ ] En solo, utiliser Reflet Magik avant une capacité de statut réfléchissable :
   elle doit revenir au lanceur et ne pas être réfléchie en boucle. Refaire
   avec une capacité non réfléchissable, puis au tour suivant.
-- [ ] Appliquer Torment : la dernière capacité ne doit pas être répétable,
+- [ ] Appliquer Tourmente : la dernière capacité ne doit pas être répétable,
   une autre reste possible ; une capacité à deux tours ne doit pas être
   interrompue entre sa charge et son impact.
-- [ ] En double, Imprison doit verrouiller une capacité commune chez les
+- [ ] En double, Possessif doit verrouiller une capacité commune chez les
   deux adversaires, mais non chez son partenaire ; vérifier la fin au switch.
-- [ ] Appliquer Heal Block avant un soin direct, Anneau Hydro, Racines et
+- [ ] Appliquer Anti-Soin avant un soin direct, Anneau Hydro, Racines et
   Vœu ; aucun soin ne doit passer avant expiration. Vérifier le retour du
   soin et le compteur de tours après reconnexion.
 - [ ] Refaire ces cas comme hôte puis invité, comparer le rendu distant
@@ -350,21 +349,21 @@ cadence du remplacement forcé en double.
 
 ## Capacités appelées `0AF`, `0B0`, `0B2`, `0B4`, `0B5` (à exécuter)
 
-- [ ] Copycat après une capacité adverse, puis après une capacité alliée :
-  vérifier la dernière capacité globale, les PP et le ciblage en double.
-  Reconnecter avant le tour de Copycat.
-- [ ] Me First avant et après la cible : copie seulement si la cible n'a
+- [ ] Fonction `0AF` : aucune capacité correspondante n'est présente dans
+  les données locales ; noter « bloqué » tant qu'aucune capacité source
+  ne permet de préparer ce cas.
+- [ ] Moi d'Abord avant et après la cible : copie seulement si la cible n'a
   pas agi, dégâts majorés ; vérifier une attaque copiée à deux tours
   après reconnexion entre charge et impact.
-- [ ] Snatch avant une hausse de statistiques, un soin et une garde
+- [ ] Saisie avant une hausse de statistiques, un soin et une garde
   d'équipe marqués `d` : effet reçu par le guetteur, pas l'utilisateur.
   Vérifier deux guetteurs adverses en double et l'expiration en fin de tour.
-- [ ] Sleep Talk endormi puis réveillé : tirage admissible, PP correct,
-  message et animation ; Assist avec un partenaire actif puis un membre
+- [ ] Blabla Dodo endormi puis réveillé : tirage admissible, PP correct,
+  message et animation ; Assistance avec un partenaire actif puis un membre
   de réserve K.O. Faire chaque cas comme hôte puis invité et comparer
   le rendu distant après reconnexion.
-- [ ] Metronome `0B6` : **ne pas encore valider** ; la mécanique reste
-  non portée tant que le catalogue complet n'est pas autoritaire en Coop.
+- [ ] Métronome `0B6` : utiliser le scénario détaillé dans le lot des
+  sept dernières fonctions ci-dessous ; le catalogue est autoritaire en Coop.
 
 ## Fonctions `0BF`, `10A`, `122`, `144`, `019`, `112`–`114`, `140` (à exécuter)
 
@@ -374,7 +373,7 @@ cadence du remplacement forcé en double.
 - [ ] Choc Psy : comparer un adversaire à Défense faible et Défense Spéciale
   forte ; Flying Press : tester une cible Plante, puis une cible après
   Lilliput (précision et dégâts).
-- [ ] Stockpile trois fois, puis Avale à PV entamés ; recommencer avec
+- [ ] Stockage trois fois, puis Avale à PV entamés ; recommencer avec
   Relâche. Vérifier compteurs, défenses et leur retour à zéro après
   utilisation et après reconnexion.
 - [ ] Aromathérapie/Glas de Soin : empoisonner le lanceur, son partenaire
@@ -382,7 +381,7 @@ cadence du remplacement forcé en double.
   hôte, côté invité, puis après reconnexion. Essayer un partenaire dont le
   talent immunise au type Plante et signaler tout écart.
 - [ ] Dernier Recours : échoue avant les autres capacités connues puis
-  touche après leur usage ; Venom Drench : seul l'adversaire empoisonné
+  touche après leur usage ; Piège de Venin : seul l'adversaire empoisonné
   perd Attaque, Attaque Spéciale et Vitesse, y compris en Duo.
 - [ ] Pour chaque cas, comparer les deux clients Coop, le rendu du joueur
   distant, puis restaurer la room et constater le même état.
@@ -391,19 +390,19 @@ cadence du remplacement forcé en double.
 
 - [ ] À zéro PP, Lutte doit pouvoir toucher un Spectre, sans bonus de type,
   puis retirer un quart des PV maximum du lanceur après impact.
-- [ ] Crocs de Feu/Glace : vérifier séparément brûlure/gel et apeurement ;
+- [ ] Crocs Feu/Crocs Givre : vérifier séparément brûlure/gel et apeurement ;
   tester un adversaire immunisé au statut puis un talent empêchant
   l'apeurement.
 - [ ] Blizzard sous grêle ; Vent Violent sous pluie puis soleil : comparer
   précision et confusion. Ronflement doit échouer éveillé, attaquer
   endormi ; Babil doit pouvoir confondre après son impact.
-- [ ] Refresh guérit brûlure, poison ou paralysie et échoue sans statut
-  compatible. Voile Sacré protège le camp, refuse un second lancement
-  et expire après cinq tours. Psycho Shift transfère un statut valide,
+- [ ] Regénération guérit brûlure, poison ou paralysie et échoue sans statut
+  compatible. Rune Protect protège le camp, refuse un second lancement
+  et expire après cinq tours. Échange Psy transfère un statut valide,
   mais le conserve si la cible est immunisée ou déjà affectée.
 - [ ] Répéter en solo, comme hôte puis invité Coop ; comparer le rendu
   distant, reconnecter chaque client puis restaurer la room pendant
-  Voile Sacré. Consigner les écarts visuels et les animations fallback.
+  Rune Protect. Consigner les écarts visuels et les animations fallback.
 
 ## Fonctions `0FF`–`105`, `118`, `119`, `11F` (à exécuter)
 
@@ -427,7 +426,7 @@ cadence du remplacement forcé en double.
 
 ## Fonctions `11A`–`11C`, `124`, `153`–`156`, `905`, `927` (à exécuter)
 
-- [ ] Télékinésie sur une cible au sol : vérifier trois tours, précision
+- [ ] Lévikinésie sur une cible au sol : vérifier trois tours, précision
   garantie et immunité au Sol ; activer Gravité puis vérifier la chute.
   Uppercut doit toucher un adversaire en Vol/Bond ; Anti-Air ou Mille
   Flèches doit l'atteindre puis le rendre vulnérable au Sol.
@@ -435,7 +434,7 @@ cadence du remplacement forcé en double.
   Défense et Défense Spéciale différentes, puis couper l'effet au second
   lancement. Vérifier son expiration après cinq tours.
 - [ ] Toile Gluante : entrant au sol, volant, avec Grosses Bottes et
-  talent Contestation/Clear Body ; vérifier Vitesse et annonces en Duo.
+  talent Contestation/Corps Sain ; vérifier Vitesse et annonces en Duo.
 - [ ] Poser successivement les quatre champs, vérifier leur remplacement
   et expiration. Tester soin sous Champ Herbu, sommeil/statut sous champs
   Électrik/Brumeux, puis une attaque prioritaire sous Champ Psychique.
@@ -451,17 +450,17 @@ cadence du remplacement forcé en double.
   d'Attaque faible/forte, puis modifier leurs stades d'Attaque.
   Synchronoise : attaquer en simple et Duo des cibles qui partagent ou
   non un type avec le lanceur ; vérifier chaque cible séparément.
-- [ ] Liofilisation : comparer une cible Eau et une cible neutre,
+- [ ] Lyophilisation : comparer une cible Eau et une cible neutre,
   puis vérifier le gel éventuel et les immunités au statut.
-- [ ] Rugissement de Guerre, Confidence, Onde Anormale : comparer les
+- [ ] Rugissement de Guerre, Confidence, Ondes Étranges : comparer les
   stades d'Attaque/Attaque Spéciale, les protections, Anti-Bruit et
-  une immunité Électrik sur Onde Anormale.
+  une immunité Électrik sur Ondes Étranges.
 - [ ] Halloween puis Malédiction Sylvestre : vérifier l'ajout puis le
   remplacement du troisième type et le retour aux types initiaux au
   changement. Poudre Magique doit rendre la cible **Psy** et échouer
   sur un Pokémon déjà exclusivement Psy.
-- [ ] Absorbeforce : vérifier soin avant baisse de l'Attaque adverse,
-  bonus Grosse Racine, Bloc Soin et dégâts sous Suintement.
+- [ ] Vole-Force : vérifier soin avant baisse de l'Attaque adverse,
+  bonus Grosse Racine, Anti-Soin et dégâts sous Suintement.
 - [ ] Répéter comme hôte puis invité, comparer le rendu distant et
   les événements de type/stade/PV ; reconnecter et redémarrer la room
   avec un type temporaire et une baisse d'Attaque encore actifs.
@@ -469,130 +468,145 @@ cadence du remplacement forcé en double.
 ## Lot offensif `175`–`942` — à exécuter
 
 - [ ] En solo, comparer Corps Perdu avec Défense faible/forte ; Fil Toxique
-  contre une cible immunisée au poison puis non immunisée ; Bolt Beak
-  avant/après l'action adverse ; Garra Nociva sur plusieurs essais.
+  contre une cible immunisée au poison puis non immunisée ; Prise de Bec
+  avant/après l'action adverse ; Griffes Funestes sur plusieurs essais.
 - [ ] En solo, activer Champ Électrifié/Psychique/Herbu : contrôler la
-  puissance de Rising Voltage/Expanding Force et la priorité de Grassy
-  Glide. Vérifier le coût de Metaláser avec/sans Garde Magik, puis les
-  trois impacts critiques d'Azote Torrencial à travers Abri.
-- [ ] En Duo, confirmer que Vaste Force touche les deux adversaires
-  seulement sous Champ Psychique et que Make It Rain baisse l'Attaque
+  puissance de Monte-Tension/Vaste Pouvoir et la priorité de Gliss'Herbe.
+  Vérifier le coût de Métalaser avec/sans Garde Magik, puis les
+  trois impacts critiques de Torrent de Coups à travers Abri.
+- [ ] En Duo, confirmer que Vaste Pouvoir touche les deux adversaires
+  seulement sous Champ Psychique et que Ruée d'Or baisse l'Attaque
   Spéciale et produit des pièces pour chaque cible effectivement touchée.
-- [ ] Gagner puis perdre un combat avec Pay Day/Make It Rain : contrôler
+- [ ] Gagner puis perdre un combat avec Jackpot/Ruée d'Or : contrôler
   la somme d'argent, son plafond et l'absence de gain à la défaite.
   Répéter comme hôte puis invité ; vérifier le règlement privé, le rendu
   distant et la même récompense après reconnexion et redémarrage de room.
 
 ## Lot offensif `204`–`938` — à exécuter
 
-- [ ] En solo, faire échouer Poltergeist sans objet, sous Embargo, sous
-  Champ Magique et avec Maladresse, puis vérifier qu'il touche une cible
+- [ ] En solo, faire échouer Esprit Frappeur sans objet, sous Embargo, sous
+  Zone Magique et avec Maladresse, puis vérifier qu'il touche une cible
   portant un objet actif.
-- [ ] Comparer la priorité de Bruma Explosiva sur Champ Brumeux et sur
-  les autres champs. Avec Pirueta Helada, contrôler la disparition du
+- [ ] Comparer la priorité d'Explo-Brume sur Champ Brumeux et sur
+  les autres champs. Avec Cryo-Pirouette, contrôler la disparition du
   champ seulement après un coup réussi.
-- [ ] Comparer les dégâts de Sable Ardiente sur cible normale/brûlée/
-  paralysée, puis Infernal Parade et Barb Barrage avec/sans le statut
+- [ ] Comparer les dégâts de Sabrûle sur cible normale/brûlée/
+  paralysée, puis Cortège Funèbre et Multitoxik avec/sans le statut
   requis ; vérifier brûlure/poison secondaires et leurs immunités.
-- [ ] En Duo, faire poser Piège de Roc par Stone Axe puis changer un
+- [ ] En Duo, faire poser Piège de Roc par Hache de Pierre puis changer un
   Pokémon adverse ; vérifier le camp touché, un seul piège actif et les
   événements reçus par les deux joueurs.
-- [ ] Tester Triple Arrows sur plusieurs coups : baisse de Défense et
-  peur peuvent se produire séparément. Tester Fickle Beam sur plusieurs
+- [ ] Tester Triple Flèche sur plusieurs coups : baisse de Défense et
+  peur peuvent se produire séparément. Tester Laser Hasard sur plusieurs
   coups pour voir les deux puissances ; comparer la trace de l'hôte.
-- [ ] Avec Jaw Lock, tenter un changement volontaire des deux côtés,
+- [ ] Avec Croque Fort, tenter un changement volontaire des deux côtés,
   puis essayer une cible Spectre et un piège déjà actif. Refaire comme
   hôte et invité ; reconnecter et redémarrer la room pendant que le
   piège ou les rocs sont encore actifs, puis vérifier le rendu distant.
 
 ## Lot `10F`–`CF14` — à exécuter
 
-- [ ] Endormir une cible, appliquer Nightmare, vérifier la perte d'un
+- [ ] Endormir une cible, appliquer Cauchemar, vérifier la perte d'un
   quart des PV en fin de tour, son arrêt au réveil/retrait et Garde
   Magik. Refaire comme invité ; comparer le texte et les PV chez l'hôte,
   puis après reconnexion et redémarrage de la room.
-- [ ] Faire achever une cible par Fell Stinger puis comparer l'Attaque
-  gagnée au cas où la cible survit. Tester Escaramuza à l'entrée, après
+- [ ] Faire achever une cible par Dard Mortel puis comparer l'Attaque
+  gagnée au cas où la cible survit. Tester Escarmouche à l'entrée, après
   un autre mouvement et après un changement normal sans action préalable.
-- [ ] Tester Parting Shot avec et sans remplaçant, sous Anti-Bruit et
+- [ ] Tester Dernier Mot avec et sans remplaçant, sous Anti-Bruit et
   Miroir Magik ; vérifier les deux baisses et le choix de remplacement
   personnel en solo, hôte et invité.
-- [ ] Vérifier que CargaGresion augmente la Défense Spéciale et que le
-  prochain coup Électrik profite de Charge. Atrapamoscas et Disparo
-  Espina doivent infliger leurs seuls dégâts standard.
-- [ ] En simple et Duo, poser Ceaseless Edge/Georrafaga jusqu'à trois
-  couches de Picots, puis utiliser Mortal Spin sur une ou deux cibles.
+- [ ] Vérifier que Chargression augmente la Défense Spéciale et que le
+  prochain coup Électrik profite de Chargeur. Finsecte et Tirépine
+  doivent infliger leurs seuls dégâts standard.
+- [ ] En simple et Duo, poser Vagues à Lames/Géorafale jusqu'à trois
+  couches de Picots, puis utiliser Toupie Eclat sur une ou deux cibles.
   Vérifier poison, retrait des pièges/Vampigraine/entrave de son propre
   camp et nettoyage même si la cible tombe K.O.
-- [ ] Tearful Look doit baisser Attaque et Attaque Spéciale malgré une
+- [ ] Larme À l'Oeil doit baisser Attaque et Attaque Spéciale malgré une
   esquive adverse élevée ; contrôler le rendu des deux changements de
   cran chez les participants.
 
 ## Lot `115`–`937` — à exécuter
 
-- [ ] En simple, vérifier que Focus Punch échoue après avoir reçu des
+- [ ] En simple, vérifier que Mitra-Poing échoue après avoir reçu des
   dégâts dans le tour et réussit sans dégâts. Comparer la perte de PP.
-- [ ] En Duo, cibler l'allié derrière Follow Me puis Rage Powder ;
-  vérifier la redirection, l'immunité Plante/Overcoat/Safety Goggles au
+- [ ] En Duo, cibler l'allié derrière Par ici puis Poudre Fureur ;
+  vérifier la redirection, l'immunité Plante/Envelocape/Lunettes Filtres au
   pollen et la dernière activation lorsque les deux alliés l'utilisent.
-- [ ] En Duo, faire agir After You sur un allié lent, puis Quash sur un
+- [ ] En Duo, faire agir Après Vous sur un allié lent, puis À la Queue sur un
   adversaire rapide ; vérifier l'ordre visible chez hôte et invité.
-  Tester Ally Switch avant une attaque ciblée et après reconnexion.
-- [ ] Comparer Dragon Darts en simple et Duo : deux coups au total, un
+  Tester Interversion avant une attaque ciblée et après reconnexion.
+- [ ] Comparer Draco-Flèches en simple et Duo : deux coups au total, un
   sur chaque adversaire vivant en Duo, dégâts et animations cohérents.
-- [ ] Bloquer une attaque de contact avec Baneful Bunker : aucun dégât
+- [ ] Bloquer une attaque de contact avec Blockhaus : aucun dégât
   reçu, attaquant empoisonné si vulnérable. Vérifier l'échec si personne
   ne peut encore agir et les usages consécutifs.
-- [ ] Tester Meteor Beam, Lanza Relampago et Electro Shot sans objet,
-  avec Power Herb et Electro Shot sous pluie : statistique gagnée une
+- [ ] Tester Laser Météore, Javelot-Foudre et Fulgurayon sans objet,
+  avec Herbe Pouvoir et Fulgurayon sous pluie : statistique gagnée une
   seule fois, PP consommé une seule fois, dégâts au bon tour. Refaire
   comme hôte et invité ; reconnecter/redémarrer la room pendant la
   charge et comparer l'état et le rendu distant.
 
-## Lot Pledge, boucliers et Truco Huevo — à exécuter
+## Lot Aires, boucliers et Oeufp-là! — à exécuter
 
-- [ ] En simple, vérifier Dragon Hammer, les trois Pledge isolés et
-  Belch (`162`) ; vérifier séparément que Dulce Festín (`158`) échoue
+- [ ] En simple, vérifier Draco-Marteau, Aire de Feu, Aire d'Eau et Aire d'Herbe
+  isolées, puis Eructation (`162`) ; vérifier séparément que Conphorie (`158`) échoue
   avant une baie mangée et réussit après, sans perdre le drapeau lors
   d'une reconnexion. Noter l'écart de codes entre PBS et script Ruby.
-- [ ] En Duo, jouer les trois paires de Pledge dans les deux ordres.
+- [ ] En Duo, jouer les trois paires d'Aires dans les deux ordres.
   Vérifier la file d'actions, les PP, le type et les dégâts du coup
   combiné, puis Mer de flammes, Marécage et Arc-en-ciel sur plusieurs
   tours chez l'hôte et l'invité, y compris après reconnexion.
-- [ ] Vérifier King's Shield contre attaque de contact et capacité de
-  statut, puis Spiky Shield contre contact et attaquant Garde Magik.
+- [ ] Vérifier Bouclier Royal contre attaque de contact et capacité de
+  statut, puis Pico-Défense contre contact et attaquant Garde Magik.
   Répéter les protections plusieurs tours pour contrôler le taux de
   réussite et le rendu distant.
-- [ ] Utiliser Truco Huevo plusieurs fois pour voir ses mouvements
-  appelés, notamment Agilité, Burbuja en Duo, Viraje et Future Sight.
+- [ ] Utiliser Oeufp-là! plusieurs fois pour voir ses mouvements
+  appelés, notamment Agilité, Ecume en Duo, Eau Revoir et Prescience.
   Vérifier l'absence de PP supplémentaire et l'animation correspondant
-  au tirage réel ; pour Future Sight, changer la cible de place puis
+  au tirage réel ; pour Prescience, changer la cible de place puis
   reconnecter/redémarrer la room avant le coup différé.
 
 ## Lot des sept dernières fonctions — à exécuter
 
-- [ ] Utiliser Metronome plusieurs fois en solo, puis comme hôte et
+- [ ] Utiliser Métronome plusieurs fois en solo, puis comme hôte et
   invité Coop. Comparer mouvement tiré, PP consommés, cible et animation
   affichée. Vérifier un mouvement appelé à charge, puis reconnecter la
   room entre les deux tours.
-- [ ] Créer un Substitute avec plus d'un quart des PV, puis tenter une
-  attaque, un statut, un mouvement sonore, Infiltrator et une capacité à
+- [ ] Créer un Clonage avec plus d'un quart des PV, puis tenter une
+  attaque, un statut, un mouvement sonore, Infiltration et une capacité à
   plusieurs coups. Vérifier les PV du bouclier, sa disparition, Relais,
   puis reconnexion/redémarrage côté hôte et invité.
-- [ ] Vérifier Burn Up/Electropalmas/Baguetazo avec et sans type requis :
+- [ ] Vérifier Flamme Ultime/Double Décharge/Baguette avec et sans type requis :
   dégâts, retrait du type même sur esquive, refus du second usage et
-  forme de Sirfetch'd après Baguetazo. Contrôler retrait/remplacement,
+  forme de Sirfetch'd après Baguette. Contrôler retrait/remplacement,
   sauvegarde et rendu distant.
-- [ ] Vérifier Condena de Mago sur cible ordinaire, Feu pur, Multitype
-  et Substitute ; comparer type, messages et rendu chez les participants.
-- [ ] Comparer Petromazazo contre une cible faible et résistante au type
+- [ ] Vérifier Carbonisation sur cible ordinaire, Feu pur, Multi-Type
+  et Clonage ; comparer type, messages et rendu chez les participants.
+- [ ] Comparer Arbroche contre une cible faible et résistante au type
   Plante à efficacité Roche équivalente ; vérifier le multiplicateur.
-- [ ] Utiliser Eclipse avec Attaque supérieure, puis Attaque Spéciale
+- [ ] Utiliser Éclipse avec Attaque supérieure, puis Attaque Spéciale
   supérieure ; vérifier catégorie, dégâts, alternance de forme et
   statistiques de Constellar, sauvegarde et reconnexion Coop.
-- [ ] Tenter Corazón Roto au-dessus puis au-dessous d'un quart des PV,
+- [ ] Tenter Emportombe au-dessus puis au-dessous d'un quart des PV,
   contre cible de niveau supérieur, Fermeté, puis Brise Moule. Vérifier
   précision, K.O. et état distant.
+
+## Vérification Fermeté et Clonage — à exécuter
+
+- [ ] À PV pleins, faire subir un coup fatal à un Pokémon avec Fermeté
+  et Ceinture Force : il reste à 1 PV et conserve la Ceinture Force.
+  Refaire avec Brise Moule puis Gaz Inhibiteur : Fermeté ne s'active pas
+  et la Ceinture Force se consomme. Vérifier le même état en solo, chez
+  l'hôte et chez l'invité après reconnexion.
+- [ ] À PV entamés, tenter un OHKO contre Fermeté, puis avec Brise Moule ;
+  contrôler l'immunité puis son contournement et les messages affichés.
+- [ ] Avec un Clonage presque brisé, subir une attaque à plusieurs coups :
+  le premier détruit le bouclier, le suivant touche les PV. Comparer
+  ensuite un statut direct bloqué, un son et Infiltration qui passent,
+  puis transmettre le bouclier par Relais. Reconnecter et redémarrer la
+  room pour vérifier le bouclier chez les deux participants.
 
 ## Observations à reporter
 
@@ -607,6 +621,6 @@ rester ouvert même si le calcul des dégâts est correct.
 Limites déjà connues, à ne pas confondre avec un nouveau défaut : les
 interactions visuelles de Clonage restent à valider en jeu ; Bouclier Rusé
 garde des raccords transverses ouverts ; l'interaction
-Pirotecnia/Lien Parental requiert un audit source dédié ; les animations absentes
+Rebondifeu/Lien Parental requiert un audit source dédié ; les animations absentes
 de `move2anim.dat`, dont `SMELLINGSALT`, utilisent un fallback explicite, jamais
 une animation inventée.

@@ -66,6 +66,9 @@ export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT",
   "SHOCKDRIVE", "BURNDRIVE", "CHILLDRIVE", "DOUSEDRIVE",
   "FLAMEORB", "TOXICORB", "POISONBARB", "LIGHTBALL", "KINGSROCK", "RAZORFANG",
   "MENTALHERB", "WHITEHERB", "POWERHERB", "IRONBALL", "HARDSTONE", "THICKCLUB", "QUICKCLAW",
+  "SILKSCARF", "BLACKBELT", "SHARPBEAK", "SOFTSAND", "SILVERPOWDER", "SPELLTAG", "METALCOAT",
+  "CHARCOAL", "MYSTICWATER", "MIRACLESEED", "MAGNET", "TWISTEDSPOON", "NEVERMELTICE",
+  "DRAGONFANG", "Tela", "BLACKGLASSES",
   "FISTPLATE", "SKYPLATE", "TOXICPLATE", "EARTHPLATE", "STONEPLATE", "INSECTPLATE", "SPOOKYPLATE", "IRONPLATE", "FLAMEPLATE", "SPLASHPLATE", "MEADOWPLATE", "ZAPPLATE", "MINDPLATE", "ICICLEPLATE", "DRACOPLATE", "DREADPLATE", "PIXIEPLATE", "TABLANEUTRA"] as const;
 /** Source item identities are validated at ingestion; Fling also admits its full Ruby item table. */
 export type HeldItem = typeof SUPPORTED_HELD_ITEMS[number] | `${string}BERRY` | (string & {});
@@ -635,7 +638,9 @@ export type TeamBattleEvent =
       readonly targetMoveIndex: number | null;
       readonly statusCured: MajorStatusState["kind"] | null; readonly revived: boolean;
       readonly statRaised: BattleStat | null; readonly stagesRaised: number;
-      readonly happinessChanged: number };
+      readonly happinessChanged: number; readonly focusEnergyRaised?: number;
+      readonly confusionCured?: boolean; readonly infatuationCured?: boolean;
+      readonly mistTurnsStarted?: number; readonly escaped?: boolean };
 
 export type DoubleBattleEvent = TeamBattleEvent | {
   readonly type: "positionedActionResolved";

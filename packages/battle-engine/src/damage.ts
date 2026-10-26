@@ -4,7 +4,7 @@ import { effectiveMoveCategory, effectiveMoveType, hasHighCriticalRate, hasMoldB
   isKickingMove, isRecklessBoostedMove, isSoundMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
-import { PLATE_TYPES } from "./held-item-types.js";
+import { PLATE_TYPES, TYPE_BOOST_HELD_ITEM_TYPES } from "./held-item-types.js";
 import { naturalGiftProfile } from "./natural-gift.js";
 import { resistBerryApplies } from "./battle-berries.js";
 import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
@@ -332,6 +332,8 @@ export function calculateDamage(
   if (attackerItemActive && attacker.heldItem !== null && PLATE_TYPES[attacker.heldItem] === moveType) {
     statusModifier *= 1.2;
   }
+  if (attackerItemActive && attacker.heldItem !== null
+    && TYPE_BOOST_HELD_ITEM_TYPES[attacker.heldItem] === moveType) statusModifier *= 1.2;
   if (!ignoresDefenderAbility && defender.ability === "DRYSKIN" && moveType === "FIRE") statusModifier *= 1.25;
   if (!ignoresDefenderAbility && defender.ability === "HEATPROOF" && moveType === "FIRE") statusModifier *= 0.5;
   if (context.reflect && move.category === "Physical" && !critical) statusModifier *= 0.5;

@@ -468,9 +468,16 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   Le resolveur expose deja les
   evolutions devenues eligibles, mais la transformation et sa scene restent dans
   `SOLO-EVOLUTION-1`.
-- Les autres effets d'objets tenus et objets de combat volatils restent a porter
-  avant fermeture. Les 21 pierres/objets d'evolution sont deja raccordes au lot
-  evolution et ne constituent plus une dette de ce lot.
+- Le lot du 2026-10-26 ferme les objets ordinaires de combat ayant un handler
+  source : 33/33, dont Puissance, Garde-Stats, les flûtes et les objets de fuite.
+  Les soins terrain/combat (31/31) et baies curatives (9/9) sont également
+  couverts ; l'audit distingue dix entrées PBS sans handler source complet.
+  Les 18 objets tenus renforçant un type sont ensuite portés et audités 18/18
+  dans le calcul commun ; leur recette manuelle reste ouverte. Les 27 outils de
+  terrain sont inventoriés séparément, dont huit usages restent à raccorder.
+  Les autres familles d'objets tenus restent à auditer et porter avant fermeture.
+  Les 21 pierres/objets d'évolution sont déjà raccordés au lot
+  évolution et ne constituent plus une dette de ce lot.
 
 ### SOLO-CAPTURE-1 — Capture complete
 

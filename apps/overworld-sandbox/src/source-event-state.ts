@@ -36,6 +36,8 @@ export interface SourceEventState {
   readonly preferredFishingRod?: SourceFishingRod;
   /** Personal and persisted; only the resulting encounter is presented to Coop participants. */
   readonly typeAmulet: SourceTypeAmuletState | null;
+  /** Personal field-item effects; persisted locally, with resulting encounters sent to the Coop room. */
+  readonly fieldItemEffects: SourceFieldItemEffects;
   /** Compteur personnel des pas, restauré après reconnexion, pour les effets périodiques comme le bonheur. */
   readonly happinessSteps: number;
   readonly wildEncounterSteps: number;
@@ -48,6 +50,17 @@ export interface SourceTypeAmuletState {
   readonly type: string;
   readonly stepsRemaining: number;
 }
+
+export interface SourceFieldItemEffects {
+  readonly repelSteps: number;
+  readonly flute: "high" | "low" | null;
+  readonly shinyNextWildEncounter: boolean;
+  readonly escapePoint: SourceCheckpoint | null;
+}
+
+export const EMPTY_SOURCE_FIELD_ITEM_EFFECTS: SourceFieldItemEffects = Object.freeze({
+  repelSteps: 0, flute: null, shinyNextWildEncounter: false, escapePoint: null,
+});
 
 export type SourceFishingRod = "OLDROD" | "GOODROD" | "SUPERROD";
 
@@ -112,6 +125,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   pendingEncounter: null,
   nextWildBattleStages: null,
   typeAmulet: null,
+  fieldItemEffects: EMPTY_SOURCE_FIELD_ITEM_EFFECTS,
   happinessSteps: 0,
   wildEncounterSteps: 0,
   wildEncounterRngState: 0x9e37_79b9,
@@ -120,7 +134,8 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 
 export function createSourceEventState(): SourceEventState {
   return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
-    typeAmulet: null, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
+    typeAmulet: null, fieldItemEffects: EMPTY_SOURCE_FIELD_ITEM_EFFECTS,
+    happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
     appliedBattleSettlementIds: [] };
 }
 
@@ -255,7 +270,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
         && randomMaximum >= randomMinimum
         ? randomMinimum + wildEncounterRngState % (randomMaximum - randomMinimum + 1) : null;
       const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
-        typeAmulet: state.typeAmulet,
+        typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
         appliedBattleSettlementIds: state.appliedBattleSettlementIds });
@@ -364,7 +379,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
     pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
-    typeAmulet: state.typeAmulet,
+    typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
     ...(state.preferredFishingRod === undefined ? {} : { preferredFishingRod: state.preferredFishingRod }),
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState,
@@ -536,6 +551,21 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && typeAmuletValue.stepsRemaining >= 1 && typeAmuletValue.stepsRemaining <= 500
       ? { itemId: typeAmuletValue.itemId, type: typeAmuletValue.type,
         stepsRemaining: typeAmuletValue.stepsRemaining } : undefined;
+  const fieldValue = value.fieldItemEffects;
+  const fieldEscape = isRecord(fieldValue) ? fieldValue.escapePoint : null;
+  const escapePoint = fieldEscape === undefined || fieldEscape === null ? null
+    : isRecord(fieldEscape) && finiteInteger(fieldEscape.mapId) && finiteInteger(fieldEscape.x)
+      && finiteInteger(fieldEscape.y) && ["up", "down", "left", "right"].includes(String(fieldEscape.direction))
+      ? { mapId: fieldEscape.mapId, x: fieldEscape.x, y: fieldEscape.y,
+        direction: fieldEscape.direction as SourceCheckpoint["direction"] } : undefined;
+  const fieldItemEffects = fieldValue === undefined ? EMPTY_SOURCE_FIELD_ITEM_EFFECTS
+    : isRecord(fieldValue) && finiteInteger(fieldValue.repelSteps)
+      && fieldValue.repelSteps >= 0 && fieldValue.repelSteps <= 400
+      && (fieldValue.flute === null || fieldValue.flute === "high" || fieldValue.flute === "low")
+      && typeof fieldValue.shinyNextWildEncounter === "boolean" && escapePoint !== undefined
+      ? { repelSteps: fieldValue.repelSteps, flute: fieldValue.flute,
+        shinyNextWildEncounter: fieldValue.shinyNextWildEncounter, escapePoint } as SourceFieldItemEffects
+      : undefined;
   const appliedBattleSettlementIds = value.appliedBattleSettlementIds === undefined ? []
     : Array.isArray(value.appliedBattleSettlementIds)
       && value.appliedBattleSettlementIds.length <= 128
@@ -566,13 +596,15 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
     || appliedBattleSettlementIds === null || pendingHatches === null || preferredFishingRod === null
-    || typeAmulet === undefined || nextWildBattleStages === null && value.nextWildBattleStages !== undefined
+    || typeAmulet === undefined || fieldItemEffects === undefined
+    || nextWildBattleStages === null && value.nextWildBattleStages !== undefined
       && value.nextWildBattleStages !== null
     || pendingHatches.some((id) => !hatchableIds.includes(id)) || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
   return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
     pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
     party, ranch, dayCare, incubator, pendingHatches, pendingEncounter, nextWildBattleStages, typeAmulet,
+    fieldItemEffects,
     ...(preferredFishingRod === undefined ? {} : { preferredFishingRod }),
     happinessSteps, wildEncounterSteps, wildEncounterRngState,
     appliedBattleSettlementIds });

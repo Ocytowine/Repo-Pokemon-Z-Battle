@@ -1456,6 +1456,17 @@ sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines session
   95 problèmes globaux et 929 animations prêtes après `prepare:local`.
   Prochain lot : validation réelle des sept fonctions et des interactions
   transverses de Substitute/Metronome, puis traitement de Fermeté.
+  Quatorzième tranche du 2026-10-26 : Fermeté suit désormais la priorité
+  source Ténacité → Fermeté → Ceinture Force et passe en `supported` ;
+  les cas OHKO sous les PV maximum, Brise Moule et Gaz Inhibiteur sont
+  testés. Les coups multiples, statuts, sons, Infiltrator et Relais sous
+  Substitute sont vérifiés dans le noyau partagé ; la room teste l'état
+  restauré vu par l'invité pour Clonage et Fermeté. **353/353 fonctions
+  couvertes, 0 restante**, 0 talent partiel, 0 alerte mécanique,
+  94 animations non mappées, 94 problèmes globaux, 929 animations prêtes.
+  Recette réelle solo/hôte/invité ouverte ; prochain lot : contrôle
+  transverse Clonage/Bouclier Rusé et charge Metronome/formes, puis
+  essais visuels documentés.
 - [ ] terminer la Méga-Évolution ; les lots 1 à 4 extraient automatiquement les
   106 espèces/114 formes, transportent les gemmes et l'intention, puis appliquent
   autoritairement forme, caractéristiques, types et talent avec un usage par
@@ -2307,10 +2318,10 @@ Ordre de travail retenu :
 4. seulement apres cette couverture, reprendre les ameliorations UI/UX qui ne
    conditionnent pas les tests.
 
-L'audit source cible du 2026-10-05, actualise le 2026-10-22, confirme que les
-donnees importees masquent encore un ecart de comportement important : 104/353
-fonctions d'attaque sont executees et aucune n'est partielle ; 217/255 talents sont executes,
-1 est partiel et 37 restent inertes. Les objets sont avances mais
+L'audit source cible du 2026-10-05 a révélé un écart de comportement
+important derrière les données importées. La tranche de combat du
+2026-10-26 porte désormais 353/353 fonctions d'attaque et ne signale
+plus de talent partiel dans l'audit d'intégration. Les objets sont avancés mais
 aucune famille source n'est encore declaree complete ; 17 des 18 methodes
 d'evolution sont maintenant resolues, `Shedinja` restant une creation secondaire.
 L'ordre de dependance devient donc : fidelite du combat par lots
@@ -2874,8 +2885,14 @@ Le HUD sauvage remplace les symboles d'equipe adverses par `battleBoxOwned` colo
 si l'espece appartient a l'historique personnel, ou grise si elle n'a jamais ete
 capturee. Capture critique et bonus dependants de l'heure, de la plongee, de la peche
 ou des especes deja possedees attendent leurs contextes autoritaires. Puissance,
-Garde-Stats et les autres effets qui exigent encore un etat volatil, ainsi que les
-effets d'objets tenus non portes restent ouverts dans `SOLO-ITEMS-1`. Les 21
+Garde-Stats, les deux flûtes et les trois objets de fuite sauvage sont portés
+dans le noyau commun. L'audit `audit:items` du 2026-10-26 couvre 73/73 effets
+source dans trois familles (combat uniquement, soins terrain/combat et baies
+curatives), et distingue 10 entrées PBS sans handler Ruby. Les effets d'objets
+tenus et les autres familles d'objets restent ouverts dans `SOLO-ITEMS-1`. Les 18
+objets tenus ordinaires renforçant un type sont ensuite portés et audités
+18/18 ; les 27 outils de terrain ont un handler source et leur audit d'exécution
+reste ouvert, avec huit usages à raccorder. Les 21
 pierres/objets d'evolution sont deja fonctionnels dans `SOLO-EVOLUTION-1`.
 
 Premier increment evolution du 2026-10-08 : 17 des 18 methodes reellement utilisees

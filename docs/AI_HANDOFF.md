@@ -7614,3 +7614,99 @@ formes Constellar/Sirfetch'd et charge appelée par Metronome ; puis
 résorption du talent Fermeté encore partiel. Les 94 animations non
 mappées gardent le fallback explicite tant que la source ne fournit pas
 de correspondance.
+
+### Lot du 2026-10-26 : Fermeté et interactions de Clonage
+
+La comparaison avec le script Ruby de dégâts a corrigé la priorité des
+protections sur un coup fatal : Ténacité, puis Fermeté, puis Ceinture
+Force. Quand Fermeté sauve à 1 PV, la Ceinture Force reste tenue ; Brise
+Moule ou Gaz Inhibiteur annulent Fermeté et la Ceinture Force prend le
+relais. Les deux portes OHKO (`070` et `1002`) utilisent déjà Fermeté
+même sous les PV maximum et respectent Brise Moule. Le talent passe de
+`partial` à `supported` dans l'audit.
+
+Les tests du noyau partagé couvrent aussi Clonage face à deux coups
+successifs, à un statut direct, à un son et à Infiltrator, ainsi que le
+transfert du bouclier par Relais après sérialisation. Dans la room
+autoritaire, les tests vérifient les mêmes états visibles par l'invité
+après redémarrage et reconnexion : PV du bouclier et Ceinture Force
+conservée par Fermeté. L'intention reste une action de capacité du
+joueur ; l'hôte calcule l'effet avec le noyau commun et le réplique aux
+participants. Aucun nouvel état personnel ou message réseau n'est
+nécessaire. Les essais visuels solo/hôte/invité restent à exécuter selon
+`VALIDATION_MANUELLE_COMBAT.md`.
+
+Après `prepare:local` et `audit:combat` : **353/353 fonctions couvertes,
+0 restante**, aucun talent partiel, aucune alerte de mécanique de
+capacité, **94 animations non mappées** avec fallback explicite,
+**94 problèmes globaux** et 929 animations prêtes. `corepack pnpm test`
+et `corepack pnpm build` passent.
+
+Prochain lot proposé : mener la recette réelle des sept derniers codes
+et des cas Clonage/Fermeté ci-dessus, puis contrôler les autres
+interactions transverses de Clonage et Bouclier Rusé contre le script
+source, ainsi que la charge appelée par Metronome et les formes
+Constellar/Sirfetch'd. Les animations non mappées restent visibles dans
+l'audit tant que la source ne donne aucune correspondance.
+
+### Lot du 2026-10-26 : premier audit et portage des objets
+
+`corepack pnpm audit:items` produit un rapport reproductible dans
+`.pokemon-z/data/item-coverage-report.json`. Son périmètre est explicite :
+objets ordinaires utilisables uniquement en combat, soins utilisables
+terrain/combat et baies curatives terrain/combat. Il compare les drapeaux
+PBS, les handlers Ruby et le noyau commun, puis sépare les entrées sans
+handler source des effets encore à porter. Bilan : **33/33**, **31/31** et
+**9/9** effets source couverts, soit **73/73** sur ces trois familles ;
+10 autres entrées PBS n'ont pas les deux handlers requis dans la source.
+Ce compteur ne prétend pas couvrir les autres familles d'objets.
+
+Le lot ajoute Muscle +/Muscle 3 (`DIREHIT`, `DIREHIT2`, `DIREHIT3`) aux
+niveaux de concentration source, Garde-Stats (`GUARDSPEC`) à la Brume
+du camp, Flûte Jaune/Rouge à la guérison de confusion/attraction, et
+Poké Poupée/Queue Skitty/Poké Plumet à la fuite sauvage garantie.
+Les trois soins complets (Poudre Soin, Total Soin, Guérison) guérissent
+désormais la confusion même sans statut majeur, conformément aux
+handlers Ruby. Un objet sans effet ou interdit par le contexte reste
+dans le Sac.
+
+Autorité : le noyau pur calcule l'effet, le joueur envoie seulement
+l'intention d'utilisation, la room tranche en Coop. La consommation
+reste propre au propriétaire ; concentration, Brume, confusion et
+fuite sont répliquées aux participants et restaurées par snapshot.
+Les tests couvrent simple, Duo hôte/invité, reconnexion, redémarrage,
+fuite et présentation distante. La recette en jeu est préparée dans
+`VALIDATION_MANUELLE_OBJETS.md` ; ses cases restent ouvertes.
+
+Prochain lot d'objets : auditer séparément les objets tenus et les
+objets de terrain, puis porter les effets réellement utilisés dans le
+parcours jouable. Les quatre entrées de combat sans handler Ruby
+(`RESETURGE`, `ABILITYURGE`, `ITEMURGE`, `ITEMDROP`) restent signalées
+comme données source inertes et ne reçoivent pas d'effet inventé.
+
+### Lot du 2026-10-26 : objets tenus renforçant un type
+
+Le script Ruby de calcul des dégâts énumère 18 objets tenus ordinaires donnant
+un multiplicateur 1,2 à une attaque du type correspondant, dont `Tela` pour
+le type Fée. Les 18 couples objet/type sont maintenant portés dans le calcul
+commun, en complément des Plaques déjà actives. Maladresse, Embargo et Champ
+Magique désactivent l'effet via le même prédicat que les autres objets tenus ;
+l'objet reste équipé. L'intention de capacité est calculée par le noyau en solo
+et par la room en Coop. Les dégâts et l'objet tenu sont visibles par les deux
+participants ; le snapshot restaure l'objet après reconnexion/redémarrage.
+Tests du calcul, de l'attaque par l'invité et de la reprise de room ajoutés.
+
+`audit:items` compare désormais ces 18 couples avec le bloc Ruby et donne
+**18/18**, 0 restant pour cette famille. Le rapport inventorie séparément
+**27 outils de terrain** ayant chacun un handler d'usage depuis le Sac, sans
+prétendre encore mesurer automatiquement leur exécution. Les 18 amulettes de
+type et les Cendres Sacrées sont déjà fonctionnelles ; restent à raccorder
+les trois fleurs Repousse, les deux flûtes de rencontre, Miel, Corde Sortie
+et la Potion Brillante. La recette en jeu de ces objets tenus est ajoutée à
+`VALIDATION_MANUELLE_OBJETS.md` et reste ouverte.
+
+Prochain lot d'objets : porter les huit outils de terrain restants dans un
+contrat personnel persistant (pas Repousse, préférence de niveau des flûtes,
+rencontre Miel, point de sortie et prochaine rencontre chromatique), puis
+vérifier leur audience solo/hôte/invité et leur restauration. Les autres
+familles d'objets tenus seront inventoriées par effets source distincts.

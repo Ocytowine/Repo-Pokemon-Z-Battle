@@ -2049,7 +2049,10 @@ export class AuthoritativeBattleRoom {
     if (quantity <= 0) return "Cet objet n'est pas disponible dans le sac de ce Dresseur.";
     if (action.kind === "item") {
       const applied = applyPokemonItemEffect(target!, itemId, { context: "battle", revivalAllowed: true,
-        battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed }, action.targetMoveIndex);
+        battleHealingAllowed: this.#sourceBattleContext.healingItemsAllowed,
+        wildBattle: this.#sourceBattleContext.origin === "source-wild",
+        escapable: this.#sourceBattleContext.escapable,
+        sideMistTurns: state.effects?.sides[side].mistTurns ?? 0 }, action.targetMoveIndex);
       if (typeof applied === "string") return `Cet objet ne peut pas etre utilise (${applied}).`;
     }
     const next = { ...inventory };

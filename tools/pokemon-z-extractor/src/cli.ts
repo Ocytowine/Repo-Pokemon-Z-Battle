@@ -9,6 +9,7 @@ import { extractWorldMaps } from "./runtime/extract-world-maps.js";
 import { prepareLocalTest, readExistingLocalTestPaths } from "./runtime/prepare-local-test.js";
 import { extractEvents } from "./runtime/extract-events.js";
 import { extractScriptHooks } from "./runtime/extract-script-hooks.js";
+import { writeBattleOnlyItemCoverage } from "./runtime/item-coverage-audit.js";
 
 interface PathArguments {
   readonly sourceDirectory: string;
@@ -25,6 +26,7 @@ Usage:
   pokemon-z-extractor extract-maps --source <game-directory> --output <output-directory>
   pokemon-z-extractor prepare-local [--source <game-directory> --output <output-directory>]
   pokemon-z-extractor audit-combat [--scope pokemon:INTERNAL_NAME|trainer:TYPE:NAME:VERSION|mega:INTERNAL_NAME:FORM|map:ID]
+  pokemon-z-extractor audit-items
   pokemon-z-extractor extract-events --source <game-directory> --output <output-directory>
   pokemon-z-extractor extract-hooks --source <game-directory> --output <output-directory>
 
@@ -73,11 +75,28 @@ async function main(): Promise<void> {
 
   if (command !== "inventory" && command !== "extract-pbs" && command !== "extract-runtime"
     && command !== "extract-assets" && command !== "extract-maps" && command !== "prepare-local"
-    && command !== "extract-events" && command !== "extract-hooks" && command !== "audit-combat") {
+    && command !== "extract-events" && command !== "extract-hooks" && command !== "audit-combat"
+    && command !== "audit-items") {
     throw new Error(`Commande inconnue : ${command}`);
   }
 
   const invocationDirectory = process.env.INIT_CWD ?? process.cwd();
+  if (command === "audit-items") {
+    if (args.length > 0) throw new Error(`Argument inconnu : ${args[0]}`);
+    const paths = await readExistingLocalTestPaths(invocationDirectory);
+    const report = await writeBattleOnlyItemCoverage(paths.outputDirectory);
+    for (const [label, family] of [["Combat uniquement", report.battleOnly],
+      ["Soins terrain/combat", report.medicine], ["Baies curatives terrain/combat", report.curativeBerries]] as const) {
+      process.stdout.write(`${label} : ${family.summary.supported}/${family.summary.actionable} effets source couverts, ${family.summary.remaining} restants ; ${family.summary.sourceWithoutHandler} sans handler source (${family.summary.total} entrées PBS)\n`);
+      for (const item of family.records.filter((entry) => entry.support === "not-implemented")) {
+        process.stdout.write(`- ${item.internalName} · ${item.name} · ${item.support}\n`);
+      }
+    }
+    process.stdout.write(`Objets tenus renforçant un type : ${report.heldTypeBoosters.summary.supported}/${report.heldTypeBoosters.summary.total} effets source couverts, ${report.heldTypeBoosters.summary.remaining} restants\n`);
+    process.stdout.write(`Outils de terrain : ${report.fieldTools.summary.total} entrées PBS, ${report.fieldTools.summary.sourceBagHandlers} handlers d'usage depuis le Sac ; audit d'exécution détaillé à poursuivre\n`);
+    process.stdout.write("Rapport : item-coverage-report.json\n");
+    return;
+  }
   if (command === "audit-combat") {
     const auditArgs = args.filter((argument) => argument !== "--");
     const scope = readOption(auditArgs, "--scope");
@@ -134,6 +153,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Local data manifest: ${result.manifestPath}\n`);
     process.stdout.write(`Battle animations ready: ${result.battleAnimationCount}\n`);
     process.stdout.write(`Battle integration audit: ${result.battleIntegrationIssues} issue(s) -> battle-integration-report.json\n`);
+    process.stdout.write(`Battle-only item coverage: ${result.battleOnlyItemsSupported}/${result.battleOnlyItemsTotal} -> item-coverage-report.json\n`);
     return;
   }
   if (command === "extract-events") {

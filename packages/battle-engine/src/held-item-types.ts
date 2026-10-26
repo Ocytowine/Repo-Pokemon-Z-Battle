@@ -10,3 +10,12 @@ export const PLATE_TYPES: Readonly<Record<string, string>> = {
 export const DRIVE_TYPES: Readonly<Record<string, string>> = {
   SHOCKDRIVE: "ELECTRIC", BURNDRIVE: "FIRE", CHILLDRIVE: "ICE", DOUSEDRIVE: "WATER",
 };
+
+/** Pokemon Z's ordinary held type enhancers, each worth 1.2x damage. */
+export const TYPE_BOOST_HELD_ITEM_TYPES: Readonly<Record<string, string>> = {
+  SILKSCARF: "NORMAL", BLACKBELT: "FIGHTING", SHARPBEAK: "FLYING", POISONBARB: "POISON",
+  SOFTSAND: "GROUND", HARDSTONE: "ROCK", SILVERPOWDER: "BUG", SPELLTAG: "GHOST",
+  METALCOAT: "STEEL", CHARCOAL: "FIRE", MYSTICWATER: "WATER", MIRACLESEED: "GRASS",
+  MAGNET: "ELECTRIC", TWISTEDSPOON: "PSYCHIC", NEVERMELTICE: "ICE", DRAGONFANG: "DRAGON",
+  Tela: "FAIRY", BLACKGLASSES: "DARK",
+};

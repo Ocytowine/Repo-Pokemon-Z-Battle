@@ -76,7 +76,8 @@ export function isGrassTerrain(tag: number): boolean {
 }
 
 export function rollEncounterForMethod(table: ImportedEncounterTable | null, method: SourceEncounterMethod,
-  rng: RandomSource, typeBias?: SourceEncounterTypeBias): WildEncounterRoll["encounter"] {
+  rng: RandomSource, typeBias?: SourceEncounterTypeBias,
+  flute: "high" | "low" | null = null): WildEncounterRoll["encounter"] {
   const baseSlots = table?.methods.find((candidate) => candidate.method === method)?.slots ?? [];
   // The source nests every type amulet under its 50% lead-effect roll. If the
   // current table has no matching species, it deliberately keeps the normal table.
@@ -92,12 +93,16 @@ export function rollEncounterForMethod(table: ImportedEncounterTable | null, met
     return false;
   });
   if (slot === undefined) throw new Error(`Table de rencontre ${method} incohérente.`);
+  const level = slot.minimumLevel + rng.nextInt(slot.maximumLevel - slot.minimumLevel + 1);
+  const offset = flute === null ? 0 : 1 + rng.nextInt(3);
   return { species: slot.species,
-    level: slot.minimumLevel + rng.nextInt(slot.maximumLevel - slot.minimumLevel + 1) };
+    level: flute === "high" ? Math.min(100, level + offset)
+      : flute === "low" ? Math.max(1, level - offset) : level };
 }
 
 export function rollStepEncounter(table: ImportedEncounterTable | null, terrainTag: number,
-  previousSteps: number, rng: RandomSource, typeBias?: SourceEncounterTypeBias): WildEncounterRoll {
+  previousSteps: number, rng: RandomSource, typeBias?: SourceEncounterTypeBias,
+  flute: "high" | "low" | null = null): WildEncounterRoll {
   const cave = table?.methods.some((method) => method.method === "Cave") === true;
   if (cave && terrainTag === 12) return { steps: previousSteps, encounter: null };
   const method: SourceEncounterMethod | null = cave ? "Cave" : isGrassTerrain(terrainTag) ? "Land" : null;
@@ -107,7 +112,7 @@ export function rollStepEncounter(table: ImportedEncounterTable | null, terrainT
   if (slots.length === 0 || density <= 0) return { steps: previousSteps, encounter: null };
   const steps = previousSteps + 1;
   if (steps <= 3 || rng.nextInt(180 * 16) >= density * 16) return { steps, encounter: null };
-  return { steps: 0, encounter: rollEncounterForMethod(table, method, rng, typeBias) };
+  return { steps: 0, encounter: rollEncounterForMethod(table, method, rng, typeBias, flute) };
 }
 
 export function rollLandEncounter(table: ImportedEncounterTable | null, terrainTag: number, previousSteps: number,
@@ -119,7 +124,7 @@ export function planFishingAttempt(table: ImportedEncounterTable | null,
   method: Extract<SourceEncounterMethod, "OldRod" | "GoodRod" | "SuperRod">,
   leadAbility: string | null, rng: RandomSource,
   encounterMethod: Extract<SourceEncounterMethod, "OldRod" | "GoodRod" | "SuperRod"> = method,
-  typeBias?: SourceEncounterTypeBias): SourceFishingAttempt {
+  typeBias?: SourceEncounterTypeBias, flute: "high" | "low" | null = null): SourceFishingAttempt {
   const speedup = leadAbility === "STICKYHOLD" || leadAbility === "SUCTIONCUPS";
   const firstWait = 2 + rng.nextInt(10);
   const waitUnits = speedup ? Math.min(firstWait, 2 + rng.nextInt(10)) : firstWait;
@@ -131,5 +136,5 @@ export function planFishingAttempt(table: ImportedEncounterTable | null,
   if (!bite) return { waitMs: waitUnits * 500, bite: false, hookWindowMs: 0, encounter: null };
   const hookWindowMs = (20 + rng.nextInt(21)) * 25;
   return { waitMs: waitUnits * 500, bite: true, hookWindowMs,
-    encounter: rollEncounterForMethod(table, encounterMethod, rng, typeBias) };
+    encounter: rollEncounterForMethod(table, encounterMethod, rng, typeBias, flute) };
 }

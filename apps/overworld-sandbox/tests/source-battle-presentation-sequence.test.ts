@@ -291,6 +291,26 @@ describe("source battle presentation sequence", () => {
       state: { teams: { player: { members: [{ stages: { attack: 1 } }] } } } });
   });
 
+  it("replays critical focus and Guard Spec item feedback on the remote view", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "trainerItemUsed", side: "player", itemId: "DIREHIT2", targetIndex: 0,
+        target: "Héros", hpRestored: 0, ppRestored: 0, movePp: null, targetMoveIndex: null,
+        statusCured: null, revived: false, statRaised: null, stagesRaised: 0,
+        happinessChanged: 0, focusEnergyRaised: 2 },
+      { type: "trainerItemUsed", side: "player", itemId: "GUARDSPEC", targetIndex: 0,
+        target: "Héros", hpRestored: 0, ppRestored: 0, movePp: null, targetMoveIndex: null,
+        statusCured: null, revived: false, statRaised: null, stagesRaised: 0,
+        happinessChanged: 0, mistTurnsStarted: 5 },
+      { type: "battleEffectChanged", side: "player", effect: "mist", turns: 5 },
+    ], { itemName: (name) => name === "DIREHIT2" ? "Muscle +" : "Garde-Stats" });
+    expect(sequence.some((step) => step.kind === "status"
+      && step.message.includes("Muscle +") && step.state.teams.player.members[0]?.volatile?.focusEnergy === 2))
+      .toBe(true);
+    expect(sequence.some((step) => step.kind === "status"
+      && step.state.effects?.sides.player.mistTurns === 5)).toBe(true);
+  });
+
   it("uses Z's localized effect message instead of a generic ability identifier", () => {
     const passerouge = { ...battler("Passerouge"), ability: "BIGPECKS" as const };
     const state = createTeamBattleState({ player: [battler("Héros")], opponent: [passerouge] });
