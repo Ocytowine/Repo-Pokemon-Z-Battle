@@ -335,10 +335,11 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         ? `${activeName(state, event.side)} sacrifie ${event.amount} PV pour se renforcer !`
         : `${activeName(state, event.side)} est blessé par le contrecoup et perd ${event.amount} PV.`);
     } else if (event.type === "itemActivated") {
-      if (event.effect === "boost") message(`${activeName(state, event.side)} utilise ${event.item}.`, "status");
+      const item = options.itemName?.(event.item) ?? event.item;
+      if (event.effect === "boost") message(`${activeName(state, event.side)} utilise ${item}.`, "status");
       else health(event.side, event.hp, event.effect === "heal"
-        ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${event.item}.`
-        : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${event.item}.`);
+        ? `${activeName(state, event.side)} récupère ${event.amount} PV grâce à ${item}.`
+        : `${activeName(state, event.side)} perd ${event.amount} PV à cause de ${item}.`);
     } else if (event.type === "abilityDamage") {
       const ability = options.abilityName?.(event.ability) ?? event.ability;
       health(event.target, event.hp,
@@ -349,7 +350,7 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
         : `${activeName(state, event.side)} perd ${event.amount} PV à cause du contrecoup.`);
     } else if (event.type === "heldItemConsumed") {
       state = withActiveHeldItem(state, event.side, null);
-      message(`${activeName(state, event.side)} consomme ${event.item}.`, "status");
+      message(`${activeName(state, event.side)} consomme ${options.itemName?.(event.item) ?? event.item}.`, "status");
     } else if (event.type === "heldItemTransferred") {
       const sourceName = activeName(state, event.source);
       const targetName = activeName(state, event.target);
@@ -359,6 +360,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       const item = options.itemName?.(event.item) ?? event.item;
       message("move" in event
         ? `${sourceName} transmet ${item} à ${targetName} avec ${event.move}.`
+        : event.reason === "sticky-barb"
+          ? `${item} de ${sourceName} s'accroche à ${targetName} !`
         : `${targetName} vole ${item} à ${sourceName} !`, "status");
     } else if (event.type === "heldItemRecovered") {
       state = withActiveHeldItem(state, event.side, event.item);

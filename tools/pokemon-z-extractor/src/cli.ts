@@ -93,6 +93,8 @@ async function main(): Promise<void> {
       }
     }
     process.stdout.write(`Objets tenus renforçant un type : ${report.heldTypeBoosters.summary.supported}/${report.heldTypeBoosters.summary.total} effets source couverts, ${report.heldTypeBoosters.summary.remaining} restants\n`);
+    process.stdout.write(`Objets tenus modifiant l'ordre d'action : ${report.heldTurnOrder.summary.supported}/${report.heldTurnOrder.summary.total} effets source couverts, ${report.heldTurnOrder.summary.remaining} restants\n`);
+    process.stdout.write(`Total audité (${report.auditedEffects.familyCount} familles) : ${report.auditedEffects.supported}/${report.auditedEffects.actionable} effets source couverts, ${report.auditedEffects.remaining} restants\n`);
     process.stdout.write(`Outils de terrain : ${report.fieldTools.summary.total} entrées PBS, ${report.fieldTools.summary.sourceBagHandlers} handlers d'usage depuis le Sac ; audit d'exécution détaillé à poursuivre\n`);
     process.stdout.write("Rapport : item-coverage-report.json\n");
     return;

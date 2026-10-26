@@ -311,6 +311,7 @@ function describeEvent(event: TeamBattleEvent): string {
     case "heldItemConsumed": return `${event.side} consomme ${event.item} (${event.effect})`;
     case "heldItemTransferred": return "move" in event
       ? `${event.source} transmet ${event.item} à ${event.target} avec ${event.move}`
+      : event.reason === "sticky-barb" ? `${event.item} de ${event.source} s'accroche à ${event.target}`
       : `${event.target} vole ${event.item} à ${event.source}`;
     case "heldItemRecovered": return `${event.side} récupère ${event.item} (${event.ability})`;
     case "heldItemRemoved": return `${event.source} retire ${event.item} à ${event.target} avec ${event.move}`;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RandomSource } from "@pokemon-z-battle/battle-engine";
-import { isGrassTerrain, planFishingAttempt, resolveSourceFishingRod, rollLandEncounter, rollStepEncounter,
+import { isGrassTerrain, planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod,
+  rollLandEncounter, rollStepEncounter,
   sourceFishingEncounterMethod,
   terrainTagAt } from "../src/source-wild-encounter.js";
 
@@ -27,6 +28,12 @@ const encounters = { mapId: 7, rates: { land: 12, cave: 2, water: 2 }, landRate:
 ] }] } as const;
 
 describe("source wild encounters", () => {
+  it("applies the two source flutes after rolling a wild level", () => {
+    expect(rollEncounterForMethod(encounters, "Land", new ScriptedRandom([0, 1, 2]), undefined, "high"))
+      .toEqual({ species: "BIDOOF", level: 7 });
+    expect(rollEncounterForMethod(encounters, "Land", new ScriptedRandom([0, 1, 2]), undefined, "low"))
+      .toEqual({ species: "BIDOOF", level: 1 });
+  });
   it("resolves the effective terrain from upper to lower layers while ignoring bridges and neutral tags", () => {
     expect(terrainTagAt(map, tileset, 0, 0)).toBe(2);
     expect(isGrassTerrain(2)).toBe(true);

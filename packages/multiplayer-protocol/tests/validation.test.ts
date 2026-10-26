@@ -234,14 +234,15 @@ describe("multiplayer protocol", () => {
       "0B9", "0BA", "0BC", "0BE", "0C0", "0CF", "0E8", "0F4", "10D", "10E", "110", "116"] as const) {
       const move = { ...MINIMAL_MOVE_CATALOG.TACKLE, functionCode };
       const team = { ...duelTeam, items: ["SUPERPOTION"], members: [{ ...duelTeam.members[0],
-        heldItem: "EVIOLITE" as const, canEvolve: true,
+        heldItem: "SUPEREVIOLITE" as const, canEvolve: true, canEvolveTwice: true,
         volatile: { confusionTurns: 2, flinched: false, focusEnergy: 2, identified: true,
           disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0, bindingMove: null,
-          bindingTurns: 0, cursed: false, lastMoveUsed: "TACKLE", activeTurns: 1, protected: false,
+          bindingTurns: 0, bindingSourceId: "p1", cursed: false, lastMoveUsed: "TACKLE", activeTurns: 1, protected: false,
           endured: false, protectRate: 2, tauntTurns: 0, rage: false }, moves: [{ move, pp: move.pp }] }] };
       expect(parseClientMessage(JSON.stringify({ type: "openSourceBattle", version: 15,
         requestId: `source-${functionCode}`, context, playerTeam: duelTeam, opponentTeam: team,
-        battleItems: {} }))).toMatchObject({ opponentTeam: { items: ["SUPERPOTION"], members: [{ volatile: { confusionTurns: 2, protectRate: 2 },
+        battleItems: {} }))).toMatchObject({ opponentTeam: { items: ["SUPERPOTION"], members: [{ canEvolveTwice: true,
+          volatile: { confusionTurns: 2, protectRate: 2 },
           moves: [{ move: { functionCode } }] }] } });
     }
   });

@@ -7710,3 +7710,181 @@ contrat personnel persistant (pas Repousse, préférence de niveau des flûtes,
 rencontre Miel, point de sortie et prochaine rencontre chromatique), puis
 vérifier leur audience solo/hôte/invité et leur restauration. Les autres
 familles d'objets tenus seront inventoriées par effets source distincts.
+
+### Lot du 2026-10-26 : huit outils de terrain personnels
+
+Les trois Repoussenlit (`REPEL`, `SUPERREPEL`, `MAXREPEL`) durent 100, 200 et
+400 pas : pas de décrément sur glace, refus d'en utiliser un second pendant
+l'effet et filtre des rencontres sauvages de niveau inférieur ou égal au
+premier Pokémon apte. Flûte Noire/Blanche restent dans le Sac et décalent de
+1 à 3 niveaux les rencontres suivantes, avec borne 1–100. Miel est consommé
+et demande immédiatement une rencontre de la table locale de marche ou de
+grotte, même si aucun Pokémon n'est disponible. Corde Sortie ne s'utilise
+qu'après une entrée de grotte : le point personnel est pris un pas derrière
+l'entrée, puis effacé au retour. Potion Brillante est consommée une fois,
+force la prochaine rencontre sauvage chromatique et se désactive à la fin
+du combat sauvage. Ces huit usages suivent le script Ruby ; l'effet de météo
+sur Miel ne dispose pas encore de contexte météo de terrain dans l'app.
+
+Autorité/domaine : l'usage du Sac et les compteurs restent personnels en solo
+et en Coop. La sauvegarde personnelle restaure Repousse, flûte, Potion
+Brillante et point de sortie après reconnexion. La rencontre préparée, son
+niveau et son apparence chromatique sont envoyés comme état tactique minimal
+à la room autoritaire, qui diffuse le combat aux participants ; aucun
+compteur personnel n'est répliqué aux joueurs proches. Les tests du noyau de
+terrain couvrent consommation, refus, pas sur glace, niveau, sauvegarde et
+projection d'une rencontre chromatique en solo et lors de l'ouverture d'un
+combat partagé. La recette visuelle hôte/invité et les conditions de grotte
+sont ajoutées à `VALIDATION_MANUELLE_OBJETS.md` et restent à exécuter.
+
+`audit:items` inventorie toujours 27 outils de terrain avec handler Ruby ;
+18 amulettes et Cendres Sacrées étaient déjà utilisables, les huit autres
+ont maintenant un chemin d'exécution. Ce rapport ne certifie pas encore
+automatiquement leurs 27 comportements, contrairement aux compteurs des
+objets de combat et des objets tenus renforçant un type.
+
+Prochain lot d'objets : inventorier les familles d'effets des autres objets
+tenus (ordre, choix, météo, récupération, réaction à un coup), puis porter
+un groupe conséquent de ceux qui apparaissent dans les équipes et rencontres
+jouables. Garder les cas sans règle source distincts des effets manquants.
+
+### Lot du 2026-10-26 : objets tenus d'ordre d'action
+
+Le bloc Ruby `pbPriority` contient exactement quatre objets tenus qui
+modifient l'ordre d'action : Baie Chérim (`CUSTAPBERRY`), Vive Griffe
+(`QUICKCLAW`), Ralentiqueue (`LAGGINGTAIL`) et Encens Plein
+(`FULLINCENSE`). L'audit les extrait directement de ce bloc, compare chaque
+entrée au PBS et au registre du moteur, et donne **4/4 effets couverts,
+0 restant** pour cette famille. Le compteur cumulé des cinq familles
+auditées est **95/95 effets source couverts** ; il ne représente pas encore
+tous les objets du jeu.
+
+La Baie Chérim était déjà résolue. Vive Griffe tire maintenant 2 chances
+sur 10 avant chaque capacité choisie, agit en tête de sa classe de priorité
+et reste tenue. Ralentiqueue et Encens Plein placent leur porteur après les
+autres Pokémon de la même priorité, même sous Distorsion. Baie Chérim et
+Vive Griffe passent avant ces retards ; une priorité de capacité supérieure
+garde toujours la préséance. Maladresse, Embargo et Champ Magique désactivent
+les effets des objets tenus via le prédicat partagé. Le tirage est tracé
+et décidé par le noyau en solo ou la room autoritaire en Coop. L'ordre et
+l'activation sont présentés aux participants ; les objets tenus sont
+restaurés après reconnexion/redémarrage.
+
+Tests du noyau simple/Duo et d'une action de l'invité dans la room ajoutés.
+La recette visuelle reste ouverte dans `VALIDATION_MANUELLE_OBJETS.md`.
+Prochain lot : poursuivre les familles cohérentes d'objets tenus. Le porteur
+du projet souhaite reporter l'élargissement de `audit:items` à un audit
+ultérieur.
+
+### Lot du 2026-10-26 : objets Choix
+
+Les trois objets Choix du Ruby sont portés ensemble : Bandeau Choix
+(`CHOICEBAND`) multiplie par 1,5 l'Attaque physique, Lunettes Choix
+(`CHOICESPECS`) l'Attaque spéciale et Mouchoir Choix (`CHOICESCARF`) la
+Vitesse. Tous trois utilisent `choiceLockedMove`, déjà partagé avec Pouvoir
+Sage : la première capacité effectivement employée reste imposée tant que
+l'objet fonctionne et que cette capacité est encore connue. Maladresse,
+Embargo et Champ Magique suspendent bonus et verrou ; retirer l'objet
+libère également le choix. Le retrait du Pokémon du terrain efface l'état
+volatil via le contrat de remplacement existant. Les calculs de dégâts et
+les adaptateurs simple/Duo utilisent le même noyau. En Coop, l'hôte ou la
+room décide le tour et les dégâts depuis les intentions des participants ;
+le snapshot tactique contient objet tenu et verrou pour la reconnexion, et
+les événements de combat sont visibles aux participants.
+
+Tests ciblés du noyau simple/Duo ajoutés ; recette solo, hôte, invité et
+reconnexion ouverte dans `VALIDATION_MANUELLE_OBJETS.md`. Aucun nouveau
+compteur d'audit n'est annoncé pour cette famille, conformément à la
+demande de reporter l'audit global.
+
+Prochain lot proposé : les objets tenus qui modifient directement une
+statistique ou des dégâts sans verrouillage, regroupés selon leurs hooks
+Ruby (vitesse réduite par poids d'entraînement, Poudre Vite, etc.).
+
+### Lot du 2026-10-26 : objets tenus de Vitesse et de poids
+
+Dix objets du bloc Ruby `pbSpeed` sont désormais portés dans le noyau commun.
+Les sept objets d'entraînement `MACHOBRACE`, `POWERWEIGHT`, `POWERBRACER`,
+`POWERBELT`, `POWERANKLET`, `POWERLENS` et `POWERBAND` divisent la Vitesse par
+deux. `QUICKPOWDER` la double uniquement pour Métamorph non transformé.
+`FLOATSTONE` augmente la Vitesse de 25 % et divise le poids effectif par
+deux, y compris pour les capacités fondées sur le poids et la limite de
+Chute Libre. `IRONBALL` divise la Vitesse par deux et met au sol un porteur
+de type Vol ou doté de Lévitation, avec les règles de terrain et d'immunité
+Sol correspondantes. Le Ruby consulte directement l'identifiant brut de
+`IRONBALL` pour sa pénalité de Vitesse : elle persiste donc même sous
+Maladresse, Embargo ou Champ Magique, alors que son effet au sol suit
+`hasWorkingItem` et est suspendu. Les autres objets de ce lot suivent
+également l'activité normale de l'objet tenu.
+
+Autorité et persistance : l'objet et l'état Métamorph sont dans le snapshot
+tactique ; le noyau calcule ordre, poids et immunités en solo et dans la room
+Coop, quel que soit l'acteur hôte ou invité. L'ordre et les dégâts sont
+répliqués aux participants, l'objet et le snapshot sont restaurés après
+reconnexion. Tests simple, Duo et tour d'invité dans la room avec
+redémarrage ajoutés. Recette manuelle encore ouverte dans
+`VALIDATION_MANUELLE_OBJETS.md`. Aucun compteur d'audit global n'est
+mis à jour, à la demande du porteur.
+
+Prochain lot proposé : objets de stats/dégâts propres à Z qui demandent
+plusieurs hooks, notamment `SUPEREVIOLITE` (chaîne d'évolution à deux
+étapes) et `TABLAESQUI` (Vitesse et dégâts de Bibarel). Préparer la donnée
+publique d'évolution du premier avant de le déclarer fonctionnel.
+
+### Lot du 2026-10-26 : Super Évoluroc et Tabla Esqui
+
+Les deux objets propres à Z qui combinaient Vitesse et dégâts dans les
+hooks Ruby sont portés. `SUPEREVIOLITE` donne +50 % de Vitesse, +50 % de
+dégâts et +50 % de Défense ou Défense Spéciale au Pokémon dont l'espèce peut
+évoluer sur deux étapes. La projection d'équipe calcule ce prédicat depuis
+le catalogue source : au moins une évolution directe doit elle-même avoir
+une évolution. Le booléen public `canEvolveTwice` rejoint le snapshot
+tactique et le validateur réseau, sans transmettre le catalogue ni les
+données personnelles. Morphing copie temporairement ce fait de l'espèce
+prise pour cible et le restaure au retour. `TABLAESQUI` donne +50 % de
+Vitesse et +30 % de dégâts uniquement à Bibarel. Maladresse, Embargo et
+Champ Magique suspendent ces effets via la règle commune d'activité des
+objets tenus.
+
+Autorité : le noyau de dégâts et les deux adaptateurs d'ordre simple/Duo
+partagent la même règle en solo, côté hôte et côté invité ; la room calcule
+depuis les intentions, réplique l'ordre et les dégâts aux participants et
+restaure l'objet ainsi que `canEvolveTwice` depuis son snapshot après
+reconnexion. Tests ciblés du noyau, projection des espèces, acceptation
+réseau et tour hôte/invité avec reconnexion de la room ajoutés. La recette visuelle reste ouverte dans
+`VALIDATION_MANUELLE_OBJETS.md`. L'élargissement de `audit:items` reste
+reporté à la demande du porteur.
+
+Prochain lot proposé : objets tenus de récupération passive et de réaction
+aux dégâts, à découper par hooks Ruby complets plutôt que par numéro d'objet.
+
+### Lot du 2026-10-26 : récupération et réaction aux dégâts
+
+Cinq objets tenus du Ruby sont couverts ensemble. `SHELLBELL` rend au
+porteur un cinquième des dégâts réellement infligés après une capacité,
+avec le compteur cumulatif du mouvement en Duo ; Antisoin et les
+suppresseurs d'objet l'arrêtent. `STICKYBARB` enlève un huitième des PV
+maximum en fin de tour et passe à l'attaquant qui touche au contact si
+celui-ci ne porte aucun objet ; le transfert conserve la provenance
+nécessaire au règlement du combat. `BINDINGBAND` augmente les dégâts
+résiduels d'une capacité piégeante de 1/8 à 1/6 des PV maximum. Le noyau
+mémorise l'identité de l'auteur du piège et vérifie son objet encore actif
+au moment du résiduel ; le réglage source
+`USENEWBATTLEMECHANICS = true` confirme la base 1/8, corrigée ici après
+l'ancienne approximation 1/16. `BIGROOT` augmente de 30 % le soin des
+capacités drainantes, de Vol-Force, de Vampigraine, d'Anneau Hydro et
+d'Enracinement. `RAIZANCESTRAL`, propre à Z, remplace le soin d'une attaque
+drainante par un quart des PV maximum du porteur.
+
+Autorité et persistance : les objets, l'identité du piégeur et les PV sont
+dans le snapshot tactique. Le noyau unique décide les transferts, soins et
+dégâts en solo ou dans la room ; les événements sont répliqués aux
+participants. Les tests couvrent simple, Duo, effets suspendus et un tour
+hôte/invité dans la room avec reconnexion. La recette visuelle reste
+ouverte dans `VALIDATION_MANUELLE_OBJETS.md`. L'élargissement de
+`audit:items` reste reporté à la demande du porteur.
+
+Prochain lot proposé : objets de réaction à un coup qui déclenchent un
+changement de Pokémon ou perdent leur effet après le coup, notamment
+`REDCARD`, `EJECTBUTTON` et `AIRBALLOON` ; relever tous leurs hooks Ruby
+avant de porter la famille.

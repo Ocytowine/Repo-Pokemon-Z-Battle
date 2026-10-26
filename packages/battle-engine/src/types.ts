@@ -66,6 +66,10 @@ export const SUPPORTED_HELD_ITEMS = ["ASSAULTVEST", "BLACKSLUDGE", "EXPERTBELT",
   "SHOCKDRIVE", "BURNDRIVE", "CHILLDRIVE", "DOUSEDRIVE",
   "FLAMEORB", "TOXICORB", "POISONBARB", "LIGHTBALL", "KINGSROCK", "RAZORFANG",
   "MENTALHERB", "WHITEHERB", "POWERHERB", "IRONBALL", "HARDSTONE", "THICKCLUB", "QUICKCLAW",
+  "SHELLBELL", "STICKYBARB", "BINDINGBAND", "BIGROOT", "RAIZANCESTRAL",
+  "LAGGINGTAIL", "FULLINCENSE", "CHOICEBAND", "CHOICESPECS", "CHOICESCARF",
+  "MACHOBRACE", "POWERWEIGHT", "POWERBRACER", "POWERBELT", "POWERANKLET", "POWERLENS", "POWERBAND",
+  "QUICKPOWDER", "FLOATSTONE", "SUPEREVIOLITE", "TABLAESQUI",
   "SILKSCARF", "BLACKBELT", "SHARPBEAK", "SOFTSAND", "SILVERPOWDER", "SPELLTAG", "METALCOAT",
   "CHARCOAL", "MYSTICWATER", "MIRACLESEED", "MAGNET", "TWISTEDSPOON", "NEVERMELTICE",
   "DRAGONFANG", "Tela", "BLACKGLASSES",
@@ -124,6 +128,8 @@ export interface BattlerState {
   readonly hiddenPowerType?: string;
   /** Public species fact needed by Eviolite; it contains no private evolution state. */
   readonly canEvolve?: boolean;
+  /** Public two-step evolution fact required by Pokemon Z's Super Eviolite. */
+  readonly canEvolveTwice?: boolean;
   /** Public species stat required by Beat Up; unlike the combat Attack it ignores level, IV and stages. */
   readonly baseAttack?: number;
   readonly majorStatus: MajorStatusState | null;
@@ -146,6 +152,8 @@ export interface BattlerState {
     readonly encoreTurns: number;
     readonly bindingMove: string | null;
     readonly bindingTurns: number;
+    /** Active trap source identity, so Binding Band follows its current holder in solo and Coop. */
+    readonly bindingSourceId?: string | null;
     /** Remaining HP of the temporary Substitute shield; removed on withdrawal. */
     readonly substituteHp?: number;
     readonly cursed: boolean;
@@ -288,6 +296,8 @@ export interface BattlerState {
     readonly stats: BattleStats;
     readonly stages: StatStages;
     readonly ability: BattleAbility | null;
+    readonly canEvolve?: boolean;
+    readonly canEvolveTwice?: boolean;
     readonly moves: readonly MoveSlot[];
   };
   readonly moves: readonly MoveSlot[];
@@ -492,7 +502,7 @@ export type BattleEvent =
   | { readonly type: "heldItemRecovered"; readonly side: BattleSide; readonly item: HeldItem;
       readonly ability: "PICKUP" | "HARVEST" | "RECYCLE" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
-      readonly item: HeldItem; readonly reason: "pickpocket" }
+      readonly item: HeldItem; readonly reason: "pickpocket" | "sticky-barb" }
   | { readonly type: "heldItemTransferred"; readonly source: BattleSide; readonly target: BattleSide;
       readonly item: HeldItem; readonly move: string }
   | { readonly type: "heldItemRemoved"; readonly source: BattleSide; readonly target: BattleSide;
@@ -534,7 +544,7 @@ export type BattleEvent =
 
 export type BattleTrace =
   | { readonly type: "order"; readonly side: BattleSide; readonly priority: number; readonly speed: number }
-  | { readonly type: "rng"; readonly purpose: "speed-tie" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "present" | "acupressure" | "conversion" | "conversion2" | "called-move"; readonly maxExclusive: number; readonly value: number }
+  | { readonly type: "rng"; readonly purpose: "speed-tie" | "quick-claw" | "accuracy" | "critical" | "damage-variance" | "sleep-duration" | "paralysis" | "additional-effect" | "ability" | "confusion-duration" | "confusion-action" | "infatuation" | "binding-duration" | "protection" | "magnitude" | "present" | "acupressure" | "conversion" | "conversion2" | "called-move"; readonly maxExclusive: number; readonly value: number }
   | { readonly type: "accuracy"; readonly side: BattleSide; readonly base: number; readonly accuracyStage: number; readonly evasionStage: number; readonly threshold: number; readonly hit: boolean;
       readonly abilityModifier?: { readonly ability: ImplementedBattleAbility; readonly multiplier: number } }
   | { readonly type: "damage"; readonly side: BattleSide; readonly move: string; readonly attack: number; readonly defense: number; readonly baseDamage: number; readonly critical: boolean; readonly variance: number; readonly stab: number; readonly effectiveness: number; readonly statusModifier: number;

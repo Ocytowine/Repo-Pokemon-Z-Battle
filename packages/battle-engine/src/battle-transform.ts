@@ -21,9 +21,14 @@ export function transformBattler(user: BattlerState, target: BattlerState): Batt
   if (user.transformOriginal !== undefined || target.transformOriginal !== undefined) return null;
   const original = { species: user.species, name: user.name, types: [...user.types], stats: { ...user.stats },
     stages: { ...user.stages }, ability: user.ability,
+    ...(user.canEvolve === undefined ? {} : { canEvolve: user.canEvolve }),
+    ...(user.canEvolveTwice === undefined ? {} : { canEvolveTwice: user.canEvolveTwice }),
     moves: user.moves.map((slot) => ({ ...slot, move: { ...slot.move } })) };
-  return { ...user, species: target.species, name: target.name, types: [...target.types],
+  const { canEvolve: _originalEvolution, canEvolveTwice: _originalEvolutionDepth, ...current } = user;
+  return { ...current, species: target.species, name: target.name, types: [...target.types],
     stats: { ...target.stats, maxHp: user.stats.maxHp }, stages: { ...target.stages }, ability: target.ability,
+    ...(target.canEvolve === undefined ? {} : { canEvolve: target.canEvolve }),
+    ...(target.canEvolveTwice === undefined ? {} : { canEvolveTwice: target.canEvolveTwice }),
     moves: target.moves.map((slot) => ({ move: { ...slot.move }, pp: Math.min(5, slot.move.pp) })),
     transformOriginal: original };
 }
@@ -31,8 +36,11 @@ export function transformBattler(user: BattlerState, target: BattlerState): Batt
 export function restoreTransformedBattler(battler: BattlerState): BattlerState {
   if (battler.transformOriginal === undefined) return battler;
   const original = battler.transformOriginal;
-  const { transformOriginal: _ignored, ...current } = battler;
+  const { transformOriginal: _ignored, canEvolve: _transformedEvolution,
+    canEvolveTwice: _transformedEvolutionDepth, ...current } = battler;
   return { ...current, species: original.species, name: original.name, types: [...original.types],
     stats: { ...original.stats }, stages: { ...original.stages }, ability: original.ability,
+    ...(original.canEvolve === undefined ? {} : { canEvolve: original.canEvolve }),
+    ...(original.canEvolveTwice === undefined ? {} : { canEvolveTwice: original.canEvolveTwice }),
     moves: original.moves.map((slot) => ({ ...slot, move: { ...slot.move } })) };
 }

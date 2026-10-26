@@ -1,4 +1,8 @@
 import { calculateDamage, effectiveTypeMultiplier, effectiveWeight } from "./damage.js";
+import { heldTurnOrderBracket, quickClawCanActivate } from "./held-turn-order.js";
+import { choiceLockApplies, choiceLockedMove, choiceSpeed } from "./held-choice-items.js";
+import { heldSpeedModifier } from "./held-speed-items.js";
+import { zStatItemSpeed } from "./held-z-stat-items.js";
 import { assistMoveFrom, eggTrickMoveFrom, metronomeMoveFrom, sleepTalkMoveFrom } from "./called-move-selection.js";
 import { colorChangeType, knockoutAbilityStatReaction } from "./ability-after-hit.js";
 import { activateWindAbility } from "./ability-wind.js";
@@ -75,7 +79,7 @@ export function volatileOf(battler: BattlerState): BattleVolatile {
   const neutral = { confusionTurns: 0, flinched: false, focusEnergy: 0, micleBerry: false, identified: false,
     miracleEye: false, lockOnBy: null, lockOnTurns: 0,
     disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
-    bindingMove: null, bindingTurns: 0, cursed: false, nightmare: false,
+    bindingMove: null, bindingTurns: 0, bindingSourceId: null, cursed: false, nightmare: false,
     lastMoveUsed: null, usedMoveNames: [],
     lastUsedMove: null, lastMoveUsedType: null, lastSketchableMove: null, retaliation: null,
     mimicOriginalSlots: [],
@@ -233,7 +237,7 @@ function consumeTrackedItem(battler: BattlerState, item: NonNullable<BattlerStat
 }
 
 function effectiveSpeed(battler: BattlerState, tailwind = false, terrain?: BattleEffects["terrain"],
-  swamp = false): number {
+  swamp = false, magicRoomTurns = 0): number {
   const stage = battler.stages.speed;
   const staged = stage >= 0
     ? Math.floor((battler.stats.speed * (2 + stage)) / 2)
@@ -249,7 +253,8 @@ function effectiveSpeed(battler: BattlerState, tailwind = false, terrain?: Battl
   if (battler.ability === "SLOWSTART" && (battler.volatile?.activeTurns ?? 0) <= 5) {
     speed = Math.max(1, Math.round(speed * 0.5));
   }
-  return speed;
+  return zStatItemSpeed(battler,
+    heldSpeedModifier(battler, choiceSpeed(battler, speed, magicRoomTurns), magicRoomTurns), magicRoomTurns);
 }
 
 type RngPurpose = Extract<BattleTrace, { readonly type: "rng" }>["purpose"];
@@ -477,7 +482,7 @@ function applyDamageAbilityStatReaction(
 
 function applyTypeAbsorption(source: BattleSide, target: BattleSide, move: BattleMove,
   weather: BattleEffects["weather"],
-  battlers: Record<BattleSide, BattlerState>, events: BattleEvent[]): boolean {
+  battlers: Record<BattleSide, BattlerState>, events: BattleEvent[], magicRoomTurns = 0): boolean {
   if (source === target) return false;
   const attacker = battlers[source];
   const defender = battlers[target];
@@ -496,7 +501,8 @@ function applyTypeAbsorption(source: BattleSide, target: BattleSide, move: Battl
         : ability === "CUERPOHORNEADO" && moveType === "FIRE" ? { stat: "defense" as const, delta: 2 }
           : null;
   const flashFire = ability === "FLASHFIRE" && moveType === "FIRE";
-  const levitate = ability === "LEVITATE" && moveType === "GROUND" && move.category !== "Status";
+  const levitate = ability === "LEVITATE" && moveType === "GROUND" && move.category !== "Status"
+    && !(defender.heldItem === "IRONBALL" && heldItemIsActive(defender, magicRoomTurns));
   if (!heals && raisedStat === null && !flashFire && !levitate) return false;
   events.push({ type: "abilityActivated", side: target, ability: ability as ImplementedBattleAbility,
     effect: "absorb-type" });
@@ -2100,7 +2106,7 @@ function canAct(
 }
 
 export function resolveBattleVolatileEndOfTurn(battler: BattlerState, side: BattleSide,
-  effects?: BattleEffects): {
+  effects?: BattleEffects, bindingSource?: BattlerState): {
   readonly battler: BattlerState; readonly events: readonly BattleEvent[];
 } {
   const events: BattleEvent[] = [];
@@ -2150,12 +2156,17 @@ export function resolveBattleVolatileEndOfTurn(battler: BattlerState, side: Batt
   }
   if (volatile.bindingTurns > 0 && next.hp > 0) {
     if (next.ability !== "MAGICGUARD") {
-      const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
+      const boosted = bindingSource !== undefined && bindingSource.id === volatile.bindingSourceId
+        && bindingSource.hp > 0 && bindingSource.heldItem === "BINDINGBAND"
+        && heldItemIsActive(bindingSource, effects?.magicRoomTurns ?? 0);
+      const amount = Math.min(next.hp, Math.max(1,
+        Math.floor(next.stats.maxHp / (boosted ? 6 : 8))));
       next = { ...next, hp: next.hp - amount };
       events.push({ type: "bindingDamage", side, move: volatile.bindingMove ?? "BINDING", amount, hp: next.hp });
     }
     const bindingTurns = volatile.bindingTurns - 1;
-    volatile = { ...volatile, bindingTurns, bindingMove: bindingTurns === 0 ? null : volatile.bindingMove };
+    volatile = { ...volatile, bindingTurns, bindingMove: bindingTurns === 0 ? null : volatile.bindingMove,
+      bindingSourceId: bindingTurns === 0 ? null : volatile.bindingSourceId };
     if (bindingTurns === 0) events.push({ type: "volatileEnded", side, effect: "binding" });
   }
   if (volatile.cursed && next.hp > 0 && next.ability !== "MAGICGUARD") {
@@ -2185,7 +2196,10 @@ export function resolveBattleVolatileEndOfTurn(battler: BattlerState, side: Batt
   for (const [active, move] of [[volatile.aquaRing, "AQUARING"], [volatile.ingrain, "INGRAIN"]] as const) {
     if (volatile.healBlockTurns > 0) continue;
     if (!active || next.hp <= 0) continue;
-    const amount = Math.min(next.stats.maxHp - next.hp, Math.max(1, Math.floor(next.stats.maxHp / 16)));
+    const base = Math.max(1, Math.floor(next.stats.maxHp / 16));
+    const amount = Math.min(next.stats.maxHp - next.hp,
+      next.heldItem === "BIGROOT" && heldItemIsActive(next, effects?.magicRoomTurns ?? 0)
+        ? Math.max(1, Math.floor(base * 1.3)) : base);
     if (amount <= 0) continue;
     next = { ...next, hp: next.hp + amount };
     events.push({ type: "hpRestored", side, source: "move", move, amount, hp: next.hp });
@@ -2240,7 +2254,10 @@ function applyResidualVolatile(battlers: Record<BattleSide, BattlerState>, event
   effects: BattleEffects): BattleSide | null {
   for (const side of SIDES) {
     const seededBy = volatileOf(battlers[side]).leechSeededBy;
-    const result = resolveBattleVolatileEndOfTurn(battlers[side], side, effects);
+    const sourceId = battlers[side].volatile?.bindingSourceId;
+    const bindingSource = sourceId == null ? undefined
+      : SIDES.map((candidate) => battlers[candidate]).find((candidate) => candidate.id === sourceId);
+    const result = resolveBattleVolatileEndOfTurn(battlers[side], side, effects, bindingSource);
     battlers[side] = result.battler;
     events.push(...result.events);
     const drained = result.events.find((event): event is Extract<BattleEvent, { type: "leechSeedDamage" }> =>
@@ -2248,7 +2265,9 @@ function applyResidualVolatile(battlers: Record<BattleSide, BattlerState>, event
     if (drained !== undefined && seededBy !== null && battlers[seededBy].hp > 0
       && (battlers[seededBy].volatile?.healBlockTurns ?? 0) === 0) {
       const receiver = battlers[seededBy];
-      const amount = Math.min(drained.amount, receiver.stats.maxHp - receiver.hp);
+      const raw = receiver.heldItem === "BIGROOT" && heldItemIsActive(receiver, effects.magicRoomTurns)
+        ? Math.floor(drained.amount * 1.3) : drained.amount;
+      const amount = Math.min(raw, receiver.stats.maxHp - receiver.hp);
       if (amount > 0) {
         battlers[seededBy] = { ...receiver, hp: receiver.hp + amount };
         events.push({ type: "hpRestored", side: seededBy, source: "move", move: "LEECHSEED",
@@ -2542,6 +2561,12 @@ export function resolveBattlePassiveEndOfTurn(battler: BattlerState, side: Battl
       events.push({ type: "itemActivated", side, item: "BLACKSLUDGE", effect: "damage", amount, hp });
       next = { ...next, hp };
     }
+    if (next.heldItem === "STICKYBARB" && next.ability !== "MAGICGUARD" && next.hp > 0) {
+      const amount = Math.min(next.hp, Math.max(1, Math.floor(next.stats.maxHp / 8)));
+      next = { ...next, hp: next.hp - amount };
+      events.push({ type: "itemActivated", side, item: "STICKYBARB", effect: "damage",
+        amount, hp: next.hp });
+    }
   }
   if (next.hp > 0 && next.majorStatus !== null && next.ability === "SHEDSKIN"
     && draw(rng, trace, "ability", 10) < 3) {
@@ -2708,7 +2733,7 @@ function validateState(state: BattleState, actions: SelectedMoveActions): void {
 
 function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: RandomSource, trace: BattleTrace[],
   weather: BattleEffects["weather"] = state.effects?.weather,
-  custap: Readonly<Partial<Record<BattleSide, boolean>>> = {}): BattleSide[] {
+  custap: Readonly<Partial<Record<BattleSide, boolean>>> = {}, events: BattleEvent[] = []): BattleSide[] {
   const decorated = SIDES.filter((side) => actions[side] !== undefined).map((side) => {
     const battler = state.battlers[side];
     const action = actions[side];
@@ -2716,11 +2741,19 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
     const slot = battler.moves[action.moveIndex];
     if (slot === undefined) throw new RangeError(`Invalid move index for ${side}.`);
     const speed = effectiveSpeed(battler, (state.effects?.sides[side].tailwindTurns ?? 0) > 0,
-      state.effects?.terrain, (state.effects?.sides[side].swampTurns ?? 0) > 0)
+      state.effects?.terrain, (state.effects?.sides[side].swampTurns ?? 0) > 0,
+      state.effects?.magicRoomTurns ?? 0)
       * weatherSpeedMultiplier(battler, weather);
     const priority = effectiveMovePriority(battler, slot.move, state.effects?.terrain);
+    const quickClawRoll = custap[side] !== true
+      && quickClawCanActivate(battler, state.effects?.magicRoomTurns ?? 0)
+      ? draw(rng, trace, "quick-claw", 10) : null;
+    const bracket = heldTurnOrderBracket(battler, state.effects?.magicRoomTurns ?? 0,
+      custap[side] === true, quickClawRoll);
+    if (bracket.quickClaw) events.push({ type: "itemActivated", side,
+      item: "QUICKCLAW", effect: "boost", amount: 0, hp: battler.hp });
     trace.push({ type: "order", side, priority, speed });
-    return { side, priority, speed, lagging: battler.ability === "STALL", custap: custap[side] === true };
+    return { side, priority, speed, lagging: bracket.lagging, early: bracket.early };
   });
   if (decorated.length === 0) return [];
   const only = decorated[0];
@@ -2728,7 +2761,7 @@ function orderedSides(state: BattleState, actions: SelectedMoveActions, rng: Ran
   const [player, opponent] = decorated;
   if (player === undefined || opponent === undefined) throw new Error("Battle requires two sides.");
   if (player.priority !== opponent.priority) return player.priority > opponent.priority ? [player.side, opponent.side] : [opponent.side, player.side];
-  if (player.custap !== opponent.custap) return player.custap ? [player.side, opponent.side] : [opponent.side, player.side];
+  if (player.early !== opponent.early) return player.early ? [player.side, opponent.side] : [opponent.side, player.side];
   if (player.lagging !== opponent.lagging) return player.lagging
     ? [opponent.side, player.side] : [player.side, opponent.side];
   if (player.speed !== opponent.speed) {
@@ -2917,6 +2950,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     readonly activeAbilities?: readonly NonNullable<BattlerState["ability"]>[];
     /** Positioned double adapter supplies both speeds because mini duels do not contain all field context. */
     readonly effectiveSpeeds?: Readonly<Partial<Record<BattleSide, number>>>;
+    /** Source Shell Bell counts earlier targets of the same move in TotalDamage. */
+    readonly attackerPriorDamageThisMove?: number;
     readonly targetIsAlly?: boolean;
     readonly targetPresentationSide?: BattleSide;
     /** Authoritative total cost for double-battle multi-target Pressure. */
@@ -3012,8 +3047,9 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
   const selectedActions: Partial<Record<BattleSide, MoveAction>> = { ...actions };
   for (const side of SIDES) {
     const encore = volatileOf(battlers[side]);
-    const lockedMove = battlers[side].ability === "PODERSABIO" && encore.choiceLockedMove !== null
-      ? encore.choiceLockedMove
+    const choiceMove = choiceLockedMove(battlers[side], effects.magicRoomTurns);
+    const lockedMove = choiceMove !== null
+      ? choiceMove
       : encore.chargingMove !== null ? encore.chargingMove
       : encore.rolloutTurns > 0 ? battlers[side].moves.find((slot) => slot.move.functionCode === "0D3")?.move.internalName
       : encore.outrageTurns > 0 ? battlers[side].moves.find((slot) => slot.move.functionCode === "0D2")?.move.internalName
@@ -3035,7 +3071,7 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       hp: battlers[side].hp },
       { type: "heldItemConsumed", side, item: "CUSTAPBERRY", effect: "boost", hp: battlers[side].hp });
   }
-  const order = orderedSides({ ...state, battlers }, selectedActions, rng, trace, effectiveWeather, custap);
+  const order = orderedSides({ ...state, battlers }, selectedActions, rng, trace, effectiveWeather, custap, events);
   events.push({ type: "actionOrdered", order });
   let winner: BattleSide | null = null;
   let battleDraw = false;
@@ -3181,7 +3217,7 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       usedMoveNames: previouslyUsed.includes(selectedSlot.move.internalName) ? previouslyUsed
         : [...previouslyUsed, selectedSlot.move.internalName],
       grudge: false, destinyBond: false,
-      choiceLockedMove: attacker.ability === "PODERSABIO"
+      choiceLockedMove: choiceLockApplies(attacker, effects.magicRoomTurns)
         ? volatile.choiceLockedMove ?? selectedSlot.move.internalName : volatile.choiceLockedMove });
     events.push({ type: "moveUsed", side, move: selectedSlot.move.internalName });
     if (slot.move.internalName !== selectedSlot.move.internalName) events.push({ type: "moveUsed", side, move: slot.move.internalName });
@@ -3619,7 +3655,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
     if (slot.move.functionCode === "0CE") {
       if (!skyDropReleasing) {
         if (options.targetIsAlly === true || defender.volatile?.chargingMove != null
-          || defender.volatile?.skyDropCarrierId != null || effectiveWeight(defender, battlers[side]) >= 2000) {
+          || defender.volatile?.skyDropCarrierId != null
+          || effectiveWeight(defender, battlers[side], effects.magicRoomTurns) >= 2000) {
           events.push({ type: "moveFailed", side, move: slot.move.internalName, reason: "condition" });
           continue;
         }
@@ -3648,7 +3685,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         : ownSide.echoedVoiceLastTurn === state.turn - 1 ? Math.min(5, (ownSide.echoedVoiceCount ?? 0) + 1) : 1;
       effects.sides[side] = { ...ownSide, echoedVoiceCount: count, echoedVoiceLastTurn: state.turn };
     }
-    if (applyTypeAbsorption(side, actualTargetSide, slot.move, effectiveWeather, battlers, events)) {
+    if (applyTypeAbsorption(side, actualTargetSide, slot.move, effectiveWeather, battlers, events,
+      effects.magicRoomTurns)) {
       consumeMoveType(side, slot.move, slot.move.type, battlers, events);
       continue;
     }
@@ -3750,11 +3788,11 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       remainingPp: nextPp,
       attackerEffectiveSpeed: options.effectiveSpeeds?.[side] ?? effectiveSpeed(battlers[side],
         effects.sides[side].tailwindTurns > 0, effects.terrain,
-        effects.sides[side].swampTurns > 0)
+        effects.sides[side].swampTurns > 0, effects.magicRoomTurns)
         * weatherSpeedMultiplier(battlers[side], effectiveWeather),
       defenderEffectiveSpeed: options.effectiveSpeeds?.[actualTargetSide] ?? effectiveSpeed(defender,
         effects.sides[actualTargetSide].tailwindTurns > 0, effects.terrain,
-        effects.sides[actualTargetSide].swampTurns > 0)
+        effects.sides[actualTargetSide].swampTurns > 0, effects.magicRoomTurns)
         * weatherSpeedMultiplier(defender, effectiveWeather),
       defenderBerriesBlocked: options.defenderBerriesBlocked ?? berriesBlockedBy([battlers[side]]),
       attackerPartnerAbility: neutralizingGas ? null : options.attackerPartnerAbility ?? null,
@@ -4309,11 +4347,17 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         { type: "abilityDamage", source: actualTargetSide, target: side,
           ability: "LIQUIDOOZE", amount, hp: current.hp - amount });
         if (current.hp - amount === 0) events.push({ type: "fainted", side });
-      } else {
-        const amount = Math.min(current.stats.maxHp - current.hp, drain);
-        battlers[side] = { ...current, hp: current.hp + amount };
-        events.push({ type: "hpRestored", side, source: "move", move: slot.move.internalName,
-          amount, hp: current.hp + amount });
+      } else if ((current.volatile?.healBlockTurns ?? 0) === 0) {
+        const raw = current.heldItem === "RAIZANCESTRAL" && heldItemIsActive(current, effects.magicRoomTurns)
+          ? Math.floor((current.stats.maxHp + 1) / 4)
+          : current.heldItem === "BIGROOT" && heldItemIsActive(current, effects.magicRoomTurns)
+            ? Math.floor(drain * 1.3) : drain;
+        const amount = Math.min(current.stats.maxHp - current.hp, raw);
+        if (amount > 0) {
+          battlers[side] = { ...current, hp: current.hp + amount };
+          events.push({ type: "hpRestored", side, source: "move", move: slot.move.internalName,
+            amount, hp: current.hp + amount });
+        }
       }
     }
     if (hp > 0 && damage > 0 && (slot.move.functionCode === "0CF" || slot.move.functionCode === "0D0")) {
@@ -4321,7 +4365,8 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       const current = volatileOf(bound);
       if (current.bindingTurns === 0) {
         const turns = 5 + draw(rng, trace, "binding-duration", 2);
-        battlers[actualTargetSide] = withVolatile(bound, { ...current, bindingMove: slot.move.internalName, bindingTurns: turns });
+        battlers[actualTargetSide] = withVolatile(bound, { ...current, bindingMove: slot.move.internalName,
+          bindingTurns: turns, bindingSourceId: battlers[side].id });
         events.push({ type: "volatileApplied", source: side, target: actualTargetSide, effect: "binding", turns, move: slot.move.internalName });
       }
     }
@@ -4337,6 +4382,7 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       if (current.bindingTurns > 0) events.push({ type: "volatileEnded", side, effect: "binding" });
       if (current.leechSeededBy !== null) events.push({ type: "volatileEnded", side, effect: "leech-seed" });
       battlers[side] = withVolatile(updated, { ...volatileOf(updated), bindingMove: null, bindingTurns: 0,
+        bindingSourceId: null,
         leechSeededBy: null, leechSeededBySlot: null });
       const own = effects.sides[side];
       if (own.spikesLayers > 0) events.push({ type: "battleEffectChanged", side, effect: "spikes", turns: 0 });
@@ -4691,6 +4737,17 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
         ability: "INNARDSOUT", amount, hp: current.hp - amount });
       if (current.hp - amount === 0) events.push({ type: "fainted", side });
     }
+    if (contact && battlers[side].heldItem === null && battlers[side].hp > 0
+      && battlers[actualTargetSide].heldItem === "STICKYBARB"
+      && heldItemIsActive(battlers[actualTargetSide], effects.magicRoomTurns)) {
+      const target = battlers[actualTargetSide];
+      battlers[side] = { ...battlers[side], heldItem: "STICKYBARB",
+        heldItemTransfer: battlers[side].heldItemTransfer ?? { originalItem: null } };
+      battlers[actualTargetSide] = { ...removeHeldItem(target),
+        heldItemTransfer: target.heldItemTransfer ?? { originalItem: "STICKYBARB" } };
+      events.push({ type: "heldItemTransferred", source: actualTargetSide, target: side,
+        item: "STICKYBARB", reason: "sticky-barb" });
+    }
     if (damage > 0 && slot.move.flags?.includes("a") === true && heldItemIsActive(defender, effects.magicRoomTurns)
       && defender.heldItem === "ROCKYHELMET"
       && battlers[side].hp > 0 && battlers[side].ability !== "MAGICGUARD") {
@@ -4729,6 +4786,21 @@ export function resolveSelectedMoves(state: BattleState, actions: SelectedMoveAc
       if (amount > 0) events.push({ type: "recoilDamage", side, move: slot.move.internalName,
         reason: "recoil", amount, hp: attacker.hp - amount });
       if (attacker.hp - amount === 0) events.push({ type: "fainted", side });
+    }
+    if (damage > 0 && battlers[side].hp > 0
+      && battlers[side].heldItem === "SHELLBELL"
+      && heldItemIsActive(battlers[side], effects.magicRoomTurns)
+      && (battlers[side].volatile?.healBlockTurns ?? 0) === 0
+      && !(battlers[side].ability === "SHEERFORCE" && slot.move.effectChance > 0
+        && !["150", "912"].includes(slot.move.functionCode))) {
+      const attacker = battlers[side];
+      const amount = Math.min(attacker.stats.maxHp - attacker.hp,
+        Math.floor(((options.attackerPriorDamageThisMove ?? 0) + damage) / 5));
+      if (amount > 0) {
+        battlers[side] = { ...attacker, hp: attacker.hp + amount };
+        events.push({ type: "itemActivated", side, item: "SHELLBELL", effect: "heal",
+          amount, hp: attacker.hp + amount });
+      }
     }
     if (options.attackerHeldItemAfterDamage !== false && damage > 0
       && heldItemIsActive(battlers[side], effects.magicRoomTurns) && battlers[side].heldItem === "LIFEORB" && battlers[side].hp > 0

@@ -319,10 +319,10 @@ describe("double team battles", () => {
     const result = resolveDoubleTeamTurn(state, activeBattlePositions(state).map((actor) =>
       ({ actor, action: { kind: "wait" as const } })), rng);
 
-    expect(result.state.teams.player.members[0]).toMatchObject({ hp: 113,
+    expect(result.state.teams.player.members[0]).toMatchObject({ hp: 105,
       volatile: { bindingMove: "WRAP", bindingTurns: 4 } });
     expect(result.events).toContainEqual(expect.objectContaining({ type: "positionedActionResolved",
-      actor: { side: "player", slot: 0 }, events: [expect.objectContaining({ type: "bindingDamage", amount: 7 })] }));
+      actor: { side: "player", slot: 0 }, events: [expect.objectContaining({ type: "bindingDamage", amount: 15 })] }));
   });
 
   it("lets one active slot spend its action healing an owned reserve", () => {

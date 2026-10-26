@@ -474,7 +474,12 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   couverts ; l'audit distingue dix entrées PBS sans handler source complet.
   Les 18 objets tenus renforçant un type sont ensuite portés et audités 18/18
   dans le calcul commun ; leur recette manuelle reste ouverte. Les 27 outils de
-  terrain sont inventoriés séparément, dont huit usages restent à raccorder.
+  terrain sont inventoriés séparément ; les huit usages restants ont ensuite
+  été raccordés au Sac, à l'état personnel persistant et aux rencontres.
+  Leur validation visuelle solo/Coop reste ouverte.
+  Le bloc source de priorité des objets tenus est porté 4/4 (Baie Chérim,
+  Vive Griffe, Ralentiqueue, Encens Plein), avec audit reproductible.
+  Compteur cumulé des cinq familles auditées : 95/95 effets source couverts.
   Les autres familles d'objets tenus restent à auditer et porter avant fermeture.
   Les 21 pierres/objets d'évolution sont déjà raccordés au lot
   évolution et ne constituent plus une dette de ce lot.

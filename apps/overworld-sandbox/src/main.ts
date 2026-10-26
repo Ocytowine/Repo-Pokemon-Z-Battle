@@ -39,7 +39,7 @@ import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, ro
   isGrassTerrain, sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
   type SourceEncounterMethod } from "./source-wild-encounter.js";
 import { advanceSourceTypeAmulet } from "./source-type-amulet.js";
-import { advanceSourceRepel, sourceRepelBlocksEncounter,
+import { advanceSourceRepel, reconcileSourceEscapePointAfterTransfer, sourceRepelBlocksEncounter,
   useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
@@ -3734,21 +3734,14 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
   renderImportedView();
   try {
-    const fromOutdoor = importedAssets?.mapMetadata.outdoor === true;
-    const entrance = importedAssets === null ? null : { mapId: importedAssets.map.id,
-      x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction };
+    const origin = importedAssets === null ? null : { mapId: importedAssets.map.id,
+      x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction,
+      outdoor: importedAssets.mapMetadata.outdoor === true };
     const next = await loadSourceTransfer(importedAssets, importedAvatar, transfer);
-    const toCave = next.assets.encounter?.methods.some((entry) => entry.method === "Cave") === true;
-    if (fromOutdoor && toCave && entrance !== null) {
-      sourceEventState = { ...sourceEventState, fieldItemEffects: {
-        ...sourceEventState.fieldItemEffects, escapePoint: entrance } };
-      persistSourceEventState();
-    } else if (next.assets.mapMetadata.outdoor === true
-      && sourceEventState.fieldItemEffects.escapePoint !== null) {
-      sourceEventState = { ...sourceEventState, fieldItemEffects: {
-        ...sourceEventState.fieldItemEffects, escapePoint: null } };
-      persistSourceEventState();
-    }
+    sourceEventState = reconcileSourceEscapePointAfterTransfer(sourceEventState, origin,
+      { outdoor: next.assets.mapMetadata.outdoor === true,
+        caveEncounters: next.assets.encounter?.methods.some((entry) => entry.method === "Cave") === true });
+    persistSourceEventState();
     const requestedTransferMode = pendingTransferMovementMode;
     pendingTransferMovementMode = null;
     activateSourceWorld(next);

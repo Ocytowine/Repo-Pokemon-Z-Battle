@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ItemDefinition } from "@pokemon-z-battle/game-data";
 import { createBattleOnlyItemCoverage, createDualUseItemCoverage, createFieldToolInventory,
-  createHeldTypeBoosterCoverage, sourceBattleItemHandlers, sourceFieldItemHandlers,
-  sourceHeldTypeBoosters } from "../src/runtime/item-coverage-audit.js";
+  createHeldTurnOrderCoverage, createHeldTypeBoosterCoverage, sourceBattleItemHandlers,
+  sourceFieldItemHandlers, sourceHeldTurnOrderItems, sourceHeldTypeBoosters } from "../src/runtime/item-coverage-audit.js";
 
 describe("battle-only item coverage", () => {
   it("separates usable source effects from catalog entries without a Ruby handler", () => {
@@ -42,6 +42,16 @@ describe("battle-only item coverage", () => {
 });
 
 describe("held and field item inventory", () => {
+  it("extracts every held turn-order item from the source priority branch", () => {
+    const source = sourceHeldTurnOrderItems(`def pbPriority(ignorequickclaw=false,log=false)
+      hasWorkingItem(:CUSTAPBERRY)
+      hasWorkingItem(:QUICKCLAW)
+      hasWorkingItem(:LAGGINGTAIL) || hasWorkingItem(:FULLINCENSE)
+      # Calculate each Pokémon's priority bracket`);
+    const entries = [...source].map((internalName, id) => ({ id, internalName, name: internalName }));
+    expect(createHeldTurnOrderCoverage(entries as ItemDefinition[], source).summary)
+      .toEqual({ total: 4, supported: 4, remaining: 0 });
+  });
   it("compares ordinary held type boosts with the actual Ruby item and type pairs", () => {
     const source = sourceHeldTypeBoosters(`if (attacker.hasWorkingItem(:SILKSCARF) && isConst?(type,PBTypes,:NORMAL)) ||
       (attacker.hasWorkingItem(:Tela) && isConst?(type,PBTypes,:FAIRY)) ||

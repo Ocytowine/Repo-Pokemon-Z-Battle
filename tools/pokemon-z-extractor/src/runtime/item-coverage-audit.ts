@@ -1,7 +1,8 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { isPokemonItemUsableInBattle, isPokemonItemUsableInField,
-  pokemonItemTargetMode, TYPE_BOOST_HELD_ITEM_TYPES } from "@pokemon-z-battle/battle-engine";
+  isHeldTurnOrderItemSupported, pokemonItemTargetMode,
+  TYPE_BOOST_HELD_ITEM_TYPES } from "@pokemon-z-battle/battle-engine";
 import type { ItemDefinition } from "@pokemon-z-battle/game-data";
 import { writeJsonAtomically } from "../io/write-json.js";
 
@@ -42,6 +43,26 @@ export function createHeldTypeBoosterCoverage(items: readonly ItemDefinition[], 
       name: item === undefined ? internalName : localizedNames.get(item.id) ?? item.name,
       support: item === undefined ? "source-item-absent" as const
         : TYPE_BOOST_HELD_ITEM_TYPES[internalName] === type ? "supported" as const : "not-implemented" as const };
+  });
+  return { summary: { total: records.length, supported: records.filter((record) => record.support === "supported").length,
+    remaining: records.filter((record) => record.support !== "supported").length }, records };
+}
+
+/** The four item identities in Pokemon Z's pbPriority held-item branch. */
+export function sourceHeldTurnOrderItems(script: string): ReadonlySet<string> {
+  const block = script.match(/def pbPriority\(ignorequickclaw=false,log=false\)[\s\S]*?# Calculate each Pokémon's priority bracket/);
+  if (block === null) throw new Error("Bloc source des objets d'ordre d'action introuvable.");
+  return new Set([...block[0].matchAll(/hasWorkingItem\(:(\w+)\)/g)].map((match) => match[1]!));
+}
+
+export function createHeldTurnOrderCoverage(items: readonly ItemDefinition[], source: ReadonlySet<string>,
+  localizedNames: ReadonlyMap<number, string> = new Map()) {
+  const records = [...source].map((internalName) => {
+    const item = items.find((candidate) => candidate.internalName === internalName);
+    return { internalName, id: item?.id ?? null,
+      name: item === undefined ? internalName : localizedNames.get(item.id) ?? item.name,
+      support: item === undefined ? "source-item-absent" as const
+        : isHeldTurnOrderItemSupported(internalName) ? "supported" as const : "not-implemented" as const };
   });
   return { summary: { total: records.length, supported: records.filter((record) => record.support === "supported").length,
     remaining: records.filter((record) => record.support !== "supported").length }, records };
@@ -97,11 +118,12 @@ export function createDualUseItemCoverage(items: readonly ItemDefinition[], item
 }
 
 export async function writeBattleOnlyItemCoverage(outputDirectory: string) {
-  const [itemsText, localizationText, scriptFiles, damageScript] = await Promise.all([
+  const [itemsText, localizationText, scriptFiles, damageScript, priorityScript] = await Promise.all([
     readFile(path.join(outputDirectory, "items.json"), "utf8"),
     readFile(path.join(outputDirectory, "localization.json"), "utf8"),
     readdir(path.join(outputDirectory, "scripts")),
     readFile(path.join(outputDirectory, "scripts", "082-5818042-pokebattle-move.rb"), "utf8"),
+    readFile(path.join(outputDirectory, "scripts", "084-37140976-pokebattle-battle.rb"), "utf8"),
   ]);
   const items = JSON.parse(itemsText) as {
     readonly records: readonly ItemDefinition[] };
@@ -115,10 +137,23 @@ export async function writeBattleOnlyItemCoverage(outputDirectory: string) {
   const names = new Map((localization.categories?.itemNames ?? [])
     .map((entry) => [Number(entry.key), entry.value] as const));
   const battleOnly = createBattleOnlyItemCoverage(items.records, handlers, names);
-  const report = { schemaVersion: "1.2.0" as const, battleOnly,
-    medicine: createDualUseItemCoverage(items.records, 0, fieldHandlers, handlers, names),
-    curativeBerries: createDualUseItemCoverage(items.records, 5, fieldHandlers, handlers, names),
-    heldTypeBoosters: createHeldTypeBoosterCoverage(items.records, sourceHeldTypeBoosters(damageScript), names),
+  const medicine = createDualUseItemCoverage(items.records, 0, fieldHandlers, handlers, names);
+  const curativeBerries = createDualUseItemCoverage(items.records, 5, fieldHandlers, handlers, names);
+  const heldTypeBoosters = createHeldTypeBoosterCoverage(items.records, sourceHeldTypeBoosters(damageScript), names);
+  const heldTurnOrder = createHeldTurnOrderCoverage(items.records, sourceHeldTurnOrderItems(priorityScript), names);
+  const coveredFamilies = [
+    { actionable: battleOnly.summary.actionable, supported: battleOnly.summary.supported },
+    { actionable: medicine.summary.actionable, supported: medicine.summary.supported },
+    { actionable: curativeBerries.summary.actionable, supported: curativeBerries.summary.supported },
+    { actionable: heldTypeBoosters.summary.total, supported: heldTypeBoosters.summary.supported },
+    { actionable: heldTurnOrder.summary.total, supported: heldTurnOrder.summary.supported },
+  ];
+  const actionable = coveredFamilies.reduce((total, family) => total + family.actionable, 0);
+  const supported = coveredFamilies.reduce((total, family) => total + family.supported, 0);
+  const report = { schemaVersion: "1.4.0" as const,
+    auditedEffects: { actionable, supported, remaining: actionable - supported,
+      familyCount: coveredFamilies.length }, battleOnly, medicine, curativeBerries,
+    heldTypeBoosters, heldTurnOrder,
     fieldTools: createFieldToolInventory(items.records, bagHandlers, names) };
   await writeJsonAtomically(outputDirectory, "item-coverage-report.json", report);
   return report;

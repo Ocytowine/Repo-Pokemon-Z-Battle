@@ -1,4 +1,5 @@
 import type { BattleEffects, BattleEvent, BattleSide, BattlerState } from "./types.js";
+import { heldItemIsActive } from "./ability-item-control.js";
 
 function effectsBase(effects: BattleEffects | undefined): BattleEffects {
   return effects ?? { sides: {
@@ -10,10 +11,11 @@ function effectsBase(effects: BattleEffects | undefined): BattleEffects {
 export function isGrounded(battler: BattlerState, effects?: BattleEffects): boolean {
   if ((effects?.gravityTurns ?? 0) > 0 || battler.volatile?.ingrain === true
     || battler.volatile?.smackDown === true) return true;
+  if (battler.heldItem === "IRONBALL" && heldItemIsActive(battler, effects?.magicRoomTurns ?? 0)) return true;
   return !battler.types.includes("FLYING") && battler.ability !== "LEVITATE"
     && (battler.volatile?.magnetRiseTurns ?? 0) === 0
     && (battler.volatile?.telekinesisTurns ?? 0) === 0
-    && !(battler.heldItem === "AIRBALLOON" && (effects?.magicRoomTurns ?? 0) === 0);
+    && !(battler.heldItem === "AIRBALLOON" && heldItemIsActive(battler, effects?.magicRoomTurns ?? 0));
 }
 
 export function resolveGrassyTerrainHealing(battler: BattlerState, side: BattleSide,

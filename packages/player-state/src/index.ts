@@ -1169,6 +1169,8 @@ function battler(member: PersistentPokemon, catalog: PlayerBattleCatalog): Battl
     hiddenPowerType: hiddenPowerTypeFromIvs(member.metadata.ivs),
     ...(definition.baseStats?.attack === undefined ? {} : { baseAttack: definition.baseStats.attack }),
     canEvolve: (definition.evolutions?.length ?? 0) > 0,
+    canEvolveTwice: (definition.evolutions ?? []).some((evolution) =>
+      (catalog.pokemon.find((candidate) => candidate.internalName === evolution.species)?.evolutions?.length ?? 0) > 0),
     majorStatus: member.majorStatus === null ? null : { ...member.majorStatus },
     ability: supportedAbility(member.ability), heldItem: supportedItem(member.heldItem),
     moves: member.moves.map((slot) => ({ move: battleMove(slot, catalog), pp: slot.pp })),

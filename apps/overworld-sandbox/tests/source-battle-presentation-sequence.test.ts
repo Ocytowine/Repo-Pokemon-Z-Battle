@@ -12,6 +12,14 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("shows the French held-item name when Quick Claw activates", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Rival")] });
+    const steps = buildSourceBattlePresentationSequence(state,
+      [{ type: "itemActivated", side: "player", item: "QUICKCLAW", effect: "boost", amount: 0, hp: 20 }],
+      { itemName: (item) => item === "QUICKCLAW" ? "Vive Griffe" : item });
+    expect(steps).toContainEqual(expect.objectContaining({ kind: "status",
+      message: "Héros utilise Vive Griffe." }));
+  });
   it("renders a move-driven form and Substitute HP from authoritative events", () => {
     const state = createTeamBattleState({ player: [battler("CONSTELLAR")],
       opponent: [battler("Cible")] });

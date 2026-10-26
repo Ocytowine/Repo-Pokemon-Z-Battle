@@ -5,6 +5,8 @@ export interface SourceFieldItemContext {
   readonly mapId: number;
   readonly x: number;
   readonly y: number;
+  /** Source Sweet Scent fails under field weather; supplied once map weather is available. */
+  readonly weatherActive?: boolean;
 }
 
 export interface SourceFieldItemResult {
@@ -52,6 +54,29 @@ export function finishSourceWildBattleFieldEffects(state: SourceEventState): Sou
     ? { ...state, fieldItemEffects: { ...state.fieldItemEffects, shinyNextWildEncounter: false } } : state;
 }
 
+/** Mirrors pbSetEscapePoint: return one tile behind the cave entrance, facing outward. */
+export function sourceCaveEscapePoint(mapId: number, x: number, y: number,
+  direction: SourceCheckpoint["direction"]): SourceCheckpoint {
+  const offset = { up: [0, 1, "down"], down: [0, -1, "up"], left: [1, 0, "right"],
+    right: [-1, 0, "left"] } as const;
+  const [dx, dy, facing] = offset[direction];
+  return { mapId, x: Math.max(0, x + dx), y: Math.max(0, y + dy), direction: facing };
+}
+
+export function reconcileSourceEscapePointAfterTransfer(state: SourceEventState,
+  origin: { readonly mapId: number; readonly x: number; readonly y: number;
+    readonly direction: SourceCheckpoint["direction"]; readonly outdoor: boolean } | null,
+  destination: { readonly outdoor: boolean; readonly caveEncounters: boolean }): SourceEventState {
+  if (origin?.outdoor === true && destination.caveEncounters) {
+    return { ...state, fieldItemEffects: { ...state.fieldItemEffects,
+      escapePoint: sourceCaveEscapePoint(origin.mapId, origin.x, origin.y, origin.direction) } };
+  }
+  if (destination.outdoor && state.fieldItemEffects.escapePoint !== null) {
+    return { ...state, fieldItemEffects: { ...state.fieldItemEffects, escapePoint: null } };
+  }
+  return state;
+}
+
 /** Shared entry point for Bag items whose target is the field rather than a Pokemon. */
 export function useSourceFieldItem(state: SourceEventState, itemId: string, itemName: string,
   context: SourceFieldItemContext): SourceFieldItemResult {
@@ -90,8 +115,11 @@ export function useSourceFieldItem(state: SourceEventState, itemId: string, item
         transfer: effects.escapePoint, state: { ...consumeFieldItem(state, itemId),
           fieldItemEffects: { ...effects, escapePoint: null } } };
     }
-    return { ok: true, message: `${itemName} répand un doux parfum.`, sharedWorldChanged: false,
-      encounterRequested: true, state: consumeFieldItem(state, itemId) };
+    return { ok: true, message: context.weatherActive === true
+      ? "Le parfum se dissipe à cause du temps." : `${itemName} répand un doux parfum.`,
+      sharedWorldChanged: false,
+      ...(context.weatherActive === true ? {} : { encounterRequested: true as const }),
+      state: consumeFieldItem(state, itemId) };
   }
   if (itemId === "TALISMANMALVO") {
     if ((state.inventory[itemId] ?? 0) < 1) {

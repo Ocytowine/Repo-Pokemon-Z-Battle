@@ -24,8 +24,12 @@ import { reconcileAbilityForm, restoreAbilityForm } from "./ability-form.js";
 import { applyIllusion } from "./ability-illusion.js";
 import { inheritSwitchEffects, releaseSwitchTraps } from "./switch-inheritance.js";
 import { clearStatStages } from "./ability-stat-reactions.js";
-import { berriesBlockedBy, consumeHeldItem, isSupportedBerry, moveCanTriggerPressure } from "./ability-item-control.js";
+import { berriesBlockedBy, consumeHeldItem, heldItemIsActive, isSupportedBerry, moveCanTriggerPressure } from "./ability-item-control.js";
 import { custapBerryReady } from "./battle-berries.js";
+import { heldTurnOrderBracket, quickClawCanActivate } from "./held-turn-order.js";
+import { choiceLockedMove, choiceSpeed } from "./held-choice-items.js";
+import { heldSpeedModifier } from "./held-speed-items.js";
+import { zStatItemSpeed } from "./held-z-stat-items.js";
 import { copycatMoveFrom, effectiveMovePriority, effectiveMoveType, hasMoveFlag, meFirstMoveFrom,
   mirrorMoveFrom, moveTargetsUser } from "./move-properties.js";
 import type {
@@ -143,7 +147,9 @@ function effectiveSpeed(battler: BattlerState, effects: TeamBattleState["effects
     speed = Math.max(1, Math.round(speed * 0.5));
   }
   speed *= weatherSpeedMultiplier(battler, weatherSuppressed ? null : effects?.weather);
-  return speed;
+  return zStatItemSpeed(battler, heldSpeedModifier(battler,
+    choiceSpeed(battler, speed, effects?.magicRoomTurns ?? 0), effects?.magicRoomTurns ?? 0),
+    effects?.magicRoomTurns ?? 0);
 }
 
 function activeBattlerList(state: TeamBattleState, teams = state.teams): BattlerState[] {
@@ -362,6 +368,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     ? targets.filter((target) => target.side !== actor.side
       && teams[target.side].members[activeTeamIndices(teams[target.side])[target.slot]!]?.ability === "PRESSURE").length : 0);
   let paidMoves: BattlerState["moves"] | null = null;
+  let priorDamageThisMove = 0;
   for (const [targetIndex, target] of targets.entries()) {
     const storedAttacker = teams[actor.side].members[activeTeamIndices(teams[actor.side])[actor.slot]!]!;
     const attacker: BattlerState = selfDestructTemplate ?? storedAttacker;
@@ -389,6 +396,7 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
       { endOfTurn: false, damageMultiplier: targets.length > 1 && selectedMove?.functionCode !== "212" ? 0.75 : 1,
         ...(state.moveCatalog === undefined ? {} : { moveCatalog: state.moveCatalog }),
         attackerHeldItemAfterDamage: targetIndex === targets.length - 1,
+        attackerPriorDamageThisMove: priorDamageThisMove,
         switchingTarget: targetEntry?.action.kind === "switch" ? target.side : null,
         opponentItemTheft: rules.opponentItemTheft,
         attackerParty: { [miniSide]: teams[actor.side].members },
@@ -438,6 +446,9 @@ function executeMove(state: TeamBattleState, teams: Record<BattleSide, BattleTea
     if (result.events.some((event) => event.type === "damageApplied" && event.amount > 0)) {
       damagedTargets.add(key(target));
     }
+    priorDamageThisMove += result.events.filter((event): event is Extract<BattleEvent, { type: "damageApplied" }> =>
+      event.type === "damageApplied" && event.source === miniSide)
+      .reduce((sum, event) => sum + event.amount, 0);
     effects = result.state.effects;
     let nextAttacker = result.state.battlers[miniSide];
     if (first) paidMoves = nextAttacker.moves;
@@ -692,7 +703,10 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       inner.push({ type: "statusContinued", side: position.side, status: status.kind });
     }
     if (battler.hp > 0) {
-      const volatile = resolveBattleVolatileEndOfTurn(battler, position.side, effects);
+      const sourceId = battler.volatile?.bindingSourceId;
+      const bindingSource = sourceId == null ? undefined
+        : activeBattlerList(state, teams).find((candidate) => candidate.id === sourceId);
+      const volatile = resolveBattleVolatileEndOfTurn(battler, position.side, effects, bindingSource);
       battler = volatile.battler;
       inner.push(...volatile.events);
       const grassy = resolveGrassyTerrainHealing(battler, position.side, effects);
@@ -729,7 +743,9 @@ function applyDoubleEndOfTurn(state: TeamBattleState, teams: Record<BattleSide, 
       const receiverPosition = { side: seededBy, slot: seededBySlot };
       const receiver = battlerAtPosition({ ...state, teams }, receiverPosition);
       if (receiver !== undefined && receiver.hp > 0 && (receiver.volatile?.healBlockTurns ?? 0) === 0) {
-        const amount = Math.min(drained.amount, receiver.stats.maxHp - receiver.hp);
+        const raw = receiver.heldItem === "BIGROOT" && heldItemIsActive(receiver, effects?.magicRoomTurns ?? 0)
+          ? Math.floor(drained.amount * 1.3) : drained.amount;
+        const amount = Math.min(raw, receiver.stats.maxHp - receiver.hp);
         if (amount > 0) {
           const healed = { ...receiver, hp: receiver.hp + amount };
           storeBattler(teams, receiverPosition, healed);
@@ -978,7 +994,10 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
   let moves = effectiveSubmitted.filter((entry): entry is PositionedTeamBattleAction & { action: Extract<TeamBattleAction, {kind:"move"}> } =>
     entry.action.kind === "move" && !pursuitKeys.has(key(entry.actor)))
     .map((entry) => { let battler = battlerAtPosition({ ...state, teams }, entry.actor)!;
-      const move = battler.moves[entry.action.moveIndex]?.move;
+      const locked = choiceLockedMove(battler, effects?.magicRoomTurns ?? 0);
+      const lockedIndex = locked === null ? -1 : battler.moves.findIndex((slot) => slot.move.internalName === locked && slot.pp > 0);
+      const action = lockedIndex < 0 ? entry.action : { ...entry.action, moveIndex: lockedIndex };
+      const move = battler.moves[action.moveIndex]?.move;
       if (move === undefined) throw new Error("Capacite double invalide.");
       const priority = effectiveMovePriority(battler, move, effects?.terrain);
       const opponents = activeTeamIndices(teams[otherSide(entry.actor.side)])
@@ -998,10 +1017,18 @@ export function resolveDoubleTeamTurn(state: TeamBattleState, submitted: readonl
             hp: battler.hp },
         ] });
       }
-      return { ...entry, priority, custap, lagging: battler.ability === "STALL", speed: effectiveSpeed(battler, effects,
+      const quickClawRoll = !custap && quickClawCanActivate(battler, effects?.magicRoomTurns ?? 0)
+        ? rng.nextInt(10) : null;
+      if (quickClawRoll !== null) trace.push({ type: "rng", purpose: "quick-claw",
+        maxExclusive: 10, value: quickClawRoll });
+      const bracket = heldTurnOrderBracket(battler, effects?.magicRoomTurns ?? 0, custap, quickClawRoll);
+      if (bracket.quickClaw) events.push({ type: "positionedActionResolved", actor: entry.actor,
+        targets: [entry.actor], events: [{ type: "itemActivated", side: entry.actor.side,
+          item: "QUICKCLAW", effect: "boost", amount: 0, hp: battler.hp }] });
+      return { ...entry, action, priority, early: bracket.early, lagging: bracket.lagging, speed: effectiveSpeed(battler, effects,
         hasWeatherSuppressor(activeBattlerList(state, teams)), entry.actor.side), tie: rng.nextInt(1_000_000) }; })
     .sort((left, right) => right.priority - left.priority
-      || (left.custap !== right.custap ? left.custap ? -1 : 1 : 0)
+      || (left.early !== right.early ? left.early ? -1 : 1 : 0)
       || (left.lagging !== right.lagging ? left.lagging ? 1 : -1 : 0)
       || (left.lagging && right.lagging ? left.speed - right.speed
         : (effects?.trickRoomTurns ?? 0) > 0 ? left.speed - right.speed : right.speed - left.speed)

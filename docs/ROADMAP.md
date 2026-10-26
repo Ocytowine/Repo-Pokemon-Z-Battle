@@ -994,6 +994,29 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 ### Increment 9.7 - Boucle de jeu et mise en scene
 
+Jalon objets du 2026-10-26 : Bandeau Choix, Lunettes Choix et Mouchoir Choix
+sont portés dans le noyau de combat commun. Leurs bonus et leur verrou de
+capacité suivent l'activité de l'objet et l'état tactique restaurable en Coop.
+L'audit global des objets est reporté à la demande du porteur ; validation
+manuelle solo/hôte/invité/reconnexion encore ouverte.
+
+Jalon suivant : les sept objets d'entraînement de Vitesse, `QUICKPOWDER`,
+`FLOATSTONE` et `IRONBALL` sont portés dans les mêmes adaptateurs simple/Duo
+et la room autoritaire. Poids, terrain et immunités Sol suivent les effets
+associés ; validation manuelle ouverte et audit global toujours reporté.
+
+Jalon suivant : `SUPEREVIOLITE` et `TABLAESQUI` appliquent leurs bonus de
+Vitesse et de dégâts dans le noyau commun. `SUPEREVIOLITE` ajoute la défense
+et reçoit le critère public `canEvolveTwice`, calculé depuis le catalogue
+d'espèces et validé dans les snapshots Coop. La validation manuelle reste
+ouverte ; l'audit global des objets reste reporté.
+
+Jalon suivant : `SHELLBELL`, `STICKYBARB`, `BINDINGBAND`, `BIGROOT` et
+`RAIZANCESTRAL` couvrent récupération, dégâts de fin de tour, transfert au
+contact et renforcement des soins ou des pièges. L'auteur d'un piège est
+conservé dans l'état tactique Coop. Validation manuelle ouverte et audit
+global toujours reporté.
+
 Le statut operationnel detaille, les recettes de validation et l'ordre de reprise
 sont conserves dans [`AI_HANDOFF.md`](AI_HANDOFF.md) pour les prochaines sessions.
 
@@ -2892,7 +2915,15 @@ curatives), et distingue 10 entrées PBS sans handler Ruby. Les effets d'objets
 tenus et les autres familles d'objets restent ouverts dans `SOLO-ITEMS-1`. Les 18
 objets tenus ordinaires renforçant un type sont ensuite portés et audités
 18/18 ; les 27 outils de terrain ont un handler source et leur audit d'exécution
-reste ouvert, avec huit usages à raccorder. Les 21
+reste ouvert. Les huit usages restants sont maintenant raccordés dans un état
+personnel persistant : Repoussenlit, flûtes, Miel, Corde Sortie et Potion
+Brillante. La recette réelle solo/hôte/invité reste à faire. Les outils de
+terrain gardent une dette de contexte : la météo de terrain n'est
+pas encore fournie à l'usage de Miel ; le contrat `weatherActive` est prêt.
+Le bloc Ruby des objets tenus d'ordre d'action est porté 4/4 : Baie Chérim,
+Vive Griffe, Ralentiqueue et Encens Plein. `audit:items` couvre ainsi 95/95
+effets source sur cinq familles explicites, sans compteur global des autres
+objets tenus. Les 21
 pierres/objets d'evolution sont deja fonctionnels dans `SOLO-EVOLUTION-1`.
 
 Premier increment evolution du 2026-10-08 : 17 des 18 methodes reellement utilisees

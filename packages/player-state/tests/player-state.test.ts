@@ -381,6 +381,20 @@ describe("persistent player party", () => {
     expect(playerPartyToBattleTeam(party, beatUpCatalog).members[0]?.baseAttack).toBe(55);
   });
 
+  it("projects the two-step species evolution fact required by Super Eviolite", () => {
+    const first = { ...catalog.pokemon[0]!, evolutions: [
+      { species: "RAICHU", method: "Level", parameter: "30" }] };
+    const second = { ...first, internalName: "RAICHU", evolutions: [
+      { species: "FINAL", method: "Item", parameter: "THUNDERSTONE" }] };
+    const last = { ...first, internalName: "FINAL", evolutions: [] };
+    const twoSteps = playerPartyToBattleTeam(party, { ...catalog,
+      pokemon: [first, second, last] }).members[0];
+    expect(twoSteps).toMatchObject({ canEvolve: true, canEvolveTwice: true });
+    const oneStep = playerPartyToBattleTeam(party, { ...catalog,
+      pokemon: [first, { ...second, evolutions: [] }] }).members[0];
+    expect(oneStep).toMatchObject({ canEvolve: true, canEvolveTwice: false });
+  });
+
   it("never starts a battle with a fainted active Pokemon", () => {
     const reserve = { ...party.members[0]!, id: "reserve", hp: 3 };
     const team = playerPartyToBattleTeam({ ...party,

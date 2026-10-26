@@ -4,6 +4,7 @@ import { effectiveMoveCategory, effectiveMoveType, hasHighCriticalRate, hasMoldB
   isKickingMove, isRecklessBoostedMove, isSoundMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
 import { heldItemIsActive } from "./ability-item-control.js";
+import { superEvioliteApplies, tablaEsquiApplies } from "./held-z-stat-items.js";
 import { PLATE_TYPES, TYPE_BOOST_HELD_ITEM_TYPES } from "./held-item-types.js";
 import { naturalGiftProfile } from "./natural-gift.js";
 import { resistBerryApplies } from "./battle-berries.js";
@@ -79,7 +80,8 @@ export function effectiveTypeMultiplier(attacker: BattlerState, defender: Battle
     : moveType === "PSYCHIC" && defender.volatile?.miracleEye === true
       ? defender.types.filter((type) => type !== "DARK") : defender.types;
   const grounded = gravityTurns > 0 || defender.volatile?.ingrain === true
-    || defender.volatile?.smackDown === true || move.functionCode === "11C";
+    || defender.volatile?.smackDown === true || move.functionCode === "11C"
+    || defender.heldItem === "IRONBALL" && heldItemIsActive(defender, magicRoomTurns);
   const effectiveDefenderTypes = grounded && moveType === "GROUND"
     ? defenderTypes.filter((type) => type !== "FLYING") : defenderTypes;
   const typeEffect = effectiveDefenderTypes.length === 0 ? 1 : effectiveDefenderTypes.reduce((multiplier, type) => {
@@ -94,12 +96,13 @@ export function effectiveTypeMultiplier(attacker: BattlerState, defender: Battle
 }
 
 /** Pokemon Z effective weight in hectograms, shared by every weight-based move. */
-export function effectiveWeight(battler: BattlerState, attacker?: BattlerState): number {
+export function effectiveWeight(battler: BattlerState, attacker?: BattlerState, magicRoomTurns = 0): number {
   let weight = battler.capture?.weight ?? 0;
   if (attacker === undefined || !hasMoldBreaker(attacker)) {
     if (battler.ability === "HEAVYMETAL") weight *= 2;
     if (battler.ability === "LIGHTMETAL") weight /= 2;
   }
+  if (battler.heldItem === "FLOATSTONE" && heldItemIsActive(battler, magicRoomTurns)) weight /= 2;
   return Math.max(1, Math.floor(weight + (battler.volatile?.weightChange ?? 0)));
 }
 
@@ -199,6 +202,10 @@ export function calculateDamage(
     attack = Math.round(attack * 1.5);
     recordAbilityModifier("PODERSABIO", 1.5);
   }
+  if (attackerItemActive && (attacker.heldItem === "CHOICEBAND" && move.category === "Physical"
+    || attacker.heldItem === "CHOICESPECS" && move.category === "Special")) {
+    attack = Math.round(attack * 1.5);
+  }
   if (attacker.ability === "SLOWSTART" && move.category === "Physical"
     && (attacker.volatile?.activeTurns ?? 0) <= 5) {
     attack = Math.max(1, Math.round(attack * 0.5));
@@ -252,7 +259,8 @@ export function calculateDamage(
   }
   if (defenderItemActive && defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
   if (defenderItemActive && defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
-  const targetWeight = effectiveWeight(defender, attacker);
+  if (superEvioliteApplies(defender, context.magicRoomTurns)) defense = Math.max(1, Math.round(defense * 1.5));
+  const targetWeight = effectiveWeight(defender, attacker, context.magicRoomTurns);
   const flailRatio = Math.floor((48 * attacker.hp) / attacker.stats.maxHp);
   let power = move.functionCode === "098"
     ? flailRatio < 2 ? 200 : flailRatio < 5 ? 150 : flailRatio < 10 ? 100
@@ -261,7 +269,7 @@ export function calculateDamage(
     : targetWeight >= 2_000 ? 120 : targetWeight >= 1_000 ? 100 : targetWeight >= 500 ? 80
       : targetWeight >= 250 ? 60 : targetWeight >= 100 ? 40 : 20;
   if (move.functionCode === "09B") {
-    const ratio = Math.floor(effectiveWeight(attacker) / targetWeight);
+    const ratio = Math.floor(effectiveWeight(attacker, undefined, context.magicRoomTurns) / targetWeight);
     power = ratio >= 5 ? 120 : ratio >= 4 ? 100 : ratio >= 3 ? 80 : ratio >= 2 ? 60 : 40;
   }
   if (move.functionCode === "089") power = Math.max(1, Math.floor((attacker.happiness ?? 0) * 2 / 5));
@@ -329,6 +337,8 @@ export function calculateDamage(
   if (attackerItemActive && attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
   if (attackerItemActive && attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attackerItemActive && attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
+  if (superEvioliteApplies(attacker, context.magicRoomTurns)) statusModifier *= 1.5;
+  if (tablaEsquiApplies(attacker, context.magicRoomTurns)) statusModifier *= 1.3;
   if (attackerItemActive && attacker.heldItem !== null && PLATE_TYPES[attacker.heldItem] === moveType) {
     statusModifier *= 1.2;
   }
@@ -342,6 +352,7 @@ export function calculateDamage(
   if (context.waterSport && moveType === "FIRE") statusModifier /= 3;
   const grounded = (battler: BattlerState): boolean => (context.gravityTurns ?? 0) > 0
     || battler.volatile?.ingrain === true || battler.volatile?.smackDown === true
+    || battler.heldItem === "IRONBALL" && heldItemIsActive(battler, context.magicRoomTurns)
     || !battler.types.includes("FLYING") && battler.ability !== "LEVITATE"
       && (battler.volatile?.magnetRiseTurns ?? 0) === 0
       && (battler.volatile?.telekinesisTurns ?? 0) === 0
