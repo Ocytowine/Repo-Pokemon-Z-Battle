@@ -52,25 +52,15 @@ Documentation de reference :
 - [Transfert de port vers un serveur local](https://developer.chrome.com/docs/devtools/remote-debugging/local-server)
 - [Verrouillage d'orientation](https://developer.mozilla.org/en-US/docs/Web/API/ScreenOrientation/lock)
 
-## Methode de secours : reseau Wi-Fi local
+## Pourquoi la methode Wi-Fi n'est pas proposee
 
-Utiliser cette methode si le transfert USB n'est pas disponible.
-
-1. Connecter le PC et le telephone au meme reseau Wi-Fi et couper les VPN.
-2. Demarrer Vite sur toutes les interfaces reseau :
-
-```powershell
-corepack pnpm --dir apps/overworld-sandbox exec vite --host 0.0.0.0 --port 5174
-```
-
-3. Autoriser Node/Vite sur les reseaux prives si le pare-feu Windows le demande.
-4. Executer `ipconfig` et relever l'adresse IPv4 de l'adaptateur Wi-Fi, par
-   exemple `192.168.1.24`.
-5. Ouvrir `http://192.168.1.24:5174` sur le telephone en remplacant l'adresse par
-   celle du PC.
-
-Si la page reste inaccessible, verifier le pare-feu Windows et l'isolation des
-clients Wi-Fi. La methode USB est alors preferable.
+Le serveur de developpement refuse volontairement les routes
+`/__pokemon-z/data/` et `/__pokemon-z/source/` lorsque l'hote HTTP n'est pas
+`localhost` ou `127.0.0.1`. Cette protection evite d'exposer sur le reseau local
+les fichiers du jeu source. Demarrer Vite avec `--host 0.0.0.0` afficherait le
+shell, mais les donnees locales repondraient HTTP 403. Utiliser le transfert de
+port USB ci-dessus, qui conserve `http://localhost:5174` sur le telephone. Ne pas
+affaiblir cette garde uniquement pour simplifier un test Wi-Fi.
 
 ## Recette fonctionnelle
 
