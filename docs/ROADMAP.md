@@ -3218,6 +3218,28 @@ de sauvegarde exige des echantillons v2.12 FR. Les menus plein canvas, le Sac
 avance, les echelles de sprites et les controles Android reutilisent les noyaux
 existants et ne creent pas de logique de gameplay parallele.
 
+Premier contrat Android valide le 2026-10-26 : la jouabilite mobile cible
+exclusivement le paysage, avec un joystick cardinal fixe a gauche et des boutons
+fixes a droite pour interaction/validation, retour/annulation, sprint maintenu et
+menu. Le joueur ne configure ni leur position ni leur taille. En portrait, une
+surcouche bloque les intentions et demande la rotation. Cette couche est une
+presentation locale sans persistance : elle appelle les memes entrees que le
+clavier, donc le resolveur commun reste autoritaire en solo et la room valide les
+memes intentions en Coop. Les controles overworld disparaissent devant le combat
+et les interfaces de gestion. Zones sures, cibles tactiles d'au moins 44 px,
+reprise apres arriere-plan et reconnexion font partie de la recette Android.
+
+Second jalon Android implemente le 2026-10-26 : une pression tactile demande le
+plein ecran puis le verrouillage paysage lorsque les API du navigateur le
+permettent. Les refus degradent proprement vers le paysage navigateur. Le passage
+en arriere-plan neutralise toutes les intentions locales et remet a zero joystick,
+sprint et touches ; le retour rearme les controles sans rejouer d'intention.
+Cette gestion reste une presentation locale sans nouvel etat Coop. Validation
+reelle du bouton Retour, reprise audio, reconnexion apres suspension prolongee et
+matrice d'appareils encore ouvertes.
+La recette differee est detaillee dans
+[`VALIDATION_MANUELLE_ANDROID.md`](VALIDATION_MANUELLE_ANDROID.md).
+
 ## Regles transversales
 
 ### Suivi des objets de combat — 2026-10-26

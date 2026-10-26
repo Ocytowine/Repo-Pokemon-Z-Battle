@@ -63,6 +63,8 @@ import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./source-region-map.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
+import { isSourceAndroidUserAgent, SourceTouchControls } from "./source-touch-controls.js";
+import { SourceAndroidImmersion, type SourceLandscapeOrientation } from "./source-android-immersion.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceCompassView } from "./source-compass.js";
 import { SourceBattleReportStore } from "./source-battle-report.js";
@@ -135,6 +137,9 @@ import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   type SourceFieldMark } from "./source-field-effects.js";
 import "./style.css";
 
+const sourceAndroidMode = isSourceAndroidUserAgent(navigator.userAgent);
+document.documentElement.classList.toggle("source-android", sourceAndroidMode);
+
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
@@ -168,7 +173,10 @@ let sourceFieldMarks: SourceFieldMark[] = [];
 let sourceTruthLensActiveUntil = Number.NEGATIVE_INFINITY;
 const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
-let sourceSprintHeld = false;
+let touchMovementDirection: Direction | null = null;
+let keyboardSprintHeld = false;
+let touchSprintHeld = false;
+let sourceDocumentInputActive = !document.hidden;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let pendingSourceFieldNotice: string | null = null;
 let coopHudNotice: { readonly text: string; readonly kind: "info" | "error";
@@ -944,6 +952,28 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceTouchControls = new SourceTouchControls({
+  onDirection: (direction) => {
+    if (!sourceDocumentInputActive && direction !== null) return;
+    touchMovementDirection = direction;
+    if (direction !== null) move("player", direction);
+  },
+  onInteract: () => { if (sourceDocumentInputActive) interact("player"); },
+  onCancel: () => { if (sourceDocumentInputActive) handleSourceCancelInput(); },
+  onMenu: () => {
+    if (sourceDocumentInputActive && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) toggleSourceMenu();
+  },
+  onSprint: (held) => { touchSprintHeld = sourceDocumentInputActive && held; },
+});
+const sourceAndroidImmersion = sourceAndroidMode
+  ? new SourceAndroidImmersion(document, document.documentElement,
+    (screen.orientation as ScreenOrientation & SourceLandscapeOrientation | undefined) ?? {})
+  : null;
+const requestSourceAndroidImmersionFromGesture = (): void => sourceAndroidImmersion?.requestFromUserGesture();
+requiredAppElement<HTMLElement>("app").addEventListener("pointerdown",
+  requestSourceAndroidImmersionFromGesture, { capture: true });
+const touchPortraitQuery = window.matchMedia("(orientation: portrait)");
+touchPortraitQuery.addEventListener("change", () => sourceTouchControls.release());
 const sourceLoadErrorRoot = requiredAppElement<HTMLElement>("source-load-error");
 const sourceLoadErrorTitle = requiredAppElement<HTMLElement>("source-load-error-title");
 const sourceLoadErrorDetail = requiredAppElement<HTMLElement>("source-load-error-detail");
@@ -3244,6 +3274,8 @@ function setSourcePartyLead(pokemonId: string): void {
 }
 
 function toggleSourceMenu(): void {
+  if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
+  sourceTouchControls.release();
   if (sourceScenes.compassOpen) sourceScenes.closeCompass();
   else if (sourceScenes.menuOpen) sourceScenes.closeMenu();
   else if (!sourceScenes.openMenu(sourceSceneActivity())) return;
@@ -4014,6 +4046,7 @@ function remotePlayerAdjacent(): boolean {
 }
 
 function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
+  if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
   if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
@@ -4038,7 +4071,8 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     }
     const before = importedAvatar;
     const unlocks = sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride);
-    const requestedMode = requestedModeOverride ?? sourceModeForInput(sourceMovementMode, sourceSprintHeld, unlocks);
+    const requestedMode = requestedModeOverride
+      ?? sourceModeForInput(sourceMovementMode, keyboardSprintHeld || touchSprintHeld, unlocks);
     const facing = sourceFacingPoint(importedAvatar.x, importedAvatar.y, direction);
     const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
     const waterfall = sourceMovementMode === "surf" && unlocks.waterfall
@@ -4090,6 +4124,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
 }
 
 function interact(playerId: AvatarId): void {
+  if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
   if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID) {
     const activity = sourceSceneActivity();
@@ -4280,28 +4315,44 @@ const keys: Readonly<Record<string, readonly ["player", Direction]>> = {
 };
 
 function continueHeldSourceMovement(): void {
+  if (!sourceDocumentInputActive) return;
+  if (touchMovementDirection !== null) {
+    move("player", touchMovementDirection);
+    return;
+  }
   const code = [...heldMovementKeys].at(-1);
   const command = code === undefined ? undefined : keys[code];
   if (command?.[0] === "player") move(...command);
 }
 
+function handleSourceCancelInput(): boolean {
+  if (sourceScenes.compassOpen) { closeSourceCompass(); return true; }
+  if (sourcePokemonSummarySession !== null) { closeSourcePokemonSummary(); return true; }
+  if (sourceIncubatorOpen) { closeSourceIncubator(); return true; }
+  if (sourceDayCareEggSequence !== null) { closeSourceDayCareEggs(); return true; }
+  if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { closeSourceDayCare(); return true; }
+  if (sourceRanchSequence !== null) { closeSourceRanch(); return true; }
+  if (sourceShop !== null) { closeSourceShop(); return true; }
+  if (sourceScenes.menuOpen) { toggleSourceMenu(); return true; }
+  if (sourceSequences.current !== null && sourceDialogues.current !== null) return true;
+  if (sourceDialogues.cancel()) {
+    sourcePresentation.playDialogueSound("cancel");
+    renderImportedView();
+    return true;
+  }
+  if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
+    toggleSourceMenu();
+    return true;
+  }
+  return false;
+}
+
 window.addEventListener("keydown", (event) => {
+  if (!sourceDocumentInputActive) return;
   if (sourceMiningView.open) { event.preventDefault(); return; }
-  if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = true;
+  if (event.code === "ShiftLeft" || event.code === "ShiftRight") keyboardSprintHeld = true;
   if (event.code === "Escape") {
-    if (sourceScenes.compassOpen) { event.preventDefault(); closeSourceCompass(); return; }
-    if (sourcePokemonSummarySession !== null) { event.preventDefault(); closeSourcePokemonSummary(); return; }
-    if (sourceIncubatorOpen) { event.preventDefault(); closeSourceIncubator(); return; }
-    if (sourceDayCareEggSequence !== null) { event.preventDefault(); closeSourceDayCareEggs(); return; }
-    if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { event.preventDefault(); closeSourceDayCare(); return; }
-    if (sourceRanchSequence !== null) { event.preventDefault(); closeSourceRanch(); return; }
-    if (sourceShop !== null) { event.preventDefault(); closeSourceShop(); return; }
-    if (sourceScenes.menuOpen) { event.preventDefault(); toggleSourceMenu(); return; }
-    if (sourceSequences.current !== null && sourceDialogues.current !== null) { event.preventDefault(); return; }
-    if (sourceDialogues.cancel()) {
-      event.preventDefault(); sourcePresentation.playDialogueSound("cancel"); renderImportedView(); return;
-    }
-    if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) { event.preventDefault(); toggleSourceMenu(); return; }
+    if (handleSourceCancelInput()) { event.preventDefault(); return; }
   }
   const target = event.target;
   if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
@@ -4340,9 +4391,31 @@ window.addEventListener("keydown", (event) => {
 });
 window.addEventListener("keyup", (event) => {
   heldMovementKeys.delete(event.code);
-  if (event.code === "ShiftLeft" || event.code === "ShiftRight") sourceSprintHeld = false;
+  if (event.code === "ShiftLeft" || event.code === "ShiftRight") keyboardSprintHeld = false;
 });
-window.addEventListener("blur", () => { heldMovementKeys.clear(); sourceSprintHeld = false; });
+function resetSourceHeldInputs(): void {
+  heldMovementKeys.clear();
+  keyboardSprintHeld = false;
+  sourceTouchControls.release();
+}
+function setSourceDocumentInputActive(active: boolean): void {
+  sourceDocumentInputActive = active;
+  heldMovementKeys.clear();
+  keyboardSprintHeld = false;
+  sourceTouchControls.setEnabled(active);
+}
+window.addEventListener("blur", () => {
+  resetSourceHeldInputs();
+});
+document.addEventListener("visibilitychange", () => {
+  setSourceDocumentInputActive(!document.hidden);
+});
+window.addEventListener("pagehide", () => {
+  setSourceDocumentInputActive(false);
+});
+window.addEventListener("pageshow", () => {
+  setSourceDocumentInputActive(!document.hidden);
+});
 window.addEventListener("beforeunload", () => {
   const battleId = multiplayer.current?.snapshot?.battle?.id;
   if (battleId === undefined) sessionStorage.removeItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY);

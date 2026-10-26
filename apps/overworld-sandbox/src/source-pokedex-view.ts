@@ -7,6 +7,7 @@ import { SOURCE_POKEMON_POWER_TIERS, sourcePokemonIconUrl, sourcePokemonPowerTie
   sourcePokemonTypeLabel, type SourcePokemonPowerTier } from "./source-pokemon-collection.js";
 import { sourceRegionImageUrl, sourceSpeciesHabitatCoordinates, sourceSpeciesHabitatLocations,
   type SourceRegionMapCatalog } from "./source-region-map.js";
+import { bindSourceAspectFrame } from "./source-aspect-frame.js";
 import { startSourcePokemonSpriteAnimation, type SourcePokemonSpriteAnimation }
   from "./source-pokemon-sprite-animator.js";
 
@@ -283,10 +284,13 @@ export class SourcePokedexView {
     potentialTier: "all", sort: "number" };
   private page = 0; private selectedSpecies: string | null = null;
   private spriteAnimation: SourcePokemonSpriteAnimation | null = null;
+  private stopHabitatMapLayout: (() => void) | null = null;
   private detailPage: "information" | "habitat" = "information";
 
   public render(root: HTMLElement, model: SourcePokedexViewModel): void {
     this.stopSpriteAnimation();
+    this.stopHabitatMapLayout?.();
+    this.stopHabitatMapLayout = null;
     const entries = createSourcePokedexEntries(model); const filtered = filterSourcePokedexEntries(entries, this.filters);
     const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)); this.page = Math.min(this.page, pageCount - 1);
     const visible = filtered.slice(this.page * PAGE_SIZE, (this.page + 1) * PAGE_SIZE);
@@ -326,13 +330,23 @@ export class SourcePokedexView {
   }
 
   private renderDetail(root: HTMLElement, model: SourcePokedexViewModel, filtered: readonly SourcePokedexEntry[]): void {
+    this.stopHabitatMapLayout?.();
+    this.stopHabitatMapLayout = null;
     const entries = filtered.filter((entry) => entry.seen || entry.caught);
     const index = Math.max(0, entries.findIndex((entry) => entry.species === this.selectedSpecies)); const entry = entries[index];
     if (entry === undefined) { this.selectedSpecies = null; this.render(root, model); return; }
     root.insertAdjacentHTML("beforeend", detail(entry, index, entries.length, model.regionMap, this.detailPage));
     if (this.detailPage === "information") this.startSpriteAnimation(root, entry);
+    else {
+      const mapContainer = root.querySelector<HTMLElement>(".source-pokedex-habitat");
+      const mapFrame = root.querySelector<HTMLElement>(".source-pokedex-habitat-map");
+      if (mapContainer !== null && mapFrame !== null) {
+        this.stopHabitatMapLayout = bindSourceAspectFrame(mapContainer, mapFrame, 3 / 2);
+      }
+    }
     root.querySelector<HTMLButtonElement>("[data-pokedex-detail-close]")?.addEventListener("click", () => {
-      this.stopSpriteAnimation(); this.selectedSpecies = null; root.querySelector(".source-pokedex-detail")?.remove();
+      this.stopSpriteAnimation(); this.stopHabitatMapLayout?.(); this.stopHabitatMapLayout = null;
+      this.selectedSpecies = null; root.querySelector(".source-pokedex-detail")?.remove();
     });
     root.querySelectorAll<HTMLButtonElement>("[data-pokedex-detail-nav]").forEach((button) => button.addEventListener("click", () => {
       const offset = button.dataset.pokedexDetailNav === "previous" ? -1 : 1;

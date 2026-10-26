@@ -668,10 +668,31 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 
 ### UI-ANDROID-1 — Controles tactiles paysage
 
-- Priorite/statut : `P2` / bloque par maquette et matrice d'appareils.
+- Priorite/statut : `P2` / controles et cycle de vie navigateur integres ;
+  validation sur appareils reels et matrice encore a definir.
 - Les boutons emettent les memes intentions que le clavier. Aucun moteur de
   mouvement tactile parallele.
-- Prevoir zones sures, orientation paysage, redimensionnement et accessibilite.
+- La disposition n'est pas configurable : joystick fixe a gauche et boutons
+  fixes a droite (`A` interaction/validation, `B` retour/annulation, Sprint
+  maintenu et Menu). Le joystick ne produit que les quatre directions cardinales.
+- Le mode tactile est active par la plateforme Android, pas par les media queries
+  de pointeur ; le navigateur PC de developpement conserve toujours l'interface
+  bureau et son panneau moteur.
+- Le jeu Android est reserve au paysage. En portrait, les intentions de jeu sont
+  bloquees et un ecran demande de tourner l'appareil. Le verrouillage d'orientation
+  est tente apres la demande de plein ecran issue d'une pression tactile ; les
+  navigateurs qui refusent conservent le mode paysage sans bloquer le jeu.
+- Prevoir zones sures, redimensionnement, cibles tactiles d'au moins 44 px et
+  accessibilite. Les commandes overworld sont masquees lorsque le combat ou une
+  interface de gestion fournit ses propres controles.
+- Autorite : presentation et pression locales ; en solo, appel du resolveur commun ;
+  en Coop, envoi des intentions existantes puis validation par la room. Domaine :
+  seulement visuel et transitoire. Persistance : aucune. Reconnexion : commandes
+  neutralisees tant que l'etat autoritaire n'est pas de nouveau exploitable.
+- Cycle de vie : `visibilitychange`, `pagehide` et `pageshow` neutralisent puis
+  rearment les entrees en remettant a zero joystick, sprint et touches clavier.
+  Reprise audio, bouton Retour materiel et suspension longue du WebSocket restent
+  a valider sur Android reel.
 
 ### UI-SPRITES-1 — Echelles contextuelles
 
@@ -689,7 +710,7 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
 - sauvegardes originales representatives pour l'import ;
 - mecanique source exacte de la Boussole, de l'Alchimie, de la Pension et de la
   Mega-Evolution ;
-- maquette ou contraintes minimales pour les commandes Android.
+- matrice minimale d'appareils Android reels (petit/grand telephone et tablette).
 
 ## Recette minimale avant cloture d'un lot
 

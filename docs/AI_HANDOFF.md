@@ -67,6 +67,99 @@ eviter. Une action principale doit rester utilisable au tactile (cible d'environ
 44 px), sans survol obligatoire. Chaque nouveau visuel doit etre verifie au moins
 en telephone portrait, telephone paysage et bureau avant fermeture du lot.
 
+### Contrat Android paysage — integration demarree le 2026-10-26
+
+Le porteur a valide une disposition non configurable : joystick cardinal fixe a
+gauche et boutons fixes a droite pour interaction/validation, retour/annulation,
+sprint maintenu et menu. La jouabilite Android vise uniquement le paysage ; en
+portrait, une surcouche bloque les intentions et demande de tourner l'appareil.
+Ce choix remplace, pour ce lot, l'exigence generale de rendre la scene jouable en
+portrait ; les interfaces de gestion restent responsives lorsqu'elles sont
+consultees dans leurs orientations supportees.
+
+Autorite et Coop : la couche tactile est une presentation locale transitoire,
+sans sauvegarde et sans nouvel etat replique. Elle traduit les pressions vers les
+memes intentions que le clavier. Le resolveur commun applique mouvement, mode,
+collisions et transitions en solo ; la room autoritaire valide les memes intentions
+pour l'hote et l'invite. Le rendu distant et la reconnexion conservent donc les
+contrats de mouvement existants. Les commandes doivent rester neutralisees tant
+qu'une reconnexion ne fournit pas d'etat autoritaire exploitable, et etre masquees
+quand le combat ou une interface de gestion possede ses propres controles.
+
+Premier jalon fonctionnel : `SourceTouchControls` convertit le joystick avec zone
+morte en une direction cardinale, conserve cette direction entre deux pas et
+partage le drapeau de sprint avec le clavier. `A`, `B` et Menu reutilisent les
+entrees existantes ; `B` et Echap passent par le meme gestionnaire d'annulation.
+La scene 4:3 tient dans la hauteur paysage, respecte les `safe-area-inset`, masque
+le diagnostic et retire les commandes devant les interfaces qui possedent leurs
+propres boutons. Le portrait affiche une surcouche et bloque mouvement,
+interaction et menu ; `viewport-fit=cover` active les zones sures des appareils.
+Les tests du joystick couvrent zone morte, quatre directions et absence de
+diagonale. `corepack pnpm test` et `corepack pnpm build` passent. Validation
+visuelle et gestuelle sur appareils Android reels encore ouverte, ainsi que le
+plein ecran/verrouillage d'orientation, l'arriere-plan audio et la matrice de
+reconnexion Coop.
+
+Correctif apres premier retour Android : les media queries `pointer: coarse` et
+`hover: none` ne suffisaient pas sur le navigateur du porteur. Le mode dedie est
+maintenant active explicitement par le User-Agent Android et jamais sur le PC de
+developpement. Le selecteur de mise en page historique visait aussi `body > main`
+alors que le shell monte le jeu dans `#app > main` : ce selecteur est corrige. En
+paysage Android, le canvas est donc centre dans une grille a colonne unique, le
+panneau et le bouton du moteur sont forces masques et les controles tactiles sont
+affiches hors des interfaces qui les remplacent. Le rendu 800 x 360 avec User-Agent
+Android a ete controle en navigateur headless ; la validation tactile reelle reste
+ouverte.
+
+Second correctif apres capture DevTools : les vues Progression, Capture, Eclosion
+et Fouilles sont toujours montees dans `#world-stage` avec l'attribut `hidden`
+quand elles sont fermees. Les selecteurs Android les traitaient a tort comme des
+scenes ouvertes et masquaient donc continuellement les commandes. Chaque garde
+exige maintenant `:not([hidden])`, afin que le joystick soit visible dans
+l'overworld libre et disparaisse seulement lorsqu'une de ces vues est réellement
+affichee.
+
+Disposition ajustee apres validation visuelle : les commandes ne sont plus des
+enfants de la scene 4:3. Elles sont montees au niveau de `.world-panel`, couvrent
+la surface Android uniquement pour recevoir les pointeurs, et placent le joystick
+au centre de la bande gauche et les actions au centre de la bande droite. Le calcul
+de largeur reserve 340 px aux deux bandes avant de dimensionner le canvas selon sa
+hauteur 4:3. Carte, dialogues et effets ne sont donc plus recouverts par les
+commandes.
+
+Validation du porteur dans Chrome DevTools : joystick/deplacements et disposition
+paysage fonctionnent. Le bouton Retour materiel reste non validable sans appareil
+Android. Correctif menu associe : l'ancien plein ecran etait conditionne a une
+largeur maximale de 430 px, seuil qui ne s'applique pas a un telephone emule en
+paysage. En mode Android, le menu est maintenant fixe dans toute la surface du
+viewport, moins les zones sures, quelle que soit sa largeur. Il conserve sa
+composition paysage a navigation laterale et masque les controles overworld.
+
+Correctif cartographique associe : la carte regionale 480 x 320 et la vue des
+zones de capture du Pokedex partagent desormais un cadre centre qui conserve
+strictement le ratio 3:2 dans l'espace disponible. Apres deux tentatives CSS non
+fiables dans la grille reelle du menu, un `ResizeObserver` mesure explicitement
+le conteneur et applique le plus grand rectangle 3:2 admissible. L'image utilise
+`contain` et la surcouche interactive reste dans le meme cadre 30 x 20 ; repères,
+joueurs et cases d'habitat ne divergent donc pas lorsque le menu Android occupe
+le viewport. Ce changement est uniquement visuel et local, sans etat ni contrat
+Coop nouveau.
+
+Jalon cycle de vie Android : la premiere pression dans l'application demande le
+plein ecran, puis tente le verrouillage
+`landscape` si le navigateur expose cette capacite. Les refus restent silencieux
+et ne bloquent jamais l'intention de jeu. `visibilitychange`, `pagehide` et
+`pageshow` neutralisent ou rearment la couche d'entree ; chaque transition remet
+a zero direction, touches clavier et sprint, y compris leur etat visuel. Aucun
+etat de gameplay n'est ajoute : cette couche reste locale, transitoire et sans
+persistance, et la room continue de recevoir les intentions existantes. Les cas
+plein ecran accepte, deja actif et API refusees sont automatises. Restent ouverts
+sur appareil reel : comportement du bouton Retour, reprise audio, maintien du
+WebSocket en arriere-plan et matrice telephone/tablette.
+La procedure USB/Wi-Fi et toutes les cases de controle sont conservees dans
+[`VALIDATION_MANUELLE_ANDROID.md`](VALIDATION_MANUELLE_ANDROID.md). Ne cocher une
+case qu'apres observation sur un appareil reel.
+
 ## Etat Git au moment de cette note
 
 Le dernier commit observe lors de l'audit du 2026-10-09 est `9d816c0 FIX : Import

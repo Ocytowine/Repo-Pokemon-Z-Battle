@@ -4,10 +4,58 @@ body { margin: 0; min-width: 320px; min-height: 100vh; background: #07110d; }
 button, input { color: inherit; font: inherit; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .eyebrow { margin: 0; color: #73cba8; font-size: 10px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
-body > main { display: grid; grid-template-columns: minmax(0, 576px) minmax(190px, 340px); gap: 18px; width: fit-content; max-width: 100%; margin: auto; padding: 24px; }
+#app > main { display: grid; grid-template-columns: minmax(0, 576px) minmax(190px, 340px); gap: 18px; width: fit-content; max-width: 100%; margin: auto; padding: 24px; }
 .world-panel { width: min(576px, calc(100vw - 48px)); }.panel { border: 1px solid #ffffff18; border-radius: 14px; background: #0c1b14dd; box-shadow: 0 18px 50px #0006; }
 .log-heading { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 15px; }
 h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; overflow: hidden; border-radius: 14px; background: #07110d; }.canvas-shell > canvas { position: relative; z-index: 1; display: block; width: 100%; height: auto; border: 1px solid #ffffff18; border-radius: inherit; image-rendering: pixelated; }
+.source-touch-controls, .source-orientation-blocker { display: none; }
+.source-touch-controls { position: fixed; z-index: 80; inset: 0; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.source-touch-joystick { position: absolute; top: 50%; left: max(18px, env(safe-area-inset-left)); width: 116px; height: 116px; border: 2px solid #e7f7ef66; border-radius: 50%; background: radial-gradient(circle, #dff8ea24 0 18%, #10271e99 19% 52%, #06100bcc 53%); box-shadow: inset 0 0 18px #d8f7e72b, 0 5px 20px #0009; pointer-events: auto; touch-action: none; transform: translateY(-50%); }
+.source-touch-joystick::before, .source-touch-joystick::after { position: absolute; inset: 12px 53px; content: ""; border-radius: 99px; background: #dff8ea20; pointer-events: none; }
+.source-touch-joystick::after { inset: 53px 12px; }
+.source-touch-joystick i { position: absolute; top: calc(50% - 24px); left: calc(50% - 24px); width: 48px; height: 48px; border: 2px solid #effff4aa; border-radius: 50%; background: linear-gradient(145deg, #6ca989dd, #264f3be8); box-shadow: inset 0 0 0 3px #122b2088, 0 4px 10px #0009; pointer-events: none; will-change: transform; }
+.source-touch-actions { position: absolute; top: 50%; right: max(14px, env(safe-area-inset-right)); width: 154px; height: 132px; pointer-events: none; transform: translateY(-50%); }
+.source-touch-actions button { position: absolute; display: grid; place-items: center; margin: 0; padding: 0; color: #f7fff9; border: 2px solid #effff499; border-radius: 50%; background: #173a2dd9; box-shadow: inset 0 0 0 3px #08171088, 0 4px 12px #0009; font-weight: 950; pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; }
+.source-touch-actions button:active, .source-touch-actions button.active { filter: brightness(1.35); transform: scale(.94); }
+.source-touch-action { width: 58px; height: 58px; font-size: 22px; }
+.source-touch-interact { right: 0; bottom: 38px; border-color: #bff4d3 !important; background: #27744edb !important; }
+.source-touch-cancel { right: 62px; bottom: 0; border-color: #f5dfaaaa !important; background: #785a22dc !important; }
+.source-touch-small { width: 47px; height: 47px; font-size: 8px; }
+.source-touch-menu { top: 0; left: 4px; }
+.source-touch-sprint { top: 0; right: 43px; }
+.source-orientation-blocker { position: fixed; z-index: 300; inset: 0; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); place-content: center; justify-items: center; gap: 10px; color: #effff5; background: radial-gradient(circle at 50% 35%, #24543d, #07110d 68%); text-align: center; }
+.source-orientation-blocker div { font-size: 64px; line-height: 1; transform: rotate(90deg); }
+.source-orientation-blocker strong { font-size: 22px; }
+.source-orientation-blocker span { color: #a8c8b5; font-size: 13px; }
+@media (orientation: landscape) {
+  html.source-android body { min-height: 100dvh; overflow: hidden; }
+  html.source-android #app > main { width: 100%; height: 100dvh; grid-template-columns: minmax(0, 576px); padding: max(6px, env(safe-area-inset-top)) max(6px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(6px, env(safe-area-inset-left)); place-content: center; justify-content: center; }
+  html.source-android .world-panel { width: min(calc(100vw - 340px - env(safe-area-inset-left) - env(safe-area-inset-right)), calc((100dvh - 12px - env(safe-area-inset-top) - env(safe-area-inset-bottom)) * 4 / 3), 576px); justify-self: center; }
+  html.source-android .canvas-shell { border-radius: 8px; }
+  html.source-android .canvas-shell:has(> .source-menu:not([hidden])) { overflow: visible; }
+  html.source-android .source-menu { position: fixed; z-index: 100; inset: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); border-radius: 14px; }
+  html.source-android .engine-diagnostics { display: none !important; }
+  html.source-android .source-touch-controls { display: block; }
+  html.source-android .world-panel:has(.source-menu:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-battle-overlay:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-new-game:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-load-error:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-shop:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-ranch:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-day-care-eggs:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-incubator:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-pokemon-summary:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.player-duel-prompt:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.battle-join-prompt:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(#source-progression:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(#source-capture-resolution:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(#source-egg-hatch:not([hidden])) > .source-touch-controls,
+  html.source-android .world-panel:has(.source-mining:not([hidden])) > .source-touch-controls { display: none; }
+  html.source-android .world-panel:has(.source-dialogue:not([hidden])) > .source-touch-controls .source-touch-joystick { opacity: .3; pointer-events: none; }
+}
+@media (orientation: portrait) {
+  html.source-android .source-orientation-blocker { display: grid; }
+}
 .source-panorama-layer, .source-fog-layer, .source-weather-layer, .source-map-animation-layer, .source-picture-layer, .source-tone-layer, .source-flash-layer { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }.source-panorama-layer { z-index: 0; background-position: center; background-size: cover; }.source-fog-layer { z-index: 2; inset: -15%; background-repeat: repeat; animation: source-fog-drift 8s linear infinite; }.source-weather-layer { z-index: 3; opacity: 0; background-repeat: repeat; }.source-weather-layer[data-weather="rain"] { background-image: repeating-linear-gradient(105deg, transparent 0 18px, #bdeaffaa 19px 21px, transparent 22px 38px); animation: source-weather-rain .5s linear infinite; }.source-weather-layer[data-weather="storm"] { background-color: #10264240; background-image: repeating-linear-gradient(105deg, transparent 0 11px, #d8f2ffcc 12px 15px, transparent 16px 26px); animation: source-weather-rain .28s linear infinite; }.source-weather-layer[data-weather="snow"] { background-image: radial-gradient(circle, #fff 0 2px, transparent 2.5px), radial-gradient(circle, #e8f7ff 0 1.5px, transparent 2px); background-position: 0 0, 23px 31px; background-size: 48px 48px, 61px 61px; animation: source-weather-snow 2.8s linear infinite; }.source-map-animation-layer { z-index: 3; }.source-map-animation-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }.source-map-target-flash { position: absolute; border-radius: 40%; mix-blend-mode: screen; transform: translateX(-50%); }.source-tone-layer { z-index: 4; }.source-flash-layer { z-index: 5; opacity: 0; }.source-picture-layer { z-index: 6; }.source-picture-layer img { position: absolute; max-width: none; image-rendering: pixelated; }.source-dialogue { position: absolute; z-index: 7; right: 16px; bottom: 16px; left: 16px; padding: 15px 17px; border: 2px solid #f4df94; border-radius: 12px; background: #07110df2; box-shadow: 0 8px 30px #000b; }.source-dialogue[data-position="top"] { top: 16px; bottom: auto; }.source-dialogue[data-position="middle"] { top: 50%; bottom: auto; transform: translateY(-50%); }.source-dialogue[data-position="bottom"] { top: auto; bottom: 16px; }.source-dialogue.transparent { border-color: transparent; background: transparent; box-shadow: none; text-shadow: 0 2px 3px #000, 0 0 5px #000; }.source-dialogue[hidden] { display: none; }.source-dialogue strong { display: block; color: #76e6bb; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }.source-dialogue p { min-height: 22px; margin: 8px 0; font-size: 14px; line-height: 1.5; }.source-dialogue small { color: #829b8e; font-size: 9px; }
 @keyframes source-fog-drift { from { background-position: 0 0; } to { background-position: var(--source-fog-x, 64px) var(--source-fog-y, 64px); } }
 @keyframes source-panorama-drift { from { background-position: 0 0; } to { background-position: var(--source-panorama-x, 128px) var(--source-panorama-y, 128px); } }
@@ -223,7 +271,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-ranch-filters { display: grid; grid-template-columns: 1.5fr repeat(3, 1fr); gap: 5px; padding: 7px 10px; border-bottom: 1px solid #b5d6ad55; background: #102c22ed; box-shadow: 0 5px 16px #00150e66; }.source-ranch-filters label { display: grid; min-width: 0; gap: 2px; color: #a9c6a6; font-size: 6px; font-weight: 800; letter-spacing: .04em; }.source-ranch-filters input, .source-ranch-filters select { min-width: 0; height: 25px; padding: 3px 6px; color: #eff9eb; border: 1px solid #9bc89b66; border-radius: 6px; outline: none; background: #17392c; font-size: 8px; }.source-ranch-filters input:focus, .source-ranch-filters select:focus { border-color: #ddefbd; }.source-ranch-filters button { min-height: 25px; align-self: end; color: #dcebd7; border: 1px solid #a9cf9d88; border-radius: 6px; background: #28503b; cursor: pointer; font-size: 7px; font-weight: 850; }
 .source-ranch-sort { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 8px 11px; align-items: center; border-bottom: 1px solid #b5d6ad55; background: #102c22ed; box-shadow: 0 5px 16px #00150e66; }.source-ranch-sort > small { color: #9dd39a; font-size: 6px; font-weight: 900; letter-spacing: .1em; }.source-ranch-sort > div { display: flex; gap: 5px; flex-wrap: wrap; }.source-ranch-sort button { min-height: 26px; padding: 4px 9px; color: #cfe1ca; border: 1px solid #9bc89b66; border-radius: 6px 10px; background: #1a402fd9; cursor: pointer; font-size: 7px; }.source-ranch-sort button.active { color: #173324; border-color: #edf8dc; background: #b8dda9; font-weight: 900; }
 .source-pokemon-grid, .source-team-grid { display: grid; gap: 6px; }.source-pokemon-grid { grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); align-content: start; overflow: auto; padding: 6px 10px 10px; }.source-pokemon-card { display: grid; min-width: 0; grid-template-columns: 50px minmax(0, 1fr); gap: 5px 7px; padding: 6px; align-items: center; color: #eaf8ff; border: 1px solid #76bce466; border-radius: 7px 13px 7px 13px; background: linear-gradient(110deg, #0b2946ed, #124365df); box-shadow: 0 4px 12px #00101f55; text-align: left; }.source-pokemon-card:is(button) { cursor: pointer; }.source-pokemon-card:is(button):hover, .source-pokemon-card:is(button):focus-visible, .source-pokemon-card.selected { border-color: #f4dd7c; outline: none; background: linear-gradient(110deg, #173f61f2, #27668aee); box-shadow: 0 0 0 1px #f4dd7c44, 0 5px 15px #00101f77; }.source-pokemon-card.active { border-color: #8df1bd; background: linear-gradient(110deg, #0d493ff2, #17635bee); }.source-pokemon-icon { width: 48px; height: 48px; background-position: left center; background-repeat: no-repeat; background-size: auto 48px; image-rendering: pixelated; }.source-pokemon-icon.animated { animation: source-pokemon-icon-frames var(--pokemon-icon-cycle, 250ms) steps(1, end) infinite; }@keyframes source-pokemon-icon-frames { 0%, 49.999% { background-position: left center; } 50%, 100% { background-position: right center; } }@media (prefers-reduced-motion: reduce) { .source-pokemon-icon.animated { animation: none; }.source-ranch-workspace::before { animation: none; } }.source-pokemon-card-copy { display: grid; min-width: 0; gap: 2px; }.source-pokemon-card-copy > small { color: #79c9f7; font-size: 6px; font-weight: 900; }.source-pokemon-card-copy > strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }.source-pokemon-card-copy em { color: #b8d2e2; font-size: 7px; font-style: normal; }.source-pokemon-types { display: flex; flex-wrap: wrap; gap: 3px; }.source-pokemon-types span { padding: 1px 4px; border-radius: 99px; color: #eef8ff; background: #64788a; font-size: 5px; font-weight: 900; text-transform: uppercase; }.source-pokemon-types [data-type="fire"] { background: #bd4b35; }.source-pokemon-types [data-type="water"] { background: #3976bd; }.source-pokemon-types [data-type="grass"] { background: #438f4d; }.source-pokemon-types [data-type="electric"] { color: #30280b; background: #e4c542; }.source-pokemon-types [data-type="poison"] { background: #884c9c; }.source-pokemon-types [data-type="flying"] { background: #718fc5; }.source-pokemon-vitals { display: grid; grid-template-columns: minmax(30px, 1fr) auto; gap: 4px; align-items: center; }.source-pokemon-vitals > i { height: 3px; overflow: hidden; border-radius: 8px; background: #03111f; }.source-pokemon-vitals > i b { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #35d58b, #9bec99); }.source-pokemon-moves { display: grid; grid-column: 1 / -1; grid-template-columns: 1fr 1fr; gap: 3px; }.source-pokemon-move { display: grid; min-width: 0; grid-template-columns: 13px minmax(0, 1fr); gap: 3px; padding: 2px 4px; align-items: center; border: 1px solid #a9d9f42e; border-radius: 5px; background: #03142680; }.source-pokemon-move img { width: 12px; height: 12px; object-fit: contain; }.source-pokemon-move b { overflow: hidden; font-size: 6px; text-overflow: ellipsis; white-space: nowrap; }.source-pokemon-move.empty { display: grid; min-height: 18px; place-items: center; color: #607b8c; }.source-ranch-empty { grid-column: 1 / -1; display: grid; min-height: 150px; place-items: center; align-content: center; gap: 4px; color: #eefaff; border-radius: 10px; background: #06182b55; text-shadow: 0 2px 4px #00101f; }.source-ranch-empty small { color: #bad2df; font-size: 8px; }
-@media (max-width: 850px) { body > main { width: auto; grid-template-columns: minmax(0, 576px); justify-content: center; }.engine-diagnostics { width: 100%; } }
+@media (max-width: 850px) { #app > main { width: auto; grid-template-columns: minmax(0, 576px); justify-content: center; }.engine-diagnostics { width: 100%; } }
 
 /* Shared Pokemon identity: versioned type artwork is used by team and Ranch cards. */
 .source-pokemon-types span { display: inline-flex; gap: 2px; padding: 1px 4px 1px 2px; align-items: center; }
@@ -743,10 +791,22 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
   gap: 8px;
   align-content: stretch;
 }
-.source-region-map, .source-pokedex-habitat-map {
+.source-region-map {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+}
+.source-region-canvas, .source-pokedex-habitat-map {
   position: relative;
   width: 100%;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
   aspect-ratio: 3 / 2;
+  flex: 0 1 auto;
   overflow: hidden;
   border: 2px solid #d7b35d;
   border-radius: 8px 15px;
@@ -755,10 +815,11 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 }
 .source-region-layout > .source-region-map {
   width: 100%;
+  height: 100%;
   max-height: 100%;
   align-self: center;
 }
-.source-region-map > img, .source-pokedex-habitat-map > img { display: block; width: 100%; height: 100%; object-fit: fill; image-rendering: pixelated; }
+.source-region-canvas > img, .source-pokedex-habitat-map > img { display: block; width: 100%; height: 100%; object-fit: contain; object-position: center; image-rendering: pixelated; }
 .source-region-overlay, .source-pokedex-habitat-map > div { position: absolute; inset: 0; }
 .source-region-hit {
   position: absolute;
@@ -874,8 +935,8 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 
 .source-pokedex-habitat-layout { grid-template-columns: minmax(0, 1fr); overflow: hidden; }
 .source-pokedex-detail .source-pokedex-habitat-layout .source-summary-page { height: 100%; box-sizing: border-box; padding-bottom: 12px; align-content: center; overflow: hidden; }
-.source-pokedex-habitat { display: grid; width: min(100%, 720px); height: 100%; min-height: 0; margin: 0 auto; grid-template-rows: minmax(0, 1fr); }
-.source-pokedex-habitat-map { width: auto; max-width: 100%; height: 100%; max-height: 100%; aspect-ratio: 3 / 2; place-self: center; border-width: 1px; border-radius: 6px 11px; }
+.source-pokedex-habitat { display: flex; width: min(100%, 720px); height: 100%; min-height: 0; margin: 0 auto; align-items: center; justify-content: center; }
+.source-pokedex-habitat-map { border-width: 1px; border-radius: 6px 11px; }
 .source-pokedex-habitat-map > div i {
   position: absolute;
   left: calc(var(--map-x) * 3.333333% - 2px);

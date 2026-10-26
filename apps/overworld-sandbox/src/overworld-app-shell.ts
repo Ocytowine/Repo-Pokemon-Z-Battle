@@ -12,6 +12,16 @@ export function mountOverworldApp(): HTMLCanvasElement {
       <section class="world-panel">
         <section id="embedded-avatar-lab" class="embedded-avatar-lab" hidden></section>
         <div id="world-stage" class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-weather-layer" class="source-weather-layer" data-weather="none" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-fly-transition" class="source-fly-transition" aria-hidden="true" hidden></div><button id="source-fishing-shortcut" class="source-fishing-shortcut" type="button" title="Pêcher" hidden><img alt=""><span>Pêcher</span></button><button id="source-compass-toggle" class="source-compass-toggle" type="button" aria-controls="source-compass" aria-expanded="false" title="Boussole" hidden><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/radar.png" alt=""><span>Boussole</span></button><section id="source-compass" class="source-compass" aria-label="Pokémon sauvages de la zone" hidden></section><div id="source-hud-notice" class="source-hud-notice" role="status" aria-live="polite" hidden></div><section id="source-new-game" class="source-new-game" hidden aria-label="Nouvelle partie"></section><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><strong></strong><p></p><div class="source-choices"></div><small>Espace/Entrée pour continuer · Échap pour fermer</small></div>
+          <nav id="source-touch-controls" class="source-touch-controls" aria-label="Commandes tactiles de l'overworld">
+            <div id="source-touch-joystick" class="source-touch-joystick" role="group" aria-label="Joystick directionnel"><i id="source-touch-joystick-knob"></i></div>
+            <div class="source-touch-actions">
+              <button id="source-touch-menu" class="source-touch-small source-touch-menu" type="button" aria-label="Ouvrir le menu">Menu</button>
+              <button id="source-touch-sprint" class="source-touch-small source-touch-sprint" type="button" aria-label="Maintenir pour sprinter">Sprint</button>
+              <button id="source-touch-cancel" class="source-touch-action source-touch-cancel" type="button" aria-label="Retour ou annulation">B</button>
+              <button id="source-touch-interact" class="source-touch-action source-touch-interact" type="button" aria-label="Interagir ou valider">A</button>
+            </div>
+          </nav>
+          <section id="source-orientation-blocker" class="source-orientation-blocker" aria-label="Orientation non prise en charge"><div aria-hidden="true">↻</div><strong>Tournez votre téléphone</strong><span>Touchez l’écran puis passez en paysage.</span></section>
           <section id="source-load-error" class="source-load-error" role="alert" hidden><div><p class="eyebrow">DONNÉES LOCALES</p><h1 id="source-load-error-title"></h1><p id="source-load-error-detail"></p><code id="source-load-error-command"></code><button id="source-load-error-retry" type="button">Réessayer</button></div></section>
           <section id="source-shop" class="source-shop" hidden aria-label="Boutique Pokémon"></section>
           <section id="source-ranch" class="source-ranch" hidden aria-label="Ranch Pokémon"></section>
@@ -88,6 +98,8 @@ export function mountOverworldApp(): HTMLCanvasElement {
   mountShortcut.innerHTML = '<img src="/__pokemon-z/source/Graphics/Icons/icon673.png" alt=""><span>Chevroum</span>';
   shortcutBar.append(compassShortcut, truthShortcut, fishingShortcut, mountShortcut);
   requiredAppElement("world-stage").append(shortcutBar);
+  const touchControls = requiredAppElement<HTMLElement>("source-touch-controls");
+  requiredAppElement("world-stage").parentElement?.append(touchControls);
   const truthLensEffect = document.createElement("div");
   truthLensEffect.id = "source-truth-lens-effect";
   truthLensEffect.className = "source-truth-lens-effect";

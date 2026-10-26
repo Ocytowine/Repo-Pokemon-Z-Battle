@@ -25,6 +25,7 @@ import { SourcePokedexView } from "./source-pokedex-view.js";
 import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
 import { sourceRegionForMap, sourceRegionImageUrl, sourceVisibleRegionPoints,
   type SourceRegionDestination, type SourceRegionPoint } from "./source-region-map.js";
+import { bindSourceAspectFrame } from "./source-aspect-frame.js";
 import { sourcePokeVialStatus } from "./source-poke-vial.js";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { createSourceDevPokemonEntries, filterSourceDevPokemonEntries, SOURCE_DEV_POKEMON_PAGE_SIZE,
@@ -219,6 +220,7 @@ export class SourceMenuView {
   private alchemyPageTurn: "forward" | "backward" | null = null;
   private selectedRegionPointKey: string | null = null;
   private regionMapMode: "consult" | "fly" = "consult";
+  private stopRegionMapLayout: (() => void) | null = null;
   private pokeVialConfirming = false;
   private characterGuideOpen = false;
   private selectedCharacterGuideId = "olivier";
@@ -226,6 +228,8 @@ export class SourceMenuView {
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
 
   public render(model: SourceMenuViewModel): void {
+    this.stopRegionMapLayout?.();
+    this.stopRegionMapLayout = null;
     const menu = document.querySelector<HTMLElement>("#source-menu");
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
@@ -287,6 +291,8 @@ export class SourceMenuView {
   }
 
   private renderRegionMap(content: HTMLElement, model: SourceMenuViewModel): void {
+    this.stopRegionMapLayout?.();
+    this.stopRegionMapLayout = null;
     const region = sourceRegionForMap(model.assets.regionMap, model.assets.map.id)
       ?? model.assets.regionMap.regions[0] ?? null;
     if (region === null) {
@@ -336,8 +342,13 @@ export class SourceMenuView {
         : !model.movement.canFlyHere ? "Le Vol doit être lancé depuis une zone extérieure." : "Explorez les lieux et leurs descriptions.";
     this.setMenuHeader(region.name.toLocaleUpperCase("fr-FR"), "Carte régionale", selectedNames || "Zone inconnue");
     content.innerHTML = `<div class="source-menu-title source-region-title"><div><small>CARTE DU MONDE</small><h3>${escapeSourceHtml(region.name)}</h3></div><span>${points.length} REPÈRES</span></div>
-      <div class="source-region-layout"><section class="source-region-map ${this.regionMapMode === "fly" ? "fly-mode" : "consult-mode"}" aria-label="Carte de ${escapeSourceHtml(region.name)}"><img src="${sourceRegionImageUrl(region.filename)}" alt="Carte de ${escapeSourceHtml(region.name)}"><div class="source-region-overlay">${markers}${playerMarkers}</div>${coopLegend}</section>
+      <div class="source-region-layout"><section class="source-region-map ${this.regionMapMode === "fly" ? "fly-mode" : "consult-mode"}" aria-label="Carte de ${escapeSourceHtml(region.name)}"><div class="source-region-canvas"><img src="${sourceRegionImageUrl(region.filename)}" alt="Carte de ${escapeSourceHtml(region.name)}"><div class="source-region-overlay">${markers}${playerMarkers}</div>${coopLegend}</div></section>
       <aside class="source-region-details"><div><small>${this.regionMapMode === "fly" ? "DESTINATION" : "LIEU SÉLECTIONNÉ"}</small><h4>${escapeSourceHtml(selectedNames || "Zone inconnue")}</h4>${selectedDescriptions === "" ? "" : `<p>${escapeSourceHtml(selectedDescriptions)}</p>`}<em>${escapeSourceHtml(modeHint)}</em></div>${modeControls}</aside></div>`;
+    const mapContainer = content.querySelector<HTMLElement>(".source-region-map");
+    const mapFrame = content.querySelector<HTMLElement>(".source-region-canvas");
+    if (mapContainer !== null && mapFrame !== null) {
+      this.stopRegionMapLayout = bindSourceAspectFrame(mapContainer, mapFrame, 3 / 2);
+    }
     content.querySelectorAll<HTMLButtonElement>("[data-region-mode]").forEach((button) => button.addEventListener("click", () => {
       this.regionMapMode = button.dataset.regionMode === "fly" ? "fly" : "consult";
       this.renderRegionMap(content, model);
