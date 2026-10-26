@@ -189,3 +189,9 @@ export function isTriageMove(move: BattleMove): boolean {
 export function hasMoveFlag(move: BattleMove, flag: string): boolean {
   return move.flags?.includes(flag) === true;
 }
+
+/** Punching Glove keeps the punch's contact flag for classification, but blocks contact reactions. */
+export function triggersContactReaction(attacker: BattlerState, move: BattleMove, magicRoomTurns = 0): boolean {
+  return hasMoveFlag(move, "a") && !(hasMoveFlag(move, "j")
+    && attacker.heldItem === "PUNCHINGGLOVE" && heldItemIsActive(attacker, magicRoomTurns));
+}

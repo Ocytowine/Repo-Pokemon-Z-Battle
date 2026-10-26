@@ -168,4 +168,29 @@ describe("action, target and charge functions", () => {
       expect(result.state.teams.player.members[1]?.hp).toBeLessThan(400);
     }
   });
+
+  it.each(["KLUTZ", "EMBARGO", "MAGICROOM"] as const)(
+    "Rage Powder redirects a Safety Goggles holder when %s suspends the item", (suppression) => {
+      const powder = { ...status("117", 3), internalName: "RAGEPOWDER" };
+      const user = mon("foe", move("000", { power: 70 }), 80, {
+        heldItem: "SAFETYGOGGLES",
+        ...(suppression === "KLUTZ" ? { ability: "KLUTZ" }
+          : suppression === "EMBARGO" ? { volatile: { embargoTurns: 2 } as BattlerState["volatile"] }
+            : {}),
+      });
+      const initial = createDoubleTeamBattleState({
+        player: [mon("powder", powder), mon("ally", MINIMAL_MOVE_CATALOG.TACKLE)],
+        opponent: [user, mon("idle", MINIMAL_MOVE_CATALOG.TACKLE)],
+      });
+      const state = suppression === "MAGICROOM" ? { ...initial, effects: {
+        sides: { player: { reflectTurns: 0, luckyChantTurns: 0 },
+          opponent: { reflectTurns: 0, luckyChantTurns: 0 } },
+        waterSportTurns: 0, magicRoomTurns: 2 } } : initial;
+      const result = resolveDoubleTeamTurn(state, [action("player", 0),
+        { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+        action("opponent", 0, { side: "player", slot: 1 }),
+        { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } }], rng);
+      expect(result.state.teams.player.members[0]?.hp).toBeLessThan(400);
+      expect(result.state.teams.player.members[1]?.hp).toBe(400);
+    });
 });

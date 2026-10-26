@@ -14,6 +14,10 @@ export function heldItemIsActive(battler: BattlerState, magicRoomTurns = 0): boo
     && (battler.volatile?.embargoTurns ?? 0) === 0 && magicRoomTurns <= 0;
 }
 
+export function ringTargetIsActive(battler: BattlerState, magicRoomTurns = 0): boolean {
+  return battler.heldItem === "RINGTARGET" && heldItemIsActive(battler, magicRoomTurns);
+}
+
 export function hasActiveHeldItem<I extends HeldItem>(battler: BattlerState, item: I): battler is BattlerState & {
   readonly heldItem: I;
 } {

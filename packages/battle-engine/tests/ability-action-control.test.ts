@@ -31,6 +31,52 @@ function screens(): BattleEffects {
 }
 
 describe("source action-control abilities", () => {
+  it("reflects Attract through Destiny Knot and clears each link when its source switches", () => {
+    const attract: BattleMove = { ...TAUNT, internalName: "ATTRACT", name: "Attraction", functionCode: "016" };
+    const state = createTeamBattleState({
+      player: [pokemon("lover", "player", { appearance: { form: 0, shiny: false, gender: "male" },
+        moves: [{ move: attract, pp: attract.pp }] }), pokemon("reserve", "player")],
+      opponent: [pokemon("knot", "opponent", { heldItem: "DESTINYKNOT",
+        appearance: { form: 0, shiny: false, gender: "female" } }), pokemon("other", "opponent")],
+    });
+    const result = resolveTeamTurn(state,
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(result.state.teams.opponent.members[0]!.volatile).toMatchObject({
+      infatuated: true, infatuatedBy: "lover" });
+    expect(result.state.teams.player.members[0]!.volatile).toMatchObject({
+      infatuated: true, infatuatedBy: "knot" });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "itemActivated", item: "DESTINYKNOT" }));
+    const switched = resolveTeamTurn(result.state,
+      { player: { kind: "switch", teamIndex: 1 }, opponent: { kind: "wait" } }, new ScriptedRandom([]));
+    expect(switched.state.teams.opponent.members[0]!.volatile?.infatuated).toBe(false);
+  });
+
+  it("retains the Destiny Knot source link in Duo and clears it when that slot switches", () => {
+    const attract: BattleMove = { ...TAUNT, internalName: "ATTRACT", name: "Attraction", functionCode: "016" };
+    const state = createDoubleTeamBattleState({
+      player: [pokemon("lover", "player", { appearance: { form: 0, shiny: false, gender: "male" },
+        moves: [{ move: attract, pp: attract.pp }] }), pokemon("ally", "player"), pokemon("reserve", "player")],
+      opponent: [pokemon("knot", "opponent", { heldItem: "DESTINYKNOT",
+        appearance: { form: 0, shiny: false, gender: "female" } }), pokemon("other", "opponent")],
+    });
+    const first = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 0 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], new ScriptedRandom([0, 0]));
+    expect(first.state.teams.opponent.members[0]!.volatile).toMatchObject({
+      infatuated: true, infatuatedBy: "lover" });
+    const second = resolveDoubleTeamTurn(first.state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "switch", teamIndex: 2 } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], new ScriptedRandom([]));
+    expect(second.state.teams.opponent.members[0]!.volatile?.infatuated).toBe(false);
+  });
+
   it("prevents Taunt with Oblivious and cures stale infatuation and Taunt state", () => {
     const state = createTeamBattleState({
       player: [pokemon("taunter", "player", { moves: [{ move: TAUNT, pp: TAUNT.pp }] })],

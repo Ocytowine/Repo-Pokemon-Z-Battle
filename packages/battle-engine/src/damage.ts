@@ -1,11 +1,12 @@
 import { typeEffectiveness } from "./type-chart.js";
 import { preventsCriticalHit } from "./ability-protection.js";
 import { effectiveMoveCategory, effectiveMoveType, hasHighCriticalRate, hasMoldBreaker, hasMoveFlag, isCuttingMove,
-  isKickingMove, isRecklessBoostedMove, isSoundMove } from "./move-properties.js";
+  isKickingMove, isRecklessBoostedMove, isSoundMove, isWindMove } from "./move-properties.js";
 import { ordinaryWeather, weatherSpeedMultiplier } from "./ability-weather.js";
-import { heldItemIsActive } from "./ability-item-control.js";
+import { heldItemIsActive, ringTargetIsActive } from "./ability-item-control.js";
 import { superEvioliteApplies, tablaEsquiApplies } from "./held-z-stat-items.js";
 import { PLATE_TYPES, TYPE_BOOST_HELD_ITEM_TYPES } from "./held-item-types.js";
+import { matchingHeldGem } from "./held-gems.js";
 import { naturalGiftProfile } from "./natural-gift.js";
 import { resistBerryApplies } from "./battle-berries.js";
 import type { BattleAbility, BattleEffects, BattleMove, BattlerState, BattleSide, BattleTrace, ImplementedBattleAbility, RandomSource } from "./types.js";
@@ -48,6 +49,7 @@ export interface BattleDamageContext {
   readonly gravityTurns?: number;
   readonly wonderRoomTurns?: number;
   readonly defenderBerriesBlocked?: boolean;
+  readonly soulDewClause?: boolean;
   /** The defender already acted, or did not select a move, as required by Pokemon Z's Analytic check. */
   readonly defenderAlreadyMoved?: boolean;
   readonly turn?: number;
@@ -84,12 +86,14 @@ export function effectiveTypeMultiplier(attacker: BattlerState, defender: Battle
     || defender.heldItem === "IRONBALL" && heldItemIsActive(defender, magicRoomTurns);
   const effectiveDefenderTypes = grounded && moveType === "GROUND"
     ? defenderTypes.filter((type) => type !== "FLYING") : defenderTypes;
+  const ringTarget = ringTargetIsActive(defender, magicRoomTurns);
   const typeEffect = effectiveDefenderTypes.length === 0 ? 1 : effectiveDefenderTypes.reduce((multiplier, type) => {
-    const component = move.functionCode === "135" && type === "WATER"
+    const rawComponent = move.functionCode === "135" && type === "WATER"
       ? 2 : typeEffectiveness(moveType, [type]);
+    const component = ringTarget && rawComponent === 0 ? 1 : rawComponent;
     return multiplier * (weather === "strong-winds" && type === "FLYING" && component > 1 ? 1 : component);
   }, 1);
-  return moveType === "GROUND" && !grounded
+  return moveType === "GROUND" && !grounded && !ringTarget
     && (!ignoresDefenderAbility && defender.ability === "LEVITATE"
       || (defender.volatile?.magnetRiseTurns ?? 0) > 0
       || heldItemIsActive(defender, magicRoomTurns) && defender.heldItem === "AIRBALLOON") ? 0 : typeEffect;
@@ -183,8 +187,16 @@ export function calculateDamage(
     + (attacker.volatile?.focusEnergy ?? 0)
     + (hasHighCriticalRate(move) ? 1 : 0)
     + (attackerItemActive && attacker.heldItem === "SCOPELENS" ? 1 : 0)
+    + (attackerItemActive && attacker.heldItem === "RAZORCLAW" ? 1 : 0)
+    + (attackerItemActive && attacker.heldItem === "ARMAZONDEFAUCES"
+      && hasMoveFlag(move, "i") ? 1 : 0)
+    + (attackerItemActive && attacker.heldItem === "STICK"
+      && (attacker.species === "FARFETCHD" || attacker.species === "SIRFETCHD") ? 2 : 0)
+    + (attackerItemActive && attacker.heldItem === "LUCKYPUNCH"
+      && attacker.species === "CHANSEY" ? 2 : 0)
     + (attacker.ability === "SUPERLUCK" ? 1 : 0));
-  const critical = !ignoresDefenderAbility && preventsCriticalHit(defender) ? false
+  const critical = !ignoresDefenderAbility && (preventsCriticalHit(defender)
+    || defenderItemActive && defender.heldItem === "ANTICRITICO") ? false
     : !ignoresDefenderAbility && attacker.ability === "MERCILESS" && defender.majorStatus?.kind === "poison" ? true
       : context.luckyChant ? false
         : move.functionCode === "0A0" || move.functionCode === "942" ? true
@@ -206,6 +218,19 @@ export function calculateDamage(
     || attacker.heldItem === "CHOICESPECS" && move.category === "Special")) {
     attack = Math.round(attack * 1.5);
   }
+  if (attackerItemActive && attacker.heldItem === "LAGGINGTAIL"
+    && ["CUBONE", "MAROWAK", "MAROLIER"].includes(attacker.species)
+    && move.category === "Physical") attack = Math.round(attack * 2);
+  if (attackerItemActive && attacker.heldItem === "DEEPSEATOOTH"
+    && attacker.species === "CLAMPERL" && move.category === "Special") attack = Math.round(attack * 2);
+  if (attackerItemActive && attacker.heldItem === "LIGHTBALL") {
+    if (attacker.species === "PIKACHU") attack = Math.round(attack * 1.75);
+    if (attacker.species === "RAICHU") attack = Math.round(attack * 1.5);
+  }
+  if (attackerItemActive && attacker.heldItem === "SOULDEW"
+    && (attacker.species === "LATIAS" || attacker.species === "LATIOS")
+    && move.category === "Special" && context.soulDewClause !== true)
+    attack = Math.round(attack * 1.5);
   if (attacker.ability === "SLOWSTART" && move.category === "Physical"
     && (attacker.volatile?.activeTurns ?? 0) <= 5) {
     attack = Math.max(1, Math.round(attack * 0.5));
@@ -258,6 +283,22 @@ export function calculateDamage(
     recordAbilityModifier("FLOWERGIFT", 2 / 3);
   }
   if (defenderItemActive && defender.heldItem === "ASSAULTVEST" && move.category === "Special") defense = Math.max(1, Math.round(defense * 1.5));
+  if (defenderItemActive && defender.heldItem === "CORAZAASALTO" && move.category === "Special")
+    defense = Math.max(1, Math.round(defense * 1.4));
+  if (defenderItemActive && defender.heldItem === "IRONBALL" && move.category === "Physical")
+    defense = Math.max(1, Math.round(defense * 1.25));
+  if (defenderItemActive && defender.heldItem === "CLEARAMULET")
+    defense = Math.max(1, Math.round(defense * 1.1));
+  if (defenderItemActive && defender.heldItem === "DEEPSEASCALE"
+    && defender.species === "CLAMPERL" && move.category === "Physical")
+    defense = Math.max(1, Math.round(defense * 2));
+  if (defenderItemActive && defender.heldItem === "METALPOWDER"
+    && defender.species === "DITTO" && defender.transformOriginal === undefined)
+    defense = Math.max(1, Math.round(defense * 1.5));
+  if (defenderItemActive && defender.heldItem === "SOULDEW"
+    && (defender.species === "LATIAS" || defender.species === "LATIOS")
+    && move.category === "Special" && context.soulDewClause !== true)
+    defense = Math.max(1, Math.round(defense * 1.5));
   if (defenderItemActive && defender.heldItem === "EVIOLITE" && defender.canEvolve === true) defense = Math.max(1, Math.round(defense * 1.5));
   if (superEvioliteApplies(defender, context.magicRoomTurns)) defense = Math.max(1, Math.round(defense * 1.5));
   const targetWeight = effectiveWeight(defender, attacker, context.magicRoomTurns);
@@ -337,10 +378,28 @@ export function calculateDamage(
   if (attackerItemActive && attacker.heldItem === "WISEGLASSES" && move.category === "Special") statusModifier *= 1.1;
   if (attackerItemActive && attacker.heldItem === "EXPERTBELT" && effectiveness > 1) statusModifier *= 1.2;
   if (attackerItemActive && attacker.heldItem === "LIFEORB" && effectiveness > 0) statusModifier *= 1.3;
+  if (attackerItemActive && attacker.heldItem === "ARMAZONDEFAUCES"
+    && hasMoveFlag(move, "i")) statusModifier *= 1.2;
+  if (attackerItemActive && attacker.heldItem === "CANONDEMANO"
+    && hasMoveFlag(move, "m")) statusModifier *= 1.3;
+  if (attackerItemActive && attacker.heldItem === "FUELLENEUMATICO"
+    && isWindMove(move)) statusModifier *= 1.5;
+  if (attackerItemActive && attacker.heldItem === "ESPADAVALIENTE"
+    && isCuttingMove(move)) statusModifier *= attacker.species === "KRICKETUNE" ? 1.5 : 1.3;
+  if (attackerItemActive && attacker.heldItem === "MASCARACRUEL"
+    && defender.majorStatus !== null && defender.majorStatus.kind !== "caduco") statusModifier *= 1.3;
+  if (attackerItemActive && attacker.heldItem === "ANILLODESANGRE" && critical) statusModifier *= 1.4;
+  if (attackerItemActive && (
+    attacker.heldItem === "ADAMANTORB" && attacker.species === "DIALGA"
+      && (moveType === "DRAGON" || moveType === "STEEL")
+    || attacker.heldItem === "LUSTROUSORB" && attacker.species === "PALKIA"
+      && (moveType === "DRAGON" || moveType === "WATER")
+    || attacker.heldItem === "GRISEOUSORB" && attacker.species === "GIRATINA"
+      && (moveType === "DRAGON" || moveType === "GHOST"))) statusModifier *= 1.2;
   if (superEvioliteApplies(attacker, context.magicRoomTurns)) statusModifier *= 1.5;
   if (tablaEsquiApplies(attacker, context.magicRoomTurns)) statusModifier *= 1.3;
   if (attackerItemActive && attacker.heldItem !== null && PLATE_TYPES[attacker.heldItem] === moveType) {
-    statusModifier *= 1.2;
+    statusModifier *= 1.25;
   }
   if (attackerItemActive && attacker.heldItem !== null
     && TYPE_BOOST_HELD_ITEM_TYPES[attacker.heldItem] === moveType) statusModifier *= 1.2;
@@ -363,8 +422,8 @@ export function calculateDamage(
   if (context.terrain === "misty" && moveType === "DRAGON" && grounded(defender)) statusModifier *= 0.5;
   if (currentWeather === "sun" && moveType === "FIRE" || currentWeather === "rain" && moveType === "WATER") statusModifier *= 1.5;
   if (currentWeather === "sun" && moveType === "WATER" || currentWeather === "rain" && moveType === "FIRE") statusModifier *= 0.5;
-  if (attackerItemActive && ((attacker.heldItem === "FIGHTINGGEM" && moveType === "FIGHTING")
-    || (attacker.heldItem === "BUGGEM" && moveType === "BUG"))) statusModifier *= 1.3;
+  if (matchingHeldGem(attacker, moveType, move.functionCode, context.magicRoomTurns) !== null)
+    statusModifier *= 1.3;
   if (!context.defenderBerriesBlocked && defenderItemActive
     && resistBerryApplies(defender.heldItem, moveType, effectiveness)) statusModifier *= 0.5;
   const attackerGender = attacker.appearance?.gender;
@@ -405,6 +464,9 @@ export function calculateDamage(
   }
   if (attacker.ability === "TECHNICIAN" && power <= 60 && move.id > 0) addAbilityModifier("TECHNICIAN", 1.5);
   if (attacker.ability === "IRONFIST" && hasMoveFlag(move, "j")) addAbilityModifier("IRONFIST", 1.2);
+  if (attackerItemActive && attacker.heldItem === "PUNCHINGGLOVE" && hasMoveFlag(move, "j")) {
+    statusModifier *= 1.15;
+  }
   if (attacker.ability === "MEGALAUNCHER" && hasMoveFlag(move, "m")) addAbilityModifier("MEGALAUNCHER", 1.5);
   if (attacker.ability === "NEUROFORCE" && effectiveness > 1) addAbilityModifier("NEUROFORCE", 1.25);
   if (attacker.ability === "SOLARPOWER" && currentWeather === "sun" && move.category === "Special") addAbilityModifier("SOLARPOWER", 1.5);
@@ -450,6 +512,9 @@ export function calculateDamage(
   }
   if (!ignoresDefenderAbility && context.defenderPartnerAbility === "FRIENDGUARD") {
     addAbilityModifier("FRIENDGUARD", 0.75);
+  }
+  if (attackerItemActive && attacker.heldItem === "METRONOME") {
+    statusModifier *= 1 + 0.2 * Math.min(5, attacker.volatile?.metronomeCount ?? 0);
   }
   if (!ignoresDefenderAbility && defender.ability === "MULTISCALE" && defender.hp === defender.stats.maxHp) {
     addAbilityModifier("MULTISCALE", 0.5);

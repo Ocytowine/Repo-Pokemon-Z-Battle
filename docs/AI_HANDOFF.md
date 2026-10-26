@@ -7888,3 +7888,500 @@ Prochain lot proposé : objets de réaction à un coup qui déclenchent un
 changement de Pokémon ou perdent leur effet après le coup, notamment
 `REDCARD`, `EJECTBUTTON` et `AIRBALLOON` ; relever tous leurs hooks Ruby
 avant de porter la famille.
+
+### Lot du 2026-10-26 : Ballon et quatre objets de réaction élémentaire
+
+`AIRBALLOON` conserve son immunité Sol tant que l'objet est actif et éclate
+après une perte de PV causée par un coup. Le hook de Déguisement éclate aussi
+le ballon lorsque le masque se brise. La consommation suit le Ruby
+`pbConsumeItem(true,false)` : Recyclage oui, Ramassage non. `ABSORBBULB` et
+`LUMINOUSMOSS` réagissent à Eau, `CELLBATTERY` à Électrik et `SNOWBALL` à
+Glace, en augmentant respectivement Attaque Spéciale, Défense Spéciale,
+Attaque et Attaque. Une hausse impossible conserve l'objet. Un clone qui
+absorbe le coup n'active aucun de ces objets. Champ Magique, Embargo et
+Maladresse passent par `heldItemIsActive`.
+
+Autorité : le noyau tactique décide la consommation, le changement de stade
+et l'immunité, en solo comme dans les calculs hôte/invité de la room. L'objet
+et les stades font partie du snapshot de combat ; les événements sont envoyés
+aux participants. Les tests ciblés du noyau sont ajoutés ; validation visuelle
+et recette Coop restent ouvertes dans `VALIDATION_MANUELLE_OBJETS.md`.
+
+`REDCARD` et `EJECTBUTTON` ne sont pas portés. Leur hook Ruby suit un coup
+infligeant des dégâts et se désactive sous Sans Limite avec effet secondaire.
+La Carte Rouge force le changement aléatoire de l'attaquant ; le Bouton Fuite
+fait choisir un remplaçant au défenseur. Le moteur actuel collecte les demandes
+de remplacement en fin de tour et demande toujours un choix. Il faut ajouter
+un contrat de remplacement en cours de tour, avec mode aléatoire ou choix,
+exploité par le simple, le Duo et la room ; garder l'intention et le résultat
+dans l'état repris après reconnexion. Cette dette est inscrite dans la roadmap.
+
+Prochain lot proposé : raccorder le remplacement en cours de tour pour
+`REDCARD` et `EJECTBUTTON`, avec tirage déterministe et tests solo, Duo,
+hôte, invité et reconnexion. Si ce contrat appelle plusieurs étapes, traiter
+en parallèle une autre famille de réactions locales aux coups sans déclarer
+ces deux objets couverts.
+
+### Complément du 2026-10-26 : Assurance Faiblesse et baies de réaction
+
+`WEAKNESSPOLICY` est porté dans le même hook de dégâts : un coup super
+efficace qui retire des PV augmente Attaque et Attaque Spéciale de deux
+niveaux, puis consomme l'objet si au moins une hausse aboutit. Clone,
+immunité, K.O. du porteur et suppression d'objet empêchent l'activation.
+Le même examen du hook a corrigé les Baies Biglia et Maranga : elles ne
+réagissent qu'à un coup respectivement physique ou spécial, et gardent
+leur consommation normale lorsqu'elles peuvent encore monter la stat.
+Tests ciblés simple et Duo ajoutés, ainsi qu'un tour hôte/invité dans la room
+où les deux objets se déclenchent et survivent à reconnexion et redémarrage.
+La recette visuelle reste à effectuer en jeu. `REDCARD` et `EJECTBUTTON` restent le prochain
+contrat complexe et demeurent non couverts dans la roadmap.
+
+### Complément du 2026-10-26 : les quatre roches météo
+
+`DAMPROCK`, `HEATROCK`, `SMOOTHROCK` et `ICYROCK` prolongent désormais
+aussi la météo posée par Llovizna, Sécheresse, Sable Volant et Alerte Neige
+à huit tours, contre cinq sans roche active. Les capacités météo avaient
+déjà cette durée ; le hook d'entrée des talents manquait. La règle passe
+par `applyEntryWeatherAbility` en simple et Duo ; la room restaure la
+durée autoritaire et l'objet de l'invité après reconnexion/redémarrage.
+Embargo et Champ Magique suspendent le bonus. Tests ciblés ajoutés ;
+recette visuelle ouverte dans `VALIDATION_MANUELLE_OBJETS.md`.
+
+Les hooks source révèlent aussi `PUNCHINGGLOVE`, `NUDILLOPUAS` et
+`RINGTARGET`, qui demandent respectivement classification des coups de
+poing/contact, Hémorragie, et immunités de type/statuts. Ils sont inscrits
+explicitement dans la roadmap. Le prochain lot prioritaire reste
+`REDCARD`/`EJECTBUTTON` et son remplacement pendant le tour.
+
+### Complément du 2026-10-26 : Gant de Boxe
+
+`PUNCHINGGLOVE` est porté. Un coup de poing (`j`) actif reçoit +15 % de
+dégâts ; s'il portait aussi le drapeau contact (`a`), il ne déclenche plus
+les réactions au contact. Le prédicat unique `triggersContactReaction`
+sert aux boucliers, talents de contact, Pickpocket et Casque Brut. L'effet est
+suspendu par Maladresse, Embargo et Champ Magique. Le noyau reste commun
+au simple, Duo et à la room ; tests ciblés de dégâts, bouclier, réactions
+de contact et tour d'invité avec reconnexion/redémarrage ajoutés. La
+recette visuelle en jeu reste ouverte. `NUDILLOPUAS` utilise désormais le
+même contact actif : 30 % de chance d'infliger Hémorragie à une cible
+susceptible. Il est neutralisé par Maladresse, Embargo et Champ Magique ;
+le statut est porté par le snapshot de la room. Tests simple, suppression,
+immunité et tour d'invité avec reconnexion/redémarrage ajoutés. Les dettes
+complexes restantes incluent `REDCARD` et `EJECTBUTTON`.
+
+### Complément du 2026-10-26 : Cible
+
+`RINGTARGET` est porté dans `effectiveTypeMultiplier` : chaque composante
+immunisée passe à neutre, sans effacer les résistances ou faiblesses des
+autres types. Sol atteint ainsi un porteur Vol, Lévitation ou
+Lévitation Magnétique ; l'objet ne le rend pas « au sol » pour les terrains
+et les pièges. Le même prédicat d'activité lève les immunités de type aux
+statuts Poison, brûlure, paralysie, gel, Exténuation et Hémorragie, y
+compris les réactions de talent et Synchro. Champ Magique, Embargo et
+Maladresse rétablissent les protections. Les Pics Toxik gardent leur
+contrôle source distinct et sont absorbés par un type Poison même avec
+la Cible. Tests simple, Duo et tour d'invité hôte/room avec reconnexion
+et redémarrage ajoutés. Recette visuelle ouverte dans
+`VALIDATION_MANUELLE_OBJETS.md`.
+
+`REDCARD` et `EJECTBUTTON` restent les deux objets de remplacement en
+cours de tour à porter ; leur contrat est détaillé plus haut et dans la
+roadmap. Prochain lot : ce contrat, puis inventaire complet des autres
+effets d'objets tenus avant de déclarer le portage achevé.
+
+### Complément du 2026-10-26 : précision, critiques et Cinta Focus
+
+Sept objets tenus supplémentaires utilisent désormais le noyau commun :
+`BRIGHTPOWDER` et `LAXINCENSE` réduisent la précision des coups reçus de
+1/1,1 ; `ZOOMLENS` augmente de 20 % la précision lorsque la cible a déjà
+agi ou n'a pas choisi de capacité. `RAZORCLAW` ajoute un niveau de critique,
+`STICK` en ajoute deux pour Canarticho et Palarticho, et `LUCKYPUNCH` deux
+pour Leveinard. `FOCUSBAND` donne 10 % de chance de conserver 1 PV face à un
+coup fatal lorsque le porteur était à pleine santé, après Endurance,
+Fermeté et Ceinture Force ; l'objet n'est pas consommé. Champ Magique,
+Embargo et Maladresse suspendent ces effets via `heldItemIsActive`.
+
+L'autorité du tirage et des dégâts appartient au noyau tactique partagé ;
+les états et objets sont présents dans le snapshot de la room et le
+déclenchement de Cinta Focus est envoyé aux participants. Tests ciblés en
+simple et Duo, plus tour invité et restauration après reconnexion et
+redémarrage ajoutés. La validation visuelle reste dans
+`VALIDATION_MANUELLE_OBJETS.md`.
+
+Un relevé préliminaire des appels Ruby `hasWorkingItem` a trouvé 203 noms
+distincts, dont 53 sans référence littérale dans le moteur avant ce lot.
+Ce relevé n'est pas un compteur de couverture : une capacité générique peut
+servir plusieurs objets, et une référence littérale ne garantit pas son
+fonctionnement complet. Les sept objets de ce lot réduisent ce sous-ensemble
+à environ 46 noms à vérifier. La roadmap garde les familles restantes, dont
+les objets propres à Z et les deux remplacements en cours de tour.
+
+### Complément du 2026-10-26 : les 18 Gemmes
+
+Les Gemmes des 18 types partagent maintenant `matchingHeldGem` : une Gemme
+active correspondant au type effectif de la capacité augmente ses dégâts de
+30 %, puis est consommée dans le noyau de combat. La règle suit le Ruby Z
+(`USENEWBATTLEMECHANICS = true`) et exclut les trois fonctions combinées
+`106`, `107`, `108`. Maladresse, Embargo et Champ Magique empêchent le bonus
+et la consommation. Les deux Gemmes déjà partielles, Combat et Insecte,
+utilisent désormais ce même contrat que les seize autres.
+
+Le noyau autoritaire applique l'effet en simple et Duo ; l'objet consommé,
+les PV et l'événement sont répliqués aux participants et sauvegardés par
+la room. Tests paramétrés sur les 18 types, exclusions, Duo, tour hôte/invité
+et restauration après reconnexion et redémarrage ajoutés. La recette
+visuelle reste ouverte dans `VALIDATION_MANUELLE_OBJETS.md`.
+
+Le relevé préliminaire des hooks Ruby sans référence littérale descend de
+53 à environ 30 noms après les sept objets précédents et les seize Gemmes
+nouvellement référencées. Ce n'est toujours pas un audit de couverture
+exhaustif. Prochain lot cohérent : objets qui modifient durée, répétition
+ou puissance d'une séquence (`LIGHTCLAY`, `GRIPCLAW`, `LOADEDDICE`,
+`METRONOME`) ; `REDCARD` et `EJECTBUTTON` restent inscrits comme dette
+de remplacement pendant le tour.
+
+### Complément du 2026-10-26 : durée des écrans, pièges et séquences
+
+`LIGHTCLAY` fixe Reflet et Mur Lumière à huit tours si l'objet est actif.
+Le chemin Ruby de Voile Aurore (`927`) fixe d'abord les deux écrans à cinq
+tours, puis ne peut plus entrer dans sa branche de prolongation ; le noyau
+conserve ces cinq tours et la recette en jeu vérifie cette particularité.
+`GRIPCLAW` fixe à huit tours le piège causé par `0CF` ou `0D0`, en conservant
+l'identité de la source dans l'état restaurable. `LOADEDDICE` impose cinq
+coups à `0C0` ; combiné à Multi-Coups, il supprime aussi les vérifications
+de précision répétées de Triple Pied (`0BF`), conformément à la condition
+conjointe du Ruby. `METRONOME` suit les utilisations consécutives de la même
+capacité dans l'état volatile : +20 % de dégâts par répétition, plafonné à
++100 %, réinitialisé par une autre capacité et au changement de Pokémon.
+
+L'hôte reste autoritaire pour les durées, coups, dégâts et tirages ; le noyau
+est commun au solo et à la room. Les écrans, pièges et compteur de répétition
+sont dans le snapshot tactique. Tests ciblés simple/Duo et test de tour invité
+avec restauration du compteur après reconnexion/redémarrage ajoutés ; la
+recette visuelle reste ouverte. L'inventaire préliminaire de la roadmap
+retire ces quatre noms, mais n'est toujours pas un audit complet.
+
+Prochain lot proposé : les multiplicateurs d'espèce et d'objets légendaires
+(`ADAMANTORB`, `DEEPSEASCALE`, `DEEPSEATOOTH`, `GRISEOUSORB`,
+`LUSTROUSORB`, `SOULDEW`, `METALPOWDER`), puis les cinq encens.
+`REDCARD` et `EJECTBUTTON` demeurent à traiter avec leur contrat de
+remplacement en cours de tour.
+
+### Complément du 2026-10-26 : espèces, orbes et cinq encens
+
+Douze effets supplémentaires passent par les calculs du noyau commun.
+`ADAMANTORB` (Dialga, Dragon/Acier), `LUSTROUSORB` (Palkia, Dragon/Eau)
+et `GRISEOUSORB` (Giratina, Dragon/Spectre) donnent +20 % de dégâts sur
+les types indiqués. `DEEPSEATOOTH` double l'Attaque Spéciale de Coquiperl ;
+`DEEPSEASCALE` double sa Défense physique dans le Ruby Z. `SOULDEW` donne
++50 % en Attaque et Défense Spéciales à Latias/Latios, sauf si la règle
+source `souldewclause` est active. Ce drapeau est conservé dans le snapshot
+de combat et peut être fourni par `BattleResolutionRules`. `METALPOWDER`
+multiplie les deux défenses de Métamorph non transformé par 1,5.
+
+Deux effets d'espèce déjà annoncés comme objets pris en charge manquaient
+dans le calcul : le Ruby attribue le doublement d'Attaque physique de
+Osselait/Ossatueur/Marolier à `LAGGINGTAIL`, et `LIGHTBALL` multiplie les
+attaques physique et spéciale de Pikachu par 1,75, celles de Raichu par
+1,5. Le moteur suit ces conditions exactes. `THICKCLUB` figure dans les
+données et le Lancer, mais aucun hook de dégâts Ruby ne le référence ;
+la roadmap garde cette anomalie à vérifier en jeu.
+
+`ROCKINCENSE`, `ROSEINCENSE`, `SEAINCENSE`, `WAVEINCENSE` et `ODDINCENSE`
+partagent le prédicat des objets renforçant un type et donnent +20 % sur
+Roche, Plante, Eau, Eau et Psy respectivement. Leurs effets sont suspendus
+par Maladresse, Embargo et Champ Magique. L'hôte calcule dégâts et tirages,
+réplique les PV et conserve les objets dans la room ; tests de tous les
+cas, Duo, tour hôte/invité, reconnexion et redémarrage ajoutés. Recette
+visuelle ouverte dans `VALIDATION_MANUELLE_OBJETS.md`.
+
+Le relevé préliminaire sans référence littérale ne contient plus que 14
+noms (12 objets restants à classifier et `REDCARD`/`EJECTBUTTON`). Ce n'est
+pas un compteur de couverture exhaustif. Prochain lot : classer et porter
+les objets propres à Z encore présents dans cette liste ; les deux objets
+de remplacement demandent toujours le contrat en cours de tour.
+
+### Complément du 2026-10-26 : objets Z offensifs, critiques et Punzasfera
+
+Dix entrées du relevé restant ont maintenant un effet dans le noyau :
+`ANILLODESANGRE` (+40 % sur un critique), `ANTICRITICO` (empêche les
+critiques sauf contre Brise Moule), `ARMAZONDEFAUCES` (+20 % et +1 niveau
+critique pour une morsure, plus la chance d'apeurer sur les capacités au
+drapeau `f`), `CANONDEMANO` (+30 % pour une onde), `CORAZAASALTO` (+40 %
+Défense Spéciale et capacités de statut bloquées), `ESPADAVALIENTE`
+(+30 % pour une coupe, +50 % pour Mélokrik), `FUELLENEUMATICO` (+50 %
+pour les attaques de vent), `MASCARACRUEL` (+30 % contre un statut listé
+par le Ruby), `PUNZASFERA` (Hémorragie du porteur en fin de tour) et
+`ROSELIBERRY` (moitié des dégâts d'une attaque Fée super efficace, puis
+consommation). Le hook de flinch sert aussi à Roche Royale et Croc Rasoir.
+Le même passage a raccordé les activations en fin de tour des Orbes Flamme
+et Toxique, auparavant présents seulement dans le traitement de Lancer.
+
+Autorité : dégâts, critique, statut et consommation sont décidés par le
+noyau partagé. Les PV, statuts et objets sont dans le snapshot autoritaire ;
+les événements sont adressés aux participants. Tests ciblés et tour hôte/
+invité avec reconnexion et redémarrage ajoutés. Validation en jeu ouverte.
+
+Compteur demandé, périmètre explicite : dans les 14 noms restant dans
+l'inventaire ciblé précédent, **10 portés, 4 encore à faire** :
+`DESTINYKNOT`, `SMOKEBALL`, `REDCARD`, `EJECTBUTTON`. Un nouveau relevé
+automatique trouve 203 noms distincts dans les appels Ruby
+`hasWorkingItem(:NAME)` ; 199 ont désormais une référence dans le code du
+moteur, quatre n'en ont pas. **199 références ne valent pas 199 objets
+validés** : l'audit fonctionnel de l'ensemble des objets tenus reste à
+faire avant d'annoncer un compteur global porté/restant. Les cinq familles
+d'objets utilisables déjà auditées restent à 95/95 effets source pris en
+charge, compteur distinct des objets tenus.
+
+`DESTINYKNOT` demande de conserver l'identité de l'auteur de l'Attraction
+et d'empêcher le rebond récursif ; `SMOKEBALL` demande une intention de fuite
+ordinaire et son raccord solo/Duo/Coop. `REDCARD` et `EJECTBUTTON` attendent
+le remplacement pendant le tour. Ces quatre dépendances sont détaillées
+dans la roadmap ; prochain lot prioritaire : leurs contrats communs, puis
+audit exhaustif de couverture des objets tenus.
+
+### Lot suivant : Lazo Destino et Bola Humo (2026-10-26)
+
+`DESTINYKNOT` est maintenant raccordé aux deux sources d'Attraction du noyau
+(`016` et Joli Sourire). L'état volatil conserve `infatuatedBy`, validé par le
+protocole et présent dans les snapshots ; quitter le terrain retire
+l'Attraction dont on était l'auteur, en simple et Duo. Le rebond ne se
+produit que si l'objet fonctionne et si la cible peut être attirée, sans
+récursion. Les événements d'activation et de statut servent au rendu distant.
+
+La fuite ordinaire existait déjà dans `battle-tactics.ts` : le contrôleur
+solo et la room hôte appellent ce même noyau, avec `escapeAttempts` persisté
+pour la reconnexion Coop. `SMOKEBALL` y garantit maintenant la fuite si
+l'objet fonctionne ; Maladresse, Embargo et Zone Magique le désactivent.
+Les rencontres scriptées non fuibles continuent de bloquer l'intention dans
+leurs adaptateurs. La fuite de type Spectre est également garantie par la
+règle source. Tests unitaires sur le rebond, le lien au switch et la fuite
+avec objet actif/supprimé ; `pnpm test` et `pnpm build` exécutés.
+
+Compteur du relevé ciblé de 14 objets : **12 portés, 2 à faire**
+(`REDCARD`, `EJECTBUTTON`). Ce compteur ne vaut toujours pas audit global
+des objets tenus. Prochain lot : interruption du tour et remplacement forcé
+par ces deux objets, puis audit exhaustif pour produire le compteur global.
+
+### Audit des hooks Ruby à plusieurs effets (2026-10-26)
+
+Le relevé de 203 noms avec une référence moteur ne prouve pas la couverture
+de tous leurs hooks. La comparaison du bloc de calcul des dégâts Ruby et du
+noyau a révélé deux effets secondaires manquants : `CLEARAMULET` augmente
+les deux défenses de 10 % en plus d'empêcher les baisses de statistiques,
+et `IRONBALL` augmente la Défense physique de 25 % en plus de ses effets
+de vitesse et de gravité. Les deux passent maintenant par `calculateDamage`,
+avec suppression par Maladresse, Embargo et Zone Magique.
+
+L'audit du bloc de soins a aussi révélé que `BERRYJUICE`, déjà utilisable
+depuis le sac, n'agissait pas comme objet tenu. Il restaure maintenant 20 PV
+en fin de tour à 50 % de PV ou moins, se consomme et reste indépendant de
+Tension comme dans le Ruby. `RAIZANCESTRAL` appliquait déjà son soin fixe
+sur `0DD` et `0DE`, mais la fonction de drain `14F` n'était pas raccordée ;
+ce drain de 75 % et son soin fixe sont maintenant exécutés par le noyau
+commun. Tests ciblés et tour hôte/invité avec reconnexion et redémarrage
+pour Zumo de Baya ajoutés. Ces corrections ne changent pas le compteur
+du relevé ciblé : **12/14 portés, 2 restants**. Elles confirment la nécessité
+d'un audit par hook avant d'annoncer le total global.
+
+Le même audit a corrigé Lancer : son effet additionnel n'est empêché que
+par la combinaison Écailles Spéciales + Cape Obscure, selon le prédicat
+commun du moteur ; la cape seule ou le talent seul ne suffisent pas dans
+la source Z. Test des quatre combinaisons, dont Brise Moule, ajouté.
+
+### Herbe Blanche et Herbe Mentale tenues (2026-10-26)
+
+Leur seul traitement précédent dans le moteur concernait Lancer. Le hook
+Ruby `pbBerryCureCheck` restaure toutes les statistiques négatives avec
+`WHITEHERB`, et dissipe Attraction, Provoc, Encore, Tourmente, Entrave et
+Anti-Soin avec `MENTALHERB`. Ces deux effets sont maintenant exécutés par
+le contrôle réactif commun après l'action et en fin de tour, indépendamment
+de Tension. L'objet est consommé dans le snapshot autoritaire, les statuts
+et baisses levés produisent des événements pour tous les participants.
+Maladresse, Embargo et Zone Magique suspendent l'activation. Tests ciblés
+et tour hôte/invité avec reconnexion et redémarrage ajoutés. Le compteur
+des 14 noms ciblés reste **12/14**, car ces objets figuraient déjà comme
+« référencés » sans que leur comportement tenu soit complet.
+
+L'audit des seize hooks Ruby de `POWERHERB` a trouvé deux fonctions d'attaque
+absentes du noyau : `14D` (variante Ruby de l'attaque fantôme) et `14E`
+(hausse de trois statistiques après charge). Elles sont
+maintenant déclarées comme supportées et partagent le contrat de charge
+en deux tours : l'Herbe Pouvoir est consommée pour les exécuter immédiatement.
+`14D` donne l'invulnérabilité pendant la charge, traverse Protection et
+double les dégâts contre une cible sous Lilliput avec précision parfaite ;
+`14E` augmente Attaque Spéciale, Défense Spéciale et Vitesse de deux niveaux.
+Tests simple, Duo par le contrat commun de charge, et tour invité Coop avec
+reconnexion/redémarrage ajoutés. Le rapport d'intégration courant ne relève
+aucune capacité PBS utilisant ces deux codes : la recette en jeu ne devient
+possible que si une capacité correspondante entre au périmètre.
+
+### Carte Rouge : remplacement après un coup (2026-10-26)
+
+Le noyau commun vérifie la perte réelle de PV, la survie du porteur, l'objet
+actif, une réserve admissible et la suppression des effets additionnels par
+Sans Limite. `REDCARD` est consommée après le coup ; le moteur tire une
+réserve adverse de façon déterministe, applique sortie, pièges et talents
+d'entrée, puis poursuit le tour avec les nouveaux combattants. Le contrat
+fonctionne en simple et en Duo, où seul le slot de l'attaquant est remplacé.
+Les actions en attente restent liées à l'identité du Pokémon initial.
+
+La room hôte emploie ce même noyau : consommation, tirage, événements et
+équipes sont dans le snapshot répliqué. Les tests couvrent le déclenchement
+par chaque propriétaire Coop, la reconnexion de l'invité et le redémarrage
+de la room. La recette visuelle en jeu reste ouverte dans
+`VALIDATION_MANUELLE_OBJETS.md`.
+
+Compteur du relevé ciblé de 14 noms : **13 portés, 1 restant**
+(`EJECTBUTTON`). Ce n'est pas encore le compteur global de tous les objets
+source : l'audit par hook des 203 noms `hasWorkingItem` et des autres familles
+reste nécessaire. Prochain lot : Bouton Fuite, avec choix du propriétaire
+pendant le tour et reprise de cette attente après reconnexion ; puis audit
+exhaustif des objets tenus.
+
+### Audit par hook : Casco Protector (2026-10-26)
+
+La comparaison des six usages Ruby de `CASCOPROTECTOR` a révélé deux effets
+absents malgré la référence existante dans le moteur : le blocage des
+capacités de statut et la protection contre le recul des fonctions `0FB`,
+`0FC`, `0FD` et `0FE`. Ces hooks sont maintenant raccordés au même prédicat
+d'objet actif que `0FA`, donc suspendus par Maladresse, Embargo et Champ
+Magique. Tests sur les cinq fonctions, le Duo, les deux propriétaires Coop,
+la reconnexion et le redémarrage ajoutés. La vérification de `0FA` a aussi
+supprimé un double calcul de recul préexistant : une seule règle commune
+applique désormais son quart des dégâts. Le compteur ciblé reste
+**13/14 portés, 1 restant** (`EJECTBUTTON`) : Casco Protector n'appartenait
+pas aux 14 noms du relevé, et ce correctif confirme qu'une référence de nom
+ne suffit pas pour le compter dans le futur total global.
+
+L'audit des Lunettes Filtre (`SAFETYGOGGLES`) a trouvé une divergence en
+Duo : la redirection de Poudre Fureur vérifiait le nom de l'objet et le
+Champ Magique, mais ignorait Maladresse et Embargo. Ce chemin emploie
+maintenant `heldItemIsActive`, comme l'immunité aux poudres et aux
+intempéries. Trois tests Duo couvrent les suppressions. Le compteur ciblé
+reste **13/14** ; les Lunettes Filtre étaient déjà référencées.
+
+### Bouton Fuite : choix pendant le tour (2026-10-26)
+
+`EJECTBUTTON` est consommé après un coup qui enlève des PV à son porteur
+survivant, si l'objet est actif et si une réserve vivante existe. Le
+propriétaire choisit sa réserve pendant le tour. Le même noyau gère le
+simple et le Duo ; le remplacement intervient avant l'action suivante et
+seul le slot touché change en Duo. Les tirages RNG déjà effectués sont
+conservés pendant l'attente, puis le tour est rejoué avec ces tirages et
+le choix enregistré. Les actions en file restent liées au Pokémon initial.
+
+Autorité : le joueur concerné choisit, la room hôte valide et résout ; en
+solo l'adaptateur local emploie le même noyau. L'attente (actions, choix et
+tirages) est persistée dans la room, restaurée après reconnexion ou
+redémarrage, et publiée au propriétaire dans le snapshot. Le bac à sable
+local et l'overworld raccordent aussi le choix. L'adversaire contrôlé par
+l'IA prend automatiquement la première réserve admissible.
+
+Limite de présentation : pendant le choix, le snapshot montre encore
+l'état initial du tour et un besoin de remplacement ; les dégâts et
+animations précédant le choix apparaissent ensemble après validation.
+La recette visuelle manuelle reste ouverte dans
+`VALIDATION_MANUELLE_OBJETS.md`.
+
+**Compteur du relevé ciblé : 14 objets portés sur 14, 0 restant.** Ce relevé
+ne représente pas la totalité des objets du jeu. Le relevé Ruby contient
+203 noms distincts dans `hasWorkingItem` ; leurs hooks doivent encore être
+audités un par un avant de publier un compteur global fiable. Les cinq
+familles d'objets utilisables auditées restent à 95/95 effets source.
+Prochain lot : audit par hook des objets tenus référencés par le moteur,
+en commençant par les effets complexes et les suppressions d'objet actif.
+
+### Inventaire global par hook et correction des Plaques (2026-10-26)
+
+`AUDIT_OBJETS_TENUS.md` recense maintenant les 203 noms littéraux et
+448 appels Ruby `hasWorkingItem`, avec un état explicite par nom.
+**38/203 objets ont un lot de portage validé ; 165/203 restent à auditer
+par hook.** Les 165 ne sont pas tous « non portés » : beaucoup ont déjà
+une implémentation, mais l'inventaire doit comparer chaque effet source.
+Le compteur mondial portés/non portés demeure donc indéterminé.
+
+L'audit de `POWERHERB` a rapproché ses seize hooks de charge Ruby des seize
+codes du moteur (`0C3` à `0CD`, `14D`, `14E`, `190`, `908`, `937`). Un test
+paramétré contrôle consommation et effet immédiat pour chacun. L'objet
+passe dans la colonne vérifiée.
+
+L'audit de la famille des 18 Plaques a trouvé un multiplicateur de dégâts
+incorrect : le Ruby applique 1,25, le moteur appliquait 1,20. Le noyau
+commun applique désormais 1,25 pour les dix-huit types, y compris la
+Table Neutre, avec suppression par Maladresse, Embargo et Champ Magique.
+Les chemins Jugement, Arceus, simple, Duo et room utilisent ce noyau.
+Les tests couvrent les 18 correspondances de type et le nouveau
+multiplicateur ; les tests de room couvrent déjà les deux propriétaires,
+la reconnexion et le redémarrage. Recette visuelle ouverte.
+
+### Cible Anneau et objets de soin tenus (2026-10-26)
+
+Les 14 appels Ruby de `RINGTARGET` correspondent aux immunités de type,
+aux statuts directs et réfléchis, à l'effet d'une capacité de contact et
+à Lancer. Tests simples, Duo, room invité et restauration existants ;
+Synchro et Statik disposent maintenant de cas explicites. L'objet entre
+dans l'inventaire vérifié.
+
+Le noyau commun applique désormais Suintement au bénéficiaire de
+Drenadoras avant Racine Grande et même sous Soin Bloqué, comme le Ruby.
+Ce même calcul sert le combat simple et le Duo. La room valide les deux
+propriétaires et la restauration après reconnexion/redémarrage. Restes
+et Boue Noire ne soignent plus sous Soin Bloqué ; Boue Noire ne blesse
+pas un porteur Poison dans ce cas. `BIGROOT`, `RAIZANCESTRAL`,
+`LEFTOVERS` et `BLACKSLUDGE` rejoignent l'inventaire vérifié.
+
+**Compteur du périmètre des 203 noms : 38 validés, 165 à auditer par hook.**
+La dette prioritaire suivante est `SHELLBELL` : le Ruby soigne une fois
+après le total des dégâts de la capacité ; le moteur soigne actuellement
+plusieurs fois pour une attaque à plusieurs cibles. Corriger ce regroupement
+dans le noyau commun avant de valider l'objet.
+
+### Grelot Coque : soin après la capacité entière (2026-10-26)
+
+Le noyau commun traite désormais les objets de l'attaquant après le total
+des dégâts de la capacité. `SHELLBELL` soigne une seule fois pour une
+attaque à plusieurs cibles ou coups ; `LIFEORB` conserve son recul après
+ce soin. Si la dernière cible ne prend aucun dégât, les dégâts antérieurs
+du même mouvement déclenchent quand même le bon effet. Le combat simple
+et le Duo emploient la même fonction de fin de capacité. Les tests couvrent
+le total, le dernier slot immunisé, les coups multiples et les suppressions
+existantes ; la room couvre déjà les deux propriétaires et la restauration.
+
+**Compteur actualisé : 39/203 objets validés, 164/203 à auditer par hook.**
+Prochaine famille : objets de contact et de dégâts résiduels, en particulier
+`LIFEORB`, `ROCKYHELMET`, `STICKYBARB` et `BINDINGBAND` ; comparer chaque
+hook Ruby et les interactions de capacité avant de les compter.
+
+### Réactions de contact et compteur global minimal (2026-10-26)
+
+`ROCKYHELMET` inflige désormais son recul à chaque coup de contact qui
+atteint les PV, et `STICKYBARB` peut passer à l'attaquant dès le premier
+coup. Le clone reste protégé. `LIFEORB` conserve son bonus même lorsque
+Garde Magik ou Sans Limite supprime son recul ; le chemin après coup
+fonctionne aussi si la dernière cible d'une attaque de zone est immunisée.
+`BINDINGBAND` reste suspendue par les inhibiteurs d'objet ; Salaison
+(`0CF`) inflige toujours un quart des PV aux types Eau et Acier, quel que
+soit l'objet du piègeur. Tests moteur simple/Duo et room hôte/invité avec
+reconnexion/redémarrage ajoutés.
+
+Le compteur demandé pour le **catalogue complet** est maintenant
+**au moins 138/906 objets portés et vérifiés** : 95 noms distincts des
+cinq familles `item-coverage-report.json` + 43 objets tenus de
+`AUDIT_OBJETS_TENUS.md`, sans doublon. C'est une borne basse, car les
+autres objets n'ont pas encore tous été audités. Le sous-compteur des
+objets tenus est **43/203 validés, 160 à auditer**.
+
+Dette séparée : les appels Ruby d'IA pour Tourmagik/Passe-Passe avec
+`STICKYBARB` et l'estimation `LIFEORB` ne sont pas des effets mécaniques
+des objets ; l'IA source complète reste à rapprocher du sélecteur commun.
+
+### Compteurs distincts des objets de combat (2026-10-26)
+
+Le suivi courant est détaillé dans `docs/COMPTEURS_OBJETS.md` : **73/114 objets
+utilisables depuis le sac en combat portés et vérifiés, 41 à auditer** ;
+**75/203 objets tenus à effet de combat portés et vérifiés, 128 à auditer**.
+Les deux ensembles se recoupent et ne s'additionnent pas. Le précédent
+138/906 est une borne basse du catalogue entier, pas un indicateur de ces
+deux chantiers. Parmi les 41 usages depuis le sac à auditer, 28 Balls et
+2 flûtes ont déjà du code ; `PERSIMBERRY` est un raccord manquant identifié.

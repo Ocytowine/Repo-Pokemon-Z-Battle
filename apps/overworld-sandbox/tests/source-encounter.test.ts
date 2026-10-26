@@ -291,6 +291,16 @@ describe("source encounter bridge", () => {
     const failed = attemptSourceEncounterEscape(slowPlayer, 0, { nextInt: (maximum) => maximum - 1 });
     expect(failed.escaped).toBe(false);
     if (!failed.escaped) expect(failed.turn.events).toContainEqual(expect.objectContaining({ type: "damageApplied", target: "player" }));
+    const smokeBall = { ...slowPlayer, teams: { ...slowPlayer.teams,
+      player: { ...slowPlayer.teams.player, members: slowPlayer.teams.player.members.map((member, index) =>
+        index === slowPlayer.teams.player.activeIndex ? { ...member, heldItem: "SMOKEBALL" as const } : member) } } };
+    expect(attemptSourceEncounterEscape(smokeBall, 0, { nextInt: () => { throw new Error("No draw expected"); } }).escaped)
+      .toBe(true);
+    const suppressed = { ...smokeBall, teams: { ...smokeBall.teams,
+      player: { ...smokeBall.teams.player, members: smokeBall.teams.player.members.map((member, index) =>
+        index === smokeBall.teams.player.activeIndex ? { ...member, ability: "KLUTZ" as const } : member) } } };
+    expect(attemptSourceEncounterEscape(suppressed, 0, { nextInt: (maximum) => maximum - 1 }).escaped)
+      .toBe(false);
   });
 
   it("clears a victory but heals a defeated party before a retry", () => {

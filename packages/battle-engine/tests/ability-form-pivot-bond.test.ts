@@ -24,6 +24,103 @@ function inner(events: readonly DoubleBattleEvent[]) {
 }
 
 describe("Pokemon Z forms, pivots and extra hits", () => {
+  it("pops Air Balloon only after HP damage, including Disguise, and excludes Pickup", () => {
+    const target = pokemon("balloon", "opponent", { heldItem: "AIRBALLOON" });
+    const hit = resolveTeamTurn(createTeamBattleState({ player: [pokemon("user", "player")],
+      opponent: [target] }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(hit.state.teams.opponent.members[0]).toMatchObject({ heldItem: null });
+    expect(hit.state.teams.opponent.members[0]!.recyclableItem).toBe("AIRBALLOON");
+    expect(hit.state.teams.opponent.members[0]!.volatile?.pickupItem).toBeNull();
+    expect(hit.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item: "AIRBALLOON", effect: "popped" }));
+
+    const shielded = resolveTeamTurn(createTeamBattleState({ player: [pokemon("user", "player")],
+      opponent: [pokemon("shield", "opponent", { heldItem: "AIRBALLOON",
+        volatile: { substituteHp: 100 } as BattlerState["volatile"] })] }),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(shielded.state.teams.opponent.members[0]!.heldItem).toBe("AIRBALLOON");
+
+    const disguise = resolveTeamTurn(createTeamBattleState({ player: [pokemon("user", "player")],
+      opponent: [pokemon("mimikyu", "opponent", { species: "MIMIKYU", ability: "DISGUISE",
+        heldItem: "AIRBALLOON", appearance: { form: 0, shiny: false, gender: null } })] }),
+    { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(disguise.state.teams.opponent.members[0]!.heldItem).toBeNull();
+    expect(disguise.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item: "AIRBALLOON", effect: "popped" }));
+  });
+  it.each([
+    ["ABSORBBULB", "WATER", "specialAttack"],
+    ["LUMINOUSMOSS", "WATER", "specialDefense"],
+    ["CELLBATTERY", "ELECTRIC", "attack"],
+    ["SNOWBALL", "ICE", "attack"],
+  ] as const)("activates %s on a damaging %s hit", (item, type, stat) => {
+    const attack: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, type, accuracy: 0 };
+    const attacker = pokemon("user", "player", { moves: [{ move: attack, pp: attack.pp }] });
+    const target = pokemon("target", "opponent", { heldItem: item });
+    const battle = (defender: BattlerState) => resolveTeamTurn(createTeamBattleState({
+      player: [attacker], opponent: [defender],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    const triggered = battle(target);
+    expect(triggered.state.teams.opponent.members[0]!.stages[stat]).toBe(1);
+    expect(triggered.state.teams.opponent.members[0]!.heldItem).toBeNull();
+    expect(triggered.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item, effect: "boost" }));
+    const capped = battle({ ...target, stages: { ...target.stages, [stat]: 6 } });
+    expect(capped.state.teams.opponent.members[0]!.heldItem).toBe(item);
+  });
+  it("consumes Weakness Policy only when a super-effective hit can raise a stat", () => {
+    const fire: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "FIRE", accuracy: 0 };
+    const attacker = pokemon("user", "player", { moves: [{ move: fire, pp: fire.pp }] });
+    const target = pokemon("target", "opponent", { types: ["GRASS"], heldItem: "WEAKNESSPOLICY" });
+    const battle = (defender: BattlerState) => resolveTeamTurn(createTeamBattleState({
+      player: [attacker], opponent: [defender],
+    }), { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    const triggered = battle(target);
+    expect(triggered.state.teams.opponent.members[0]!.stages).toMatchObject({ attack: 2, specialAttack: 2 });
+    expect(triggered.state.teams.opponent.members[0]!.heldItem).toBeNull();
+    expect(triggered.events).toContainEqual(expect.objectContaining({ type: "heldItemConsumed",
+      item: "WEAKNESSPOLICY", effect: "boost" }));
+    const capped = battle({ ...target,
+      stages: { ...target.stages, attack: 6, specialAttack: 6 } });
+    expect(capped.state.teams.opponent.members[0]!.heldItem).toBe("WEAKNESSPOLICY");
+    const neutral = battle({ ...target, types: ["NORMAL"] });
+    expect(neutral.state.teams.opponent.members[0]!.heldItem).toBe("WEAKNESSPOLICY");
+  });
+  it.each([
+    ["KEEBERRY", "Physical", "defense"],
+    ["MARANGABERRY", "Special", "specialDefense"],
+  ] as const)("activates %s only for a %s hit", (item, category, stat) => {
+    const attack: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, category, accuracy: 0 };
+    const attacker = pokemon("user", "player", { moves: [{ move: attack, pp: attack.pp }] });
+    const target = pokemon("target", "opponent", { heldItem: item });
+    const result = resolveTeamTurn(createTeamBattleState({ player: [attacker], opponent: [target] }),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(result.state.teams.opponent.members[0]!.stages[stat]).toBe(1);
+    expect(result.state.teams.opponent.members[0]!.heldItem).toBeNull();
+    const wrongCategory: BattleMove = { ...attack,
+      category: category === "Physical" ? "Special" : "Physical" };
+    const wrongAttacker = pokemon("user", "player", { moves: [{ move: wrongCategory, pp: wrongCategory.pp }] });
+    const ignored = resolveTeamTurn(createTeamBattleState({ player: [wrongAttacker], opponent: [target] }),
+      { player: { kind: "move", moveIndex: 0 }, opponent: { kind: "wait" } }, rng);
+    expect(ignored.state.teams.opponent.members[0]!.heldItem).toBe(item);
+  });
+  it("keeps reactive item effects on the struck slot in Duo", () => {
+    const fire: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, type: "FIRE", accuracy: 0 };
+    const attacker = pokemon("p1", "player", { moves: [{ move: fire, pp: fire.pp }] });
+    const state = createDoubleTeamBattleState({ player: [attacker, pokemon("p2", "player")],
+      opponent: [pokemon("o1", "opponent", { types: ["GRASS"], heldItem: "WEAKNESSPOLICY" }),
+        pokemon("o2", "opponent", { types: ["GRASS"], heldItem: "WEAKNESSPOLICY" })] });
+    const result = resolveDoubleTeamTurn(state, [
+      { actor: { side: "player", slot: 0 }, action: { kind: "move", moveIndex: 0,
+        target: { side: "opponent", slot: 1 } } },
+      { actor: { side: "player", slot: 1 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 0 }, action: { kind: "wait" } },
+      { actor: { side: "opponent", slot: 1 }, action: { kind: "wait" } },
+    ], rng);
+    expect(result.state.teams.opponent.members[0]!.heldItem).toBe("WEAKNESSPOLICY");
+    expect(result.state.teams.opponent.members[1]!.stages).toMatchObject({ attack: 2, specialAttack: 2 });
+    expect(result.state.teams.opponent.members[1]!.heldItem).toBeNull();
+  });
   it("boosts only special attacks with Poder Sabio and locks the selected move until switching", () => {
     const special: BattleMove = { ...MINIMAL_MOVE_CATALOG.WATERGUN, accuracy: 0 };
     const physical: BattleMove = { ...MINIMAL_MOVE_CATALOG.TACKLE, accuracy: 0 };

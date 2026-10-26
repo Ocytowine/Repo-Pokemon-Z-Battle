@@ -8,6 +8,7 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   createTeamBattleState, openSharedBattleJoinWindow,
   pokemonItemTargetMode, proposeBattleJoin, recordSharedBattleTurn, replacementBattleController, replaceFaintedDoublePokemon, replaceFaintedPokemon,
   resolveDoubleTeamTurn, resolveTeamTurn,
+  attemptReactiveTurn,
   switchTrapAbility,
   settleEscapedSharedBattleSession, settleSharedBattleSession,
   sharedBattleOwnerEscapeSettlement, sharedBattleOwnerSettlement,
@@ -16,7 +17,9 @@ import { activateSharedBattleSession, activeBattleController, activeBattleContro
   type BattleSide, type BattleTeam, type BattlerState, type PositionedTeamBattleAction,
   type SharedBattleCamp, type SharedBattleLedger,
   type SharedBattleParticipation, type SharedBattleSession, type StatefulRandomSource, type TeamBattleAction,
-  type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
+  type TeamBattleState, type TeamTurnActions, type TeamTurnResult, type DoubleTurnResult,
+  type RandomSource } from "@pokemon-z-battle/battle-engine";
+import type { ReactiveHeldSwitchRequest, RecordedBattleRoll } from "@pokemon-z-battle/battle-engine";
 import { createDefaultNetworkPlayerProfile, PROTOCOL_VERSION, resolveSourceMovement, sourceWorldSnapshot, type ClientMessage, type NetworkPlayerProfile,
   type ProtocolErrorCode, type RoomPlayerSnapshot, type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot,
   type SourceBattleContext, type SourceFollowerSnapshot, type SourceSceneSnapshot, type SourceWorldHostState,
@@ -69,6 +72,7 @@ export interface PersistedRoomState {
   readonly pendingActions: readonly (readonly [BattleSide, TeamBattleAction])[];
   readonly pendingDoubleActions?: readonly (readonly [string, PositionedTeamBattleAction])[];
   readonly pendingReplacements: readonly (readonly [BattleSide, number])[];
+  readonly pendingReactiveSwitch?: PendingReactiveSwitchTurn | null;
   readonly worldState: OverworldState;
   readonly sourceWorldState: SourceWorldSnapshot | null;
   readonly sourceSceneState: SourceSceneSnapshot | null;
@@ -91,6 +95,12 @@ export interface PersistedRoomState {
   readonly battleInventories?: readonly (readonly [string, SourceBattleInventory])[];
   readonly battleConsumedItems?: readonly (readonly [string, SourceBattleInventory])[];
   readonly battleJoinInventory?: readonly [string, SourceBattleInventory] | null;
+}
+
+interface PendingReactiveSwitchTurn {
+  readonly request: ReactiveHeldSwitchRequest;
+  readonly rolls: readonly RecordedBattleRoll[];
+  readonly choices: Readonly<Record<string, number>>;
 }
 
 export interface EncounterContext {
@@ -136,6 +146,7 @@ export class AuthoritativeBattleRoom {
   readonly #pendingActions = new Map<BattleSide, TeamBattleAction>();
   readonly #pendingDoubleActions = new Map<string, PositionedTeamBattleAction>();
   readonly #pendingReplacements = new Map<BattleSide, number>();
+  #pendingReactiveSwitch: PendingReactiveSwitchTurn | null = null;
   readonly #createBattle: (encounter?: EncounterContext) => TeamBattleState;
   readonly #rng: StatefulRandomSource;
   readonly #roomCode: string;
@@ -241,6 +252,7 @@ export class AuthoritativeBattleRoom {
       for (const [side, action] of persisted.pendingActions) this.#pendingActions.set(side, action);
       for (const [key, action] of persisted.pendingDoubleActions ?? []) this.#pendingDoubleActions.set(key, action);
       for (const [side, teamIndex] of persisted.pendingReplacements) this.#pendingReplacements.set(side, teamIndex);
+      this.#pendingReactiveSwitch = persisted.pendingReactiveSwitch ?? null;
       for (const [side, sequence] of persisted.movementSequences) this.#movementSequences.set(side, sequence);
     }
   }
@@ -339,7 +351,7 @@ export class AuthoritativeBattleRoom {
     const phase = this.#battleState === null ? "waiting"
       : this.#battleState.status === "finished" || this.#battleEscaped ? "finished" : "battle";
     const battle = this.#battleState === null || this.#battleId === null ? null
-      : { id: this.#battleId, state: this.#battleState, duel: this.#activeDuel,
+      : { id: this.#battleId, state: this.reactiveSnapshotState(), duel: this.#activeDuel,
         participation: this.#battleParticipation, joinProposal: this.#battleJoinProposal,
         joinRefusal: this.#battleJoinRefusal,
         observerIds: this.#battleObserverIds, ledger: this.#battleLedger,
@@ -365,6 +377,62 @@ export class AuthoritativeBattleRoom {
     };
   }
 
+  private reactiveSnapshotState(): TeamBattleState {
+    const state = this.#battleState!;
+    const pending = this.#pendingReactiveSwitch;
+    if (pending === null) return state;
+    const side = pending.request.holderSide;
+    if (state.format !== "double") return { ...state, replacementRequired: [side] };
+    const slot = activeTeamIndices(state.teams[side]).findIndex((index) =>
+      state.teams[side].members[index]?.id === pending.request.holderId);
+    return slot < 0 ? state : { ...state, slotReplacements: [{ side, slot }] };
+  }
+
+  private reactiveChoiceOwner(request: ReactiveHeldSwitchRequest): string | null {
+    if (this.#battleState === null) return null;
+    const side = request.holderSide;
+    if (this.#battleParticipation !== null) {
+      if (this.#battleState.format !== "double") return activeBattleController(this.#battleParticipation, side);
+      const slot = activeTeamIndices(this.#battleState.teams[side]).findIndex((index) =>
+        this.#battleState!.teams[side].members[index]?.id === request.holderId);
+      return slot < 0 ? null : activeBattleControllerAt(this.#battleParticipation, { side, slot });
+    }
+    if (this.#activeEncounter !== null && side !== this.#activeEncounter.ownerSide) return null;
+    return [...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? null;
+  }
+
+  private resolveWithReactiveChoices(output: RoomDispatch[],
+    resolve: (rng: RandomSource, choices: Readonly<Record<string, number>>) => TeamTurnResult | DoubleTurnResult):
+    TeamTurnResult | DoubleTurnResult | null {
+    if (this.#battleState === null) return null;
+    let pending = this.#pendingReactiveSwitch;
+    for (;;) {
+      const attempt = attemptReactiveTurn(this.#rng, pending?.rolls ?? [], (rng) =>
+        resolve(rng, pending?.choices ?? {}));
+      if (attempt.kind === "resolved") {
+        this.#pendingReactiveSwitch = null;
+        return attempt.result;
+      }
+      const request = attempt.request;
+      const choices = pending?.choices ?? {};
+      pending = { request, rolls: attempt.rolls, choices };
+      const owner = this.reactiveChoiceOwner(request);
+      if (owner === null) {
+        const team = this.#battleState.teams[request.holderSide];
+        const active = activeTeamIndices(team);
+        const selected = team.members.findIndex((member, index) => member.hp > 0 && !active.includes(index));
+        if (selected < 0) throw new Error("Reactive replacement has no eligible reserve.");
+        pending = { ...pending, choices: { ...choices, [request.holderId]: selected } };
+        continue;
+      }
+      this.#pendingReactiveSwitch = pending;
+      this.#revision += 1;
+      output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION,
+        snapshot: this.snapshot() } });
+      return null;
+    }
+  }
+
   public exportState(): PersistedRoomState {
     return {
       version: 15,
@@ -381,6 +449,7 @@ export class AuthoritativeBattleRoom {
       pendingActions: [...this.#pendingActions.entries()],
       pendingDoubleActions: [...this.#pendingDoubleActions.entries()],
       pendingReplacements: [...this.#pendingReplacements.entries()],
+      pendingReactiveSwitch: this.#pendingReactiveSwitch,
       battleInventories: [...this.#battleInventories.entries()],
       battleConsumedItems: [...this.#battleConsumedItems.entries()],
       battleJoinInventory: this.#battleJoinInventory,
@@ -647,6 +716,7 @@ export class AuthoritativeBattleRoom {
     const output: RoomDispatch[] = [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) }];
     if (this.#players.size === 2 && [...this.#players.values()].every((candidate) => candidate.ready)) {
       this.#battleState = this.#createBattle();
+      this.#pendingReactiveSwitch = null;
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;
       this.#escapeConfirmations.clear();
@@ -669,7 +739,7 @@ export class AuthoritativeBattleRoom {
     if (this.#battleState === null || this.#battleId === null || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucun combat actif.")];
     }
-    if (this.#battleState.replacementRequired.length > 0) {
+    if (this.#battleState.replacementRequired.length > 0 || this.#pendingReactiveSwitch !== null) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Un remplacement est requis avant le prochain tour.")];
     }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
@@ -689,13 +759,21 @@ export class AuthoritativeBattleRoom {
     this.#pendingActions.set(player.side, message.action);
     this.#revision += 1;
     const output: RoomDispatch[] = [{ audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) }];
+    this.resolveQueuedRoomTurn(output);
+    return output;
+  }
+
+  private resolveQueuedRoomTurn(output: RoomDispatch[]): void {
+    if (this.#battleState === null || this.#battleId === null) return;
     const playerAction = this.#pendingActions.get("player");
     const opponentAction = this.#pendingActions.get("opponent");
-    if (playerAction === undefined || opponentAction === undefined) return output;
+    if (playerAction === undefined || opponentAction === undefined) return;
 
     const resolvedTurn = this.#battleState.turn;
     const actions: TeamTurnActions = { player: playerAction, opponent: opponentAction };
-    const result = resolveTeamTurn(this.#battleState, actions, this.#rng);
+    const result = this.resolveWithReactiveChoices(output, (rng, choices) =>
+      resolveTeamTurn(this.#battleState!, actions, rng, undefined, undefined, choices));
+    if (result === null) return;
     this.#battleState = result.state;
     if (result.state.status === "finished" && this.#battleSession !== null) {
       this.#battleSession = settleSharedBattleSession(this.#battleSession, result.state);
@@ -720,7 +798,6 @@ export class AuthoritativeBattleRoom {
       },
     });
     output.push({ audience: "all", message: { type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot() } });
-    return output;
   }
 
   private submitEncounterAction(player: RoomPlayer, message: Extract<ClientMessage, { readonly type: "submitAction" }>): readonly RoomDispatch[] {
@@ -730,7 +807,7 @@ export class AuthoritativeBattleRoom {
       || this.#battleState.status !== "active") {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Aucune rencontre active.")];
     }
-    if (this.#battleState.replacementRequired.length > 0) {
+    if (this.#battleState.replacementRequired.length > 0 || this.#pendingReactiveSwitch !== null) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE",
         "Un remplacement est requis avant le prochain tour.")];
     }
@@ -891,10 +968,12 @@ export class AuthoritativeBattleRoom {
         { actor: { side: "player", slot: 0 }, action: playerAction! },
         { actor: { side: "opponent", slot: 0 }, action: opponentAction! },
       ];
-    const result = double
-      ? resolveDoubleTeamTurn(this.#battleState, [...this.#pendingDoubleActions.values()], this.#rng, itemPolicy, resolutionRules)
-      : resolveTeamTurn(this.#battleState, { player: playerAction!, opponent: opponentAction! }, this.#rng, itemPolicy,
-        resolutionRules);
+    const result = this.resolveWithReactiveChoices(output, (rng, choices) => double
+      ? resolveDoubleTeamTurn(this.#battleState!, [...this.#pendingDoubleActions.values()], rng,
+        itemPolicy, resolutionRules, choices)
+      : resolveTeamTurn(this.#battleState!, { player: playerAction!, opponent: opponentAction! }, rng,
+        itemPolicy, resolutionRules, choices));
+    if (result === null) return;
     this.#battleState = result.state;
     const captureEvent = result.events.flatMap((event) => event.type === "positionedActionResolved"
       ? [...event.events] : event.type === "captureAttempted" ? [event] : [])
@@ -1255,6 +1334,7 @@ export class AuthoritativeBattleRoom {
     const encounter = result.events.find((event) => event.type === "encounterRequested");
     if (encounter !== undefined) {
       this.#battleState = this.#createBattle({ encounterId: encounter.encounterId, kind: encounter.kind });
+      this.#pendingReactiveSwitch = null;
       this.#battleEscaped = false;
       this.#escapeAttempts = 0;
       this.#escapeConfirmations.clear();
@@ -1713,6 +1793,7 @@ export class AuthoritativeBattleRoom {
         ? { player: challenge.team.activeIndex, opponent: team.activeIndex }
         : { player: team.activeIndex, opponent: challenge.team.activeIndex };
       this.#battleState = createTeamBattleState(teams, activeIndices);
+    this.#pendingReactiveSwitch = null;
       this.#battleState = bindMegaEvolutionOwners(this.#battleState, Object.fromEntries(
         (["player", "opponent"] as const).flatMap((side) => {
           const ownerId = [...this.#players.values()].find((candidate) => candidate.side === side)?.playerId ?? side;
@@ -1803,6 +1884,32 @@ export class AuthoritativeBattleRoom {
     }
     if (message.battleId !== this.#battleId) return [this.error(player.playerId, message.requestId, "STALE_BATTLE", "Identifiant de combat périmé.")];
     if (message.turn !== this.#battleState.turn) return [this.error(player.playerId, message.requestId, "STALE_TURN", "Numéro de tour périmé.")];
+    if (this.#pendingReactiveSwitch !== null) {
+      const pending = this.#pendingReactiveSwitch;
+      const request = pending.request;
+      if (this.reactiveChoiceOwner(request) !== player.playerId) return [this.error(player.playerId,
+        message.requestId, "UNAUTHORIZED", "Ce remplacement appartient à l'autre Dresseur.")];
+      const team = this.#battleState.teams[request.holderSide];
+      const active = activeTeamIndices(team);
+      const holderSlot = active.findIndex((index) => team.members[index]?.id === request.holderId);
+      if (holderSlot < 0 || message.activeSlot !== undefined && message.activeSlot !== holderSlot
+        || active.includes(message.teamIndex) || team.members[message.teamIndex]?.hp == null
+        || team.members[message.teamIndex]!.hp <= 0) return [this.error(player.playerId,
+        message.requestId, "INVALID_MESSAGE", "Remplaçant indisponible.")];
+      if (this.#battleParticipation !== null
+        && this.#battleParticipation.camps[request.holderSide].members[message.teamIndex]?.ownerId !== player.playerId) {
+        return [this.error(player.playerId, message.requestId, "UNAUTHORIZED",
+          "Ce Pokemon appartient à l'autre Dresseur.")];
+      }
+      this.#pendingReactiveSwitch = { ...pending,
+        choices: { ...pending.choices, [request.holderId]: message.teamIndex } };
+      this.#revision += 1;
+      const output: RoomDispatch[] = [{ audience: { playerId: player.playerId },
+        message: this.acknowledge(player, message.requestId) }];
+      if (this.#activeEncounter !== null || this.#sourceBattleContext !== null) this.resolveQueuedEncounterTurn(output);
+      else this.resolveQueuedRoomTurn(output);
+      return output;
+    }
     if (this.#battleState.format === "double") {
       const participation = this.#battleParticipation;
       if (participation === null) return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Participation double absente.")];

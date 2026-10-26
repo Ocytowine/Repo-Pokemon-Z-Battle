@@ -8,7 +8,7 @@ export const RESIST_BERRY_TYPES: Readonly<Partial<Record<HeldItem, string>>> = {
   KEBIABERRY: "POISON", SHUCABERRY: "GROUND", COBABERRY: "FLYING",
   PAYAPABERRY: "PSYCHIC", TANGABERRY: "BUG", CHARTIBERRY: "ROCK",
   KASIBBERRY: "GHOST", HABANBERRY: "DRAGON", COLBURBERRY: "DARK",
-  BABIRIBERRY: "STEEL", CHILANBERRY: "NORMAL",
+  BABIRIBERRY: "STEEL", CHILANBERRY: "NORMAL", ROSELIBERRY: "FAIRY",
 };
 
 export function resistBerryApplies(item: HeldItem | null, type: string, effectiveness: number): boolean {

@@ -1,10 +1,10 @@
 import { activeBattlePositions, activeTeamIndices, chooseSourceBattleAction, closeSharedBattleSession,
   createSharedBattleLedger, createSharedBattleSession, recordSharedBattleTurn,
-  resolveDoubleTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
+  attemptReactiveTurn, resolveDoubleTeamTurn, resolveTeamTurn, SeededRandom, settleEscapedSharedBattleSession,
   settleSharedBattleSession, type BattlePosition, type BattleSide, type DoubleBattleEvent,
   type PositionedTeamBattleAction, type SharedBattleLedger, type SharedBattleParticipation,
   type SharedBattleSession, type TeamBattleAction,
-  type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+  type TeamBattleEvent, type TeamBattleState, type RecordedBattleRoll } from "@pokemon-z-battle/battle-engine";
 import { addPokemonToStorage, createPersistentPokemon, experienceAtLevel,
   storeProjectedBattleTeam, type PlayerCreationCatalog, type PlayerPartyState, type PokemonCreationContext,
   type PokemonZExperienceCalculation, type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
@@ -15,7 +15,6 @@ import {
   createSourceTrainerBattle,
   resolvePlayerReplacement,
   resolveSourceControlledReplacements,
-  resolveSourceEncounterAction,
   settleSourceEncounter,
   settleSourceTrainerBattle,
   storeSourceEncounterParty,
@@ -180,6 +179,15 @@ export class SourceBattleController {
   private localLedger: SharedBattleLedger | null = null;
   private localSequence = 0;
   private localDoubleActions: PositionedTeamBattleAction[] = [];
+  private pendingReactive: {
+    readonly before: TeamBattleState;
+    readonly action: TeamBattleAction;
+    readonly activeSlot: number;
+    readonly submittedActions: readonly TeamBattleAction[];
+    readonly reportedActions: readonly PositionedTeamBattleAction[];
+    readonly rolls: readonly RecordedBattleRoll[];
+    readonly choices: Readonly<Record<string, number>>;
+  } | null = null;
   private startFailure: string | null = null;
 
   public constructor(
@@ -470,6 +478,26 @@ export class SourceBattleController {
 
   public async replacePokemon(teamIndex: number, activeSlot = 0): Promise<void> {
     if (this.battle === null || this.resolving) return;
+    if (this.pendingReactive !== null) {
+      const pending = this.pendingReactive;
+      const team = pending.before.teams.player;
+      const active = activeTeamIndices(team);
+      const expectedSlot = pending.before.format === "double"
+        ? (this.battle.slotReplacements ?? []).find((entry) => entry.side === "player")?.slot ?? -1 : 0;
+      if (activeSlot !== expectedSlot || active.includes(teamIndex)
+        || team.members[teamIndex]?.hp == null || team.members[teamIndex]!.hp <= 0) {
+        this.callbacks.setNotice("Remplaçant indisponible pour Bouton Fuite.");
+        this.callbacks.render();
+        return;
+      }
+      const holderIndex = active[expectedSlot];
+      const holder = holderIndex === undefined ? undefined : team.members[holderIndex];
+      if (holder === undefined) return;
+      await this.submitTurnAction(pending.action, pending.activeSlot, {
+        ...pending, choices: { ...pending.choices, [holder.id]: teamIndex },
+      });
+      return;
+    }
     this.resolving = true;
     this.callbacks.render();
     try {
@@ -496,7 +524,8 @@ export class SourceBattleController {
     return this.localDoubleActions.map((entry) => entry.actor.slot);
   }
 
-  private async submitTurnAction(action: TeamBattleAction, activeSlot = 0): Promise<void> {
+  private async submitTurnAction(action: TeamBattleAction, activeSlot = 0,
+    resume: NonNullable<SourceBattleController["pendingReactive"]> | null = null): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
     const initialEventState = this.callbacks.getEventState();
     const consumedItemId = action.kind === "item" ? action.itemId : action.kind === "capture" ? action.ballId : null;
@@ -505,13 +534,13 @@ export class SourceBattleController {
       this.callbacks.render();
       return;
     }
-    if ((action.kind === "item" || action.kind === "capture")
+    if (resume === null && (action.kind === "item" || action.kind === "capture")
       && this.localDoubleActions.some((entry) => entry.action.kind === "item" || entry.action.kind === "capture")) {
       this.callbacks.setNotice("Un Dresseur ne peut utiliser qu'un objet par tour.");
       this.callbacks.render();
       return;
     }
-    if (this.battle.format === "double") {
+    if (resume === null && this.battle.format === "double") {
       const actor = { side: "player" as const, slot: activeSlot };
       if (!activeBattlePositions(this.battle).some((position) => position.side === actor.side && position.slot === actor.slot)) return;
       const activeIndex = activeTeamIndices(this.battle.teams.player)[activeSlot];
@@ -535,32 +564,63 @@ export class SourceBattleController {
     this.callbacks.render();
     try {
       let eventState = this.callbacks.getEventState();
-      const before = this.battle;
+      const before = resume?.before ?? this.battle;
       const itemPolicy = { context: "battle" as const, revivalAllowed: true,
         battleHealingAllowed: eventState.switches["666"] !== true };
       const resolutionRules = { opponentItemTheft: this.localSession?.origin !== "source-wild",
         wildBattle: this.localSession?.origin === "source-wild",
         escapable: eventState.pendingEncounter?.escapable === true };
-      const submittedActions = before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action];
+      const submittedActions = resume?.submittedActions
+        ?? (before.format === "double" ? this.localDoubleActions.map((entry) => entry.action) : [action]);
       let opponentItemChosen = false;
-      const automaticOpponentActions = before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent)
+      const automaticOpponentActions = resume?.reportedActions.filter((entry) => entry.actor.side === "opponent")
+        ?? (before.format !== "double" ? [] : activeTeamIndices(before.teams.opponent)
         .flatMap((index, slot) => before.teams.opponent.members[index]!.hp > 0 ? [slot] : []).map((slot) => {
         const action = chooseSourceBattleAction(before, "opponent", this.rng!, slot, !opponentItemChosen);
         if (action.kind === "item") opponentItemChosen = true;
         return { actor: { side: "opponent" as const, slot }, action };
-      });
+      }));
+      const reportedActions: readonly PositionedTeamBattleAction[] = resume?.reportedActions
+        ?? (before.format === "double" ? [...this.localDoubleActions, ...automaticOpponentActions]
+          : [
+            { actor: { side: "player", slot: 0 }, action },
+            { actor: { side: "opponent", slot: 0 },
+              action: chooseSourceBattleAction(before, "opponent", this.rng) },
+          ]);
+      let pending = resume;
       let result;
-      let reportedActions: readonly PositionedTeamBattleAction[];
-      if (before.format === "double") {
-        reportedActions = [...this.localDoubleActions, ...automaticOpponentActions];
-        result = resolveDoubleTeamTurn(before, reportedActions, this.rng, itemPolicy, resolutionRules);
-      } else {
-        const singleResult = resolveSourceEncounterAction(before, action, this.rng, itemPolicy, resolutionRules);
-        result = singleResult;
-        reportedActions = [
-          { actor: { side: "player", slot: 0 }, action: singleResult.actions.player },
-          { actor: { side: "opponent", slot: 0 }, action: singleResult.actions.opponent },
-        ];
+      for (;;) {
+        const attempt = attemptReactiveTurn(this.rng, pending?.rolls ?? [], (rng) => before.format === "double"
+          ? resolveDoubleTeamTurn(before, reportedActions, rng, itemPolicy, resolutionRules,
+            pending?.choices ?? {})
+          : resolveTeamTurn(before, { player: reportedActions[0]!.action,
+            opponent: reportedActions[1]!.action }, rng, itemPolicy, resolutionRules,
+            pending?.choices ?? {}));
+        if (attempt.kind === "resolved") {
+          result = attempt.result;
+          this.pendingReactive = null;
+          break;
+        }
+        const request = attempt.request;
+        const choices = pending?.choices ?? {};
+        pending = { before, action, activeSlot, submittedActions, reportedActions,
+          rolls: attempt.rolls, choices };
+        if (request.holderSide === "opponent") {
+          const team = before.teams.opponent;
+          const active = activeTeamIndices(team);
+          const index = team.members.findIndex((member, candidate) => member.hp > 0 && !active.includes(candidate));
+          if (index < 0) throw new Error("Bouton Fuite sans remplaçant admissible.");
+          pending = { ...pending, choices: { ...choices, [request.holderId]: index } };
+          continue;
+        }
+        this.pendingReactive = pending;
+        if (before.format === "double") {
+          const slot = activeTeamIndices(before.teams.player).findIndex((index) =>
+            before.teams.player.members[index]?.id === request.holderId);
+          this.battle = { ...before, slotReplacements: [{ side: "player", slot }] };
+        } else this.battle = { ...before, replacementRequired: ["player"] };
+        this.callbacks.setNotice("Bouton Fuite activé : choisissez un remplaçant.");
+        return;
       }
       const usedItems = submittedActions.flatMap((entry) => entry.kind === "item" ? [entry.itemId]
         : entry.kind === "capture" ? [entry.ballId] : []);
@@ -768,6 +828,7 @@ export class SourceBattleController {
     this.localParticipation = null;
     this.localLedger = null;
     this.localDoubleActions = [];
+    this.pendingReactive = null;
   }
 
   private sharedContext(state: TeamBattleState, resources: SourceBattleResources, input: {

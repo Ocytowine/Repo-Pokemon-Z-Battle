@@ -21,7 +21,7 @@ const action = { player: { kind: "move" as const, moveIndex: 0 },
   opponent: { kind: "move" as const, moveIndex: 0 } };
 
 describe("semi-invulnerable two-turn moves", () => {
-  it.each(["0C9", "0CA", "0CB", "0CC", "0CD"] as const)(
+  it.each(["0C9", "0CA", "0CB", "0CC", "0CD", "14D"] as const)(
     "%s charges, avoids ordinary attacks, then strikes for one PP", (code) => {
       const first = resolveTeamTurn(createTeamBattleState({ player: [pokemon("user", "player", code)],
         opponent: [pokemon("target", "opponent")] }), action, rng);
@@ -59,12 +59,12 @@ describe("semi-invulnerable two-turn moves", () => {
       .toBeGreaterThan(400 - grounded.state.teams.player.members[0]!.hp);
   });
 
-  it("Shadow Force bypasses an active Protect barrier", () => {
+  it.each(["0CD", "14D"] as const)("%s bypasses an active Protect barrier", (code) => {
     const protectedTarget = pokemon("target", "opponent", "000", {
       volatile: { confusionTurns: 0, flinched: false, focusEnergy: 0, identified: false,
         disabledMove: null, disableTurns: 0, encoreMove: null, encoreTurns: 0,
         bindingMove: null, bindingTurns: 0, cursed: false, lastMoveUsed: null, protected: true } });
-    const state = createTeamBattleState({ player: [pokemon("user", "player", "0CD")],
+    const state = createTeamBattleState({ player: [pokemon("user", "player", code)],
       opponent: [protectedTarget] });
     const charging = resolveTeamTurn(state, { player: action.player, opponent: { kind: "wait" } }, rng);
     const second = { ...charging.state, teams: { ...charging.state.teams,
@@ -75,6 +75,22 @@ describe("semi-invulnerable two-turn moves", () => {
       opponent: { kind: "wait" } }, rng);
     expect(landed.state.teams.opponent.members[0]?.hp).toBeLessThan(400);
     expect(landed.state.teams.opponent.members[0]?.volatile?.protected).toBe(false);
+  });
+
+  it("Phantom Force doubles damage and has perfect accuracy against Minimize", () => {
+    const ghost = pokemon("user", "player", "14D", { heldItem: "POWERHERB",
+      moves: [{ move: { ...pokemon("user", "player", "14D").moves[0]!.move,
+        accuracy: 1 }, pp: 10 }] });
+    const target = pokemon("target", "opponent");
+    const run = (minimized: boolean) => resolveTeamTurn(createTeamBattleState({
+      player: [ghost], opponent: [{ ...target, volatile: {
+        ...target.volatile!, minimized } }] }),
+    { player: action.player, opponent: { kind: "wait" } }, rng);
+    const regular = run(false);
+    const small = run(true);
+    expect(regular.state.teams.opponent.members[0]!.hp).toBe(400);
+    expect(small.state.teams.opponent.members[0]!.hp).toBeLessThan(400);
+    expect(small.state.teams.player.members[0]!.heldItem).toBeNull();
   });
 
   it("Gravity prevents airborne charges and cancels an existing Sky Drop", () => {

@@ -25,6 +25,10 @@ export function inheritSwitchEffects(outgoing: BattlerState, incoming: BattlerSt
 }
 
 export function releaseSwitchTraps(outgoing: BattlerState, opponent: BattlerState): BattlerState {
-  if (opponent.volatile?.meanLookBy !== outgoing.id) return opponent;
-  return { ...opponent, volatile: { ...opponent.volatile, meanLookBy: null } };
+  const trapped = opponent.volatile?.meanLookBy === outgoing.id;
+  const infatuated = opponent.volatile?.infatuatedBy === outgoing.id;
+  if (!trapped && !infatuated) return opponent;
+  return { ...opponent, volatile: { ...opponent.volatile,
+    ...(trapped ? { meanLookBy: null } : {}),
+    ...(infatuated ? { infatuated: false, infatuatedBy: null } : {}) } };
 }

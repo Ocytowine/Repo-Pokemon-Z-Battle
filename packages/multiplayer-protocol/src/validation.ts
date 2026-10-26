@@ -126,7 +126,7 @@ function isBattleVolatile(value: unknown): boolean {
   const legacy = ["confusionTurns", "flinched", "focusEnergy", "identified", "disabledMove", "disableTurns",
     "encoreMove", "encoreTurns", "bindingMove", "bindingTurns", "cursed", "lastMoveUsed"];
   const optional = ["activeTurns", "protected", "endured", "protectRate", "tauntTurns", "rage",
-    "leechSeededBy", "leechSeededBySlot", "chargeTurns", "yawnTurns", "infatuated",
+    "leechSeededBy", "leechSeededBySlot", "chargeTurns", "yawnTurns", "infatuated", "infatuatedBy",
     "furyCutterCount", "rolloutTurns", "uproarTurns", "embargoTurns",
     "unburdened", "pickupItem", "pickupUse", "enteredMidTurn", "flashFire", "bindingSourceId",
     "entryAbilityResolved", "traceOriginalAbility", "originalAbility", "abilityReplacementActive", "originalTypes",
@@ -155,6 +155,8 @@ function isBattleVolatile(value: unknown): boolean {
     && (value.chargeTurns === undefined || safeInteger(value.chargeTurns, 0, 2))
     && (value.yawnTurns === undefined || safeInteger(value.yawnTurns, 0, 2))
     && (value.infatuated === undefined || typeof value.infatuated === "boolean")
+    && (value.infatuatedBy === undefined || value.infatuatedBy === null
+      || boundedString(value.infatuatedBy))
     && (value.furyCutterCount === undefined || safeInteger(value.furyCutterCount, 0, 4))
     && (value.rolloutTurns === undefined || safeInteger(value.rolloutTurns, 0, 5))
     && (value.uproarTurns === undefined || safeInteger(value.uproarTurns, 0, 3))

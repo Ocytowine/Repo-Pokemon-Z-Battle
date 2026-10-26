@@ -52,6 +52,42 @@ describe("two-turn charge and recharge moves", () => {
     expect(turn.state.teams.player.members[0]?.volatile?.chargingMove).toBeNull();
   });
 
+  it.each(["0C3", "0C4", "0C5", "0C6", "0C7", "0C8", "0C9", "0CA", "0CB", "0CC",
+    "0CD", "14D", "14E", "190", "908", "937"] as const)(
+    "Power Herb handles the source's %s charge hook", (code) => {
+      const charged = { ...move(code, code === "14E" ? 0 : 40),
+        category: code === "14E" ? "Status" as const : "Physical" as const };
+      const user = pokemon("user", "player", code, { heldItem: "POWERHERB",
+        moves: [{ move: charged, pp: 10 }] });
+      const state = createTeamBattleState({ player: [user],
+        opponent: [pokemon("target", "opponent")] });
+      const result = resolveTeamTurn(state, playerMove, rng);
+      expect(result.state.teams.player.members[0]!.heldItem).toBeNull();
+      expect(result.state.teams.player.members[0]!.volatile?.chargingMove).toBeNull();
+      expect(result.events).toContainEqual(expect.objectContaining({
+        type: "heldItemConsumed", side: "player", item: "POWERHERB" }));
+      if (code === "14E") expect(result.state.teams.player.members[0]!.stages.specialAttack).toBe(2);
+      else expect(result.state.teams.opponent.members[0]!.hp).toBeLessThan(300);
+    });
+
+  it("Geomancy charges once or boosts all three stats immediately with Power Herb", () => {
+    const geomancy: BattleMove = { ...move("14E", 0), category: "Status" };
+    const user = pokemon("user", "player", "14E", { moves: [{ move: geomancy, pp: 10 }] });
+    const target = pokemon("target", "opponent");
+    const first = resolveTeamTurn(createTeamBattleState({ player: [user], opponent: [target] }),
+      playerMove, rng);
+    expect(first.state.teams.player.members[0]!.volatile?.chargingMove).toBe("14E");
+    expect(first.state.teams.player.members[0]!.stages.specialAttack).toBe(0);
+    const second = resolveTeamTurn(first.state, playerMove, rng);
+    expect(second.state.teams.player.members[0]!.stages).toMatchObject({
+      specialAttack: 2, specialDefense: 2, speed: 2 });
+    const immediate = resolveTeamTurn(createTeamBattleState({ player: [{ ...user,
+      heldItem: "POWERHERB" }], opponent: [target] }), playerMove, rng);
+    expect(immediate.state.teams.player.members[0]!.stages).toMatchObject({
+      specialAttack: 2, specialDefense: 2, speed: 2 });
+    expect(immediate.state.teams.player.members[0]!.heldItem).toBeNull();
+  });
+
   it("Solar Beam attacks immediately in sun without consuming Power Herb", () => {
     const base = createTeamBattleState({ player: [pokemon("user", "player", "0C4",
       { heldItem: "POWERHERB" })], opponent: [pokemon("target", "opponent")] });

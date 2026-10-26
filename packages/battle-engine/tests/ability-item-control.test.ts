@@ -25,10 +25,10 @@ function pokemon(id: string, side: BattleSide, overrides: Partial<BattlerState> 
 
 describe("source PP and held-item control abilities", () => {
   it("maps every reachable source type-resistance berry, including Chilan", () => {
-    expect(Object.keys(RESIST_BERRY_TYPES)).toHaveLength(17);
+    expect(Object.keys(RESIST_BERRY_TYPES)).toHaveLength(18);
     expect(RESIST_BERRY_TYPES.PAYAPABERRY).toBe("PSYCHIC");
     expect(RESIST_BERRY_TYPES.CHILANBERRY).toBe("NORMAL");
-    expect(RESIST_BERRY_TYPES.ROSELIBERRY).toBeUndefined();
+    expect(RESIST_BERRY_TYPES.ROSELIBERRY).toBe("FAIRY");
   });
 
   it("halves a matching super-effective hit once and consumes the resistance berry", () => {

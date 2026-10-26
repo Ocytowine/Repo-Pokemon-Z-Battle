@@ -4,6 +4,9 @@ import { heldItemIsActive } from "./ability-item-control.js";
 const ENTRY_WEATHER = {
   DRIZZLE: "rain", DROUGHT: "sun", SANDSTREAM: "sand", SNOWWARNING: "hail",
 } as const;
+const ENTRY_WEATHER_ROCK = {
+  DRIZZLE: "DAMPROCK", DROUGHT: "HEATROCK", SANDSTREAM: "SMOOTHROCK", SNOWWARNING: "ICYROCK",
+} as const;
 
 const EXTREME_WEATHER = {
   PRIMORDIALSEA: "heavy-rain", DESOLATELAND: "harsh-sun", DELTASTREAM: "strong-winds",
@@ -57,9 +60,11 @@ export function applyEntryWeatherAbility(battler: BattlerState, side: BattleSide
   if (effects?.weather === "heavy-rain" || effects?.weather === "harsh-sun" || effects?.weather === "strong-winds") {
     return { effects, events: [] };
   }
-  return { effects: { ...effectsBase(effects), weather, weatherTurns: 5 }, events: [
+  const turns = battler.heldItem === ENTRY_WEATHER_ROCK[ability]
+    && heldItemIsActive(battler, effects?.magicRoomTurns ?? 0) ? 8 : 5;
+  return { effects: { ...effectsBase(effects), weather, weatherTurns: turns }, events: [
     { type: "abilityActivated", side, ability, effect: "set-weather" },
-    { type: "battleEffectChanged", side: null, effect: "weather", turns: 5 },
+    { type: "battleEffectChanged", side: null, effect: "weather", turns },
   ] };
 }
 

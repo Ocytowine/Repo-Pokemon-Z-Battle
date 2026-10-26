@@ -2,6 +2,7 @@ import { MINIMAL_MOVE_CATALOG, calculateDamage, createDoubleTeamBattleState, cre
   resolveDoubleTeamTurn, resolveTeamTurn, type BattleEffects, type BattleMove, type BattleSide, type BattleTrace, type BattlerState,
   type RandomSource } from "../src/index.js";
 import { describe, expect, it } from "vitest";
+import { applyEntryWeatherAbility } from "../src/ability-weather.js";
 
 class ScriptedRandom implements RandomSource {
   private index = 0;
@@ -41,6 +42,22 @@ describe("source weather abilities", () => {
       opponent: [pokemon("foe1", "opponent"), pokemon("foe2", "opponent")],
     });
     expect(double.effects).toMatchObject({ weather, weatherTurns: 5 });
+  });
+
+  it.each([
+    ["DRIZZLE", "DAMPROCK", "rain"], ["DROUGHT", "HEATROCK", "sun"],
+    ["SANDSTREAM", "SMOOTHROCK", "sand"], ["SNOWWARNING", "ICYROCK", "hail"],
+  ] as const)("extends %s to eight turns only with an active %s", (ability, item, weather) => {
+    const setter = pokemon("setter", "player", { ability, heldItem: item });
+    const single = createTeamBattleState({ player: [setter], opponent: [pokemon("foe", "opponent")] });
+    expect(single.effects).toMatchObject({ weather, weatherTurns: 8 });
+    const double = createDoubleTeamBattleState({ player: [setter, pokemon("ally", "player")],
+      opponent: [pokemon("foe1", "opponent"), pokemon("foe2", "opponent")] });
+    expect(double.effects).toMatchObject({ weather, weatherTurns: 8 });
+    expect(applyEntryWeatherAbility({ ...setter, volatile: { embargoTurns: 1 } as BattlerState["volatile"] },
+      "player", undefined).effects).toMatchObject({ weatherTurns: 5 });
+    expect(applyEntryWeatherAbility(setter, "player", { ...effects(weather), magicRoomTurns: 2 }).effects)
+      .toMatchObject({ weatherTurns: 5 });
   });
 
   it("applies source weather healing, Solar Power recoil and sand immunity", () => {

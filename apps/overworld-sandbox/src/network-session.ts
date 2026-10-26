@@ -551,6 +551,22 @@ export class OverworldNetworkSession {
         session.pendingMovementSequence = null;
       }
       session.snapshot = snapshot;
+      if (snapshot.battle !== null) {
+        const side = session.ticket.side;
+        const newReplacementSlots = snapshot.battle.state.format === "double"
+          ? (snapshot.battle.state.slotReplacements ?? []).filter((position) => position.side === side)
+            .map((position) => position.slot)
+          : snapshot.battle.state.replacementRequired.includes(side) ? [0] : [];
+        const previousReplacementSlots = previousBattle?.state.format === "double"
+          ? (previousBattle.state.slotReplacements ?? []).filter((position) => position.side === side)
+            .map((position) => position.slot)
+          : previousBattle?.state.replacementRequired.includes(side) ? [0] : [];
+        const newlyRequired = newReplacementSlots.filter((slot) => !previousReplacementSlots.includes(slot));
+        if (newlyRequired.length > 0) {
+          session.submittedActiveSlots = session.submittedActiveSlots.filter((slot) => !newlyRequired.includes(slot));
+          session.submittedTurn = null;
+        }
+      }
       if (snapshot.battle === null) session.battleInventory = null;
       session.confirmedSourceMapId = snapshot.sourceWorld?.mapId ?? null;
       if (snapshot.sourceWorld !== null) {

@@ -28,6 +28,22 @@ function firstSide(player: BattlerState, magicRoomTurns = 0): BattleSide | undef
 }
 
 describe("objets de statistiques propres à Z", () => {
+  it("applies Clear Amulet to both defenses and Iron Ball to physical defense", () => {
+    const attacker = mon("attacker", "player");
+    const defender = mon("defender", "opponent");
+    const special = { ...move, category: "Special" as const };
+    const hit = (target: BattlerState, attack = move, magicRoomTurns = 0) =>
+      calculateDamage("player", attacker, target, attack, rng, [], { ...context, magicRoomTurns });
+    const amulet = { ...defender, heldItem: "CLEARAMULET" as const };
+    expect(hit(amulet)).toBeLessThan(hit(defender));
+    expect(hit(amulet, special)).toBeLessThan(hit(defender, special));
+    expect(hit(amulet, move, 2)).toBe(hit(defender, move, 2));
+    const ironBall = { ...defender, heldItem: "IRONBALL" as const };
+    expect(hit(ironBall)).toBeLessThan(hit(defender));
+    expect(hit(ironBall, special)).toBe(hit(defender, special));
+    expect(hit(ironBall, move, 2)).toBe(hit(defender, move, 2));
+  });
+
   it("applies all three Super Eviolite hooks only to a two-step evolution species", () => {
     const base = mon("basic", "player", { canEvolve: true, canEvolveTwice: true });
     const superUser = { ...base, heldItem: "SUPEREVIOLITE" };

@@ -1,4 +1,5 @@
 import { resolveSelectedMoves } from "./resolve-turn.js";
+import { ReactiveHeldSwitchChoiceRequired } from "./reactive-held-switch.js";
 import { applyEntryHazards } from "./entry-hazards.js";
 import { curePartyStatuses } from "./party-status-cure.js";
 import { recordSideFaints } from "./side-faint-history.js";
@@ -160,7 +161,7 @@ function switchPokemon(
   rng: RandomSource,
   trace: TeamTurnResult["trace"][number][],
   effects: TeamBattleState["effects"],
-): { readonly events: readonly TeamBattleEvent[]; readonly effects: TeamBattleState["effects"] } {
+): { readonly events: readonly BattleEvent[]; readonly effects: TeamBattleState["effects"] } {
   const team = teams[side];
   validateSwitch(team, toIndex, side);
   const fromIndex = team.activeIndex;
@@ -204,7 +205,7 @@ function switchPokemon(
   const trappedSide = opponentOf(side);
   teams[trappedSide] = { ...teams[trappedSide], members: teams[trappedSide].members.map((member, index) =>
     index === teams[trappedSide].activeIndex ? releaseSwitchTraps(from, member) : member) };
-  const events: TeamBattleEvent[] = [];
+  const events: BattleEvent[] = [];
   if (healed > 0) {
     events.push({ type: "abilityActivated", side, ability: "REGENERATOR", effect: "heal-on-switch" },
       { type: "hpRestored", side, source: "move", move: "REGENERATOR", amount: healed, hp: from.hp + healed });
@@ -260,11 +261,11 @@ function reconcileForms(teams: Record<BattleSide, BattleTeam>, effects: TeamBatt
 }
 
 function applyEntryAbilities(teams: Record<BattleSide, BattleTeam>, side: BattleSide,
-  effects: TeamBattleState["effects"]): { readonly events: readonly TeamBattleEvent[];
+  effects: TeamBattleState["effects"]): { readonly events: readonly BattleEvent[];
     readonly effects: TeamBattleState["effects"] } {
   const active = activePokemon(teams[side]);
   if (active.hp <= 0) return { events: [], effects };
-  const events: TeamBattleEvent[] = [];
+  const events: BattleEvent[] = [];
   if (active.ability === "IMPOSTER") {
     const transformed = transformBattler(active, activePokemon(teams[opponentOf(side)]));
     if (transformed !== null) {
@@ -388,7 +389,8 @@ export function activeBattlers(state: TeamBattleState): Readonly<Record<BattleSi
 
 export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions, rng: RandomSource,
   itemPolicy: PokemonItemUsePolicy = { context: "battle", revivalAllowed: true },
-  rules: BattleResolutionRules = { opponentItemTheft: true }): TeamTurnResult {
+  rules: BattleResolutionRules = { opponentItemTheft: true },
+  reactiveChoices: Readonly<Record<string, number>> = {}): TeamTurnResult {
   validateState(state);
   if (state.replacementRequired.length > 0) throw new Error("Resolve required replacements before the next turn.");
   // Source pbCanShowCommands? forbids switching/items while charging or recharging.
@@ -453,7 +455,7 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
     const intercepted = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) },
       { [side]: action }, rng, { endOfTurn: false, switchingTarget: target,
         attackerParty: { [side]: teams[side].members },
-        opponentItemTheft: rules.opponentItemTheft });
+        opponentItemTheft: rules.opponentItemTheft, soulDewClause: rules.soulDewClause === true });
     storeActiveBattlers(teams, intercepted.state);
     pursuitEvents.push(...withoutTurnEnvelope(intercepted.events));
     pursuitTrace.push(...intercepted.trace);
@@ -558,9 +560,37 @@ export function resolveTeamTurn(state: TeamBattleState, actions: TeamTurnActions
 
   const result = resolveSelectedMoves({ ...duelState(state, teams), ...(effects === undefined ? {} : { effects }) }, moveActions, rng,
     { switchingTarget: switchOrder[0] ?? null, opponentItemTheft: rules.opponentItemTheft,
+      soulDewClause: rules.soulDewClause === true,
       ...(state.moveCatalog === undefined ? {} : { moveCatalog: state.moveCatalog }),
       attackerParty: { player: teams.player.members, opponent: teams.opponent.members },
       attackerCanSwitch: Object.fromEntries(SIDES.map((side) => [side, livingReserve(teams[side])])),
+      onReactiveHeldSwitch: (request, battlers, activeEffects, events, trace) => {
+        const side = request.displacedSide;
+        const team = teams[side];
+        if (team.activeIndex < 0 || activePokemon(team).id !== request.displacedId) return;
+        for (const activeSide of SIDES) {
+          const activeTeam = teams[activeSide];
+          teams[activeSide] = { ...activeTeam, members: activeTeam.members.map((member, index) =>
+            index === activeTeam.activeIndex ? battlers[activeSide] : member) };
+        }
+        const reserves = teams[side].members.flatMap((member, index) =>
+          index !== teams[side].activeIndex && member.hp > 0 ? [index] : []);
+        if (reserves.length === 0) return;
+        const teamIndex = request.selection === "random" ? (() => {
+          const roll = rng.nextInt(reserves.length);
+          trace.push({ type: "rng", purpose: "item", maxExclusive: reserves.length, value: roll });
+          return reserves[roll]!;
+        })() : reactiveChoices[request.holderId];
+        if (teamIndex === undefined) throw new ReactiveHeldSwitchChoiceRequired(request);
+        if (!reserves.includes(teamIndex)) throw new RangeError("Invalid Eject Button replacement choice.");
+        const switched = switchPokemon(teams, side, teamIndex, "forced", rng, trace, activeEffects);
+        events.push(...switched.events);
+        Object.assign(activeEffects, switched.effects);
+        const entered = applyEntryAbilities(teams, side, activeEffects);
+        events.push(...entered.events);
+        Object.assign(activeEffects, entered.effects);
+        for (const activeSide of SIDES) battlers[activeSide] = activePokemon(teams[activeSide]);
+      },
       wildBattle: rules.wildBattle === true, escapable: rules.escapable !== false });
   storeActiveBattlers(teams, result.state);
   const moveEvents: BattleEvent[] = withoutTurnEnvelope(result.events);

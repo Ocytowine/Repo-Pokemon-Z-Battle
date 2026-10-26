@@ -1,4 +1,4 @@
-import { MINIMAL_MOVE_CATALOG, SeededRandom, activeBattlers, replaceFaintedPokemon, resolveTeamTurn, type BattleAbility, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type HeldItem, type MajorStatusState, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState } from "@pokemon-z-battle/battle-engine";
+import { MINIMAL_MOVE_CATALOG, SeededRandom, activeBattlers, attemptReactiveTurn, replaceFaintedPokemon, resolveTeamTurn, type BattleAbility, type BattleSide, type BattleState, type BattleTrace, type BattlerState, type HeldItem, type MajorStatusState, type RecordedBattleRoll, type TeamBattleAction, type TeamBattleEvent, type TeamBattleState, type TeamTurnActions } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { createHttpDirectoryHandle, loadLocalManifests, loadLocalManifestsFromUrls, type LocalManifests } from "@pokemon-z-battle/local-assets";
 import { PROTOCOL_VERSION, normalizeRoomCode, serializeMessage, type RoomSnapshot, type ServerMessage } from "@pokemon-z-battle/multiplayer-protocol";
@@ -153,6 +153,9 @@ let scenario: BattleScenario = {
 };
 let replay = replayScenario(scenario);
 let localTeamState: TeamBattleState | null = null;
+let localReactivePending: { readonly before: TeamBattleState; readonly actions: TeamTurnActions;
+  readonly rolls: readonly RecordedBattleRoll[]; readonly choices: Readonly<Record<string, number>>;
+  readonly holderId: string; readonly holderSide: BattleSide } | null = null;
 let localTeamResults: DisplayTurnResult[] = [];
 let localTeamRng = new SeededRandom(scenario.seed);
 const visuals = new BattleVisuals();
@@ -432,6 +435,7 @@ async function resetFromControls(): Promise<void> {
   };
   replay = replayScenario(scenario);
   localTeamState = ui.battleMode.value === "team" ? createLocalTeamState(scenario) : null;
+  localReactivePending = null;
   localTeamResults = [];
   localTeamRng = new SeededRandom(seed);
   ui.battleResult.hidden = true;
@@ -448,6 +452,7 @@ function applyScenario(imported: BattleScenario): void {
   scenario = imported;
   replay = replayScenario(scenario);
   localTeamState = null;
+  localReactivePending = null;
   localTeamResults = [];
   localTeamRng = new SeededRandom(scenario.seed);
   ui.battleResult.hidden = replay.state.status !== "finished";
@@ -630,7 +635,11 @@ async function handleNetworkMessage(socket: WebSocket, message: ServerMessage): 
   }
   if (message.type === "snapshot") {
     const battleStarted = session.snapshot?.battle === null && message.snapshot.battle !== null;
+    const previousReplacement = session.snapshot?.battle?.state.replacementRequired.includes(session.ticket.side) === true;
     session.snapshot = message.snapshot;
+    if (!previousReplacement && message.snapshot.battle?.state.replacementRequired.includes(session.ticket.side)) {
+      session.submittedTurn = null;
+    }
     if (session.submittedTurn !== null && !message.snapshot.battle?.state.replacementRequired.includes(session.ticket.side)) {
       session.submittedTurn = null;
     }
@@ -773,7 +782,30 @@ ui.resolve.addEventListener("click", async () => {
     const previousState = displayBattleState(localTeamState);
     try {
       const selected = { player: ui.playerMove.value, opponent: ui.opponentMove.value } as const;
-      if (localTeamState.replacementRequired.length > 0) {
+      if (localReactivePending !== null) {
+        const pending = localReactivePending;
+        const [kind, rawIndex] = selected[pending.holderSide].split(":");
+        const teamIndex = Number(rawIndex);
+        const team = pending.before.teams[pending.holderSide];
+        if (kind !== "switch" || !Number.isInteger(teamIndex) || teamIndex === team.activeIndex || team.members[teamIndex]?.hp === undefined || team.members[teamIndex].hp <= 0) {
+          throw new Error(`Choisissez un remplaçant pour ${pending.holderSide}.`);
+        }
+        const choices = { ...pending.choices, [pending.holderId]: teamIndex };
+        const attempt = attemptReactiveTurn(localTeamRng, pending.rolls, (rng) => resolveTeamTurn(pending.before, pending.actions, rng, undefined, undefined, choices));
+        if (attempt.kind === "choice-required") {
+          localReactivePending = { ...pending, rolls: attempt.rolls, choices, holderId: attempt.request.holderId, holderSide: attempt.request.holderSide };
+          localTeamState = { ...pending.before, replacementRequired: [attempt.request.holderSide] };
+          ui.notice.textContent = `Choisissez un remplaçant pour ${attempt.request.holderSide}.`;
+          render(previousState);
+        } else {
+          localReactivePending = null;
+          localTeamState = attempt.result.state;
+          localTeamResults.push({ state: displayBattleState(attempt.result.state), events: attempt.result.events, trace: attempt.result.trace });
+          render(previousState);
+          await playEvents(attempt.result.events);
+          ui.notice.textContent = `Tour d'équipe ${attempt.result.state.turn - 1} résolu avec la seed ${scenario.seed}.`;
+        }
+      } else if (localTeamState.replacementRequired.length > 0) {
         const replacements: Partial<Record<BattleSide, number>> = {};
         for (const side of localTeamState.replacementRequired) {
           const [kind, rawIndex] = selected[side].split(":");
@@ -793,15 +825,24 @@ ui.resolve.addEventListener("click", async () => {
           if (!Number.isInteger(index)) throw new Error("Action locale invalide.");
           return kind === "switch" ? { kind, teamIndex: index } : { kind: "move", moveIndex: index };
         };
-        const result = resolveTeamTurn(localTeamState, {
+        const before = localTeamState;
+        const actions: TeamTurnActions = {
           player: action(selected.player),
           opponent: action(selected.opponent),
-        }, localTeamRng);
-        localTeamState = result.state;
-        localTeamResults.push({ state: displayBattleState(result.state), events: result.events, trace: result.trace });
-        render(previousState);
-        await playEvents(result.events);
-        ui.notice.textContent = `Tour d'équipe ${result.state.turn - 1} résolu avec la seed ${scenario.seed}.`;
+        };
+        const attempt = attemptReactiveTurn(localTeamRng, [], (rng) => resolveTeamTurn(before, actions, rng));
+        if (attempt.kind === "choice-required") {
+          localReactivePending = { before, actions, rolls: attempt.rolls, choices: {}, holderId: attempt.request.holderId, holderSide: attempt.request.holderSide };
+          localTeamState = { ...before, replacementRequired: [attempt.request.holderSide] };
+          render(previousState);
+          ui.notice.textContent = `Choisissez un remplaçant pour ${attempt.request.holderSide}.`;
+        } else {
+          localTeamState = attempt.result.state;
+          localTeamResults.push({ state: displayBattleState(attempt.result.state), events: attempt.result.events, trace: attempt.result.trace });
+          render(previousState);
+          await playEvents(attempt.result.events);
+          ui.notice.textContent = `Tour d'équipe ${attempt.result.state.turn - 1} résolu avec la seed ${scenario.seed}.`;
+        }
       }
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;

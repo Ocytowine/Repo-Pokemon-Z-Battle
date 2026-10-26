@@ -1,5 +1,9 @@
 export { MINIMAL_MOVE_CATALOG } from "./catalog.js";
 export { SUPPORTED_MOVE_FUNCTION_CODES, isMoveFunctionSupported } from "./move-function-support.js";
+export { reactiveHeldSwitchRequest, ReactiveHeldSwitchChoiceRequired,
+  type ReactiveHeldSwitchRequest } from "./reactive-held-switch.js";
+export { attemptReactiveTurn, type ReactiveTurnAttempt,
+  type RecordedBattleRoll } from "./reactive-turn-replay.js";
 export { activeBattleController, activeBattleControllerAt, applyBattleJoin, approveBattleJoin, assertSharedBattleParticipation,
   battleMemberIndicesOwnedBy, canCaptureSharedBattleTarget, replacementBattleController,
   battleJoinApproved, createSharedBattleLedger, proposeBattleJoin, recordSharedBattleTurn,

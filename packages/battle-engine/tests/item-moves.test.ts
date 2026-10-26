@@ -99,6 +99,17 @@ describe("source held-item move family", () => {
       move: "MOVE0F7" }));
   });
 
+  it("requires Shield Dust together with Covert Cloak to block a Fling effect", () => {
+    const burn = (target: Partial<BattlerState>, source: Partial<BattlerState> = {}) =>
+      use("0F7", { heldItem: "FLAMEORB", ...source }, target, "Physical", 1, [1, 15])
+        .state.teams.opponent.members[0]!.majorStatus?.kind;
+    expect(burn({ heldItem: "COVERTCLOAK" })).toBe("burn");
+    expect(burn({ ability: "SHIELDDUST" })).toBe("burn");
+    expect(burn({ ability: "SHIELDDUST", heldItem: "COVERTCLOAK" })).toBeUndefined();
+    expect(burn({ ability: "SHIELDDUST", heldItem: "COVERTCLOAK" },
+      { ability: "MOLDBREAKER" })).toBe("burn");
+  });
+
   it("keeps an incinerated berry out of Recycle and respects Sticky Hold for Bug Bite", () => {
     const burned = use("0F5", {}, { heldItem: "ORANBERRY" }, "Special", 60, [1, 15]);
     expect(burned.state.teams.opponent.members[0]!.recyclableItem).toBeUndefined();
