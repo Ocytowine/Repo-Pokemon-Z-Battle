@@ -1,4 +1,5 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
+import { Capacitor, SystemBars } from "@capacitor/core";
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, eventFootprint,
   clearImportedMapCaches, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage,
   localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent,
@@ -65,6 +66,7 @@ import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-se
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { isSourceAndroidUserAgent, SourceTouchControls } from "./source-touch-controls.js";
 import { SourceAndroidImmersion, type SourceLandscapeOrientation } from "./source-android-immersion.js";
+import { hideSourceAndroidSystemBars } from "./source-native-android.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceCompassView } from "./source-compass.js";
 import { SourceBattleReportStore } from "./source-battle-report.js";
@@ -139,6 +141,11 @@ import "./style.css";
 
 const sourceAndroidMode = isSourceAndroidUserAgent(navigator.userAgent);
 document.documentElement.classList.toggle("source-android", sourceAndroidMode);
+const sourceNativeAndroidMode = sourceAndroidMode && Capacitor.getPlatform() === "android";
+const hideSourceNativeSystemBars = (): void => {
+  if (sourceNativeAndroidMode) void hideSourceAndroidSystemBars(SystemBars);
+};
+hideSourceNativeSystemBars();
 
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
@@ -969,7 +976,10 @@ const sourceAndroidImmersion = sourceAndroidMode
   ? new SourceAndroidImmersion(document, document.documentElement,
     (screen.orientation as ScreenOrientation & SourceLandscapeOrientation | undefined) ?? {})
   : null;
-const requestSourceAndroidImmersionFromGesture = (): void => sourceAndroidImmersion?.requestFromUserGesture();
+const requestSourceAndroidImmersionFromGesture = (): void => {
+  hideSourceNativeSystemBars();
+  sourceAndroidImmersion?.requestFromUserGesture();
+};
 requiredAppElement<HTMLElement>("app").addEventListener("pointerdown",
   requestSourceAndroidImmersionFromGesture, { capture: true });
 const touchPortraitQuery = window.matchMedia("(orientation: portrait)");
@@ -4409,12 +4419,14 @@ window.addEventListener("blur", () => {
 });
 document.addEventListener("visibilitychange", () => {
   setSourceDocumentInputActive(!document.hidden);
+  if (!document.hidden) hideSourceNativeSystemBars();
 });
 window.addEventListener("pagehide", () => {
   setSourceDocumentInputActive(false);
 });
 window.addEventListener("pageshow", () => {
   setSourceDocumentInputActive(!document.hidden);
+  hideSourceNativeSystemBars();
 });
 window.addEventListener("beforeunload", () => {
   const battleId = multiplayer.current?.snapshot?.battle?.id;

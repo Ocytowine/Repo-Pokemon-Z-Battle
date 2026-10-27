@@ -693,6 +693,18 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   rearment les entrees en remettant a zero joystick, sprint et touches clavier.
   Reprise audio, bouton Retour materiel et suspension longue du WebSocket restent
   a valider sur Android reel.
+- Emballage APK : Capacitor 8.5.3, Android API 36 et la commande
+  `corepack pnpm android:apk` produisent un APK debug paysage avec donnees et
+  medias locaux copies dans des repertoires ignores. Installation et lancement
+  reels valides sur Samsung SM-S911U1 le 2026-10-27. La recette tactile, audio,
+  persistance, Retour et Coop reste ouverte ; l'APK de 823 Mo doit etre aminci
+  avant distribution.
+- Cadrage APK : mode systeme immersif, zones sures CSS et suppression du plafond
+  Web de 576 px pour que l'overworld 4:3 et le menu utilisent toute la hauteur
+  utile. APK corrige reinstalle ; validation visuelle finale encore ouverte.
+- Second retour : suppression de la double reservation horizontale des zones sures
+  et fiche Pokemon placee au-dessus du menu Android. APK construit ; installation
+  et validation reelles en attente de reconnexion USB.
 
 ### UI-SPRITES-1 — Echelles contextuelles
 

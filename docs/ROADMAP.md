@@ -3240,6 +3240,28 @@ matrice d'appareils encore ouvertes.
 La recette differee est detaillee dans
 [`VALIDATION_MANUELLE_ANDROID.md`](VALIDATION_MANUELLE_ANDROID.md).
 
+Troisieme jalon Android implemente le 2026-10-27 : Capacitor 8.5.3 fournit une
+enveloppe Android API 36 reproductible autour du meme build Vite. Une preparation
+locale copie les donnees d'execution, images et sons depuis `.pokemon-z` et la
+distribution source vers des repertoires de build ignores par Git, puis Gradle
+produit un APK debug verrouille en paysage. Le premier paquet de 823 Mo a ete
+installe et lance avec succes sur un Samsung SM-S911U1. Aucun noyau de gameplay ni
+contrat Coop n'est duplique ; la sauvegarde reste personnelle au WebView. Tests
+tactiles, audio, cycle de vie, Retour, persistance et Coop restent a effectuer,
+puis la selection des medias devra reduire la taille avant distribution.
+
+Correctif APK du 2026-10-27 : l'enveloppe Capacitor demande desormais le mode
+systeme immersif, expose les zones sures au CSS et dimensionne l'overworld 4:3
+selon toute la hauteur utile sans le plafond Web de 576 px. Le menu couvre le meme
+viewport utile. APK reconstruit et reinstalle sur le Samsung ; validation visuelle
+finale encore attendue.
+
+Second correctif APK du 2026-10-27 : la double soustraction des zones sures
+horizontales est retiree du dimensionnement 4:3. La fiche Pokemon ouverte depuis
+Equipe devient une surcouche Android fixe au-dessus du menu au lieu d'etre masquee
+derriere lui. Tests et build passent ; APK construit, recette reelle en attente de
+reconnexion USB.
+
 ## Regles transversales
 
 ### Suivi des objets de combat — 2026-10-26

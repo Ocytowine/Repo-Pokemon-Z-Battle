@@ -52,6 +52,35 @@ Documentation de reference :
 - [Transfert de port vers un serveur local](https://developer.chrome.com/docs/devtools/remote-debugging/local-server)
 - [Verrouillage d'orientation](https://developer.mozilla.org/en-US/docs/Web/API/ScreenOrientation/lock)
 
+## APK debug Capacitor
+
+Prerequis : Android Studio, SDK Platform 36, Build-Tools 36.0.0, Platform-Tools,
+Command-line Tools et une configuration `.pokemon-z/local-test.json` valide.
+
+Depuis la racine du depot :
+
+```powershell
+corepack pnpm android:apk
+```
+
+L'APK est produit dans
+`apps/overworld-sandbox/android/app/build/outputs/apk/debug/app-debug.apk`.
+Les donnees et medias locaux sont copies uniquement dans `dist` et dans les assets
+Android ignores par Git. Ne jamais forcer leur ajout au depot.
+
+- [x] APK debug construit avec Android API 36.
+- [x] APK installe par ADB sur Samsung SM-S911U1.
+- [x] Application lancee et premier ecran du jeu affiche le 2026-10-27.
+- [ ] Mode immersif : barres systeme masquees et overworld 4:3 sur toute la
+      hauteur utile, sans marges haute/basse inegales.
+- [ ] Menu : surface utile remplie avec marges haute/basse symetriques et aucun
+      contenu sous la decoupe ou les commandes systeme.
+- [ ] Equipe > Pokemon > Details : la fiche apparait immediatement au-dessus du
+      menu, occupe la surface utile et revient au menu avec sa croix.
+- [ ] Images et sons verifies pendant un parcours jouable.
+- [ ] Sauvegarde creee, application arretee puis progression rechargee.
+- [ ] Taille reduite avant toute distribution : premier APK de fidelite, 823 Mo.
+
 ## Pourquoi la methode Wi-Fi n'est pas proposee
 
 Le serveur de developpement refuse volontairement les routes

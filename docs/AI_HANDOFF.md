@@ -160,6 +160,43 @@ La procedure USB/Wi-Fi et toutes les cases de controle sont conservees dans
 [`VALIDATION_MANUELLE_ANDROID.md`](VALIDATION_MANUELLE_ANDROID.md). Ne cocher une
 case qu'apres observation sur un appareil reel.
 
+Premier jalon APK du 2026-10-27 : Capacitor 8.5.3 enveloppe maintenant le build
+Vite dans un projet Android API 36 identifie `fr.ocytowine.pokemonzbattle`. La
+commande `corepack pnpm android:apk` construit le Web, copie depuis la configuration
+locale uniquement les JSON d'execution ainsi que les dossiers `Graphics` et
+`Audio`, synchronise Capacitor puis produit l'APK debug. Les copies vivent dans
+`dist` et `android/app/src/main/assets/public`, toutes deux ignorees par Git ; ni
+`.pokemon-z` ni les fichiers du jeu source ne sont versionnes. L'application est
+verrouillee en paysage par le manifeste natif. Autorite, etat, persistance et Coop
+restent ceux du client Web : l'enveloppe est une presentation locale et la
+sauvegarde demeure dans le stockage WebView personnel.
+
+Preuve reelle : l'APK debug de 823 Mo a ete construit, installe par ADB et lance
+sans erreur sur un Samsung SM-S911U1. Le porteur confirme que le jeu s'affiche.
+Restent ouverts avant fermeture du lot : parcours tactile, audio, arriere-plan,
+bouton Retour, verification de la sauvegarde locale et reconnexion Coop. La taille
+doit etre optimisee avant toute distribution ; ce premier paquet privilegie la
+fidelite locale et embarque tous les medias disponibles.
+
+Correctif de cadrage APK du 2026-10-27 : le plafond Web historique de 576 px a
+ete retire uniquement dans l'enveloppe Android. Le canvas 4:3 utilise maintenant
+toute la hauteur disponible apres reservation des bandes de commandes. Capacitor
+masque les barres systeme en mode immersif et transmet leurs zones sures au CSS ;
+le menu occupe de la meme facon tout le viewport utile avec des marges symetriques.
+Cette presentation locale ne modifie ni autorite, ni etat, ni persistance, ni
+contrat Coop. L'APK corrige a ete reconstruit et reinstalle sur le Samsung ; la
+validation visuelle finale par le porteur reste ouverte.
+
+Second retour reel du 2026-10-27 : le menu remplit correctement la hauteur et le
+cadrage overworld est nettement meilleur. Les zones sures horizontales etaient
+cependant soustraites une seconde fois de la largeur reservee au canvas ; le calcul
+est corrige afin d'exploiter les derniers pixels disponibles sans deplacer les
+commandes tactiles. La fiche `Details` ouverte depuis Equipe etait bien rendue
+derriere le menu : le menu Android est au niveau 100 tandis que la fiche conservait
+le niveau 30 du canvas. La fiche devient une surcouche fixe de niveau 110, bornee
+par les memes zones sures. L'APK corrige est construit ; installation et recette
+sur appareil restent a refaire apres reconnexion USB.
+
 ## Etat Git au moment de cette note
 
 Le dernier commit observe lors de l'audit du 2026-10-09 est `9d816c0 FIX : Import

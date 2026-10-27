@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pokemon Z-Battle</string>
+    <string name="title_activity_main">Pokemon Z-Battle</string>
+    <string name="package_name">fr.ocytowine.pokemonzbattle</string>
+    <string name="custom_url_scheme">fr.ocytowine.pokemonzbattle</string>
+</resources>
