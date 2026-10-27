@@ -1,7 +1,9 @@
 import { resolvePokemonAsset, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
-import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
+import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
+import type { PersistentMoveSlot, PlayerDetailsCatalog } from "@pokemon-z-battle/player-state";
 import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
+import { sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
 import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
   from "./source-pokemon-sprite-animator.js";
@@ -21,7 +23,7 @@ export interface SourceProgressionViewCallbacks {
 
 export interface SourceProgressionViewModel {
   readonly eventState: SourceEventState;
-  readonly catalog: PlayerCreationCatalog;
+  readonly catalog: PlayerDetailsCatalog;
   readonly assets: PokemonAssetsManifest;
   readonly musicVolume: number;
   readonly effectsVolume: number;
@@ -80,6 +82,37 @@ function cryUrl(species: string, assets: PokemonAssetsManifest): string | null {
   if (record === undefined) return null;
   const resolved = resolvePokemonAsset(record, { kind: "cry" });
   return resolved.asset === null ? null : sourceUrl(resolved.asset.path);
+}
+
+type ProgressionMove = PlayerDetailsCatalog["moves"][number];
+
+/** The same facts are visible before deciding and beside every replacement choice. */
+export function sourceProgressionMoveDetailsHtml(move: ProgressionMove | undefined,
+  fallbackName: string, remainingPp?: number, maxPp?: number): string {
+  const type = move?.type ?? "UNKNOWN";
+  const category = move?.category === "Physical" ? "Physique"
+    : move?.category === "Special" ? "Spéciale" : move?.category === "Status" ? "Statut" : "Inconnue";
+  const power = move?.power === 1 ? "???" : !move?.power ? "—" : String(move.power);
+  const accuracy = !move?.accuracy ? "—" : String(move.accuracy);
+  const pp = remainingPp === undefined ? String(move?.pp ?? maxPp ?? "—")
+    : `${remainingPp}/${maxPp ?? move?.pp ?? "—"}`;
+  return `<div class="source-progression-move-detail"><header><img src="${pokemonTypeIconUrl(type)}" alt=""><strong>${escapeSourceHtml(move?.name ?? fallbackName)}</strong><span>${escapeSourceHtml(sourcePokemonTypeLabel(type))} · ${category}</span></header><dl><div><dt>Puissance</dt><dd>${power}</dd></div><div><dt>Précision</dt><dd>${accuracy}</dd></div><div><dt>PP</dt><dd>${pp}</dd></div></dl><p>${escapeSourceHtml(move?.description?.trim() || "Description indisponible.")}</p></div>`;
+}
+
+export function sourceProgressionMovePromptHtml(pokemonName: string, moves: readonly PersistentMoveSlot[],
+  moveId: string, catalog: PlayerDetailsCatalog, replacingMove: boolean): string {
+  const move = catalog.moves.find((candidate) => candidate.internalName === moveId);
+  const moveName = move?.name ?? moveId;
+  const fullMoveset = moves.length >= 4;
+  const newMoveDetails = `<div class="source-progression-new-move">${sourceProgressionMoveDetailsHtml(move, moveName)}</div>`;
+  if (replacingMove) {
+    const choices = moves.map((slot, index) => {
+      const known = catalog.moves.find((candidate) => candidate.internalName === slot.internalName);
+      return `<button type="button" data-progression-replace="${index}" aria-label="Remplacer ${escapeSourceHtml(known?.name ?? slot.internalName)}">${sourceProgressionMoveDetailsHtml(known, slot.internalName, slot.pp, slot.maxPp)}</button>`;
+    }).join("");
+    return `<p>Quelle capacité doit être oubliée pour apprendre <strong>${escapeSourceHtml(moveName)}</strong> ?</p>${newMoveDetails}<div class="source-progression-moves">${choices}</div><button type="button" data-progression-back>Retour</button>`;
+  }
+  return `<p>${escapeSourceHtml(pokemonName)} veut apprendre <strong>${escapeSourceHtml(moveName)}</strong>${fullMoveset ? ", mais connaît déjà quatre capacités." : "."}</p>${newMoveDetails}<p>${fullMoveset ? "Voulez-vous en remplacer une ?" : "Voulez-vous apprendre cette capacité ?"}</p><footer><button type="button" data-progression-decline>Ne pas apprendre</button><button type="button" data-progression-${fullMoveset ? "choose" : "learn"}>${fullMoveset ? "Choisir une capacité" : "Apprendre"}</button></footer>`;
 }
 
 /** Mandatory post-level flow. Pending state exists only to survive refresh/reconnection. */
@@ -176,12 +209,8 @@ export class SourceProgressionView {
     const pokemonName = pokemon.nickname ?? definition?.name ?? pokemon.species;
     const moveId = pokemon.pendingMoves?.[0];
     if (moveId !== undefined) {
-      const move = this.model.catalog.moves.find((candidate) => candidate.internalName === moveId);
-      const moveName = move?.name ?? moveId;
       this.root.hidden = false;
-      this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-progression-panel"><small>APPRENTISSAGE</small><h2>${escapeSourceHtml(pokemonName)}</h2>${this.replacingMove
-        ? `<p>Quelle capacité doit être oubliée pour apprendre <strong>${escapeSourceHtml(moveName)}</strong> ?</p><div class="source-progression-moves">${pokemon.moves.map((slot, index) => { const known = this.model!.catalog.moves.find((candidate) => candidate.internalName === slot.internalName); return `<button type="button" data-progression-replace="${index}"><strong>${escapeSourceHtml(known?.name ?? slot.internalName)}</strong><small>${slot.pp}/${slot.maxPp} PP</small></button>`; }).join("")}</div><button type="button" data-progression-back>Retour</button>`
-        : `<p>${escapeSourceHtml(pokemonName)} veut apprendre <strong>${escapeSourceHtml(moveName)}</strong>, mais connaît déjà quatre capacités.</p><p>Voulez-vous en remplacer une ?</p><footer><button type="button" data-progression-decline>Ne pas apprendre</button><button type="button" data-progression-choose>Choisir une capacité</button></footer>`}<p data-progression-notice></p></section></div>`;
+      this.root.innerHTML = `<div class="source-progression-backdrop"><section class="source-progression-panel"><small>APPRENTISSAGE</small><h2>${escapeSourceHtml(pokemonName)}</h2>${sourceProgressionMovePromptHtml(pokemonName, pokemon.moves, moveId, this.model.catalog, this.replacingMove)}<p data-progression-notice></p></section></div>`;
       this.root.querySelector<HTMLButtonElement>("[data-progression-choose]")?.addEventListener("click", () => {
         this.replacingMove = true; this.render();
       });
@@ -190,6 +219,8 @@ export class SourceProgressionView {
       });
       this.root.querySelector<HTMLButtonElement>("[data-progression-decline]")?.addEventListener("click", () =>
         this.apply(this.callbacks.onDeclineMove(pokemon.id, moveId)));
+      this.root.querySelector<HTMLButtonElement>("[data-progression-learn]")?.addEventListener("click", () =>
+        this.apply(this.callbacks.onLearnMove(pokemon.id, moveId)));
       this.root.querySelectorAll<HTMLButtonElement>("[data-progression-replace]").forEach((button) =>
         button.addEventListener("click", () => this.apply(this.callbacks.onLearnMove(pokemon.id, moveId,
           Number(button.dataset.progressionReplace)))));

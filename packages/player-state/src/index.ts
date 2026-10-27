@@ -924,31 +924,31 @@ function evolvedPokemon(pokemon: PersistentPokemon, evolution: PokemonEvolutionC
   }
   const abilitySlot = Math.max(0, previous.abilities.indexOf(pokemon.ability ?? ""));
   const ability = target.abilities[abilitySlot] ?? target.abilities[0] ?? null;
-  let moves = pokemon.moves.map((slot) => ({ ...slot }));
-  const learnedMoves: string[] = [];
-  const skippedMoves: string[] = [];
+  const moves = pokemon.moves.map((slot) => ({ ...slot }));
+  const offeredMoves: string[] = [];
   // Essentials reserve le niveau 0 aux capacites apprises au moment precis de
   // l'evolution. Une espece peut aussi apprendre une capacite au niveau courant :
   // les deux familles sont proposees, sans doublon avec le moveset existant.
   for (const entry of target.levelUpMoves.filter((move) => move.level === 0 || move.level === pokemon.level)) {
-    if (moves.some((slot) => slot.internalName === entry.move)) continue;
+    if (moves.some((slot) => slot.internalName === entry.move)
+      || (pokemon.pendingMoves ?? []).includes(entry.move) || offeredMoves.includes(entry.move)) continue;
     const move = catalog.moves.find((candidate) => candidate.internalName === entry.move);
     if (move === undefined) throw new Error(`Capacité absente du catalogue : ${entry.move}.`);
-    if (moves.length >= 4) { skippedMoves.push(entry.move); continue; }
-    moves = [...moves, { internalName: move.internalName, pp: move.pp, maxPp: move.pp }];
-    learnedMoves.push(entry.move);
+    // Même avec une place libre, la proposition doit être présentée après
+    // l'évolution et rester récupérable après un rechargement.
+    offeredMoves.push(entry.move);
   }
   const consumedHeldItem = ["DayHoldItem", "NightHoldItem"].includes(evolution.method)
     ? pokemon.heldItem : null;
   const metadata = { ...pokemon.metadata, form: 0 };
   const stats = calculatePokemonStats(target, pokemon.level, metadata);
-  const pendingMoves = [...new Set([...(pokemon.pendingMoves ?? []), ...skippedMoves])];
+  const pendingMoves = [...new Set([...(pokemon.pendingMoves ?? []), ...offeredMoves])];
   const { pendingEvolution: _pendingEvolution, pendingMoves: _pendingMoves, ...basePokemon } = pokemon;
   const nextPokemon: PersistentPokemon = { ...basePokemon, species: evolution.species, ability,
     heldItem: consumedHeldItem === null ? pokemon.heldItem : null, stats,
     hp: hpWithPreservedDamage(pokemon, stats.maxHp, false), moves, metadata,
     ...(pendingMoves.length === 0 ? {} : { pendingMoves }) };
-  return { pokemon: nextPokemon, previousSpecies: pokemon.species, learnedMoves,
+  return { pokemon: nextPokemon, previousSpecies: pokemon.species, learnedMoves: [],
     pendingMoves, consumedHeldItem };
 }
 

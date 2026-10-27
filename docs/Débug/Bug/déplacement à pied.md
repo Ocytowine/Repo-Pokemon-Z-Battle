@@ -8,3 +8,9 @@ de plus, quand le joueur cours en se déplaçant, et que le joueur arrête net s
 
 la vitesse de marche est trop rapide et le sprint ne change pas la vitesse.
 le bug est purement visuel pour le moment
+
+État du 27/10/2026 : correctif dans le moteur. La pose de course cesse à l'arrêt,
+les pieds de chaque image de course sont alignés sur la marche, et les durées
+sont désormais de 200 ms/case à pied et 105 ms/case en sprint. À contrôler
+visuellement sur téléphone en solo puis avec hôte/invité Coop ; l'APK n'a pas
+encore été réinstallé depuis ce correctif.

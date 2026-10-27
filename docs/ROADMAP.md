@@ -994,6 +994,21 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 ### Increment 9.7 - Boucle de jeu et mise en scene
 
+Apprentissage a l'evolution (2026-10-27) : les capacites de niveau 0 et du
+niveau courant sont proposees apres l'animation, meme avec une place libre,
+puis restent en attente dans la sauvegarde jusqu'au choix. L'ecran de
+proposition et celui de remplacement detaillent la nouvelle capacite et les
+capacites connues. Le menu du Sac se ferme avant cette presentation sur Android.
+Tests automatises passes ; recette visuelle solo/hote/invite encore ouverte.
+
+Correctif marche/course du 2026-10-27 : durée de marche 200 ms par case,
+course 105 ms ; pose de marche restaurée visuellement à l'arrêt et ancrage des
+pieds de course calculé par direction/image depuis les sprites locaux. Le même
+rendu s'applique au joueur et à l'avatar Coop distant. Tests et build validés ;
+vérification visuelle solo/hôte/invité sur téléphone encore ouverte.
+Le suiveur utilise maintenant la même durée que chaque pas du joueur local ou
+distant afin d'éliminer l'attente visible entre deux cases en marche continue.
+
 Jalon objets du 2026-10-26 : Bandeau Choix, Lunettes Choix et Mouchoir Choix
 sont portés dans le noyau de combat commun. Leurs bonus et leur verrou de
 capacité suivent l'activité de l'objet et l'état tactique restaurable en Coop.

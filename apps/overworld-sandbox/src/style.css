@@ -1803,3 +1803,20 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 }
 .source-options-dev-link small { display: block; margin-top: 3px; color: #a8d1e7; font-size: 8px; font-weight: 600; }
 .source-dev-back { margin-bottom: 8px; }
+
+.source-progression-panel { gap: 8px; text-align: left; }
+.source-progression-panel > small, .source-progression-panel > h2 { text-align: center; }
+.source-progression-new-move { padding: 7px; border: 1px solid #8fdcff77; border-radius: 10px; background: #12334f; }
+.source-progression-move-detail { display: grid; gap: 5px; min-width: 0; font-size: 12px; font-weight: 500; text-align: left; }
+.source-progression-move-detail header { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.source-progression-move-detail header img { width: 22px; height: 22px; object-fit: contain; image-rendering: pixelated; }
+.source-progression-move-detail header strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-progression-move-detail header span { margin-left: auto; color: #b5dced; font-size: 10px; white-space: nowrap; }
+.source-progression-move-detail dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; }
+.source-progression-move-detail dl div { display: flex; justify-content: space-between; gap: 3px; padding: 3px 5px; border-radius: 5px; background: #071c30; }
+.source-progression-move-detail dt { color: #a9c8d8; }
+.source-progression-move-detail dd { margin: 0; font-weight: 800; }
+.source-progression-move-detail p { color: #d6e9f4; font-size: 11px; line-height: 1.25; }
+.source-progression-moves button { min-width: 0; padding: 7px; }
+.source-progression-moves button:hover, .source-progression-moves button:focus-visible { border-color: #ffe17c; background: #205b79; }
+@media (max-width: 430px) { .source-progression-move-detail header { flex-wrap: wrap; }.source-progression-move-detail header span { margin-left: 28px; } }

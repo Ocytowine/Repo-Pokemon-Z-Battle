@@ -550,11 +550,13 @@ describe("persistent player party", () => {
       evolutions: [{ species: "RAICHU", method: "Level", parameter: "6" }] };
     const raichu = { ...pikachu, internalName: "RAICHU", name: "Raichu", abilities: ["SURGE"],
       baseStats: { hp: 60, attack: 90, defense: 55, specialAttack: 90, specialDefense: 80, speed: 110 },
-      levelUpMoves: [{ level: 0, move: "SPARK" }, { level: 6, move: "GROWL" }], evolutions: [] };
+      levelUpMoves: [{ level: 0, move: "SPARK" }, { level: 6, move: "GROWL" },
+        { level: 6, move: "TWINEEDLE" }], evolutions: [] };
     const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [pikachu, raichu],
       moves: [...catalog.moves,
         { ...catalog.moves[0]!, internalName: "GROWL", name: "Rugissement", pp: 40 },
-        { ...catalog.moves[0]!, internalName: "SPARK", name: "Étincelle", pp: 20 }] };
+        { ...catalog.moves[0]!, internalName: "SPARK", name: "Étincelle", pp: 20 },
+        { ...catalog.moves[0]!, internalName: "TWINEEDLE", name: "Double Dard", pp: 20 }] };
     const created = createPersistentPokemon("candy-mon", "PIKACHU", 5, creationCatalog);
     const result = useRareCandy({ RARECANDY: 5 }, { schemaVersion: 1, activeIndex: 0, members: [created] },
       created.id, 3, 6, creationCatalog);
@@ -562,11 +564,25 @@ describe("persistent player party", () => {
       pokemon: { level: 6, pendingEvolution: { species: "RAICHU", method: "Level", parameter: "6" } }, learnedMoves: ["GROWL"],
       evolutionCandidates: [{ species: "RAICHU", method: "Level", parameter: "6" }] });
     if (!result.ok) throw new Error("Bonbon Rare attendu.");
-    expect(resolvePendingPokemonEvolution(result.party, created.id, true, creationCatalog))
-      .toMatchObject({ ok: true, previousSpecies: "PIKACHU", learnedMoves: ["SPARK"],
-        pokemon: { species: "RAICHU", ability: "SURGE", moves: expect.arrayContaining([
-          expect.objectContaining({ internalName: "SPARK", pp: 20 }),
-        ]) } });
+    const evolved = resolvePendingPokemonEvolution(result.party, created.id, true, creationCatalog);
+    expect(evolved).toMatchObject({ ok: true, previousSpecies: "PIKACHU", learnedMoves: [],
+      pendingMoves: ["SPARK", "TWINEEDLE"], pokemon: { species: "RAICHU", ability: "SURGE",
+        pendingMoves: ["SPARK", "TWINEEDLE"] } });
+    if (!evolved.ok) throw new Error("Évolution attendue.");
+    expect(evolved.pokemon.moves.some((move) => move.internalName === "SPARK")).toBe(false);
+    const restored = parsePlayerParty(JSON.parse(JSON.stringify(evolved.party)));
+    expect(restored.members[0]).toMatchObject({ species: "RAICHU",
+      pendingMoves: ["SPARK", "TWINEEDLE"] });
+    const firstLearned = learnPendingPokemonMove(restored, created.id,
+      { internalName: "SPARK", pp: 20 });
+    expect(firstLearned).toMatchObject({ ok: true, pokemon: { pendingMoves: ["TWINEEDLE"] } });
+    if (!firstLearned.ok) throw new Error("Premier apprentissage attendu.");
+    expect(learnPendingPokemonMove(firstLearned.party, created.id,
+      { internalName: "TWINEEDLE", pp: 20 })).toMatchObject({ ok: true,
+      pokemon: { pendingMoves: [], moves: expect.arrayContaining([
+        expect.objectContaining({ internalName: "SPARK", pp: 20 }),
+        expect.objectContaining({ internalName: "TWINEEDLE", pp: 20 }),
+      ]) } });
     expect(pokemonZLevelCap({})).toBe(17);
     expect(pokemonZLevelCap({ "88": true, "97": true })).toBe(36);
   });

@@ -50,7 +50,7 @@ export class SourceFollowerMotionController {
     }
   }
 
-  public followPlayerStep(from: ImportedAvatar, to: ImportedAvatar, startedAt: number, duration = 125): void {
+  public followPlayerStep(from: ImportedAvatar, to: ImportedAvatar, startedAt: number, duration: number): void {
     if (from.x === to.x && from.y === to.y) return;
     if (this.position === null) {
       this.position = { ...from };

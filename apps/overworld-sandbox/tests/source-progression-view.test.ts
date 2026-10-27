@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
-import { sourceEvolutionBattler } from "../src/source-progression-view.js";
+import type { PlayerDetailsCatalog } from "@pokemon-z-battle/player-state";
+import { sourceEvolutionBattler, sourceProgressionMoveDetailsHtml, sourceProgressionMovePromptHtml }
+  from "../src/source-progression-view.js";
 import { sourceTransformationBackdropHtml } from "../src/source-transformation-stage.js";
 
 const assets: PokemonAssetsManifest = {
@@ -17,6 +19,34 @@ const assets: PokemonAssetsManifest = {
 };
 
 describe("source evolution presentation", () => {
+  it("shows the new and known move facts with safe descriptions", () => {
+    const move = { internalName: "TWINEEDLE", name: "Double Dard", type: "BUG",
+      category: "Physical", power: 25, accuracy: 100, pp: 20,
+      description: "Frappe deux fois & peut empoisonner." } as PlayerDetailsCatalog["moves"][number];
+    const offered = sourceProgressionMoveDetailsHtml(move, "TWINEEDLE");
+    expect(offered).toContain("Double Dard");
+    expect(offered).toContain("Physique");
+    expect(offered).toContain("Puissance</dt><dd>25");
+    expect(offered).toContain("Précision</dt><dd>100");
+    expect(offered).toContain("PP</dt><dd>20");
+    expect(offered).toContain("Frappe deux fois &amp; peut empoisonner.");
+    expect(sourceProgressionMoveDetailsHtml(move, "TWINEEDLE", 7, 20))
+      .toContain("PP</dt><dd>7/20");
+    const catalog = { moves: [move, { ...move, internalName: "HARDEN", name: "Armure",
+      power: 0, description: "Monte la Défense." }] } as PlayerDetailsCatalog;
+    const slot = (internalName: string) => ({ internalName, pp: 7, maxPp: 20 });
+    const free = sourceProgressionMovePromptHtml("Coconfort", [slot("HARDEN")],
+      "TWINEEDLE", catalog, false);
+    expect(free).toContain("data-progression-learn");
+    expect(free).toContain("Voulez-vous apprendre cette capacité ?");
+    const full = sourceProgressionMovePromptHtml("Coconfort", Array(4).fill(slot("HARDEN")),
+      "TWINEEDLE", catalog, true);
+    expect(full.match(/data-progression-replace=/g)).toHaveLength(4);
+    expect(full).toContain("Monte la Défense.");
+    expect(full).toContain("Frappe deux fois &amp; peut empoisonner.");
+    expect(full).toContain("PP</dt><dd>7/20");
+  });
+
   it("crops an animated battler sheet into individual frames", () => {
     expect(sourceEvolutionBattler("VULPIX", assets)).toEqual({
       url: "/__pokemon-z/source/Graphics/Battlers/037.png",

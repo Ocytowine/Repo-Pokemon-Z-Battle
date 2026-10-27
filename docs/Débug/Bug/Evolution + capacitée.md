@@ -11,3 +11,12 @@ d'apprentissage différé existant couvre déjà le choix et le remplacement par
 quatre capacités. Le noyau inclut maintenant aussi les capacités de niveau source
 `0`, réservées par Essentials au moment précis de l'évolution, en plus de celles
 apprises au niveau courant.
+
+Complément du 27/10/2026 : une capacité acquise à l'évolution restait invisible
+quand le Pokémon avait moins de quatre capacités : elle était ajoutée directement
+sans écran de proposition. Toutes les capacités de niveau 0 ou du niveau courant
+sont maintenant proposées après l'animation, avec choix persistant même si une
+place est libre. Le menu du Sac se ferme avant la présentation afin que l'écran
+ne reste pas derrière lui sur Android. Test automatisé des deux propositions
+successives ajouté ; vérification en jeu de Coconfort et Double Dard à refaire.
+L'APK contenant le correctif a été installé sur le Samsung le 27/10/2026.

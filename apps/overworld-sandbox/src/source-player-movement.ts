@@ -110,11 +110,13 @@ export function sourceMovementDuration(mode: SourceMovementMode, action: string)
   if (action === "waterfall" || action === "climb") return 180;
   if (mode === "mount") return 115;
   if (mode === "run" || mode === "surf" || mode === "dive") return 105;
-  return 125;
+  return 200;
 }
 
-export function sourceMovementVisualMode(mode: SourceMovementMode, action: string): SourceMovementMode {
-  return action === "surf-transition" ? "surf" : mode;
+export function sourceMovementVisualMode(mode: SourceMovementMode, action: string,
+  moving = true): SourceMovementMode {
+  if (action === "surf-transition") return "surf";
+  return mode === "run" && !moving ? "walk" : mode;
 }
 
 export function sourceMovementVisualPattern(mode: SourceMovementMode, basePattern: number, now: number,

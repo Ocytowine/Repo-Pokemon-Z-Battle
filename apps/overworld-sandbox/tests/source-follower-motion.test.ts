@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedMap } from "../src/imported-map.js";
 import { SourceFollowerMotionController } from "../src/source-follower-motion.js";
+import { sourceMovementDuration } from "../src/source-player-movement.js";
 
 const map: ImportedMap = { id: 3, name: "Test", width: 5, height: 5, tilesetId: 1,
   layers: { lower: Array(25).fill(384), middle: Array(25).fill(0), upper: Array(25).fill(0) },
@@ -21,6 +22,20 @@ describe("source follower motion", () => {
     const follower = new SourceFollowerMotionController();
     follower.reset(map, { x: 0, y: 2, direction: "right" });
     expect(follower.pose(0)).toMatchObject({ x: 0, y: 1 });
+  });
+
+  it("stays in motion for the full walking step and continues without a pause", () => {
+    const follower = new SourceFollowerMotionController();
+    follower.reset(map, { x: 1, y: 2, direction: "right" });
+    const duration = sourceMovementDuration("walk", "step");
+    follower.followPlayerStep({ x: 1, y: 2, direction: "right" },
+      { x: 2, y: 2, direction: "right" }, 100, duration);
+    expect(follower.pose(200)).toMatchObject({ x: 0.5, y: 2, complete: false });
+    expect(follower.pose(299)).toMatchObject({ complete: false });
+    follower.followPlayerStep({ x: 2, y: 2, direction: "right" },
+      { x: 3, y: 2, direction: "right" }, 300, duration);
+    expect(follower.pose(300)).toMatchObject({ x: 1, y: 2, complete: false });
+    expect(follower.pose(400)).toMatchObject({ x: 1.5, y: 2, complete: false });
   });
 
   it("clears and recreates its transient position when disabled or changing map", () => {

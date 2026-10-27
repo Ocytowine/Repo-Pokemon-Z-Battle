@@ -107,6 +107,7 @@ import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGa
   type SourceNewGameChoices } from "./source-new-game.js";
 import { SourceNewGameView } from "./source-new-game-view.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMovement,
+  sourcePlayerRunGroundOffset,
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
@@ -1859,7 +1860,8 @@ async function applyNetworkSourceWorld(world: SourceWorldSnapshot, animate: bool
   if (previousFollower !== undefined && remoteFollower !== undefined
     && (previousFollower.x !== remoteFollower.x || previousFollower.y !== remoteFollower.y)) {
     networkRemoteFollowerMotion = createSourceGridMotion(displayedFollower ?? previousFollower, remoteFollower,
-      remoteFollower.direction, now, { walkingPattern: networkRemoteFollowerWalkingPattern });
+      remoteFollower.direction, now, { duration: sourceMovementDuration(remote.mode ?? "walk",
+        remote.action ?? "step"), walkingPattern: networkRemoteFollowerWalkingPattern });
     networkRemoteFollowerWalkingPattern = networkRemoteFollowerWalkingPattern === 1 ? 3 : 1;
   }
   const application = ++networkSourceWorldApplication;
@@ -1982,7 +1984,8 @@ function animateImportedMap(now: number): void {
   const pose = importedPlayerMotion === null
     ? { ...importedAvatar, pattern: 0, complete: true }
     : sampleSourceGridMotion(importedPlayerMotion, now);
-  const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction);
+  const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction,
+    importedPlayerMotion !== null);
   const playerPattern = sourceFishingView.open ? sourceFishingView.visualPattern(now)
     : sourceMovementVisualPattern(localVisualMode, pose.pattern, now, importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
@@ -2019,7 +2022,8 @@ function animateImportedMap(now: number): void {
     ? networkSourceWorld?.avatars[remoteSide] ?? null
     : { ...sampledRemotePose, pattern: sampledRemotePose.complete ? 0 : remoteMotion?.walkingPattern ?? 0 };
   const remoteMode = remoteSide === null ? "walk" : networkSourceWorld?.avatars[remoteSide].mode ?? "walk";
-  const remoteVisualMode = sourceMovementVisualMode(remoteMode, remoteMotion?.action ?? "idle");
+  const remoteVisualMode = sourceMovementVisualMode(remoteMode, remoteMotion?.action ?? "idle",
+    remoteMotion !== null);
   const remoteImage = remoteSide === null ? null
     : sourcePlayerImageForMovement(networkPlayerVisuals[remoteSide] ?? null, remoteVisualMode)
       ?? networkAvatarImages[remoteSide] ?? null;
@@ -2035,14 +2039,20 @@ function animateImportedMap(now: number): void {
         pattern: sourceMovementVisualPattern(remoteVisualMode,
           "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null),
         renderOffsetY: ("renderOffsetY" in remotePose ? remotePose.renderOffsetY : 0)
-          + sourceMovementVisualOffset(remoteVisualMode, now),
+          + sourceMovementVisualOffset(remoteVisualMode, now)
+          + (remoteVisualMode === "run" ? sourcePlayerRunGroundOffset(
+            remoteSide === null ? null : networkPlayerVisuals[remoteSide] ?? null,
+            remotePose.direction, sourceMovementVisualPattern(remoteVisualMode,
+              "pattern" in remotePose ? remotePose.pattern : 0, now, true)) : 0),
         mode: remoteMode, action: remoteMotion?.action ?? "idle" }]),
   ];
   sourceFieldMarks = sourceFieldMarks.filter((mark) => sourceFieldMarkActive(mark, now));
   drawImportedMap(context, canvas, importedAssets, pose, playerPattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
-      + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now),
+      + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now)
+      + (localVisualMode === "run" && sourcePlayerCharacterName === "player"
+        ? sourcePlayerRunGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
     remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds(),
     { active: sourceTruthVisionActive(now), player: pose });
@@ -2946,6 +2956,8 @@ function useSourcePokemonEvolutionItem(itemId: string, pokemonId: string): {
     { ...sourceEventState, inventory: result.inventory, party: result.party },
     result.previousSpecies, result.pokemon.species);
   persistSourceEventState();
+  sourceScenes.closeMenu();
+  heldMovementKeys.clear();
   const previousName = importedAssets.battleCatalog.pokemon
     .find((candidate) => candidate.internalName === result.previousSpecies)?.name ?? result.previousSpecies;
   const nextName = importedAssets.battleCatalog.pokemon
@@ -2983,6 +2995,10 @@ function useSourceRareCandy(pokemonId: string, quantity: number): {
   }
   sourceEventState = { ...sourceEventState, inventory: result.inventory, party: result.party };
   persistSourceEventState();
+  if ((result.pokemon.pendingMoves?.length ?? 0) > 0 || result.pokemon.pendingEvolution !== undefined) {
+    sourceScenes.closeMenu();
+    heldMovementKeys.clear();
+  }
   enqueueSourceProgression(pokemonId);
   const name = result.pokemon.nickname
     ?? importedAssets.battleCatalog.pokemon.find((pokemon) => pokemon.internalName === result.pokemon.species)?.name
@@ -3639,7 +3655,8 @@ function activeSourcePlayerImage(): HTMLImageElement {
   }
   if (sourcePlayerCharacterName === "player") {
     return sourcePlayerImageForMovement(sourcePlayerVisuals,
-      sourceMovementVisualMode(sourceMovementMode, sourceMovementAction)) ?? importedAssets.playerImage;
+      sourceMovementVisualMode(sourceMovementMode, sourceMovementAction,
+        importedPlayerMotion !== null)) ?? importedAssets.playerImage;
   }
   return sourcePlayerImageFor(sourcePlayerVisuals, sourcePlayerCharacterName)
     ?? sourcePlayerVisuals?.overworld ?? importedAssets.playerImage;
@@ -4119,10 +4136,11 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     }
     if (moved) {
       const startedAt = performance.now();
+      const duration = sourceMovementDuration(sourceMovementMode, sourceMovementAction);
       importedPlayerMotion = createSourceGridMotion(before, next, direction, startedAt,
-        { duration: sourceMovementDuration(sourceMovementMode, sourceMovementAction),
+        { duration,
           walkingPattern: importedWalkingPattern, action: next.action ?? "step" });
-      sourceFollowerMotion.followPlayerStep(before, next, startedAt);
+      sourceFollowerMotion.followPlayerStep(before, next, startedAt, duration);
       importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
       importedNotice = `Déplacement vers ${next.x},${next.y}…`;
     } else {

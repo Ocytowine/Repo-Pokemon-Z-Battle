@@ -27,11 +27,15 @@ describe("source player movement unlocks", () => {
 
   it("separates water bobbing, Surf transitions and Chevroum timing", () => {
     expect(sourceMovementVisualMode("walk", "surf-transition")).toBe("surf");
+    expect(sourceMovementVisualMode("run", "step", true)).toBe("run");
+    expect(sourceMovementVisualMode("run", "idle", false)).toBe("walk");
     expect(sourceMovementVisualPattern("surf", 0, 750, false)).toBe(2);
     expect(sourceMovementVisualOffset("surf", 750)).toBe(18);
     expect(sourceMovementVisualPattern("walk", 3, 750, true)).toBe(3);
     expect(sourceMovementDuration("mount", "step")).toBeGreaterThan(100);
     expect(sourceMovementDuration("mount", "step")).toBeLessThan(sourceMovementDuration("walk", "step"));
+    expect(sourceMovementDuration("walk", "step")).toBe(200);
+    expect(sourceMovementDuration("run", "step")).toBe(105);
   });
 
   it("detects fishable water only on the tile faced by the player", () => {

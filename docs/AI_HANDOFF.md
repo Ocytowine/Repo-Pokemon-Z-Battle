@@ -1,6 +1,19 @@
 # Reprise du developpement par une IA
 
-Derniere mise a jour : 2026-10-22.
+Correctif apprentissage/evolution du 2026-10-27 : les capacites de niveau 0
+et du niveau exact de l'evolution sont placees dans la file personnelle
+persistante, meme si un emplacement est libre. Le conducteur les propose apres
+l'animation et les resout dans l'ordre ; aucune n'est annoncee comme deja apprise
+avant le choix. La proposition et le choix de remplacement affichent type,
+categorie, puissance, precision, PP et description de la nouvelle capacite et
+des capacites connues. L'usage d'un Bonbon Rare ou d'une pierre ferme le menu
+du Sac avant la presentation, pour eviter la surcouche cachee sur Android.
+Solo, hote et invite conservent la meme transaction personnelle ; aucune
+information privee supplementaire n'est repliquee. Tests automatises passes ;
+APK debug reconstruit, installe et lance sur le Samsung le 2026-10-27 ; recette
+visuelle de l'ecran et du cas Coconfort/Double Dard encore ouverte.
+
+Derniere mise a jour : 2026-10-27.
 
 Les vérifications à effectuer par le porteur après les derniers lots de
 fonctions d'attaque sont regroupées dans
@@ -355,6 +368,31 @@ Les effets audiovisuels ne font pas partie de ce jalon de mouvement ; ils sont
 inventories automatiquement par l'audit de scene decrit plus bas.
 
 ### 2 bis. Modes de deplacement du joueur — premier lot fonctionnel
+
+Correctif du 2026-10-27 pour `docs/Débug/Bug/déplacement à pied.md` : la marche
+ordinaire passe de 125 à 200 ms par case, tandis que la course reste à 105 ms.
+Le même calcul de durée est utilisé pour la présentation locale et distante ;
+le resolveur de collisions et les intentions de la room ne changent pas. À la fin
+d'un pas couru, le mode logique peut rester `run`, mais le rendu reprend le sprite
+de marche dès que le mouvement cesse, en solo et pour l'avatar Coop distant.
+Les pieds du sprite de course sont alignés automatiquement sur ceux du sprite
+de marche pour chaque direction et image, d'après les pixels opaques des deux
+fichiers ; cela évite l'écart visible avec l'ombre sans déplacer les sauts ou Surf.
+Tests et build passent. Recette visuelle sur téléphone et contrôle hôte/invité
+à refaire lors du prochain branchement ; aucun APK n'a été installé pour ce lot.
+
+Correctif du suiveur associé : son interpolation locale reçoit exactement la
+durée du pas du joueur, y compris lors du sprint et des routes imposées. Le
+suiveur distant utilise lui aussi la durée du pas de l'avatar répliqué. Avant
+ce correctif, il terminait une marche en 125 ms alors que le joueur prenait
+200 ms, ce qui le faisait avancer puis attendre à chaque case. La position
+logique et les collisions autoritaires de la room restent inchangées ; seule
+la présentation du trajet change. Test de deux pas continus ajouté, recette
+visuelle sur téléphone encore ouverte. L'APK debug intégrant ces correctifs a
+été reconstruit, installé et lancé sur le Samsung le 2026-10-27. La construction
+Android a nécessité le remplacement du fichier ProGuard par défaut obsolète
+`proguard-android.txt` par `proguard-android-optimize.txt` avec Gradle 9.6 et
+le plugin Android 9.4.1. La validation gestuelle du porteur reste ouverte.
 
 Jalon du 2026-10-02 : le solo et la Coop utilisent maintenant le meme resolveur
 pur `resolveSourceMovement`. Il couvre marche, sprint, Chevroum, saut de corniche,
