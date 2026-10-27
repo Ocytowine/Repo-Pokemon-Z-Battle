@@ -587,6 +587,32 @@ describe("persistent player party", () => {
     expect(pokemonZLevelCap({ "88": true, "97": true })).toBe(36);
   });
 
+  it("offers evolution moves crossed before a delayed evolution without older target moves", () => {
+    const base = { ...catalog.pokemon[0]!,
+      baseStats: { hp: 45, attack: 25, defense: 50, specialAttack: 25, specialDefense: 25, speed: 35 },
+      abilities: ["SHEDSKIN"], growthRate: "Parabolic", baseExperience: 72,
+      genderRate: "Female50Percent", happiness: 70, eggGroups: ["Bug"],
+      levelUpMoves: [{ level: 1, move: "HARDEN" }, { level: 9, move: "BUGBITE" },
+        { level: 15, move: "FOCUSENERGY" }],
+      evolutions: [{ species: "BEEDRILL", method: "Level", parameter: "16" }] };
+    const evolvedSpecies = { ...base, internalName: "BEEDRILL", name: "Dardargnan",
+      levelUpMoves: [{ level: 1, move: "FURYATTACK" }, { level: 13, move: "FOCUSENERGY" },
+        { level: 16, move: "TWINEEDLE" }, { level: 19, move: "RAGE" }], evolutions: [] };
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [
+      { ...base, internalName: "KAKUNA", name: "Coconfort" }, evolvedSpecies,
+    ], moves: ["HARDEN", "BUGBITE", "FOCUSENERGY", "FURYATTACK", "TWINEEDLE", "RAGE"]
+      .map((internalName) => ({ ...catalog.moves[0]!, internalName })) };
+    const created = createPersistentPokemon("late-evolution", "KAKUNA", 15, creationCatalog);
+    const candy = useRareCandy({ RARECANDY: 2 },
+      { schemaVersion: 1, activeIndex: 0, members: [created] }, created.id, 2, 17, creationCatalog);
+    if (!candy.ok) throw new Error("Montée de niveau attendue.");
+    const result = resolvePendingPokemonEvolution(candy.party, created.id, true, creationCatalog);
+    expect(result).toMatchObject({ ok: true, pokemon: { species: "BEEDRILL", level: 17,
+      pendingMoves: ["TWINEEDLE"] }, pendingMoves: ["TWINEEDLE"] });
+    if (!result.ok) throw new Error("Évolution attendue.");
+    expect(result.pokemon.moves.map((move) => move.internalName)).not.toContain("FURYATTACK");
+  });
+
   it("keeps full-moveset level attacks pending until an explicit replacement", () => {
     const full = { ...party.members[0]!, id: "pending-mon",
       moves: ["TACKLE", "A", "B", "C"].map((internalName) => ({ internalName, pp: 10, maxPp: 10 })),

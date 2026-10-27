@@ -365,7 +365,7 @@ export class SourcePokemonSummaryView {
       pokemon.metadata.pokerus === null ? "" : `<span>${pokemon.metadata.pokerus.cured && model.pokerusUrl !== null ? `<img src="${model.pokerusUrl}" alt="">` : ""}${pokemon.metadata.pokerus.cured ? "Pokérus guéri" : "Pokérus actif"}</span>`,
       `<span>${statusIcon}${escapeHtml(readableStatus(model.status))}</span>`].join("");
     const spriteScale = model.spriteAnimation === null ? 1 : Math.min(2,
-      136 / model.spriteAnimation.frameWidth, 120 / model.spriteAnimation.frameHeight);
+      130 / model.spriteAnimation.frameWidth, 94 / model.spriteAnimation.frameHeight);
     const spriteMarkup = model.spriteUrl === null || model.spriteAnimation === null ? "?"
       : `<canvas data-summary-sprite width="${model.spriteAnimation.frameWidth}" height="${model.spriteAnimation.frameHeight}" style="width:${Math.round(model.spriteAnimation.frameWidth * spriteScale)}px;height:${Math.round(model.spriteAnimation.frameHeight * spriteScale)}px" role="img" aria-label="${escapeHtml(entry.displayName)}"></canvas>`;
     const tabs = SUMMARY_PAGES.map((candidate) => `<button type="button" data-summary-page="${candidate.id}" class="${candidate.id === this.page ? "active" : ""}">${candidate.label}</button>`).join("");

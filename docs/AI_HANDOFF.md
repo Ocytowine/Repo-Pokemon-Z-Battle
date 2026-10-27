@@ -1,7 +1,20 @@
 # Reprise du developpement par une IA
 
+Finition des fiches Android du 2026-10-27 : dans le Resume Pokemon, la colonne
+laterale reserve une ligne au sprite et une ligne distincte a l'etat et a la
+forme. Le sprite est au premier plan et sa hauteur est limitee pour ne plus
+recouvrir les libelles sur un telephone paysage. Le Pokedex separe desormais
+Informations, Statistiques (six valeurs de base, talents et evolutions) et
+Zones de capture ; les pages de donnees restent defilables si la hauteur utile
+est exceptionnellement reduite. Il s'agit uniquement d'une presentation de
+donnees personnelles, sans nouvelle intention reseau ni etat persistant ; les
+chemins solo, hote et invite affichent la meme fiche. Tests et build passes ;
+APK debug reconstruit, installe et lance sur le Samsung le 2026-10-27. Le bundle
+charge correspond au nouveau build et la sauvegarde locale reste presente.
+Recette visuelle des deux fiches sur Samsung encore ouverte.
+
 Correctif apprentissage/evolution du 2026-10-27 : les capacites de niveau 0
-et du niveau exact de l'evolution sont placees dans la file personnelle
+et des niveaux franchis depuis le seuil d'evolution sont placees dans la file personnelle
 persistante, meme si un emplacement est libre. Le conducteur les propose apres
 l'animation et les resout dans l'ordre ; aucune n'est annoncee comme deja apprise
 avant le choix. La proposition et le choix de remplacement affichent type,
@@ -12,6 +25,16 @@ Solo, hote et invite conservent la meme transaction personnelle ; aucune
 information privee supplementaire n'est repliquee. Tests automatises passes ;
 APK debug reconstruit, installe et lance sur le Samsung le 2026-10-27 ; recette
 visuelle de l'ecran et du cas Coconfort/Double Dard encore ouverte.
+
+Retour reel du porteur : son Dardargnan a evolue au niveau 17, tandis que Double
+Dard est declare au niveau 16. L'ancien filtre ne proposait que le niveau final
+exact. Le noyau propose desormais les capacites de la nouvelle espece entre le
+seuil numerique de l'evolution et le niveau final inclus, plus les capacites de
+niveau 0 ; les capacites plus anciennes restent exclues. Ce calcul generique
+sert au solo, a l'hote et a l'invite. Test de deux Bonbons Rares depuis le
+niveau 15 vers 17 ajoute. La sauvegarde personnelle deja affectee doit etre
+restauree separement, sans migration globale qui reproposerait des capacites
+volontairement refusees.
 
 Derniere mise a jour : 2026-10-27.
 

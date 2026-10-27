@@ -20,3 +20,10 @@ place est libre. Le menu du Sac se ferme avant la présentation afin que l'écra
 ne reste pas derrière lui sur Android. Test automatisé des deux propositions
 successives ajouté ; vérification en jeu de Coconfort et Double Dard à refaire.
 L'APK contenant le correctif a été installé sur le Samsung le 27/10/2026.
+
+Retour réel : Dardargnan était au niveau 17 après l'évolution, alors que Double
+Dard est appris au niveau 16 dans les données source. La vérification du seul
+niveau final laissait donc passer ce cas. Le calcul prend désormais les capacités
+comprises entre le seuil d'évolution et le niveau final, sans proposer les
+anciennes capacités de la nouvelle espèce. La sauvegarde déjà affectée demande
+une récupération ciblée ; la validation sur appareil est à refaire.

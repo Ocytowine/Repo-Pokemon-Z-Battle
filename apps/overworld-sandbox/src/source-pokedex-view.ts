@@ -242,8 +242,10 @@ function habitatPage(entry: SourcePokedexEntry, catalog: SourceRegionMapCatalog)
   return `<div class="source-pokedex-habitat"><div class="source-pokedex-habitat-map"><img src="${sourceRegionImageUrl(region.filename)}" alt="Carte de ${escapeHtml(region.name)}"><div>${cells}</div></div></div>`;
 }
 
+type SourcePokedexDetailPage = "information" | "stats" | "habitat";
+
 function detail(entry: SourcePokedexEntry, position: number, count: number,
-  catalog: SourceRegionMapCatalog, page: "information" | "habitat"): string {
+  catalog: SourceRegionMapCatalog, page: SourcePokedexDetailPage): string {
   const types = entry.types.map((type) => `<span><img src="${pokemonTypeIconUrl(type)}" alt="">${escapeHtml(sourcePokemonTypeLabel(type))}</span>`).join("");
   const sprite = entry.battlerUrl === null || entry.battlerFrameWidth === null || entry.battlerFrameHeight === null ? "?"
     : `<canvas data-pokedex-summary-sprite width="${entry.battlerFrameWidth}" height="${entry.battlerFrameHeight}" aria-label="Sprite animé de ${escapeHtml(entry.name)}"></canvas>`;
@@ -258,15 +260,16 @@ function detail(entry: SourcePokedexEntry, position: number, count: number,
   const informationPage = `<div class="source-summary-fields"><article><small>Catégorie</small><strong>${entry.caught ? escapeHtml(entry.kind) : "Donnée à obtenir"}</strong></article><article><small>Potentiel</small><strong>${entry.caught ? `${entry.potentialPower} · ${escapeHtml(sourcePokemonPowerTier(entry.potentialPower).label)}` : "—"}</strong></article>
         <article><small>Taille</small><strong>${entry.caught ? `${entry.height.toLocaleString("fr-FR")} m` : "—"}</strong></article><article><small>Poids</small><strong>${entry.caught ? `${entry.weight.toLocaleString("fr-FR")} kg` : "—"}</strong></article>
         <article class="wide"><small>Type</small><div class="source-summary-types">${types}</div></article></div>
-      ${entry.caught ? `<p class="source-summary-note source-pokedex-description">${escapeHtml(entry.pokedexEntry)}</p>
-        <div class="source-summary-stats source-pokedex-general-stats">${stats}</div>
-        <div class="source-pokedex-detail-columns"><article><small>Talents connus</small><strong>${escapeHtml(entry.abilities.join(" · ") || "Inconnu")}</strong></article><article class="source-pokedex-evolutions"><small>Évolution suivante</small>${evolutions}</article></div>`
+      ${entry.caught ? `<p class="source-summary-note source-pokedex-description">${escapeHtml(entry.pokedexEntry)}</p>`
         : '<p class="source-summary-note source-pokedex-description locked">Capturez cette espèce pour débloquer sa catégorie, ses mensurations et ses données générales.</p>'}`;
+  const statsPage = entry.caught ? `<div class="source-summary-stats source-pokedex-general-stats">${stats}</div>
+    <div class="source-pokedex-detail-columns"><article><small>Talents connus</small><strong>${escapeHtml(entry.abilities.join(" · ") || "Inconnu")}</strong></article><article class="source-pokedex-evolutions"><small>Évolution suivante</small>${evolutions}</article></div>`
+    : '<p class="source-summary-note source-pokedex-description locked">Capturez cette espèce pour débloquer ses statistiques, ses talents et ses évolutions.</p>';
   return `<section class="source-pokedex-detail" role="dialog" aria-modal="true" aria-label="Données Pokédex de ${escapeHtml(entry.name)}">
     <header><div><small>N°${String(entry.number).padStart(4, "0")} · ${entry.caught ? "OBTENU" : "OBSERVÉ"}</small><strong>${escapeHtml(entry.name)}</strong></div><span>${position + 1}/${count}</span><button type="button" data-pokedex-detail-close aria-label="Fermer">×</button></header>
-    <nav class="source-summary-tabs" aria-label="Pages de la fiche Pokédex"><button type="button" data-pokedex-detail-page="information"${page === "information" ? ' class="active"' : ""}>Informations</button><button type="button" data-pokedex-detail-page="habitat"${page === "habitat" ? ' class="active"' : ""}>Zones de capture</button></nav>
-    <div class="source-summary-layout${page === "habitat" ? " source-pokedex-habitat-layout" : ""}">${page === "information" ? informationAside : ""}
-      <section class="source-summary-page">${page === "habitat" ? habitatPage(entry, catalog) : informationPage}</section></div>
+    <nav class="source-summary-tabs" aria-label="Pages de la fiche Pokédex"><button type="button" data-pokedex-detail-page="information"${page === "information" ? ' class="active"' : ""}>Informations</button><button type="button" data-pokedex-detail-page="stats"${page === "stats" ? ' class="active"' : ""}>Statistiques</button><button type="button" data-pokedex-detail-page="habitat"${page === "habitat" ? ' class="active"' : ""}>Zones de capture</button></nav>
+    <div class="source-summary-layout${page === "habitat" ? " source-pokedex-habitat-layout" : ""}">${page === "habitat" ? "" : informationAside}
+      <section class="source-summary-page">${page === "habitat" ? habitatPage(entry, catalog) : page === "stats" ? statsPage : informationPage}</section></div>
     <footer><button type="button" data-pokedex-detail-nav="previous"${count < 2 ? " disabled" : ""}>‹ Pokémon précédent</button><span>Fiche générale du Pokédex</span><button type="button" data-pokedex-detail-nav="next"${count < 2 ? " disabled" : ""}>Pokémon suivant ›</button></footer></section>`;
 }
 
@@ -285,7 +288,7 @@ export class SourcePokedexView {
   private page = 0; private selectedSpecies: string | null = null;
   private spriteAnimation: SourcePokemonSpriteAnimation | null = null;
   private stopHabitatMapLayout: (() => void) | null = null;
-  private detailPage: "information" | "habitat" = "information";
+  private detailPage: SourcePokedexDetailPage = "information";
 
   public render(root: HTMLElement, model: SourcePokedexViewModel): void {
     this.stopSpriteAnimation();
@@ -336,7 +339,7 @@ export class SourcePokedexView {
     const index = Math.max(0, entries.findIndex((entry) => entry.species === this.selectedSpecies)); const entry = entries[index];
     if (entry === undefined) { this.selectedSpecies = null; this.render(root, model); return; }
     root.insertAdjacentHTML("beforeend", detail(entry, index, entries.length, model.regionMap, this.detailPage));
-    if (this.detailPage === "information") this.startSpriteAnimation(root, entry);
+    if (this.detailPage !== "habitat") this.startSpriteAnimation(root, entry);
     else {
       const mapContainer = root.querySelector<HTMLElement>(".source-pokedex-habitat");
       const mapFrame = root.querySelector<HTMLElement>(".source-pokedex-habitat-map");
@@ -354,7 +357,8 @@ export class SourcePokedexView {
       this.stopSpriteAnimation(); root.querySelector(".source-pokedex-detail")?.remove(); this.renderDetail(root, model, filtered);
     }));
     root.querySelectorAll<HTMLButtonElement>("[data-pokedex-detail-page]").forEach((button) => button.addEventListener("click", () => {
-      this.detailPage = button.dataset.pokedexDetailPage === "habitat" ? "habitat" : "information";
+      const page = button.dataset.pokedexDetailPage;
+      this.detailPage = page === "habitat" || page === "stats" ? page : "information";
       this.stopSpriteAnimation(); root.querySelector(".source-pokedex-detail")?.remove(); this.renderDetail(root, model, filtered);
     }));
   }

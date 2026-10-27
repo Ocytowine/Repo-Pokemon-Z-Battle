@@ -926,10 +926,14 @@ function evolvedPokemon(pokemon: PersistentPokemon, evolution: PokemonEvolutionC
   const ability = target.abilities[abilitySlot] ?? target.abilities[0] ?? null;
   const moves = pokemon.moves.map((slot) => ({ ...slot }));
   const offeredMoves: string[] = [];
+  const threshold = Number(evolution.parameter);
+  const firstEvolutionLevel = Number.isInteger(threshold) && threshold > 0
+    ? Math.min(threshold, pokemon.level) : pokemon.level;
   // Essentials reserve le niveau 0 aux capacites apprises au moment precis de
-  // l'evolution. Une espece peut aussi apprendre une capacite au niveau courant :
-  // les deux familles sont proposees, sans doublon avec le moveset existant.
-  for (const entry of target.levelUpMoves.filter((move) => move.level === 0 || move.level === pokemon.level)) {
+  // l'evolution. Si plusieurs niveaux sont franchis avant sa presentation,
+  // proposer aussi les capacites de la nouvelle espece depuis le seuil atteint.
+  for (const entry of target.levelUpMoves.filter((move) => move.level === 0
+    || move.level >= firstEvolutionLevel && move.level <= pokemon.level)) {
     if (moves.some((slot) => slot.internalName === entry.move)
       || (pokemon.pendingMoves ?? []).includes(entry.move) || offeredMoves.includes(entry.move)) continue;
     const move = catalog.moves.find((candidate) => candidate.internalName === entry.move);

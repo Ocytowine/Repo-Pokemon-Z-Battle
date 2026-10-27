@@ -994,8 +994,16 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 ### Increment 9.7 - Boucle de jeu et mise en scene
 
+Finition des fiches Android du 2026-10-27 : le Resume Pokemon reserve la place
+du sprite et separe ses libelles d'etat et de forme. Le Pokedex dispose d'une
+troisieme page Statistiques avec les six valeurs de base, talents et evolutions ;
+les deux pages de donnees peuvent defiler si necessaire. Presentation personnelle
+identique en solo et Coop, sans changement de sauvegarde ou de protocole.
+Tests et build passes ; APK installe et lance sur Samsung avec sauvegarde locale
+presente. Validation visuelle des deux fiches sur telephone encore ouverte.
+
 Apprentissage a l'evolution (2026-10-27) : les capacites de niveau 0 et du
-niveau courant sont proposees apres l'animation, meme avec une place libre,
+niveaux franchis depuis le seuil sont proposees apres l'animation, meme avec une place libre,
 puis restent en attente dans la sauvegarde jusqu'au choix. L'ecran de
 proposition et celui de remplacement detaillent la nouvelle capacite et les
 capacites connues. Le menu du Sac se ferme avant cette presentation sur Android.
