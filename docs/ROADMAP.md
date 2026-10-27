@@ -3259,8 +3259,38 @@ finale encore attendue.
 Second correctif APK du 2026-10-27 : la double soustraction des zones sures
 horizontales est retiree du dimensionnement 4:3. La fiche Pokemon ouverte depuis
 Equipe devient une surcouche Android fixe au-dessus du menu au lieu d'etre masquee
-derriere lui. Tests et build passent ; APK construit, recette reelle en attente de
-reconnexion USB.
+derriere lui. Tests et build passent ; APK reinstalle et nouveau cadrage confirme
+par capture ADB. Recette tactile de la fiche encore ouverte.
+
+Finition du menu Android du 2026-10-27 : `Test dev` est deplace dans Options ;
+la navigation a huit entrees est mieux repartie, avec icones et textes alignes
+a gauche et centres verticalement. Les cartes Equipe
+separent numero, PV et attaques, et la selection du Pokemon s'efface en sortant.
+Les roues d'actions sont bornees a la hauteur disponible. La Carte conserve son
+ratio 3:2 et gagne en hauteur grace aux informations et aux boutons Consultation/
+Vol disposes verticalement a droite. Rendu controle sur Samsung ; recette tactile
+complete encore ouverte. Aucun changement au noyau ni au contrat Coop.
+
+Cadrage Android du 2026-10-27 : Ranch, Pension, Gardien des Oeufs et Incubateur
+reprennent la surface utile plein ecran du menu, avec respect des zones sures.
+Les grilles du Ranch defilent au besoin au lieu de comprimer les cartes. Recette
+visuelle et tactile sur Samsung encore ouverte ; presentation locale uniquement.
+
+Correctif tactile Android du 2026-10-27 : ouverture du menu au clic final du
+bouton tactile, apres le relachement, et remise a zero de la selection d'equipe a
+chaque nouvelle ouverture. Les marges laterales du canvas sont symetrisees selon
+la plus grande zone sure gauche/droite pour proteger les coins arrondis. Test
+automatise de la sequence tactile ajoute ; validation sur appareil a refaire.
+L'essai intermediaire d'ouverture sur `pointerup` laissait encore passer le clic
+sur une carte Pokemon ; l'ouverture sur `click` attend la fin complete du geste.
+
+Mesure Samsung du 2026-10-27 : la scene est effectivement centree (170 px de
+chaque cote sur un viewport de 780 px), tandis que le menu gardait 32 px de
+marge a gauche et 8 px a droite. Menu et autres surcouches Android plein ecran
+prennent desormais la meme marge laterale des deux cotes, calculee sur l'inset
+de securite le plus grand. APK actualise installe sur Samsung : 32 px de chaque
+cote du menu et 170 px de chaque cote du canvas mesures ; deux ouvertures
+tactiles du menu sans Pokemon selectionne. Retour manuel du porteur attendu.
 
 ## Regles transversales
 

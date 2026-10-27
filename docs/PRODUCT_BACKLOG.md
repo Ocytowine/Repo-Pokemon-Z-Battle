@@ -703,8 +703,8 @@ Nuzlocke/Monotype, eux, ne constituent pas encore leurs regles de gameplay.
   Web de 576 px pour que l'overworld 4:3 et le menu utilisent toute la hauteur
   utile. APK corrige reinstalle ; validation visuelle finale encore ouverte.
 - Second retour : suppression de la double reservation horizontale des zones sures
-  et fiche Pokemon placee au-dessus du menu Android. APK construit ; installation
-  et validation reelles en attente de reconnexion USB.
+  et fiche Pokemon placee au-dessus du menu Android. APK reinstalle et cadrage
+  controle par capture ADB ; validation tactile de la fiche encore ouverte.
 
 ### UI-SPRITES-1 — Echelles contextuelles
 

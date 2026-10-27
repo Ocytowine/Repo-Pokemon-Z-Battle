@@ -1093,6 +1093,7 @@ async function presentSourceCommand(command: SourcePresentationCommand,
   return sourcePresentation.execute(command, delay);
 }
 const sourceMenuView = new SourceMenuView(localStorage, {
+  onSelectTab: (tab) => { sourceScenes.selectMenuTab(tab); renderSourceMenu(); },
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
   onAudioSettingsChange: (settings) => {

@@ -144,7 +144,29 @@ manuelle.
 ### Interfaces et cartes
 
 - [ ] Le menu occupe toute la surface disponible hors zones sures.
+- [x] Les marges noires gauche/droite du menu sont identiques sur le Samsung
+      (32 px CSS de chaque cote).
+- [ ] Les autres interfaces plein ecran gardent ces marges egales en usage tactile,
+      y compris pres des coins arrondis.
 - [ ] La carte regionale reste centree et conserve son ratio 3:2.
+- [ ] La carte occupe la hauteur disponible et son panneau d'informations,
+      Consultation et Vol est a droite sans masquer les reperes.
+- [ ] La navigation principale a huit boutons au contenu aligne a gauche ; `Test dev` est dans
+      Options et son bouton Retour mene bien aux options.
+- [ ] Dans Equipe, numero, PV et attaques restent lisibles sans chevauchement.
+- [ ] Ouvrir le menu avec le bouton tactile ne selectionne aucun Pokemon sans
+      autre pression ; fermer puis rouvrir laisse aussi l'equipe deselectionnee.
+- [ ] Les bandes noires de part et d'autre du canvas ont la meme largeur et le
+      jeu ne passe pas sous les coins arrondis du telephone.
+- [ ] Selectionner un Pokemon puis quitter/revenir dans Equipe efface la selection.
+- [ ] Les roues de selection, notamment Donner un objet puis les poches, restent
+      entierement visibles et utilisables sur le telephone.
+- [ ] Ranch et Pension remplissent la meme surface utile que le menu, sans contenu
+      masque par les bords ou les commandes Android.
+- [ ] Avec le Ranch rempli, les cartes non visibles restent accessibles par defilement
+      et la pagination reste utilisable.
+- [ ] Le Gardien des Oeufs et l'Incubateur remplissent la surface utile, leurs
+      boutons et dialogues restant visibles et utilisables.
 - [ ] Les reperes de carte restent alignes avec l'image.
 - [ ] Les zones de capture du Pokedex restent alignees avec la grille.
 - [ ] Aucun contenu important ne passe sous une encoche ou une barre systeme.

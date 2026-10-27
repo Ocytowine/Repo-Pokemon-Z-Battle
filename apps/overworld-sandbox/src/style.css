@@ -28,14 +28,17 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-orientation-blocker strong { font-size: 22px; }
 .source-orientation-blocker span { color: #a8c8b5; font-size: 13px; }
 @media (orientation: landscape) {
-  html.source-android { --source-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); --source-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px)); --source-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); --source-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px)); }
+  html.source-android { --source-safe-top: var(--safe-area-inset-top, env(safe-area-inset-top, 0px)); --source-safe-right: var(--safe-area-inset-right, env(safe-area-inset-right, 0px)); --source-safe-bottom: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px)); --source-safe-left: var(--safe-area-inset-left, env(safe-area-inset-left, 0px)); --source-safe-side: max(8px, var(--source-safe-left), var(--source-safe-right)); }
   html.source-android body { min-height: 100dvh; overflow: hidden; }
-  html.source-android #app > main { width: 100%; height: 100dvh; grid-template-columns: minmax(0, 1fr); padding: var(--source-safe-top) max(6px, var(--source-safe-right)) var(--source-safe-bottom) max(6px, var(--source-safe-left)); place-content: center; justify-content: center; }
+  html.source-android #app > main { width: 100%; height: 100dvh; grid-template-columns: minmax(0, 1fr); padding: var(--source-safe-top) max(6px, var(--source-safe-left), var(--source-safe-right)) var(--source-safe-bottom) max(6px, var(--source-safe-left), var(--source-safe-right)); place-content: center; justify-content: center; }
   html.source-android .world-panel { width: min(calc(100vw - 340px), calc((100dvh - var(--source-safe-top) - var(--source-safe-bottom)) * 4 / 3)); justify-self: center; }
   html.source-android .canvas-shell { border-radius: 8px; }
   html.source-android .canvas-shell:has(> .source-menu:not([hidden])) { overflow: visible; }
-  html.source-android .source-menu { position: fixed; z-index: 100; inset: var(--source-safe-top) max(8px, var(--source-safe-right)) var(--source-safe-bottom) max(8px, var(--source-safe-left)); border-radius: 10px; }
-  html.source-android .source-pokemon-summary { position: fixed; z-index: 110; inset: var(--source-safe-top) max(8px, var(--source-safe-right)) var(--source-safe-bottom) max(8px, var(--source-safe-left)); border-radius: 10px; }
+  html.source-android .canvas-shell:has(> .source-ranch:not([hidden])),
+  html.source-android .canvas-shell:has(> .source-day-care-eggs:not([hidden])),
+  html.source-android .canvas-shell:has(> .source-incubator:not([hidden])) { overflow: visible; }
+  html.source-android .source-menu { position: fixed; z-index: 100; inset: var(--source-safe-top) var(--source-safe-side) var(--source-safe-bottom) var(--source-safe-side); border-radius: 10px; }
+  html.source-android .source-pokemon-summary { position: fixed; z-index: 110; inset: var(--source-safe-top) var(--source-safe-side) var(--source-safe-bottom) var(--source-safe-side); border-radius: 10px; }
   html.source-android .engine-diagnostics { display: none !important; }
   html.source-android .source-touch-controls { display: block; }
   html.source-android .world-panel:has(.source-menu:not([hidden])) > .source-touch-controls,
@@ -1674,3 +1677,129 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-incubator-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }.source-incubator-actions button { display: grid; padding: 11px; color: #eaf7fa; border: 1px solid #8ac7d777; border-radius: 8px 13px; background: #123448; cursor: pointer; text-align: left; }.source-incubator-actions button:disabled { cursor: not-allowed; opacity: .5; }.source-incubator-actions strong { font-size: 9px; }.source-incubator-actions small { margin-top: 3px; color: #b8cdd4; font-size: 7px; }
 @media (max-width: 620px) { .source-incubator-panel>main { grid-template-columns: 1fr; overflow: auto; }.source-incubator-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(3, minmax(100px, 1fr)); }.source-incubator-panel aside { display: none; }.source-incubator-party-eggs,.source-incubator-actions { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .source-incubator-egg-icon { animation: none; } }
+
+/* Android management screens use the same safe, full-viewport frame as the game menu. */
+@media (orientation: landscape) {
+  html.source-android .source-ranch,
+  html.source-android .source-day-care-eggs,
+  html.source-android .source-incubator {
+    position: fixed;
+    inset: var(--source-safe-top) var(--source-safe-side) var(--source-safe-bottom) var(--source-safe-side);
+    border-radius: 10px;
+  }
+  html.source-android .source-ranch { z-index: 100; }
+  html.source-android .source-day-care-eggs { z-index: 102; padding: 0; }
+  html.source-android .source-incubator { z-index: 103; padding: 0; }
+  html.source-android .source-day-care-egg-panel,
+  html.source-android .source-incubator-panel {
+    width: 100%;
+    height: 100%;
+    max-height: 100%;
+    border-radius: 10px;
+  }
+  html.source-android .source-day-care-egg-panel { grid-template-rows: auto minmax(0, 1fr); }
+  html.source-android .source-incubator-panel { grid-template-rows: auto minmax(0, 1fr); }
+  html.source-android .source-ranch-storage .source-pokemon-grid {
+    overflow-y: auto;
+    align-content: start;
+  }
+  html.source-android .source-ranch-workspace[data-team-expanded="true"] .source-ranch-storage .source-pokemon-grid {
+    grid-template-rows: repeat(3, minmax(62px, 1fr));
+  }
+  html.source-android .source-ranch-workspace[data-team-expanded="false"] .source-ranch-storage .source-pokemon-grid {
+    grid-template-rows: repeat(4, minmax(62px, 1fr));
+  }
+}
+
+/* Android landscape menu: use the available height without shrinking the map or clipping dialogs. */
+@media (orientation: landscape) {
+  html.source-android .source-menu-nav { grid-template-rows: repeat(8, minmax(0, 1fr)); }
+  html.source-android .source-menu-nav button {
+    display: flex;
+    min-width: 0;
+    gap: 8px;
+    padding: 3px 6px;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: left;
+  }
+  html.source-android .source-menu-nav img { flex: 0 0 26px; }
+  html.source-android .source-menu-nav button > span { min-width: 0; }
+
+  html.source-android .source-team-grid > .source-pokemon-card.team-layout {
+    grid-template-rows: minmax(0, 1fr) 27px;
+    gap: 2px 7px;
+    padding: 3px 6px;
+    align-items: stretch;
+  }
+  html.source-android .source-team-grid .source-pokemon-icon {
+    width: 42px;
+    height: 42px;
+    background-size: auto 42px;
+  }
+  html.source-android .source-team-grid .source-pokemon-card-copy {
+    max-height: 100%;
+    grid-template-rows: auto auto auto auto;
+    gap: 1px;
+    align-content: start;
+    overflow: hidden;
+  }
+  html.source-android .source-team-grid .source-pokemon-card-copy > small {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  html.source-android .source-team-grid .source-pokemon-moves { grid-row: 2; align-self: end; }
+  html.source-android .source-team-grid .source-pokemon-move {
+    height: 12px;
+    min-height: 0;
+    padding: 0 3px;
+  }
+  html.source-android .source-team-grid .source-pokemon-move img { width: 10px; height: 10px; }
+  html.source-android .source-team-grid .source-pokemon-moves { grid-template-rows: repeat(2, 12px); gap: 2px; }
+  html.source-android .source-team-grid .source-pokemon-card-condition:empty { display: none; }
+  html.source-android .source-team-grid .source-pokemon-vitals { min-width: 0; }
+
+  html.source-android .source-menu-content-map { grid-template-rows: minmax(0, 1fr); }
+  html.source-android .source-region-layout {
+    height: 100%;
+    grid-template-columns: minmax(0, 1fr) clamp(160px, 23%, 200px);
+    grid-template-rows: minmax(0, 1fr);
+    gap: 8px;
+  }
+  html.source-android .source-region-details {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 12px;
+    align-content: stretch;
+  }
+  html.source-android .source-region-details > div:first-child { min-height: 0; align-content: start; overflow: auto; }
+  html.source-android .source-region-modes { grid-template-columns: 1fr; border-radius: 12px; }
+  html.source-android .source-region-modes button { min-width: 0; min-height: 36px; }
+
+  html.source-android .source-action-wheel-backdrop,
+  html.source-android .source-held-item-backdrop { min-height: 0; overflow: hidden; }
+  html.source-android .source-action-wheel { --action-radius: 88px; width: 246px; height: 246px; }
+  html.source-android .source-held-item-category-wheel { --action-radius: 99px; width: 268px; height: 268px; }
+  html.source-android .source-action-wheel-action { width: 70px; min-height: 44px; }
+  html.source-android .source-held-item-panel { max-height: 100%; }
+}
+.source-options-dev-link, .source-dev-back {
+  min-height: 42px;
+  padding: 8px 12px;
+  color: #eaf8ff;
+  border: 1px solid #8ed8ff88;
+  border-radius: 8px;
+  background: #164364;
+  cursor: pointer;
+  font-weight: 850;
+  text-align: left;
+}
+.source-options-dev-link small { display: block; margin-top: 3px; color: #a8d1e7; font-size: 8px; font-weight: 600; }
+.source-dev-back { margin-bottom: 8px; }

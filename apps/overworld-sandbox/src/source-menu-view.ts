@@ -106,6 +106,7 @@ export interface SourceMenuCoopModel {
 }
 
 export interface SourceMenuViewCallbacks {
+  readonly onSelectTab: (tab: SourceMenuTab) => void;
   readonly onSave: () => void;
   readonly onDeleteSave: () => void;
   readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
@@ -224,8 +225,18 @@ export class SourceMenuView {
   private pokeVialConfirming = false;
   private characterGuideOpen = false;
   private selectedCharacterGuideId = "olivier";
+  private wasOpen = false;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
+
+  private clearTeamSelection(): void {
+    this.selectedTeamPokemonId = null;
+    this.heldItemPokemonId = null;
+    this.heldItemPocket = null;
+    this.heldItemFamilyId = null;
+    this.heldItemPage = 0;
+    this.pokeVialConfirming = false;
+  }
 
   public render(model: SourceMenuViewModel): void {
     this.stopRegionMapLayout?.();
@@ -234,7 +245,10 @@ export class SourceMenuView {
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
-    if (!model.open) { this.pokeVialConfirming = false; this.characterGuideOpen = false; return; }
+    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; return; }
+    if (!this.wasOpen) this.clearTeamSelection();
+    this.wasOpen = true;
+    if (model.tab !== "team") this.clearTeamSelection();
     if (model.tab !== "bag") this.characterGuideOpen = false;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
@@ -260,7 +274,7 @@ export class SourceMenuView {
     this.setMenuHeader(header.context, header.title, header.meta);
     this.renderPokeVialHeader(content, model);
     document.querySelectorAll<HTMLButtonElement>("[data-source-menu-tab]").forEach((button) => {
-      const active = button.dataset.sourceMenuTab === model.tab;
+      const active = button.dataset.sourceMenuTab === (model.tab === "movement" ? "options" : model.tab);
       button.classList.toggle("active", active);
       if (active) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
@@ -1059,7 +1073,10 @@ export class SourceMenuView {
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
       ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}
       <article class="source-shortcut-options"><strong>Raccourcis de terrain</strong><small>Les boutons choisis apparaissent en haut à droite du canvas, après la Boussole.</small><div>${shortcuts}</div></article>
-      <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article></div>`;
+      <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article>
+      <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button></div>`;
+    content.querySelector<HTMLButtonElement>("[data-source-open-dev]")?.addEventListener("click", () =>
+      this.callbacks.onSelectTab("movement"));
     content.querySelectorAll<HTMLInputElement>("[data-audio-channel]").forEach((input) => {
       input.addEventListener("input", () => {
         const channel = input.dataset.audioChannel as SourceAudioChannel;
@@ -1164,6 +1181,9 @@ export class SourceMenuView {
       <details data-dev-section="narrative-battles"${this.openDevSection === "narrative-battles" ? " open" : ""}><summary>Combats narratifs <small>Parcours P0</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-double-join">TP duo Hector et Zaida</button><button type="button" id="source-dev-teleport-furfrou-nest">TP nid de Couafarel</button><button type="button" id="source-dev-teleport-insect-nest">TP nid insecte</button></div><small>Le test Coop place le joueur devant Hector et Zaida sur la Route 4. Ce duo de deux PNJ déclenche nativement un combat double ; si l’invité rejoint l’hôte, il prend le second poste allié. Ces raccourcis ne modifient aucun switch ni self-switch.</small></div></details>
       <details data-dev-section="minigames"${this.openDevSection === "minigames" ? " open" : ""}><summary>Mini-jeux <small>Fouilles</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" class="wide" id="source-dev-open-mining">Tester les fouilles</button></div><small>Lance une paroi neuve avec le marteau et le burin. Les trésors dégagés rejoignent réellement le Sac de cette sauvegarde.</small></div></details>
       </div>`;
+    content.insertAdjacentHTML("afterbegin", '<button type="button" class="source-dev-back" data-source-dev-back>← Options</button>');
+    content.querySelector<HTMLButtonElement>("[data-source-dev-back]")?.addEventListener("click", () =>
+      this.callbacks.onSelectTab("options"));
     content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((details) => {
       details.addEventListener("toggle", () => {
         if (details.open) this.openDevSection = details.dataset.devSection as typeof this.openDevSection;

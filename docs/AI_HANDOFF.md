@@ -194,8 +194,51 @@ est corrige afin d'exploiter les derniers pixels disponibles sans deplacer les
 commandes tactiles. La fiche `Details` ouverte depuis Equipe etait bien rendue
 derriere le menu : le menu Android est au niveau 100 tandis que la fiche conservait
 le niveau 30 du canvas. La fiche devient une surcouche fixe de niveau 110, bornee
-par les memes zones sures. L'APK corrige est construit ; installation et recette
-sur appareil restent a refaire apres reconnexion USB.
+par les memes zones sures. L'APK corrige a ete construit, reinstalle et relance
+sur le Samsung apres reconnexion USB. Une capture ADB confirme le nouveau cadrage ;
+la recette tactile de la fiche reste a confirmer par le porteur.
+
+Finition du menu Android du 2026-10-27 : `Test dev` quitte la navigation principale
+et devient accessible depuis `Options`, avec retour explicite vers ces options.
+Les huit entrees restantes repartissent la hauteur ; icones et textes sont
+alignes a gauche, tout en restant centres verticalement.
+Dans `Equipe`, la carte compacte reserve des lignes distinctes au numero, aux PV
+et aux quatre attaques ; la selection et le dialogue d'objet tenu sont reinitialises
+en quittant l'onglet ou le menu. Les roues d'actions sont reduites pour rester dans
+la hauteur utile du telephone. `Carte` place les informations du lieu et les modes
+Consultation/Vol dans une colonne droite, liberant la hauteur pour l'image 3:2.
+Ce lot ne change que la presentation personnelle : aucune nouvelle autorite,
+intention reseau ou persistance. Validation tactile de tous ces parcours a refaire
+par le porteur sur son appareil apres installation de l'APK actualise.
+
+Cadrage des interfaces de gestion Android du 2026-10-27 : Ranch et Pension
+quittent le rectangle 4:3 de l'overworld pour utiliser le meme viewport utile et
+les memes zones sures que le menu. Le Gardien des Oeufs et l'Incubateur occupent
+eux aussi ce cadre au lieu de rester limites a leurs anciennes largeurs. La grille
+du Ranch defile verticalement si seize cartes ne tiennent pas sans compression.
+Seule la presentation personnelle change : aucun etat, sauvegarde ou contrat Coop
+nouveau. Controle visuel et tactile des quatre parcours sur appareil reel ouvert.
+
+Correctif tactile Android du 2026-10-27 : le bouton Menu n'ouvre plus l'interface
+au debut de la pression mais lors du clic final, apres la liberation du pointeur.
+Un essai intermediaire sur `pointerup` reproduisait encore le clic traversant sur
+une carte Pokemon ; l'ouverture sur `click` garde la carte absente jusqu'a la fin
+du geste. La selection de l'equipe est aussi effacee a chaque transition vers un
+menu nouvellement ouvert, meme si la fermeture precedente n'a pas ete rendue.
+Les marges laterales de l'overworld utilisent le plus grand inset de securite des
+deux cotes : le canvas reste centre et les deux bandes noires ont meme largeur.
+Aucun etat persistant ni contrat Coop ne change. Verification tactile reelle
+encore attendue.
+
+Mesure reelle du cadrage sur Samsung le 2026-10-27 : le canvas overworld etait
+deja centre dans le viewport 780 px, avec 170 px de chaque cote, mais le menu
+plein ecran conservait 32 px a gauche contre 8 px a droite. Les surcouches Menu,
+fiche Pokemon, Ranch, Pension, Gardien des Oeufs et Incubateur utilisent maintenant
+une unique marge laterale egale au plus grand inset de securite. La scene 4:3
+reste inchangee. APK reconstruit et installe sur Samsung : mesure CDP de 32 px
+de chaque cote du menu et 170 px de chaque cote du canvas ; capture ADB conforme.
+Deux ouvertures du menu par toucher injecte n'ont ni selectionne de Pokemon ni
+ouvert de roue d'action. Le parcours tactile manuel du porteur reste a confirmer.
 
 ## Etat Git au moment de cette note
 

@@ -64,7 +64,7 @@ export class SourceTouchControls {
 
     this.bindPress("#source-touch-interact", callbacks.onInteract);
     this.bindPress("#source-touch-cancel", callbacks.onCancel);
-    this.bindPress("#source-touch-menu", callbacks.onMenu);
+    this.bindPress("#source-touch-menu", callbacks.onMenu, "click");
     const sprint = document.querySelector<HTMLButtonElement>("#source-touch-sprint");
     if (sprint === null) throw new Error("Bouton tactile Sprint absent.");
     this.sprint = sprint;
@@ -103,12 +103,19 @@ export class SourceTouchControls {
     this.callbacks.onDirection(direction);
   }
 
-  private bindPress(selector: string, callback: () => void): void {
+  private bindPress(selector: string, callback: () => void, phase: "down" | "click" = "down"): void {
     const button = document.querySelector<HTMLButtonElement>(selector);
     if (button === null) throw new Error(`Commande tactile absente : ${selector}.`);
     button.addEventListener("pointerdown", (event) => {
       if (!this.enabled) return;
       event.preventDefault();
+      button.setPointerCapture(event.pointerId);
+      if (phase === "down") callback();
+    });
+    if (phase === "click") button.addEventListener("click", (event) => {
+      if (!this.enabled) return;
+      event.preventDefault();
+      event.stopPropagation();
       callback();
     });
   }
