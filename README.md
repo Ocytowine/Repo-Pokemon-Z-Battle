@@ -21,6 +21,9 @@ les pieges deja identifies, notamment pour l'increment 9.7.
 pnpm install
 ```
 
+Pour installer Android Studio, préparer les ressources locales et générer l’APK
+sur un autre PC Windows, suivre la [procédure Android](docs/PROCEDURE_APK_ANDROID.md).
+
 ## Inventaire en lecture seule
 
 La commande suivante lit le jeu source et ecrit uniquement un manifeste dans le dossier de sortie :

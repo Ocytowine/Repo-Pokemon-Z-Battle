@@ -54,6 +54,9 @@ Documentation de reference :
 
 ## APK debug Capacitor
 
+Pour une installation complète sur un autre PC, voir la
+[procédure de génération de l’APK](PROCEDURE_APK_ANDROID.md).
+
 Prerequis : Android Studio, SDK Platform 36, Build-Tools 36.0.0, Platform-Tools,
 Command-line Tools et une configuration `.pokemon-z/local-test.json` valide.
 
