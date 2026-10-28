@@ -3241,6 +3241,22 @@ de sauvegarde exige des echantillons v2.12 FR. Les menus plein canvas, le Sac
 avance, les echelles de sprites et les controles Android reutilisent les noyaux
 existants et ne creent pas de logique de gameplay parallele.
 
+Raccord cloud du 2026-10-28 : les quatre sauvegardes personnelles (deux parties,
+manuelle et automatique) utilisent l'identite Access, D1 pour les revisions et
+R2 pour les snapshots. L'association du compte est explicite. Les envois sont
+conditionnels a la revision connue ; les conflits et recuperations exigent un
+choix dans le menu. Les modifications locales sont reprises apres retour du
+reseau. Solo, hote et invite passent par la meme persistance personnelle ; la
+room ne recoit aucun snapshot. Tests automatises passes. Recette Samsung,
+notamment lecture R2, conflit entre appareils et reconnexion Coop, encore ouverte.
+
+Retour du 2026-10-28 : la lecture R2 de la manuelle a reussi apres reinstallation,
+mais l'automatique provisoire plus recente reprenait l'ecran. Le choix explicite
+de la manuelle ignore maintenant cette ancienne automatique. Le menu identifie
+les versions par joueur, lieu et premier Pokemon. L'APK a ete installe sur le
+Samsung et le porteur confirme le retour a Route 5 avec six Pokemon, dont
+Dardargnan niveau 21 ; la revision cloud manuelle est restee inchangee.
+
 Premier contrat Android valide le 2026-10-26 : la jouabilite mobile cible
 exclusivement le paysage, avec un joystick cardinal fixe a gauche et des boutons
 fixes a droite pour interaction/validation, retour/annulation, sprint maintenu et
@@ -3374,3 +3390,42 @@ avec les capacités restent dans le suivi des fonctions d'attaque.
   boss de la variable 300 avec leur RNG et leur état tactique autoritaires ;
 - [ ] ajouter à chaque lot de zone une vérification des préparatifs narratifs et
   des effets post-combat, au-delà du seul audit espèce/capacités/talents.
+
+### Sauvegardes locales et synchronisation — 2026-10-27
+
+- [x] documenter le contrat de deux parties et d'un secours automatique par
+  partie dans `docs/SAUVEGARDES_SLOTS_CLOUD.md` ;
+- [x] migrer l'ancienne sauvegarde vers Partie 1 et isoler état, identité,
+  position et choix de départ des deux parties ;
+- [x] proposer la reprise automatique au lancement et conserver l'accès à la
+  version manuelle ;
+- [x] conserver le point de reprise solo de l'invité Coop dans les deux modes de
+  sauvegarde ;
+- [ ] valider sur Android la migration réelle, les deux parties, hôte/invité,
+  fermeture/reprise et reconnexion Coop ;
+- [x] préparer un Worker de sauvegarde distinct qui vérifie l'identité Access
+  sans exposer de données si Access n'est pas activé ;
+- [x] déployer ce Worker et vérifier sa réponse `401` sans identité ;
+- [x] limiter Access à l'adresse exacte du porteur et vérifier la redirection
+  `302` d'un appel non connecté ;
+- [x] valider la connexion dans le navigateur avec One-time PIN ;
+- [x] valider la session Android après connexion dans la WebView du jeu ;
+- [x] créer la base D1 Europe de l'Ouest, le schéma de révisions et vérifier
+  localement création, conflit, mise à jour et séparation des deux parties ;
+- [x] activer R2, créer le bucket privé en juridiction UE et relier le Worker
+  aux ressources D1 et R2 ;
+- [x] déployer l'API de révisions avec contrôle de concurrence et tester
+  localement la lecture R2 après écriture ;
+- [x] conserver les sauvegardes automatiques locales fréquentes mais limiter leur
+  envoi cloud à une fois par dix minutes ; envoyer les manuelles rapidement et
+  garder au plus 30 révisions automatiques par compte et partie ;
+- [x] synchroniser les quatre emplacements Cloudflare avec compte Access,
+  récupération explicite et conflits ;
+- [ ] permettre au joueur de parcourir et restaurer les anciennes révisions
+  manuelles ; l'API actuelle expose seulement la version courante ;
+- [x] préparer la clé de diffusion, construire et vérifier une APK signée ;
+- [x] déployer le contrôle de version privé derrière Access et proposer la
+  mise à jour au démarrage et dans Options ;
+- [x] sauvegarder la clé hors du PC, publier la première APK privée sur R2,
+  migrer le Samsung de la clé debug à la clé de diffusion, puis vérifier une
+  mise à jour de diffusion vers la suivante sans perte de données.

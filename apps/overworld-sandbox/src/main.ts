@@ -102,6 +102,17 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceGuestProgressSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   sourceEventStateForLaunch, type SourceWorldSave } from "./source-world-save.js";
+import { activateSourceSaveSlot, createSourceSaveSlotSnapshot, initializeSourceSaveSlots,
+  ignoreSourceAutoSave, loadSourceSaveSlot, markSourceManualSave, persistSourceSaveSlot, restoreSelectedSourceAutoSave,
+  sourceAutoResumeSelected, sourceAutoSaveNeedsRecovery, sourceSaveSlotSummaries,
+  type SourceSaveSlotId, type SourceSaveSlotSnapshot } from "./source-save-slots.js";
+import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-session.js";
+import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
+  type SourceAndroidUpdate } from "./source-android-update.js";
+import { cloudIdentity, sourceCloudApi } from "./source-cloud-api.js";
+import { cloudAutomaticUploadDelay, keepLocalCloudSave, linkCloudAccount, linkedCloudEmail,
+  recoverCloudSave, syncCloudSaves,
+  type CloudSaveItem } from "./source-cloud-sync.js";
 import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGameSetup, sourceAdventureSaveExists,
   sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_DESTINATION,
   type SourceNewGameChoices } from "./source-new-game.js";
@@ -151,6 +162,141 @@ hideSourceNativeSystemBars();
 const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
+const activeSaveSlot = initializeSourceSaveSlots(localStorage);
+let sourceCloudStatus = "Connexion non vérifiée";
+let sourceCloudItems: readonly CloudSaveItem[] = [];
+let sourceCloudBusy = false;
+let sourceAndroidUpdate: SourceAndroidUpdate | null = null;
+let sourceAndroidUpdateStatus = sourceNativeAndroidMode ? "Vérification au démarrage…"
+  : "Mises à jour disponibles dans l’APK Android.";
+let sourceAndroidUpdateChecking = false;
+function refreshAndroidUpdateMenu(): void {
+  if (sourceScenes.menuOpen && sourceScenes.menuTab === "options") renderSourceMenu();
+}
+async function checkAvailableAndroidUpdate(showNotice: boolean): Promise<void> {
+  if (sourceAndroidUpdateChecking) return;
+  sourceAndroidUpdateChecking = true;
+  sourceAndroidUpdateStatus = "Vérification en cours…";
+  refreshAndroidUpdateMenu();
+  const result = await checkSourceAndroidUpdate();
+  sourceAndroidUpdateChecking = false;
+  sourceAndroidUpdate = result.state === "available" ? result.update : null;
+  sourceAndroidUpdateStatus = result.state === "available"
+    ? `Version ${result.update.versionName} disponible · ${result.update.notes}`
+    : result.state === "current" ? "Cette version est à jour."
+      : result.state === "not-published" ? "Aucune version de diffusion publiée pour le moment."
+        : result.state === "login-required" ? "Connecte-toi dans Sauvegardes pour vérifier les mises à jour privées."
+          : result.state === "non-android" ? "Disponible dans l’APK Android."
+            : "Vérification momentanément impossible. Réessaie plus tard.";
+  refreshAndroidUpdateMenu();
+  if (showNotice && sourceAndroidUpdate !== null) showAndroidUpdateNotice(sourceAndroidUpdate);
+}
+function showAndroidUpdateNotice(update: SourceAndroidUpdate): void {
+  document.querySelector(".source-android-update-notice")?.remove();
+  const notice = document.createElement("aside");
+  notice.className = "source-android-update-notice";
+  notice.setAttribute("role", "status");
+  notice.innerHTML = '<strong>Mise à jour disponible</strong><span></span><div><button type="button" data-update-download>Télécharger</button><button type="button" data-update-later>Plus tard</button></div>';
+  notice.querySelector("span")!.textContent = `Version ${update.versionName} · ${update.notes}`;
+  notice.querySelector<HTMLButtonElement>("[data-update-download]")?.addEventListener("click", () => {
+    notice.remove();
+    void downloadAndroidUpdate();
+  });
+  notice.querySelector<HTMLButtonElement>("[data-update-later]")?.addEventListener("click", () => notice.remove());
+  document.body.append(notice);
+}
+async function downloadAndroidUpdate(): Promise<void> {
+  if (sourceAndroidUpdate === null) return;
+  try {
+    await openSourceAndroidUpdate(sourceAndroidUpdate);
+    sourceAndroidUpdateStatus = "Téléchargement ouvert dans le navigateur. Android demandera confirmation avant l’installation.";
+  } catch {
+    sourceAndroidUpdateStatus = "Impossible d’ouvrir le téléchargement. Réessaie plus tard.";
+  }
+  refreshAndroidUpdateMenu();
+}
+const CLOUD_AUTO_LAST_ATTEMPT_KEY = "pokemon-z-battle.cloud-auto-last-attempt.v1";
+let pendingManualCloudSync: ReturnType<typeof setTimeout> | null = null;
+let pendingAutoCloudSync: ReturnType<typeof setTimeout> | null = null;
+let sourceSaveSlotReloadPending = false;
+function reloadActivatedSourceSaveSlot(): void {
+  // The working copy already belongs to the selected slot. Saving the old scene
+  // during visibilitychange/pagehide would replace that slot's recovered auto save.
+  sourceSaveSlotReloadPending = true;
+  location.reload();
+}
+function refreshCloudMenu(): void {
+  if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") {
+    renderSourceMenu();
+    document.querySelector<HTMLElement>("#source-menu-content .source-save-cloud")
+      ?.scrollIntoView({ block: "nearest" });
+  }
+}
+async function runCloudSync(explicit: boolean, uploadAutomatic = true): Promise<void> {
+  if (sourceCloudBusy) {
+    if (!explicit) scheduleCloudSync(uploadAutomatic ? "auto" : "manual");
+    return;
+  }
+  if (!navigator.onLine) {
+    if (explicit && !navigator.onLine) sourceCloudStatus = "Hors ligne : sauvegardes locales conservées.";
+    refreshCloudMenu();
+    return;
+  }
+  if (!explicit && uploadAutomatic) localStorage.setItem(CLOUD_AUTO_LAST_ATTEMPT_KEY, String(Date.now()));
+  sourceCloudBusy = true;
+  sourceCloudStatus = "Synchronisation en cours…";
+  refreshCloudMenu();
+  try {
+    const email = await cloudIdentity();
+    if (email === null) throw new Error("Connecte-toi au cloud avant de synchroniser.");
+    const linked = linkedCloudEmail(localStorage);
+    if (linked !== null && linked !== email) throw new Error(`Cet appareil est lié à ${linked}. Aucun transfert vers ${email}.`);
+    if (linked === null) {
+      if (!explicit) return;
+      linkCloudAccount(localStorage, email);
+    }
+    sourceCloudItems = await syncCloudSaves(localStorage, email, sourceCloudApi, uploadAutomatic);
+    if (uploadAutomatic && sourceCloudItems.some((item) => item.kind === "auto" && item.state === "uploaded")) {
+      localStorage.setItem(CLOUD_AUTO_LAST_ATTEMPT_KEY, String(Date.now()));
+      if (pendingAutoCloudSync !== null) clearTimeout(pendingAutoCloudSync);
+      pendingAutoCloudSync = null;
+    }
+    const conflicts = sourceCloudItems.filter((item) => item.state === "conflict").length;
+    const cloudOnly = sourceCloudItems.filter((item) => item.state === "cloud-only").length;
+    const pending = sourceCloudItems.filter((item) => item.state === "pending").length;
+    sourceCloudStatus = conflicts > 0 ? `${conflicts} version(s) à choisir · ${email}`
+      : cloudOnly > 0 ? `${cloudOnly} sauvegarde(s) à récupérer · ${email}`
+        : pending > 0 ? `${pending} automatique(s) locales en attente d'envoi · ${email}` : `À jour · ${email}`;
+  } catch (error) {
+    sourceCloudStatus = error instanceof Error ? error.message : "Cloud indisponible. Sauvegardes locales conservées.";
+  } finally {
+    sourceCloudBusy = false;
+    refreshCloudMenu();
+  }
+}
+function scheduleCloudSync(kind: "manual" | "auto" = "auto"): void {
+  if (linkedCloudEmail(localStorage) === null) return;
+  if (kind === "manual") {
+    if (pendingManualCloudSync !== null) clearTimeout(pendingManualCloudSync);
+    pendingManualCloudSync = setTimeout(() => {
+      pendingManualCloudSync = null;
+      void runCloudSync(false, false);
+    }, 1_000);
+    return;
+  }
+  if (pendingAutoCloudSync !== null) clearTimeout(pendingAutoCloudSync);
+  const last = Number(localStorage.getItem(CLOUD_AUTO_LAST_ATTEMPT_KEY) ?? 0);
+  const delay = cloudAutomaticUploadDelay(last, Date.now());
+  pendingAutoCloudSync = setTimeout(() => {
+    pendingAutoCloudSync = null;
+    void runCloudSync(false, true);
+  }, delay);
+}
+window.addEventListener("online", () => { scheduleCloudSync("manual"); scheduleCloudSync("auto"); });
+if (linkedCloudEmail(localStorage) !== null) { scheduleCloudSync("manual"); scheduleCloudSync("auto"); }
+const recoveringStoredCoopBattle = sessionStorage.getItem(STORED_SESSION_KEY) !== null
+  && sessionStorage.getItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY) !== null;
+if (!recoveringStoredCoopBattle) restoreSelectedSourceAutoSave(localStorage, sessionStorage, activeSaveSlot);
 const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 } as const;
 const SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION = { mapId: 27, x: 28, y: 20, direction: 8 } as const;
 const SOURCE_FURFROU_NEST_DEV_DESTINATION = { mapId: 24, x: 25, y: 15, direction: 8 } as const;
@@ -197,8 +343,7 @@ let sourceFieldShortcuts: readonly SourceFieldShortcutId[];
 let storedPlayerDuelBattleId: string | null = null;
 let sourceWorldSave: SourceWorldSave | null = loadSourceWorldSave(localStorage);
 const launchSourceEventState = sourceEventStateForLaunch(sourceEventState, sourceWorldSave,
-  sessionStorage.getItem(STORED_SESSION_KEY) !== null
-    && sessionStorage.getItem(ACTIVE_COOP_BATTLE_RECOVERY_KEY) !== null);
+  recoveringStoredCoopBattle);
 if (launchSourceEventState !== sourceEventState) {
   sourceEventState = launchSourceEventState;
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
@@ -308,6 +453,7 @@ function loadSourceEventState(): SourceEventState {
 function persistSourceEventState(): void {
   sourceEventState = reconcileSourcePokedex(sourceEventState);
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
+  scheduleSourceAutoSave();
   const assets = importedAssets;
   if (assets !== null) queueMicrotask(() => { if (importedAssets === assets) refreshSourceParallelPresentation(assets); });
   queueMicrotask(publishCurrentSourceWorld);
@@ -1097,6 +1243,62 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onSelectTab: (tab) => { sourceScenes.selectMenuTab(tab); renderSourceMenu(); },
   onSave: saveCurrentSourceWorld,
   onDeleteSave: deleteSourceWorldSave,
+  onSelectSaveSlot: selectSourceSaveSlot,
+  onRecoverAutoSave: recoverSourceAutoSave,
+  onRecoverManualSave: recoverSourceManualSave,
+  onCloudConnect: () => {
+    sourceCloudStatus = "Ouverture de la connexion…";
+    renderSourceMenu();
+    void openSourceCloudLogin((status) => {
+      sourceCloudStatus = status;
+      if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") renderSourceMenu();
+    });
+  },
+  onCloudCheck: () => {
+    sourceCloudStatus = "Vérification…";
+    renderSourceMenu();
+    void checkSourceCloudSession().then((status) => {
+      sourceCloudStatus = status;
+      if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") renderSourceMenu();
+    });
+  },
+  onCloudSync: () => { void runCloudSync(true); },
+  onCloudRecover: (slot, kind) => {
+    if (multiplayer.active || !canAutoSaveSourceWorld()) return;
+    const local = loadSourceSaveSlot(localStorage, slot, kind);
+    const item = sourceCloudItems.find((entry) => entry.slot === slot && entry.kind === kind);
+    const localDate = local ? new Date(local.savedAt).toLocaleString("fr-FR") : "aucune";
+    const cloudDate = item?.remoteAt ? new Date(item.remoteAt).toLocaleString("fr-FR") : "inconnue";
+    if (!confirm(`Récupérer la Partie ${slot} (${kind === "manual" ? "manuelle" : "automatique"}) du cloud ?\nLocale : ${localDate}\nCloud : ${cloudDate}\nLa version locale de cet emplacement sera remplacée.`)) return;
+    void (async () => {
+      try {
+        const email = await cloudIdentity();
+        if (email === null || email !== linkedCloudEmail(localStorage)) throw new Error("Compte cloud différent ou déconnecté.");
+        await recoverCloudSave(localStorage, email, sourceCloudApi, slot, kind);
+        if (slot === activeSaveSlot) {
+          activateSourceSaveSlot(localStorage, sessionStorage, slot, kind);
+          reloadActivatedSourceSaveSlot();
+          return;
+        }
+        sourceCloudStatus = `Partie ${slot} ${kind === "manual" ? "manuelle" : "automatique"} récupérée.`;
+        await runCloudSync(false, false);
+      } catch (error) { sourceCloudStatus = error instanceof Error ? error.message : "Récupération impossible."; refreshCloudMenu(); }
+    })();
+  },
+  onCloudKeepLocal: (slot, kind) => {
+    if (!confirm(`Envoyer la Partie ${slot} (${kind === "manual" ? "manuelle" : "automatique"}) locale et remplacer la version cloud actuelle ?`)) return;
+    void (async () => {
+      try {
+        const email = await cloudIdentity();
+        if (email === null || email !== linkedCloudEmail(localStorage)) throw new Error("Compte cloud différent ou déconnecté.");
+        await keepLocalCloudSave(localStorage, email, sourceCloudApi, slot, kind);
+        if (kind === "auto") localStorage.setItem(CLOUD_AUTO_LAST_ATTEMPT_KEY, String(Date.now()));
+        await runCloudSync(false, false);
+      } catch (error) { sourceCloudStatus = error instanceof Error ? error.message : "Envoi impossible."; refreshCloudMenu(); }
+    })();
+  },
+  onCheckAndroidUpdate: () => { void checkAvailableAndroidUpdate(false); },
+  onDownloadAndroidUpdate: () => { void downloadAndroidUpdate(); },
   onAudioSettingsChange: (settings) => {
     sourceAudioPreferences = settings;
     sourcePresentation.setAudioMix(normalizedSourceAudio(settings));
@@ -2105,15 +2307,112 @@ function saveCurrentSourceWorld(): void {
       sourceEventState);
   persistSourceWorldSave(localStorage, sourceWorldSave);
   persistSourceEventState();
+  persistSourceSaveSlot(localStorage, activeSaveSlot, "manual",
+    createSourceSaveSlotSnapshot(localStorage, sourceWorldSave, sourceEventState, sourceWorldSave.savedAt));
+  scheduleCloudSync("manual");
+  markSourceManualSave(localStorage);
   importedNotice = guestProgressOnly
     ? "Progression personnelle sauvegardée. Votre position de reprise solo reste inchangée."
     : `Partie sauvegardée dans ${importedAssets.map.name}, en ${importedAvatar.x},${importedAvatar.y}.`;
   renderImportedView();
 }
 
+function sourceSaveContent(snapshot: SourceSaveSlotSnapshot): string {
+  const world = snapshot.worldSave === null ? null : { ...snapshot.worldSave, savedAt: 0 };
+  return JSON.stringify({ world, eventState: snapshot.eventState, player: snapshot.player,
+    newGame: snapshot.newGame, fieldShortcuts: snapshot.fieldShortcuts });
+}
+
+function canAutoSaveSourceWorld(allowHidden = false): boolean {
+  if (sourceNewGameActive || importedAssets === null || document.hidden && !allowHidden) return false;
+  const activity = sourceSceneActivity();
+  return !activity.dialogue && !activity.battle && !activity.transition && !activity.sequence && !activity.movement;
+}
+
+function saveAutomaticSourceWorld(allowHidden = false): void {
+  if (sourceSaveSlotReloadPending || !canAutoSaveSourceWorld(allowHidden)) return;
+  const now = Date.now();
+  const guestProgressOnly = multiplayer.active && isNetworkGuest();
+  const world = guestProgressOnly
+    ? createSourceGuestProgressSave(sourceWorldSave, sourceEventState, now)
+    : createSourceWorldSave(importedAssets!.map.id, importedAvatar.x, importedAvatar.y,
+      importedAvatar.direction, now, sourceMovementMode === "run" ? "walk" : sourceMovementMode,
+      sourceEventState);
+  const snapshot = createSourceSaveSlotSnapshot(localStorage, world, sourceEventState, now);
+  const previous = loadSourceSaveSlot(localStorage, activeSaveSlot, "auto");
+  const manual = loadSourceSaveSlot(localStorage, activeSaveSlot, "manual");
+  const content = sourceSaveContent(snapshot);
+  if (previous !== null && content === sourceSaveContent(previous)
+    || manual !== null && content === sourceSaveContent(manual)) return;
+  try {
+    persistSourceSaveSlot(localStorage, activeSaveSlot, "auto", snapshot);
+    scheduleCloudSync("auto");
+    if (sourceAutoResumeSelected(localStorage, activeSaveSlot)) {
+      sourceWorldSave = world;
+      persistSourceWorldSave(localStorage, world);
+    }
+    if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") renderSourceMenu();
+  } catch (error) {
+    console.error("Sauvegarde automatique impossible.", error);
+  }
+}
+
+let pendingSourceAutoSave: ReturnType<typeof setTimeout> | null = null;
+function scheduleSourceAutoSave(): void {
+  if (pendingSourceAutoSave !== null) clearTimeout(pendingSourceAutoSave);
+  pendingSourceAutoSave = setTimeout(() => {
+    pendingSourceAutoSave = null;
+    if (canAutoSaveSourceWorld()) saveAutomaticSourceWorld();
+    else if (!document.hidden) scheduleSourceAutoSave();
+  }, 3_000);
+}
+
+function selectSourceSaveSlot(id: SourceSaveSlotId): void {
+  if (id === activeSaveSlot || multiplayer.active || !canAutoSaveSourceWorld()) return;
+  saveAutomaticSourceWorld();
+  try {
+    const target = loadSourceSaveSlot(localStorage, id, "manual") !== null ? "manual"
+      : loadSourceSaveSlot(localStorage, id, "auto") !== null ? "auto" : "manual";
+    activateSourceSaveSlot(localStorage, sessionStorage, id, target);
+    reloadActivatedSourceSaveSlot();
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Changement de partie impossible.";
+    renderSourceMenu();
+  }
+}
+
+function recoverSourceAutoSave(): void {
+  if (multiplayer.active || !canAutoSaveSourceWorld()) return;
+  try {
+    activateSourceSaveSlot(localStorage, sessionStorage, activeSaveSlot, "auto");
+    reloadActivatedSourceSaveSlot();
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Reprise automatique impossible.";
+    renderSourceMenu();
+  }
+}
+
+function recoverSourceManualSave(): void {
+  if (multiplayer.active || !canAutoSaveSourceWorld()
+    || loadSourceSaveSlot(localStorage, activeSaveSlot, "manual") === null) return;
+  try {
+    activateSourceSaveSlot(localStorage, sessionStorage, activeSaveSlot, "manual");
+    reloadActivatedSourceSaveSlot();
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Reprise manuelle impossible.";
+    renderSourceMenu();
+  }
+}
+
 function deleteSourceWorldSave(): void {
   clearSourceWorldSave(localStorage);
   sourceWorldSave = null;
+  const previous = loadSourceSaveSlot(localStorage, activeSaveSlot, "manual");
+  if (previous !== null) {
+    persistSourceSaveSlot(localStorage, activeSaveSlot, "manual",
+      { ...previous, worldSave: null, savedAt: Date.now() });
+    scheduleCloudSync("manual");
+  }
   importedNotice = "Position sauvegardée supprimée ; la progression narrative reste conservée.";
   renderImportedView();
 }
@@ -2346,6 +2645,12 @@ function renderSourceMenu(): void {
   const renderedState = renderedSourceEventState();
   sourceMenuView.render({ open: sourceScenes.menuOpen, tab: sourceScenes.menuTab, assets,
     eventState: sourceEventState, avatar: importedAvatar, worldSave: sourceWorldSave,
+    activeSaveSlot, saveSlots: sourceSaveSlotSummaries(localStorage),
+    canChangeSaveSlot: !multiplayer.active && canAutoSaveSourceWorld(),
+    autoSaveSelected: sourceAutoResumeSelected(localStorage, activeSaveSlot), cloudStatus: sourceCloudStatus,
+    cloudItems: sourceCloudItems,
+    androidVersion: installedSourceAndroidVersion(), androidUpdateStatus: sourceAndroidUpdateStatus,
+    androidUpdateAvailable: sourceAndroidUpdate !== null,
     personalProgressSaveOnly: multiplayer.active && isNetworkGuest(),
     alchemyUnlockLevel: sourceAlchemyUnlockLevel(assets.alchemy, renderedState.variables),
     fieldShortcuts: sourceFieldShortcuts,
@@ -4438,9 +4743,11 @@ window.addEventListener("blur", () => {
 });
 document.addEventListener("visibilitychange", () => {
   setSourceDocumentInputActive(!document.hidden);
+  if (document.hidden) saveAutomaticSourceWorld(true);
   if (!document.hidden) hideSourceNativeSystemBars();
 });
 window.addEventListener("pagehide", () => {
+  saveAutomaticSourceWorld(true);
   setSourceDocumentInputActive(false);
 });
 window.addEventListener("pageshow", () => {
@@ -4529,9 +4836,53 @@ async function validateNewGameSourceData(): Promise<void> {
   }
 }
 
-if (sourceNewGameActive) {
-  void validateNewGameSourceData();
-} else {
-  void initializeSourceWorld();
-  multiplayer.restore(activeNetworkPlayerProfile());
+function startInitialSourceSession(): void {
+  if (sourceNewGameActive) {
+    void validateNewGameSourceData();
+  } else {
+    void initializeSourceWorld();
+    multiplayer.restore(activeNetworkPlayerProfile());
+  }
 }
+
+function offerSourceAutoSaveRecovery(): void {
+  if (recoveringStoredCoopBattle || !sourceAutoSaveNeedsRecovery(localStorage, activeSaveSlot)) {
+    startInitialSourceSession();
+    return;
+  }
+  const automatic = loadSourceSaveSlot(localStorage, activeSaveSlot, "auto");
+  if (automatic === null) {
+    startInitialSourceSession();
+    return;
+  }
+  const dialog = document.createElement("dialog");
+  dialog.className = "source-save-recovery";
+  dialog.setAttribute("aria-labelledby", "source-save-recovery-title");
+  const manual = loadSourceSaveSlot(localStorage, activeSaveSlot, "manual");
+  dialog.innerHTML = `<h2 id="source-save-recovery-title">Reprendre la partie ${activeSaveSlot} ?</h2>
+    <p>Une sauvegarde automatique du ${new Date(automatic.savedAt).toLocaleString("fr-FR")} est disponible.</p>
+    <p>La sauvegarde manuelle ${manual === null ? "n'existe pas encore" : `date du ${new Date(manual.savedAt).toLocaleString("fr-FR")}`}.</p>
+    <div><button type="button" data-source-recovery="auto">Reprendre l'automatique</button>
+    <button type="button" data-source-recovery="manual">Garder la manuelle</button></div>`;
+  document.body.append(dialog);
+  dialog.addEventListener("cancel", (event) => event.preventDefault());
+  dialog.querySelector<HTMLButtonElement>('[data-source-recovery="auto"]')?.addEventListener("click", () => {
+    try {
+      activateSourceSaveSlot(localStorage, sessionStorage, activeSaveSlot, "auto");
+      reloadActivatedSourceSaveSlot();
+    } catch (error) {
+      dialog.querySelector("p")!.textContent = error instanceof Error ? error.message : "Reprise impossible.";
+    }
+  });
+  dialog.querySelector<HTMLButtonElement>('[data-source-recovery="manual"]')?.addEventListener("click", () => {
+    ignoreSourceAutoSave(localStorage, activeSaveSlot);
+    dialog.close();
+    dialog.remove();
+    startInitialSourceSession();
+  });
+  dialog.showModal();
+}
+
+setInterval(() => saveAutomaticSourceWorld(), 120_000);
+offerSourceAutoSaveRecovery();
+if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableAndroidUpdate(true); }, 8_000);

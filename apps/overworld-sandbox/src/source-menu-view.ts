@@ -7,6 +7,8 @@ import type { SourceEventState, SourceFishingRod } from "./source-event-state.js
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
 import type { SourceWorldSave } from "./source-world-save.js";
+import type { SourceSaveSlotId, SourceSaveSlotSummary } from "./source-save-slots.js";
+import { sourceSavePreview, type CloudSavePreview } from "./source-cloud-sync.js";
 import type { PlayerConnectionState, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
@@ -69,6 +71,15 @@ export interface SourceMenuViewModel {
   readonly eventState: SourceEventState;
   readonly avatar: ImportedAvatar;
   readonly worldSave: SourceWorldSave | null;
+  readonly activeSaveSlot: SourceSaveSlotId;
+  readonly saveSlots: readonly SourceSaveSlotSummary[];
+  readonly canChangeSaveSlot: boolean;
+  readonly autoSaveSelected: boolean;
+  readonly cloudStatus: string;
+  readonly cloudItems: readonly import("./source-cloud-sync.js").CloudSaveItem[];
+  readonly androidVersion: string;
+  readonly androidUpdateStatus: string;
+  readonly androidUpdateAvailable: boolean;
   readonly personalProgressSaveOnly: boolean;
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
@@ -109,6 +120,16 @@ export interface SourceMenuViewCallbacks {
   readonly onSelectTab: (tab: SourceMenuTab) => void;
   readonly onSave: () => void;
   readonly onDeleteSave: () => void;
+  readonly onSelectSaveSlot: (id: SourceSaveSlotId) => void;
+  readonly onRecoverAutoSave: () => void;
+  readonly onRecoverManualSave: () => void;
+  readonly onCloudConnect: () => void;
+  readonly onCloudCheck: () => void;
+  readonly onCloudSync: () => void;
+  readonly onCloudRecover: (slot: SourceSaveSlotId, kind: "manual" | "auto") => void;
+  readonly onCloudKeepLocal: (slot: SourceSaveSlotId, kind: "manual" | "auto") => void;
+  readonly onCheckAndroidUpdate: () => void;
+  readonly onDownloadAndroidUpdate: () => void;
   readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
   readonly onCreateRoom: (serverUrl: string) => void;
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
@@ -1031,16 +1052,75 @@ export class SourceMenuView {
   }
 
   private renderSave(content: HTMLElement, model: SourceMenuViewModel): void {
-    const savedLabel = model.worldSave === null ? "Aucune position enregistrée"
-      : `Map${String(model.worldSave.mapId).padStart(3, "0")} · ${model.worldSave.x},${model.worldSave.y} · ${new Date(model.worldSave.savedAt).toLocaleString("fr-FR")}`;
+    const previewText = (preview: CloudSavePreview): string => {
+      const map = preview.mapId === null ? "Sans position" : model.assets.regionMap.mapNames.get(preview.mapId)
+        ?? `Carte ${String(preview.mapId).padStart(3, "0")}`;
+      const first = preview.firstPokemon;
+      const species = first === null ? "Aucun Pokémon"
+        : first.nickname ?? model.assets.battleCatalog.pokemon.find((entry) => entry.internalName === first.species)?.name
+          ?? first.species;
+      const pokemon = first === null ? species : `${species} N.${first.level}`;
+      return `${preview.playerName} · ${map} · ${pokemon} · Équipe ${preview.partySize}/6`;
+    };
+    const activeManual = model.saveSlots.find((slot) => slot.id === model.activeSaveSlot)?.manual ?? null;
+    const savedLabel = activeManual === null ? "Aucune sauvegarde manuelle"
+      : activeManual.worldSave === null ? `Progression enregistrée le ${new Date(activeManual.savedAt).toLocaleString("fr-FR")}`
+        : `Map${String(activeManual.worldSave.mapId).padStart(3, "0")} · ${activeManual.worldSave.x},${activeManual.worldSave.y} · ${new Date(activeManual.savedAt).toLocaleString("fr-FR")}`;
     const locationLabel = model.personalProgressSaveOnly ? "POSITION COOP TEMPORAIRE" : "POSITION ACTUELLE";
     const saveHelp = model.personalProgressSaveOnly
       ? "L'équipe, le Sac et vos états personnels sont sauvegardés. Votre position de reprise personnelle reste inchangée."
       : "La position, l'équipe, le Sac et la progression narrative sont enregistrés ensemble.";
     const actionLabel = model.personalProgressSaveOnly ? "Sauvegarder ma progression" : "Sauvegarder ici";
-    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegarde</h3></div><span>${model.worldSave === null ? "VIDE" : "MANUELLE"}</span></div><div class="source-save-card"><div class="source-save-location"><small>${locationLabel}</small><strong>${escapeSourceHtml(model.assets.map.name)}</strong><span>${model.avatar.x}, ${model.avatar.y} · direction ${model.avatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeSourceHtml(savedLabel)}</strong><small>${saveHelp}</small></div></div><div class="source-save-actions"><button id="save-source-world">${actionLabel}</button>${model.worldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>`;
+    const slotCards = model.saveSlots.map((slot) => {
+      const manual = slot.manual;
+      const selected = slot.id === model.activeSaveSlot;
+      const detail = manual === null ? "Partie vide" : previewText(sourceSavePreview(manual));
+      const player = manual?.player?.profile.displayName ?? `Partie ${slot.id}`;
+      return `<button type="button" data-source-save-slot="${slot.id}" class="source-save-slot${selected ? " active" : ""}"${selected || !model.canChangeSaveSlot ? " disabled" : ""}><strong>Partie ${slot.id}${selected ? " · active" : ""}</strong><span>${escapeSourceHtml(player)}</span><small>${escapeSourceHtml(detail)}</small></button>`;
+    }).join("");
+    const activeAuto = model.saveSlots.find((slot) => slot.id === model.activeSaveSlot)?.auto ?? null;
+    const autoLabel = activeAuto === null ? "Pas encore de sauvegarde automatique"
+      : `Carte ${String(activeAuto.worldSave?.mapId ?? 3).padStart(3, "0")} · ${new Date(activeAuto.savedAt).toLocaleString("fr-FR")}`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>PROGRESSION</small><h3>Sauvegardes</h3></div><span>PARTIE ${model.activeSaveSlot}</span></div>
+      <p class="source-save-active-note">Version actuellement jouée : <strong>${model.autoSaveSelected ? "automatique" : "manuelle"}</strong>${model.autoSaveSelected && activeAuto !== null ? ` · ${escapeSourceHtml(previewText(sourceSavePreview(activeAuto)))}` : ""}</p>
+      <div class="source-save-slots" role="group" aria-label="Choisir une partie">${slotCards}</div>
+      <div class="source-save-card"><div class="source-save-location"><small>${locationLabel} · PARTIE ${model.activeSaveSlot}</small><strong>${escapeSourceHtml(model.assets.map.name)}</strong><span>${model.avatar.x}, ${model.avatar.y} · direction ${model.avatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeSourceHtml(savedLabel)}</strong><small>${saveHelp}</small></div></div><div class="source-save-actions"><button id="save-source-world">${actionLabel}</button>${model.autoSaveSelected && activeManual !== null ? '<button type="button" data-source-save-manual>Reprendre la manuelle</button>' : ""}${model.worldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>
+      <section class="source-save-auto"><div><small>SAUVEGARDE AUTOMATIQUE · PARTIE ${model.activeSaveSlot}</small><strong>${escapeSourceHtml(autoLabel)}</strong><span>Indépendante de la sauvegarde manuelle.</span></div>${activeAuto === null || model.autoSaveSelected ? "" : `<button type="button" data-source-save-recover${model.canChangeSaveSlot ? "" : " disabled"}>Reprendre</button>`}</section>
+      <section class="source-save-cloud"><div><small>SAUVEGARDES CLOUD</small><strong>${escapeSourceHtml(model.cloudStatus)}</strong><span>Après une réinstallation : Connexion → Synchroniser → Récupérer cloud. « Garder locale » envoie la partie actuelle et remplace celle du cloud.</span></div><button type="button" data-source-cloud-connect>Connexion</button><button type="button" data-source-cloud-check>Vérifier</button><button type="button" data-source-cloud-sync>Synchroniser</button></section>
+      <div class="source-cloud-list">${model.cloudItems.filter((item) => item.state !== "local-only").map((item) => {
+        const label = item.kind === "manual" ? "Manuelle" : "Automatique";
+        const date = item.remoteAt === null ? "" : ` · ${new Date(item.remoteAt).toLocaleString("fr-FR")}`;
+        const state = item.state === "saved" ? "À jour" : item.state === "uploaded" ? "Envoyée"
+          : item.state === "pending" ? "Locale enregistrée · envoi cloud différé"
+            : item.state === "cloud-only" ? `Disponible dans le cloud${date}` : `Versions différentes${date}`;
+        const actions = item.state === "conflict" || item.state === "cloud-only"
+          ? `<button type="button" data-cloud-recover="${item.slot}.${item.kind}"${model.canChangeSaveSlot ? "" : " disabled"}>Récupérer cloud</button>` : "";
+        const keep = item.state === "conflict" && item.localAt !== null
+          ? `<button type="button" data-cloud-keep="${item.slot}.${item.kind}">Garder locale</button>` : "";
+        const preview = item.state === "pending" ? item.localPreview : item.remotePreview;
+        return `<div class="source-cloud-row"><span><strong>Partie ${item.slot} · ${label} : ${state}</strong>${preview === null ? "" : `<small>${escapeSourceHtml(previewText(preview))}</small>`}</span>${actions}${keep}</div>`;
+      }).join("")}</div>
+      ${model.canChangeSaveSlot ? "" : '<p class="source-save-limitation">Quittez la Coop ou terminez l’action en cours pour changer de partie.</p>'}`;
     content.querySelector<HTMLButtonElement>("#save-source-world")?.addEventListener("click", this.callbacks.onSave);
     content.querySelector<HTMLButtonElement>("#delete-source-world")?.addEventListener("click", this.callbacks.onDeleteSave);
+    content.querySelectorAll<HTMLButtonElement>("[data-source-save-slot]").forEach((button) => button.addEventListener("click", () => {
+      const id = Number(button.dataset.sourceSaveSlot);
+      if (id === 1 || id === 2) this.callbacks.onSelectSaveSlot(id);
+    }));
+    content.querySelector<HTMLButtonElement>("[data-source-save-recover]")?.addEventListener("click", this.callbacks.onRecoverAutoSave);
+    content.querySelector<HTMLButtonElement>("[data-source-save-manual]")?.addEventListener("click", this.callbacks.onRecoverManualSave);
+    content.querySelector<HTMLButtonElement>("[data-source-cloud-connect]")?.addEventListener("click", this.callbacks.onCloudConnect);
+    content.querySelector<HTMLButtonElement>("[data-source-cloud-check]")?.addEventListener("click", this.callbacks.onCloudCheck);
+    content.querySelector<HTMLButtonElement>("[data-source-cloud-sync]")?.addEventListener("click", this.callbacks.onCloudSync);
+    content.querySelectorAll<HTMLButtonElement>("[data-cloud-recover], [data-cloud-keep]").forEach((button) => button.addEventListener("click", () => {
+      const value = button.dataset.cloudRecover ?? button.dataset.cloudKeep;
+      const match = /^([12])\.(manual|auto)$/.exec(value ?? "");
+      if (!match) return;
+      const slot = Number(match[1]) as SourceSaveSlotId;
+      const kind = match[2] as "manual" | "auto";
+      if (button.dataset.cloudRecover) this.callbacks.onCloudRecover(slot, kind);
+      else this.callbacks.onCloudKeepLocal(slot, kind);
+    }));
   }
 
   private renderOptions(content: HTMLElement, model: SourceMenuViewModel): void {
@@ -1072,11 +1152,16 @@ export class SourceMenuView {
       ${control("music", "Musiques", "Musiques de carte, de combat et jingles.", settings.music)}
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
       ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}
+      <article class="source-android-update-options"><strong>Mises à jour Android · ${escapeSourceHtml(model.androidVersion)}</strong><small>${escapeSourceHtml(model.androidUpdateStatus)}</small><div><button type="button" data-source-check-android-update>Vérifier</button>${model.androidUpdateAvailable ? '<button type="button" data-source-download-android-update>Télécharger l’APK</button>' : ""}</div></article>
       <article class="source-shortcut-options"><strong>Raccourcis de terrain</strong><small>Les boutons choisis apparaissent en haut à droite du canvas, après la Boussole.</small><div>${shortcuts}</div></article>
       <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article>
       <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button></div>`;
     content.querySelector<HTMLButtonElement>("[data-source-open-dev]")?.addEventListener("click", () =>
       this.callbacks.onSelectTab("movement"));
+    content.querySelector<HTMLButtonElement>("[data-source-check-android-update]")?.addEventListener("click",
+      this.callbacks.onCheckAndroidUpdate);
+    content.querySelector<HTMLButtonElement>("[data-source-download-android-update]")?.addEventListener("click",
+      this.callbacks.onDownloadAndroidUpdate);
     content.querySelectorAll<HTMLInputElement>("[data-audio-channel]").forEach((input) => {
       input.addEventListener("input", () => {
         const channel = input.dataset.audioChannel as SourceAudioChannel;

@@ -7,6 +7,9 @@
     "build": "vite build",
     "android:add": "cap add android",
     "android:apk": "vite build && node scripts/prepare-android-assets.mjs && cap sync android && node scripts/build-android-debug.mjs",
+    "android:key:create": "node scripts/create-android-release-key.mjs",
+    "android:release": "vite build && node scripts/prepare-android-assets.mjs && cap sync android && node scripts/build-android-release.mjs",
+    "android:manifest": "node scripts/prepare-android-update-manifest.mjs",
     "android:open": "cap open android",
     "android:sync": "vite build && node scripts/prepare-android-assets.mjs && cap sync android",
     "dev": "vite --host 127.0.0.1 --port 5174",
@@ -16,6 +19,7 @@
   "dependencies": {
     "@capacitor/android": "8.5.3",
     "@capacitor/core": "8.5.3",
+    "@capacitor/inappbrowser": "4.1.0",
     "@pokemon-z-battle/battle-engine": "workspace:*",
     "@pokemon-z-battle/game-assets": "workspace:*",
     "@pokemon-z-battle/game-data": "workspace:*",

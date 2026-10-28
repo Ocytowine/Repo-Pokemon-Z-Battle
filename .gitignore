@@ -9,6 +9,9 @@ coverage/
 .env.*
 !.env.example
 *.local
+*.jks
+*.keystore
+release-credentials.json
 
 # Never commit a local copy or link to the source game.
 source-game/
@@ -25,3 +28,6 @@ packages/game-data/generated/
 Thumbs.db
 .idea/
 .vscode/
+
+# Reserved Windows filename accidentally created by shell output redirection.
+apps/cloud-save-worker/NUL

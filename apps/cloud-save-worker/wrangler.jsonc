@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "pokemon-z-battle-cloud-save",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-18",
+  "d1_databases": [
+    {
+      "binding": "SAVE_DB",
+      "database_name": "pokemon-z-battle-saves",
+      "database_id": "3e06a474-3f86-4c89-83bf-44b061b57f1e"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SAVE_BUCKET",
+      "bucket_name": "pokemon-z-battle-saves-private",
+      "jurisdiction": "eu"
+    }
+  ],
+  "access": {
+    "dev": { "aud": "local-cloud-save-test", "identity": { "email": "tester@example.invalid" } }
+  },
+  "observability": { "enabled": true }
+}

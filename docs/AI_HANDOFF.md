@@ -8610,6 +8610,26 @@ Dette séparée : les appels Ruby d'IA pour Tourmagik/Passe-Passe avec
 `STICKYBARB` et l'estimation `LIFEORB` ne sont pas des effets mécaniques
 des objets ; l'IA source complète reste à rapprocher du sélecteur commun.
 
+### Sauvegardes locales à deux parties et secours automatique (2026-10-27)
+
+Le plan complet est dans `docs/SAUVEGARDES_SLOTS_CLOUD.md`. Le premier lot local
+ajoute deux parties indépendantes et un secours automatique propre à chacune.
+La sauvegarde existante est copiée vers Partie 1 ; sa copie de travail plus
+récente peut devenir le premier secours automatique. Le chargement offre le
+choix si ce secours est plus récent et différent. Le changement de partie
+réinstalle atomiquement les clés de travail existantes puis recharge l'app ;
+il est bloqué en Coop et pendant une action. La sauvegarde d'un invité garde
+sa position solo. Le modèle persiste identité, choix de départ, raccourcis,
+état personnel/narratif et position cohérente. Les préférences audio restent
+globales. Aucun nouvel état personnel n'est publié à la room.
+
+`corepack pnpm test` et `corepack pnpm build` passent. La recette sur Android
+(migration réelle, deux parties, hôte/invité et reprise après fermeture) reste
+ouverte ; aucun APK n'a été installé pendant ce lot. Cloudflare et contrôle
+de version Android sont des lots ultérieurs. Le `tsc --noEmit` de l'application
+signale des erreurs antérieures dans les modules de combat, sans erreur dans
+les fichiers de ce lot.
+
 ### Compteurs distincts des objets de combat (2026-10-26)
 
 Le suivi courant est détaillé dans `docs/COMPTEURS_OBJETS.md` : **73/114 objets
@@ -8619,3 +8639,197 @@ Les deux ensembles se recoupent et ne s'additionnent pas. Le précédent
 138/906 est une borne basse du catalogue entier, pas un indicateur de ces
 deux chantiers. Parmi les 41 usages depuis le sac à auditer, 28 Balls et
 2 flûtes ont déjà du code ; `PERSIMBERRY` est un raccord manquant identifié.
+
+### Passerelle Cloudflare Access (2026-10-28)
+
+Le porteur a activé One-time PIN dans le même compte Cloudflare que le Worker
+Coop. `apps/cloud-save-worker` est un nouveau Worker isolé, actuellement limité
+à `GET /api/session` et sans stockage. Il utilise l'identité fournie par
+`ctx.access` et répond `401` sans cette identité. Le Worker Coop et ses routes
+WebSocket ne sont pas modifiés. Wrangler est désormais connecté au compte
+Cloudflare existant et le Worker est déployé à
+`https://pokemon-z-battle-cloud-save.mimidu33-eb.workers.dev` ; la requête
+sans identité à `/api/session` retourne `401`. L'étape suivante exige
+la recette Android WebView. La stratégie Access est active avec seulement
+l'adresse exacte du porteur ; un appel non connecté est redirigé (`302`) vers
+Cloudflare Access. La connexion navigateur a renvoyé `authenticated: true`.
+Un APK d'essai est installé sur le Samsung : `@capacitor/inappbrowser` ouvre
+Access dans une WebView Android partageant le magasin de cookies, puis
+`CapacitorHttp` vérifie `/api/session` au retour. Le statut affiché dans
+Menu > Sauvegardes doit être relevé avant d'activer des données cloud.
+D1/R2 et la synchronisation restent ouverts ; ne pas envoyer de
+sauvegardes avant la validation de cette connexion.
+
+Le test Android de session a réussi : le menu affiche « Connecté au cloud »
+avec l'adresse du joueur. La base D1 `pokemon-z-battle-saves` a été créée en
+région WEUR et la migration `0001_saves.sql` appliquée localement et à distance.
+L'API de sauvegardes est maintenant déployée : D1 `pokemon-z-battle-saves`
+(WEUR) contient les pointeurs et métadonnées, R2 privé
+`pokemon-z-battle-saves-private` (juridiction UE) contient les snapshots.
+Un test local Wrangler a validé création, conflit 409, mise à jour par révision
+attendue, lecture R2 et séparation de la Partie 2. Les tables distantes étaient
+vides avant le premier essai client sur Samsung.
+
+Le client Android dispose maintenant d'un raccord de synchronisation pour les
+quatre emplacements (Parties 1/2, manuel/automatique). Le joueur associe
+explicitement le courriel Access avec « Synchroniser » ; ensuite une modification
+locale déclenche une tentative différée, et le retour du réseau relance la
+comparaison. Chaque envoi utilise la révision distante attendue. Une partie
+distante différente ou présente uniquement dans le cloud apparaît dans le menu,
+avec choix explicite « Récupérer cloud » ou « Garder locale ». Aucun conflit ne
+remplace une sauvegarde automatiquement. Le lien local est borné au courriel
+Access ; un autre compte ne reçoit pas les parties de l'appareil. Le stockage
+local continue de fonctionner hors ligne. Tests de deux appareils simulés,
+conflit, récupération et isolation des emplacements passés. La recette réelle
+Android, notamment lecture/écriture R2 et cas Coop hôte/invité, reste à faire
+avant de déclarer ce jalon validé sur téléphone.
+L'APK debug a été reconstruit, installé et lancé sur le Samsung. Le joueur a
+vérifié la présence de sa Partie 1 locale, puis le menu a indiqué « Synchronisé »
+avec son adresse après « Synchroniser » et la Partie 1 manuelle figure comme
+« Envoyée » ou « À jour ». La lecture effective du snapshot R2 et
+la récupération sur un second appareil restent à contrôler ; l'ADB s'est
+déconnecté après l'essai et une requête directe D1 par Wrangler a renvoyé 7403.
+
+Retour de réinstallation du 2026-10-28 : le snapshot R2 manuel de la Partie 1 a
+été relu sur le Samsung. Il contient Route 5 (Map056), six Pokémon et Dardargnan
+niveau 21 en premier. La récupération avait bien copié ce snapshot dans
+l'emplacement manuel local, mais la reprise automatique plus récente de la partie
+provisoire vide gardait la main au redémarrage. Le menu n'expliquait pas cette
+distinction et un message d'échec éventuel restait hors écran. Correctif : choisir
+explicitement la manuelle ignore l'automatique existante jusqu'à une nouvelle
+sauvegarde automatique ; le statut cloud revient en vue, « Synchronisé » devient
+« sauvegardes à récupérer » quand c'est le cas, et chaque version montre joueur,
+lieu, effectif et premier Pokémon avec son niveau. Tests du choix manuel et des
+versions suivantes passés. L'APK corrigé a été installé sur le Samsung. La
+manuelle a été activée : Map056, six Pokémon, automatique provisoire désactivée.
+La révision du cloud manuel est restée identique. Le porteur confirme visuellement
+le retour à Route 5 avec Dardargnan niveau 21 et son équipe complète.
+
+### Allègement de la synchronisation cloud (2026-10-28)
+
+La sauvegarde automatique locale conserve sa cadence actuelle. Le client borne
+désormais les tentatives automatiques au cloud à un intervalle minimal de dix minutes
+depuis la dernière tentative sur l'appareil, même si elle a échoué. Il envoie la dernière
+version locale au créneau suivant, y compris après retour du réseau. La manuelle
+part après une seconde sans forcer l'automatique ; « Synchroniser » reste une
+action immédiate explicite. L'interface signale une automatique locale en attente.
+Les comparaisons par révision, les conflits et la récupération explicite restent
+inchangés. Le même code personnel sert en solo, à l'hôte et à l'invité Coop ;
+aucun snapshot personnel n'entre dans la room.
+
+Après un nouvel envoi automatique, le Worker conserve la tête et 29 anciennes
+révisions automatiques au maximum par compte et partie ; il efface les objets R2
+correspondants. Les manuelles ne sont pas élaguées. Test Wrangler local : 34
+envois automatiques, tête lisible et 30 lignes D1 restantes ; tests client du
+délai et de l'envoi manuel séparé passés. Avant le déploiement, la base distante
+comptait 12 automatiques en Partie 1 et une en Partie 2 : cette modification ne
+devrait donc rien y supprimer immédiatement. `corepack pnpm test` et
+`corepack pnpm build` passent. Le Worker déployé est la version
+`5a956944-cb8e-452d-aee4-91b08f87804c`. La requête D1 après déploiement
+retrouve les mêmes comptes : 12 automatiques et 3 manuelles en Partie 1, une
+automatique en Partie 2. L'APK debug a été reconstruit et installé par-dessus
+l'existant sur le Samsung ; le jeu démarre. Contrôle WebView : Partie 1 manuelle,
+automatique et lien au compte cloud toujours présents dans le stockage local ;
+le nouvel horodatage de tentative automatique est écrit au démarrage. Un second
+comptage D1 après lancement de l'APK retrouve les mêmes révisions.
+La cadence réelle de dix minutes reste à constater pendant le jeu ; elle est
+couverte par les tests automatisés du client.
+
+### Distribution Android privée : premier jalon (2026-10-28)
+
+Le porteur choisit une **nouvelle clé de diffusion** et un téléchargement limité
+aux adresses admises par Cloudflare Access. La clé PKCS12 a été créée hors du
+dépôt dans le profil Windows, avec mot de passe aléatoire ; le certificat public
+SHA-256 attendu est
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`.
+Une APK `versionCode 1`, signée par cette clé, est construite localement et sa
+signature, son identifiant et son numéro sont contrôlés. Les fichiers privés
+`release.p12` et `release-credentials.json` doivent être sauvegardés hors de ce
+PC avant toute publication. Ils ne sont pas dans Git.
+
+Le même `android-version.json` fournit le numéro à Gradle et au code web.
+L'application vérifie au démarrage et depuis Options un manifeste du Worker
+Access ; une version supérieure propose un téléchargement externe. Android garde
+la confirmation d'installation. Le Worker expose seulement la dernière version
+si l'APK privée existe et a la taille attendue ; le téléchargement est diffusé
+en flux avec plages HTTP. Version Worker déployée :
+`5ce946cf-5868-43e8-ad25-80e30a5995e4`. Une requête sans session sur
+`/api/updates/latest` reçoit `302` d'Access. Aucun manifeste ni APK n'est encore
+publié dans R2. L'APK fait 863 221 521 octets (~823 Mio) ; Wrangler ne peut pas
+l'envoyer directement (limite 315 Mo), il faudra un transfert S3 compatible
+avec jeton R2 limité au bucket.
+
+L'actuelle APK debug du Samsung a une autre signature. Ne **pas** installer la
+release par-dessus ni désinstaller la debug sans sauvegarde cloud vérifiée :
+la première migration effacera les données locales, puis récupérera la manuelle
+du cloud. Les futures releases, avec le même certificat et `versionCode`
+croissant, pourront se mettre à jour en place. Procédure détaillée dans
+`docs/ANDROID_MISE_A_JOUR_PRIVEE.md`. La recette téléphone et le téléchargement
+privé sont encore ouverts. La debug actualisée a été installée par `adb install
+-r` sur le Samsung après confirmation de sauvegarde. Le jeu démarre ; la
+Partie 1 manuelle, l'automatique et le lien cloud sont conservés. Le menu Options
+montre `Mises à jour Android · 0.1.0 (1)`, le bouton Vérifier et « Aucune version
+de diffusion publiée pour le moment ». La release signée n'a pas été installée.
+`rclone` 1.75.1 est installé sur le PC pour transférer l'APK de 823 Mio via
+l'API S3 de R2. Le porteur copie actuellement les deux fichiers de signature
+hors du PC ; cette copie n'est pas encore confirmée. Un jeton R2 Object Read &
+Write limité au bucket UE reste à créer et à configurer localement, sans envoyer
+son secret dans le chat. Aucun objet de mise à jour n'a été publié.
+Préparation du changement de PC : `build-android-release.mjs` lit maintenant
+`release.p12` à côté de `release-credentials.json` sous le profil utilisateur,
+sans dépendre du chemin absolu de l'ancien PC. La release a été reconstruite
+avec ce contrat et son certificat SHA-256 vérifié ; le manifeste local a été
+recalculé après la reconstruction. La clé et le fichier d'accès doivent toujours
+être copiés ensemble sur le nouveau PC ; la copie hors PC reste à confirmer.
+
+Migration de diffusion réalisée le 2026-10-28 : le porteur a confirmé la copie
+hors PC de `release.p12` et `release-credentials.json`. Après contrôle des
+révisions D1 et des snapshots R2, l'APK debug a été désinstallée et l'APK signée
+`versionCode 1` installée sur le Samsung. Cloudflare Access a été reconnecté.
+La Partie 1 manuelle de la Pension Pokémon (Route 5) et l'automatique de la
+Route 5, chacune avec six Pokémon et Dardargnan N.21 en premier, ont été
+récupérées. Un défaut est apparu pendant la première récupération : le
+`pagehide` lié à `location.reload()` enregistrait la scène provisoire dans
+l'emplacement automatique restauré, puis la synchronisation l'envoyait. La
+révision automatique d'origine était encore présente dans l'historique R2 ;
+son pointeur D1 a été rétabli avec une mise à jour conditionnée à la révision
+erronée. Le client bloque désormais l'autosauvegarde lors d'un rechargement
+déclenché par le choix d'une partie et active immédiatement une automatique
+cloud récupérée pour la partie active. APK signée reconstruite et installée par
+`adb install -r`, sans perdre la manuelle. Contrôle réel : affichage Route 5,
+équipe 6/6, automatique locale datée du 28/10/2026 11:43:00, manuelle de la
+Pension datée de 11:40:51 ; D1 pointe à nouveau vers les deux révisions
+attendues. Le Worker Coop n'a pas été modifié. La publication de l'APK sur R2
+et l'essai de mise à jour par téléchargement restent ouverts.
+
+Distribution privée validée sur le Samsung le 2026-10-28 : le jeton R2 Object
+Read & Write limité au bucket privé a été configuré localement dans `rclone` ;
+aucune clé d'API n'est dans le dépôt. L'APK signée de base `versionCode 1` a été
+publiée sur R2 avec son manifeste. Le jeu en version 1 a reconnu cette version
+comme à jour. La version suivante `versionCode 2`, `versionName 0.1.1`, a été
+construite avec la même clé ; `corepack pnpm test` et `corepack pnpm build`
+passent. L'APK de 863 221 577 octets a été déposée sur R2 avant le nouveau
+manifeste. Le jeu en version 1 a proposé 0.1.1 ; Chrome a téléchargé l'APK
+après authentification Cloudflare Access. Taille et SHA-256 du fichier sur le
+Samsung correspondent au manifeste. Android a installé la version 2 en place :
+`firstInstallTime` inchangé, `lastUpdateTime` plus récent, `versionCode=2`.
+Le jeu s'ouvre et Options affiche 0.1.1 (2) comme version à jour. L'accès
+Chrome a nécessité une connexion Access distincte et l'autorisation Android
+« Autoriser depuis cette source ». Le Worker Coop reste inchangé. La procédure
+reproductible et l'état de publication sont dans
+`docs/ANDROID_MISE_A_JOUR_PRIVEE.md`.
+Après l'installation, le menu Sauvegarde montre encore la Partie 1 manuelle
+(Pension Pokémon, Route 5) et l'automatique (Route 5), toutes deux avec
+Dardargnan N.21, une équipe 6/6 et le statut cloud « À jour » sous le compte
+Access connecté. Le menu indique aussi une autre sauvegarde à récupérer ; elle
+n'a pas été téléchargée pendant cette vérification.
+
+Lien permanent pour la première installation, déployé le 2026-10-28 dans le
+Worker cloud-save `cd4cb405-4708-407c-ad58-f46300fea76f` :
+`/api/updates/download/latest` lit le même manifeste R2 que la vérification
+des mises à jour et sert l'APK courante en flux. Le lien avec numéro de version
+reste disponible pour le client installé. Le nouveau lien reste sous la même
+politique Cloudflare Access ; un appel sans session reçoit une redirection vers
+Access. Les tests couvrent l'accès refusé sans identité et les octets de l'APK
+servie. `corepack pnpm test` et `corepack pnpm build` passent. URL complète et
+consignes de partage dans `docs/ANDROID_MISE_A_JOUR_PRIVEE.md`.
