@@ -1,0 +1,1 @@
+Il faut enlever les cases jaunes qui apparaissent autour des éléments interactifs dans le jeu.

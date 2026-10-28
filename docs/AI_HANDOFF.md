@@ -8833,3 +8833,134 @@ politique Cloudflare Access ; un appel sans session reçoit une redirection vers
 Access. Les tests couvrent l'accès refusé sans identité et les octets de l'APK
 servie. `corepack pnpm test` et `corepack pnpm build` passent. URL complète et
 consignes de partage dans `docs/ANDROID_MISE_A_JOUR_PRIVEE.md`.
+
+## Écran titre du premier patch — 2026-10-28
+
+Le script source extrait `179-83242313-titulo.rb` choisit `SCREENSTYLE = 2`.
+La copie locale du jeu contient `Data/progreso1.dat`, ce qui sélectionne
+`armaTitulo.png` et `Titulo2.ogg` dans `GenTwoStyle`. Le client utilise le fond
+local élargi `armaTituloZ.png` (2400 × 1080), le logo et les effets de cette
+variante ; la musique peut être activée par un geste du joueur. Les fichiers sont chargés
+depuis la copie locale `Graphics/Titles` et `Audio/BGM`, sans ajout au Git.
+
+Le titre occupe le viewport utile comme le menu Android, avec le nouveau fond
+large cadré proportionnellement. Il ne
+change pas l'échelle de la scène overworld. Commencer déclenche la même reprise
+automatique ou validation de nouvelle partie qu'avant ce lot. Le retour d'un
+combat Coop déjà en cours contourne le titre pour conserver la reconnexion
+immédiate. Autorité et audience : joueur local seulement ; état visuel
+transitoire, sans persistance, intention serveur ou réplication. Tant que le
+titre est visible, les entrées du monde et l'autosauvegarde sont neutralisées.
+Solo, hôte et invité empruntent le même démarrage après le titre. Les données
+et le rendu distants ne changent pas. Le choix explicite de partie et le
+contrôle de version ont été ajoutés au lot suivant, décrit plus bas.
+Rendu vérifié en navigateur paysage 800 × 360 et bouton Commencer vérifié ;
+`corepack pnpm test` et `corepack pnpm build` passent. Validation visuelle et
+audio sur APK Android réelle encore ouverte. Le contrôle optionnel
+`corepack pnpm --filter @pokemon-z-battle/overworld-sandbox typecheck` échoue
+sur des erreurs préexistantes dans les modules de combat, rencontre et
+Méga-Évolution ; aucun diagnostic ne vise le nouvel écran titre.
+
+## Choix de partie après le titre — 2026-10-28
+
+Commencer ouvre un écran plein viewport avec Partie 1 et Partie 2. Chaque
+sauvegarde manuelle ou automatique affiche sa date, le joueur, la carte et la
+taille de l'équipe. Un emplacement vide conduit au parcours de nouvelle partie
+existant. Le choix installe le snapshot avec `activateSourceSaveSlot`, pose un
+marqueur de reprise en `sessionStorage` et recharge la page. Le garde
+`sourceSaveSlotReloadPending` empêche la scène précédente d'écraser ce choix.
+Le marqueur est consommé une seule fois. Un combat Coop en cours conserve son
+contournement de l'écran titre et de ce nouvel écran.
+
+Les services existants sont accessibles avant l'entrée dans le monde :
+connexion et synchronisation cloud, récupération explicite d'une version cloud,
+résolution d'un conflit en gardant la version locale, vérification de la version
+Android et téléchargement. Le cloud ne remplace un snapshot local qu'après
+confirmation. Le choix de partie reste personnel et local ; le solo, l'hôte et
+l'invité chargent ensuite le même état, sans intention de room ni réplication
+de sauvegarde. L'écran n'a aucun état persistant au-delà du marqueur temporaire
+de chargement ; le rendu distant n'est pas affecté.
+
+La roadmap ajoute ensuite la refonte de la préparation de l'aventure, séparée
+du choix de partie. Les vérifications sur APK Android et le retour d'un combat
+Coop restent à faire avant validation en conditions réelles.
+`corepack pnpm test`, `corepack pnpm build` et `android:sync` passent ; les
+assets web et `armaTituloZ.png` sont copiés dans le projet Android local.
+Le `typecheck` autonome signale encore des erreurs préexistantes dans les
+modules de combat et de rencontre, sans erreur sur le nouvel écran.
+
+Optimisation du titre : le fond `armaTituloZ.png` de 2400 × 1080 occupe
+4 281 641 octets. Une copie locale JPEG à 2400 × 1080, qualité 86, nommée
+`Graphics/Titles/armaTituloZ.jpg`, garde la même composition et pèse
+667 556 octets. Le PNG d'origine est préservé et sert de repli si la copie
+optimisée manque. Le JPEG est préchargé dès `index.html` ; l'écran titre
+attend son décodage avant de l'afficher pour supprimer l'apparition progressive
+du haut vers le bas. Le fond flouté qui chargeait la même image a été remplacé
+par un dégradé. Cette copie locale reste hors Git comme les autres assets du
+jeu source ; elle est copiée dans l'APK par `android:sync`.
+
+## Fenêtres de démarrage sans défilement — 2026-10-28
+
+Le choix de partie occupe désormais strictement le viewport utile. Les deux
+parties restent côte à côte en paysage ; Cloud et Version sont des onglets au
+lieu de blocs empilés sous les sauvegardes. Les conflits cloud sont présentés
+un par un avec navigation précédente/suivante, ce qui garde tous les boutons
+accessibles sans défilement. Les libellés longs sont bornés à deux lignes.
+
+Le prologue et la préparation d'une nouvelle aventure ont été déplacés hors
+du canvas overworld 4:3 et utilisent la même surface plein écran que le menu.
+La préparation place difficulté, mode et région sur trois colonnes en paysage,
+avec espacements et boutons adaptés aux faibles hauteurs. Aucun de ces deux
+écrans ne défile. Ces changements sont purement visuels : choix et persistance
+personnels, reprise solo/hôte/invité et room Coop restent inchangés.
+Contrôle navigateur paysage 800 × 360 : choix de partie 800 × 360, prologue
+650 × 161 et préparation 760 × 252, sans débordement interne. La barre de
+défilement de la page située derrière ces écrans a aussi été masquée. L'overlay
+de préparation est masqué pendant le titre et le choix de partie. Contrôle
+supplémentaire 640 × 320 avec mode Android simulé : choix
+de partie 624 × 320, prologue 604 × 161 et préparation 604 × 258, sans barre
+de défilement ni contrôle coupé. Validation sur WebView Android réelle encore
+ouverte.
+
+## Personnalisation du héros au format menu — 2026-10-28
+
+L'éditeur intégré `AvatarLabView` a quitté le cadre overworld 4:3 pour occuper
+le viewport du menu. Sa palette bleue et or, son en-tête et ses cartes suivent
+le choix des sauvegardes. Nom, pronoms, six modèles et trois couleurs restent
+à gauche ; aperçu animé, face et dos de combat restent à droite ; Retour et
+Appliquer sont toujours visibles. Le contexte d'animation choisi est conservé
+quand un autre réglage provoque un nouveau rendu. Le retour depuis le prologue
+restaure les choix de préparation déjà affichés.
+
+Contrôles navigateur : 800 × 360 et 640 × 320 avec mode Android simulé,
+viewport couvert sans débordement ni défilement ; retour vers la préparation
+validé. Le brouillon personnel reste en stockage local, l'application du profil
+passe par l'adaptateur existant et `multiplayer.updateProfile` réplique seulement
+le profil visible aux participants Coop. Aucun nouvel état de room ou protocole.
+`corepack pnpm test`, `corepack pnpm build` et la synchronisation Capacitor
+Android passent. Le `typecheck` autonome signale seulement les erreurs déjà
+connues des modules de combat et de rencontre. Validation sur APK Android
+réelle encore ouverte.
+
+## Démarrage de nouvelle aventure et validation du personnage — 2026-10-28
+
+Le changement d'emplacement recharge toujours la page pour installer la copie
+de travail sans l'écraser. Un écran de démarrage inline dans `index.html`
+remplace maintenant le fond blanc durant le chargement du bundle ; il disparaît
+au premier rendu du jeu. La préparation garde son bouton « Chargement de la
+calèche… » pendant `loadSourceWorldAt` et affiche désormais l'erreur directement
+dans cet écran si cette lecture échoue. Le diagnostic local reste disponible.
+
+Dans `AvatarLabView`, « Valider et revenir » ferme maintenant l'éditeur après
+application du profil et restaure la préparation, ou le menu d'origine.
+La validation sans changement revient immédiatement. La session active n'est
+plus avancée avant que l'application asynchrone réussisse ; un échec laisse
+« Réessayer » et affiche son message dans l'éditeur. Le profil reste personnel,
+avec la réplication Coop déjà présente dans `applyActivePlayerProfile`.
+
+La WebView APK utilise déjà `SystemBars` et l'orientation paysage du manifeste.
+L'appel automatique `requestFullscreen` sur chaque pointerdown a été retiré :
+il provoquait sur Chrome en mode téléphone une erreur de geste utilisateur
+sans rapport avec le chargement du profil. Le rappel de masquage des barres
+natives reste actif. Parcours navigateur contrôlé jusqu'à l'ouverture du monde ;
+validation sur APK réelle encore ouverte.

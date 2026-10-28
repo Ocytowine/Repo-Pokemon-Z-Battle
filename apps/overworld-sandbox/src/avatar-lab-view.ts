@@ -1,5 +1,5 @@
 import { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, loadSessionPlayerAvatarSelection,
-  parsePlayerProfile, persistPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
+  parsePlayerProfile, persistPlayerAvatarSelection,
   PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   type PlayerAvatarSelection,
   type PlayerProfile } from "@pokemon-z-battle/player-state";
@@ -33,6 +33,7 @@ export class AvatarLabView {
   private state = loadState(localStorage);
   private activeState = loadSessionPlayerAvatarSelection(sessionStorage, localStorage);
   private overworldAnimationSession = 0;
+  private previewContext = "overworld";
 
   public constructor(private readonly root: HTMLElement,
     private readonly onApply: (selection: PlayerAvatarSelection) => void | Promise<void> = () => undefined,
@@ -69,15 +70,25 @@ export class AvatarLabView {
       return;
     }
     const colorOptions = Object.keys(AVATAR_PALETTE_COLORS).map((id) => `<option value="${id}">${id}</option>`).join("");
-    this.root.innerHTML = `<div class="embedded-avatar-editor"><label>Nom<input data-avatar-name maxlength="12"></label>
-      <label>Pronoms<select data-avatar-pronouns><option value="masculine">Masculins</option><option value="feminine">Féminins</option><option value="neutral">Neutres</option></select></label>
-      <div class="embedded-avatar-options"></div><label>Animation<select data-avatar-context><option value="overworld">Marche</option><option value="run">Course</option><option value="bicycle">Vélo</option><option value="surf">Surf</option><option value="fish">Pêche</option><option value="fishSurf">Pêche en surf</option><option value="dive">Plongée</option></select></label>
-      <div class="embedded-avatar-colors"><label>Principale<select data-color="primary">${colorOptions}</select></label><label>Secondaire<select data-color="secondary">${colorOptions}</select></label><label>Accent<select data-color="accent">${colorOptions}</select></label></div>
-      <p class="embedded-avatar-note">Les modifications restent en brouillon jusqu’à leur application. La sauvegarde de l’aventure n’est pas réinitialisée.</p>
-      <div class="embedded-avatar-actions"><button type="button" class="embedded-avatar-return">Retour au jeu</button>
-      <button type="button" class="embedded-avatar-apply">Appliquer au joueur</button></div></div>
-      <div class="embedded-avatar-previews"><article><canvas width="150" height="150"></canvas><strong>Overworld</strong><small data-avatar-context-detail></small></article>
-      <article><img data-avatar-front alt="Face du Dresseur"><strong>Face</strong></article><article><img data-avatar-back alt="Dos du Dresseur"><strong>Dos de combat fixe</strong><small data-avatar-back-detail></small></article><div data-avatar-audit class="embedded-avatar-audit"></div></div>`;
+    this.root.innerHTML = `<div class="embedded-avatar-shell">
+      <header class="embedded-avatar-header"><div><small>POKÉMON Z</small><h1>Personnaliser le héros</h1></div>
+      <button type="button" class="embedded-avatar-return">Retour</button></header>
+      <div class="embedded-avatar-content"><section class="embedded-avatar-editor" aria-label="Réglages du personnage">
+        <div class="embedded-avatar-identity"><label>Nom<input data-avatar-name maxlength="12"></label>
+        <label>Pronoms<select data-avatar-pronouns><option value="masculine">Masculins</option><option value="feminine">Féminins</option><option value="neutral">Neutres</option></select></label></div>
+        <div class="embedded-avatar-options" aria-label="Modèle du personnage"></div>
+        <div class="embedded-avatar-colors"><label>Principale<select data-color="primary">${colorOptions}</select></label>
+        <label>Secondaire<select data-color="secondary">${colorOptions}</select></label>
+        <label>Accent<select data-color="accent">${colorOptions}</select></label></div>
+      </section><section class="embedded-avatar-preview-panel" aria-label="Aperçus du personnage">
+        <div class="embedded-avatar-preview-head"><h2>Aperçus</h2><label>Animation<select data-avatar-context><option value="overworld">Marche</option><option value="run">Course</option><option value="bicycle">Vélo</option><option value="surf">Surf</option><option value="fish">Pêche</option><option value="fishSurf">Pêche en surf</option><option value="dive">Plongée</option></select></label></div>
+        <div class="embedded-avatar-previews"><article><canvas width="150" height="150"></canvas><strong>Overworld</strong><small data-avatar-context-detail></small></article>
+        <article><img data-avatar-front alt="Face du Dresseur"><strong>Face</strong></article>
+        <article><img data-avatar-back alt="Dos du Dresseur"><strong>Dos de combat</strong><small data-avatar-back-detail></small></article></div>
+        <div data-avatar-audit class="embedded-avatar-audit"></div>
+      </section></div>
+      <footer class="embedded-avatar-actions"><p class="embedded-avatar-note">Brouillon local jusqu’à application · l’aventure reste intacte.</p>
+        <button type="button" class="embedded-avatar-apply">Valider et revenir</button></footer></div>`;
     const name = this.root.querySelector<HTMLInputElement>("[data-avatar-name]")!; name.value = this.state.profile.displayName;
     const pronouns = this.root.querySelector<HTMLSelectElement>("[data-avatar-pronouns]")!; pronouns.value = this.state.profile.pronouns;
     const options = this.root.querySelector<HTMLElement>(".embedded-avatar-options")!;
@@ -93,15 +104,29 @@ export class AvatarLabView {
       select.value = this.state.profile.colors[key]; select.addEventListener("change", () => this.save({ ...this.state.profile,
         colors: { ...this.state.profile.colors, [key]: select.value } })); });
     const apply = this.root.querySelector<HTMLButtonElement>(".embedded-avatar-apply");
-    if (apply !== null) { apply.disabled = JSON.stringify(this.state) === JSON.stringify(this.activeState);
-      apply.addEventListener("click", () => { apply.disabled = true; apply.textContent = "Application…";
-        persistSessionPlayerAvatarSelection(sessionStorage, localStorage, this.state);
-        this.activeState = this.state;
-        void Promise.resolve(this.onApply(this.state)).then(() => { apply.textContent = "Profil appliqué"; })
-          .catch(() => { apply.disabled = false; apply.textContent = "Réessayer"; }); }); }
+    if (apply !== null) apply.addEventListener("click", () => {
+      if (JSON.stringify(this.state) === JSON.stringify(this.activeState)) { this.onClose(); return; }
+      apply.disabled = true;
+      apply.textContent = "Application…";
+      const selection = this.state;
+      void Promise.resolve().then(() => this.onApply(selection)).then(() => {
+        this.activeState = selection;
+        if (this.root.contains(apply)) apply.textContent = "Profil appliqué";
+      }).catch((error: unknown) => {
+        apply.disabled = false;
+        apply.textContent = "Réessayer";
+        const note = this.root.querySelector<HTMLElement>(".embedded-avatar-note");
+        if (note !== null) {
+          note.textContent = `Application impossible : ${error instanceof Error ? error.message : "erreur inconnue"}`;
+          note.title = note.textContent;
+        }
+      });
+    });
     this.root.querySelector<HTMLButtonElement>(".embedded-avatar-return")?.addEventListener("click", this.onClose);
     const context = this.root.querySelector<HTMLSelectElement>("[data-avatar-context]")!;
-    context.addEventListener("change", () => { void this.drawOverworld(record, context.value); }); void this.drawOverworld(record, context.value);
+    context.value = this.previewContext;
+    context.addEventListener("change", () => { this.previewContext = context.value;
+      void this.drawOverworld(record, context.value); }); void this.drawOverworld(record, context.value);
     const frontImage = this.root.querySelector<HTMLImageElement>("[data-avatar-front]");
     if (frontImage !== null) void this.renderBattlePreview(record, "battleFront", frontImage);
     const backImage = this.root.querySelector<HTMLImageElement>("[data-avatar-back]");
@@ -114,9 +139,11 @@ export class AvatarLabView {
   }
 
   private renderUnavailable(): void {
-    this.root.innerHTML = `<div class="embedded-avatar-editor"><h3>Personnalisation indisponible</h3><p data-avatar-load-status></p>
-      <div class="embedded-avatar-actions"><button type="button" class="embedded-avatar-return">Retour au jeu</button>
-      <button type="button" class="embedded-avatar-retry">Réessayer</button></div></div>`;
+    this.root.innerHTML = `<div class="embedded-avatar-shell"><header class="embedded-avatar-header"><div>
+      <small>POKÉMON Z</small><h1>Personnaliser le héros</h1></div>
+      <button type="button" class="embedded-avatar-return">Retour</button></header>
+      <section class="embedded-avatar-unavailable"><h2>Personnalisation indisponible</h2>
+      <p data-avatar-load-status></p><button type="button" class="embedded-avatar-retry">Réessayer</button></section></div>`;
     const status = this.root.querySelector<HTMLElement>("[data-avatar-load-status]");
     if (status !== null) status.textContent = this.loadError ?? "Chargement du catalogue des personnages…";
     this.root.querySelector<HTMLButtonElement>(".embedded-avatar-return")?.addEventListener("click", this.onClose);

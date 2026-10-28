@@ -61,10 +61,12 @@ export class SourceNewGameView {
     this.root.innerHTML = `<div class="source-new-game-card source-new-game-choices">
       <p class="eyebrow">AVANT LE DÉPART</p><h1>Préparez votre aventure</h1>
       <p class="source-new-game-lead">Ces décisions viennent du scénario source. Elles sont personnelles avant la création éventuelle d’une partie Coop.</p>
+      <div class="source-new-game-form">
       <label>Difficulté<select data-new-game="difficulty"><option value="classic">Classique</option><option value="challenging">Difficile</option><option value="heroic">Héroïque</option></select></label>
       <label>Mode d’aventure<select data-new-game="adventureMode"><option value="normal">Normal</option><option value="nuzlocke">Nuzlocke</option></select><small>Le choix est conservé ; les règles Nuzlocke encore non portées resteront sans effet jusqu’à leur implémentation.</small></label>
-      <label>Région des starters<select data-new-game="starterRegion"><option value="kalos">Kalos · recommandé</option><option value="kanto">Kanto</option><option value="johto">Johto</option><option value="hoenn">Hoenn</option><option value="sinnoh">Sinnoh</option><option value="unys">Unys</option><option value="alola">Alola</option><option value="galar">Galar</option><option value="paldea">Paldea</option></select></label>
+      <label>Région des starters<select data-new-game="starterRegion"><option value="kalos">Kalos · recommandé</option><option value="kanto">Kanto</option><option value="johto">Johto</option><option value="hoenn">Hoenn</option><option value="sinnoh">Sinnoh</option><option value="unys">Unys</option><option value="alola">Alola</option><option value="galar">Galar</option><option value="paldea">Paldea</option></select></label></div>
       <button type="button" class="source-new-game-profile" data-new-game-customize><span>Personnaliser le héros</span><strong>${escapeHtml(this.playerName)}</strong></button>
+      <p class="source-new-game-error" role="alert" hidden></p>
       <div class="source-new-game-actions"><button type="button" data-prologue-back>Relire le résumé</button><button type="button" class="primary" data-new-game-start>Commencer le voyage</button></div>
       <p class="source-new-game-note">La scène source reprend dans la calèche : recherche de Christian, choix du starter et combat contre Keunotor.</p></div>`;
     const difficulty = this.root.querySelector<HTMLSelectElement>('[data-new-game="difficulty"]')!;
@@ -90,9 +92,15 @@ export class SourceNewGameView {
       this.busy = true;
       const button = this.root.querySelector<HTMLButtonElement>("[data-new-game-start]");
       if (button !== null) { button.disabled = true; button.textContent = "Chargement de la calèche…"; }
-      void Promise.resolve(this.callbacks.onStart(this.choices)).catch(() => {
+      void Promise.resolve().then(() => this.callbacks.onStart(this.choices)).catch((error: unknown) => {
         this.busy = false;
         if (button !== null) { button.disabled = false; button.textContent = "Réessayer"; }
+        const status = this.root.querySelector<HTMLElement>(".source-new-game-error");
+        if (status !== null) {
+          status.textContent = `Démarrage impossible : ${error instanceof Error ? error.message : "erreur inconnue"}`;
+          status.title = status.textContent;
+          status.hidden = false;
+        }
       });
     });
   }

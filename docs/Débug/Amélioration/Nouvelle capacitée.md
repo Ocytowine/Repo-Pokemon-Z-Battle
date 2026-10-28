@@ -4,3 +4,5 @@ Quand un pokemon veut apprendre une nouvelle capacité, il doit pouvoir voir les
 catégorie, puissance, précision, PP et description de la nouvelle capacité ;
 le choix de remplacement affiche ces mêmes détails pour les quatre capacités
 connues. La validation visuelle sur téléphone reste à faire.
+
+Les capacités sont bien détaillées mais mal formatées au niveau des cadres et de l'écran.

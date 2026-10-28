@@ -64,8 +64,9 @@ import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./source-region-map.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
+import { SourceTitleScreen } from "./source-title-screen.js";
+import { SourceLaunchScreen } from "./source-launch-screen.js";
 import { isSourceAndroidUserAgent, SourceTouchControls } from "./source-touch-controls.js";
-import { SourceAndroidImmersion, type SourceLandscapeOrientation } from "./source-android-immersion.js";
 import { hideSourceAndroidSystemBars } from "./source-native-android.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceCompassView } from "./source-compass.js";
@@ -163,15 +164,18 @@ const STORED_SESSION_KEY = "pokemon-z-battle.overworld-session.v9";
 const ACTIVE_COOP_BATTLE_RECOVERY_KEY = "pokemon-z-battle.active-coop-battle.v1";
 const SOURCE_PENDING_CAPTURE_KEY = "pokemon-z-battle.pending-capture.v1";
 const activeSaveSlot = initializeSourceSaveSlots(localStorage);
+const SOURCE_LAUNCH_SELECTION_KEY = "pokemon-z-battle.launch-selection.v1";
 let sourceCloudStatus = "Connexion non vérifiée";
 let sourceCloudItems: readonly CloudSaveItem[] = [];
 let sourceCloudBusy = false;
 let sourceAndroidUpdate: SourceAndroidUpdate | null = null;
+let sourceAndroidUpdateNoticePending = false;
 let sourceAndroidUpdateStatus = sourceNativeAndroidMode ? "Vérification au démarrage…"
   : "Mises à jour disponibles dans l’APK Android.";
 let sourceAndroidUpdateChecking = false;
 function refreshAndroidUpdateMenu(): void {
   if (sourceScenes.menuOpen && sourceScenes.menuTab === "options") renderSourceMenu();
+  renderSourceLaunchScreen();
 }
 async function checkAvailableAndroidUpdate(showNotice: boolean): Promise<void> {
   if (sourceAndroidUpdateChecking) return;
@@ -189,7 +193,10 @@ async function checkAvailableAndroidUpdate(showNotice: boolean): Promise<void> {
           : result.state === "non-android" ? "Disponible dans l’APK Android."
             : "Vérification momentanément impossible. Réessaie plus tard.";
   refreshAndroidUpdateMenu();
-  if (showNotice && sourceAndroidUpdate !== null) showAndroidUpdateNotice(sourceAndroidUpdate);
+  if (showNotice && sourceAndroidUpdate !== null) {
+    if (sourceTitleScreen.open || sourceLaunchScreen.open) sourceAndroidUpdateNoticePending = true;
+    else showAndroidUpdateNotice(sourceAndroidUpdate);
+  }
 }
 function showAndroidUpdateNotice(update: SourceAndroidUpdate): void {
   document.querySelector(".source-android-update-notice")?.remove();
@@ -226,6 +233,7 @@ function reloadActivatedSourceSaveSlot(): void {
   location.reload();
 }
 function refreshCloudMenu(): void {
+  renderSourceLaunchScreen();
   if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") {
     renderSourceMenu();
     document.querySelector<HTMLElement>("#source-menu-content .source-save-cloud")
@@ -1106,29 +1114,86 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceTitleScreen = new SourceTitleScreen(requiredAppElement("source-title-screen"),
+  () => {
+    sourceLaunchScreen.show();
+    renderSourceLaunchScreen();
+    if (sourceAndroidUpdateNoticePending && sourceAndroidUpdate !== null) {
+      sourceAndroidUpdateNoticePending = false;
+      showAndroidUpdateNotice(sourceAndroidUpdate);
+    }
+  }, sourceAudioPreferences.music);
+const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-launch-screen"), localStorage, {
+  select: (slot, kind) => activateLaunchSelection(slot, kind),
+  newGame: (slot) => activateLaunchSelection(slot, "manual"),
+  cloudConnect: () => {
+    sourceCloudStatus = "Ouverture de la connexion…";
+    renderSourceLaunchScreen();
+    void openSourceCloudLogin((status) => { sourceCloudStatus = status; renderSourceLaunchScreen(); });
+  },
+  cloudSync: () => { void runCloudSync(true); },
+  cloudRecover: (slot, kind) => { void recoverLaunchCloudSave(slot, kind); },
+  cloudKeepLocal: (slot, kind) => { void keepLaunchLocalSave(slot, kind); },
+  checkUpdate: () => { void checkAvailableAndroidUpdate(false); },
+  downloadUpdate: () => { void downloadAndroidUpdate(); },
+  back: () => { sourceLaunchScreen.hide(); sourceTitleScreen.show(); },
+});
+function renderSourceLaunchScreen(): void {
+  if (sourceLaunchScreen?.open) sourceLaunchScreen.render(sourceCloudStatus, sourceCloudItems,
+    sourceAndroidUpdateStatus, sourceAndroidUpdate !== null, sourceCloudBusy);
+}
+function activateLaunchSelection(slot: SourceSaveSlotId, kind: "manual" | "auto"): void {
+  try {
+    activateSourceSaveSlot(localStorage, sessionStorage, slot, kind);
+    sessionStorage.setItem(SOURCE_LAUNCH_SELECTION_KEY, String(slot));
+    reloadActivatedSourceSaveSlot();
+  } catch (error) {
+    sourceCloudStatus = error instanceof Error ? error.message : "Impossible d'ouvrir cette partie.";
+    renderSourceLaunchScreen();
+  }
+}
+async function recoverLaunchCloudSave(slot: SourceSaveSlotId, kind: "manual" | "auto"): Promise<void> {
+  const local = loadSourceSaveSlot(localStorage, slot, kind);
+  const remote = sourceCloudItems.find((item) => item.slot === slot && item.kind === kind);
+  if (!confirm(`Récupérer la Partie ${slot} ${kind === "manual" ? "manuelle" : "automatique"} du cloud ?\nLocale : ${local ? new Date(local.savedAt).toLocaleString("fr-FR") : "aucune"}\nCloud : ${remote?.remoteAt ? new Date(remote.remoteAt).toLocaleString("fr-FR") : "inconnue"}\nLa version locale de cet emplacement sera remplacée.`)) return;
+  try {
+    const email = await cloudIdentity();
+    if (email === null || email !== linkedCloudEmail(localStorage)) throw new Error("Compte cloud différent ou déconnecté.");
+    await recoverCloudSave(localStorage, email, sourceCloudApi, slot, kind);
+    sourceCloudStatus = `Partie ${slot} récupérée. Choisis la sauvegarde pour jouer.`;
+    await runCloudSync(false, false);
+  } catch (error) {
+    sourceCloudStatus = error instanceof Error ? error.message : "Récupération impossible.";
+    renderSourceLaunchScreen();
+  }
+}
+async function keepLaunchLocalSave(slot: SourceSaveSlotId, kind: "manual" | "auto"): Promise<void> {
+  if (!confirm(`Envoyer la Partie ${slot} ${kind === "manual" ? "manuelle" : "automatique"} locale et remplacer la version cloud actuelle ?`)) return;
+  try {
+    const email = await cloudIdentity();
+    if (email === null || email !== linkedCloudEmail(localStorage)) throw new Error("Compte cloud différent ou déconnecté.");
+    await keepLocalCloudSave(localStorage, email, sourceCloudApi, slot, kind);
+    await runCloudSync(false, false);
+  } catch (error) {
+    sourceCloudStatus = error instanceof Error ? error.message : "Envoi impossible.";
+    renderSourceLaunchScreen();
+  }
+}
 const sourceTouchControls = new SourceTouchControls({
   onDirection: (direction) => {
-    if (!sourceDocumentInputActive && direction !== null) return;
+    if ((!sourceDocumentInputActive || sourceLaunchScreen.open) && direction !== null) return;
     touchMovementDirection = direction;
     if (direction !== null) move("player", direction);
   },
-  onInteract: () => { if (sourceDocumentInputActive) interact("player"); },
-  onCancel: () => { if (sourceDocumentInputActive) handleSourceCancelInput(); },
+  onInteract: () => { if (sourceDocumentInputActive && !sourceLaunchScreen.open) interact("player"); },
+  onCancel: () => { if (sourceDocumentInputActive && !sourceLaunchScreen.open) handleSourceCancelInput(); },
   onMenu: () => {
-    if (sourceDocumentInputActive && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) toggleSourceMenu();
+    if (sourceDocumentInputActive && !sourceLaunchScreen.open && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) toggleSourceMenu();
   },
   onSprint: (held) => { touchSprintHeld = sourceDocumentInputActive && held; },
 });
-const sourceAndroidImmersion = sourceAndroidMode
-  ? new SourceAndroidImmersion(document, document.documentElement,
-    (screen.orientation as ScreenOrientation & SourceLandscapeOrientation | undefined) ?? {})
-  : null;
-const requestSourceAndroidImmersionFromGesture = (): void => {
-  hideSourceNativeSystemBars();
-  sourceAndroidImmersion?.requestFromUserGesture();
-};
 requiredAppElement<HTMLElement>("app").addEventListener("pointerdown",
-  requestSourceAndroidImmersionFromGesture, { capture: true });
+  hideSourceNativeSystemBars, { capture: true });
 const touchPortraitQuery = window.matchMedia("(orientation: portrait)");
 touchPortraitQuery.addEventListener("change", () => sourceTouchControls.release());
 const sourceLoadErrorRoot = requiredAppElement<HTMLElement>("source-load-error");
@@ -2324,7 +2389,8 @@ function sourceSaveContent(snapshot: SourceSaveSlotSnapshot): string {
 }
 
 function canAutoSaveSourceWorld(allowHidden = false): boolean {
-  if (sourceNewGameActive || importedAssets === null || document.hidden && !allowHidden) return false;
+  if (sourceTitleScreen.open || sourceLaunchScreen.open || sourceNewGameActive || importedAssets === null
+    || document.hidden && !allowHidden) return false;
   const activity = sourceSceneActivity();
   return !activity.dialogue && !activity.battle && !activity.transition && !activity.sequence && !activity.movement;
 }
@@ -3978,7 +4044,8 @@ async function applyActivePlayerProfile(selection: PlayerAvatarSelection): Promi
   multiplayer.updateProfile(activeNetworkPlayerProfile());
   sourceNewGameView.updatePlayerName(selection.profile.displayName);
   importedNotice = `Profil de ${selection.profile.displayName} appliqué au monde et aux combats.`;
-  render();
+  if (viewedMapId === AVATAR_LAB_MAP_ID) closePlayerCustomization();
+  else render();
 }
 
 function synchronizeSourceFollower(): void {
@@ -4154,6 +4221,7 @@ function render(): void {
   requiredAppElement("world-stage").hidden = avatarLabVisible;
   if (avatarLabVisible) {
     if (importedAnimationFrame !== null) { cancelAnimationFrame(importedAnimationFrame); importedAnimationFrame = null; }
+    sourceNewGameView.hide();
     avatarLabView.show();
     return;
   }
@@ -4683,6 +4751,8 @@ function handleSourceCancelInput(): boolean {
 
 window.addEventListener("keydown", (event) => {
   if (!sourceDocumentInputActive) return;
+  if (sourceTitleScreen.handleKeyDown(event)) return;
+  if (sourceLaunchScreen.open) { if (event.code !== "Tab") event.preventDefault(); return; }
   if (sourceMiningView.open) { event.preventDefault(); return; }
   if (event.code === "ShiftLeft" || event.code === "ShiftRight") keyboardSprintHeld = true;
   if (event.code === "Escape") {
@@ -4884,5 +4954,10 @@ function offerSourceAutoSaveRecovery(): void {
 }
 
 setInterval(() => saveAutomaticSourceWorld(), 120_000);
-offerSourceAutoSaveRecovery();
+const launchSelectionReady = sessionStorage.getItem(SOURCE_LAUNCH_SELECTION_KEY) === String(activeSaveSlot);
+sessionStorage.removeItem(SOURCE_LAUNCH_SELECTION_KEY);
+if (recoveringStoredCoopBattle) offerSourceAutoSaveRecovery();
+else if (launchSelectionReady) startInitialSourceSession();
+else { sourceNewGameView.hide(); sourceTitleScreen.show(); }
+requestAnimationFrame(() => document.getElementById("source-boot-splash")?.remove());
 if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableAndroidUpdate(true); }, 8_000);

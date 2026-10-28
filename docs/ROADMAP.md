@@ -994,6 +994,15 @@ la recette interactive du parcours complet reste a effectuer sur les assets loca
 
 ### Increment 9.7 - Boucle de jeu et mise en scene
 
+Écran titre, premier lot du patch suivant : la variante active de la v2.12 FR
+(`GenTwoStyle`, logo et effets, fond local `armaTituloZ.png`) est présentée au
+lancement sur une surface responsive de taille menu, indépendante du cadre
+overworld 4:3. Le bouton
+Commencer reprend le démarrage existant ; la reprise d'un combat Coop interrompu
+conserve son démarrage direct. Le choix de partie et l'état de mise à jour sur
+cet écran restent les lots suivants. Validation visuelle sur APK Android encore
+ouverte.
+
 Finition des fiches Android du 2026-10-27 : le Resume Pokemon reserve la place
 du sprite et separe ses libelles d'etat et de forme. Le Pokedex dispose d'une
 troisieme page Statistiques avec les six valeurs de base, talents et evolutions ;
@@ -3429,3 +3438,47 @@ avec les capacités restent dans le suivi des fonctions d'attaque.
 - [x] sauvegarder la clé hors du PC, publier la première APK privée sur R2,
   migrer le Samsung de la clé debug à la clé de diffusion, puis vérifier une
   mise à jour de diffusion vers la suivante sans perte de données.
+
+### Premier patch : choix de partie après le titre — 2026-10-28
+
+- [x] afficher les deux parties après l'écran titre, avec reprise explicite de
+  chaque sauvegarde manuelle ou automatique et création dans un emplacement vide ;
+- [x] rendre accessibles la connexion et la synchronisation cloud, les conflits
+  à résoudre et la vérification ou le téléchargement de l'APK ;
+- [x] recharger le snapshot choisi avant d'ouvrir le monde, sans autosauvegarde
+  de la scène précédente pendant le changement de partie ;
+- [ ] vérifier sur l'APK Android les deux parties, la reprise automatique, la
+  récupération cloud, les mises à jour et le retour d'un combat Coop actif.
+
+Autorité : joueur local pour le choix et le cloud personnel ; la room n'est
+rejointe qu'après chargement du même état de jeu en solo, hôte ou invité.
+L'écran est visuel et transitoire ; seul le choix de snapshot est conservé le
+temps du rechargement. Aucune sauvegarde personnelle n'est répliquée aux autres
+joueurs. La reconnexion d'un combat Coop en cours contourne ce parcours.
+
+### Suite du premier patch : refonte de la préparation de l'aventure
+
+Préparation visuelle du 2026-10-28 : choix de partie, prologue et écran de
+préparation utilisent le viewport du menu sans défilement. Les règles et le
+contenu du parcours de création restent à refondre dans ce lot.
+
+- [x] aligner la personnalisation du héros sur le menu des sauvegardes :
+  palette bleue et or, surface plein écran, réglages et aperçus côte à côte,
+  sans défilement en paysage Android ;
+- [x] afficher un chargement pendant la reprise de la page après création
+  d'emplacement, puis revenir aux choix de préparation après validation du
+  personnage ; rendre une erreur d'application visible et supprimer la demande
+  de plein écran Web inutile dans l'APK ;
+
+- [ ] reprendre, après le choix d'un emplacement vide, le parcours actuel de
+  prologue, identité et apparence du joueur, mode d'aventure et difficulté ;
+- [ ] rendre les étapes, les retours et la validation finale lisibles sur le
+  format paysage Android, en conservant les choix déjà persistés ;
+- [ ] définir une seule règle de création de partie utilisable en solo, comme
+  hôte et comme invité Coop : autorité des choix personnels, état persistant,
+  reprise après fermeture et reconnexion, données minimales présentées aux
+  autres joueurs ;
+- [ ] valider le parcours complet sur Android avant de déclarer le lot terminé.
+
+Cette refonte est le lot suivant : le choix de partie conduit encore au
+parcours de préparation existant.

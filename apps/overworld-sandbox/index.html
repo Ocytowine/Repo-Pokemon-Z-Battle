@@ -4,10 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#091711">
+    <style>
+      html, body { margin: 0; background: #09172b; }
+      #source-boot-splash { position: fixed; z-index: 9999; inset: 0; display: grid; place-content: center;
+        gap: 8px; color: #fff4d7; background: radial-gradient(circle at 50% 35%, #23476d, #09172b 72%);
+        text-align: center; font: 700 14px system-ui, sans-serif; }
+      #source-boot-splash strong { color: #ffe5a3; font-size: 25px; }
+      #source-boot-splash span { color: #c8d8e5; font-size: 12px; }
+    </style>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="/__pokemon-z/source/Graphics/Titles/armaTituloZ.jpg" as="image" fetchpriority="high">
     <title>Pokemon Z-Battle — Overworld Sandbox</title>
   </head>
   <body>
+    <div id="source-boot-splash" role="status"><strong>Pokémon Z</strong><span>Chargement de l’aventure…</span></div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
