@@ -143,3 +143,23 @@ lien permanent `/api/updates/download/latest`. Il résout le manifeste actuel et
 sert l'APK en flux avec le nom de fichier de sa version. Le test automatisé
 vérifie le contenu servi et l'exigence d'une identité Access ; un appel sans
 session au lien en ligne renvoie vers la connexion Cloudflare Access.
+
+## Patch 0.1.2 publié depuis le nouveau PC — 2026-10-29
+
+Le `versionCode 3` est construit et signé avec le certificat de diffusion
+existant. Son APK et son manifeste sont dans
+`apps/overworld-sandbox/android/app/build/outputs/apk/release/` :
+870 494 872 octets, SHA-256
+`5dba069157d62238b171a34053ffbc47fe8919790621888fb128dbd5c04cfc50`.
+Pour compiler sur ce PC, utiliser un JDK 21 dans `JAVA_HOME` ; le JBR 25
+d'Android Studio ne satisfait pas le module Capacitor qui demande Java 21.
+Le JDK 21 portable local se trouve dans
+`%LOCALAPPDATA%\Programs\Temurin21\jdk-21.0.12.1+1`.
+
+Le nouveau jeton R2 est configuré dans
+`%APPDATA%\rclone\rclone.conf`, hors dépôt. `pokemon-z-battle-3.apk` a été
+envoyé dans le bucket privé et sa taille distante (870 494 872 octets) a été
+contrôlée avant l'envoi de `latest.json`. Une lecture R2 après publication
+confirme `versionCode 3`, la taille et le SHA-256 du manifeste. Aucun téléphone
+n'est connecté en ADB pour vérifier l'installation par-dessus 0.1.1 et la
+conservation des sauvegardes. Cette recette reste ouverte.

@@ -1,1 +1,1 @@
-Première mise à jour privée. Elle conserve la partie et améliore la récupération des sauvegardes cloud.
+Premier patch aventure : écran titre, choix des deux parties et accès au cloud. Prologue et personnalisation adaptés au paysage. Chargement et validation du personnage corrigés. Les sauvegardes sont conservées.

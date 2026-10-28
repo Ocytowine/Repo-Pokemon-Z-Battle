@@ -36,7 +36,7 @@ niveau 15 vers 17 ajoute. La sauvegarde personnelle deja affectee doit etre
 restauree separement, sans migration globale qui reproposerait des capacites
 volontairement refusees.
 
-Derniere mise a jour : 2026-10-27.
+Derniere mise a jour : 2026-10-29.
 
 Les vérifications à effectuer par le porteur après les derniers lots de
 fonctions d'attaque sont regroupées dans
@@ -8964,3 +8964,28 @@ il provoquait sur Chrome en mode téléphone une erreur de geste utilisateur
 sans rapport avec le chargement du profil. Le rappel de masquage des barres
 natives reste actif. Parcours navigateur contrôlé jusqu'à l'ouverture du monde ;
 validation sur APK réelle encore ouverte.
+
+## Patch Android 0.1.2 publié — 2026-10-29
+
+Le premier patch rassemble l'écran titre `armaTituloZ`, le choix des deux
+parties et des sauvegardes, l'accès au cloud et au contrôle de version, les
+écrans de préparation adaptés au paysage, ainsi que les correctifs de chargement
+et de validation du personnage. `android-version.json` passe à `versionCode 3`
+et `versionName 0.1.2` avec le même certificat de diffusion que 0.1.1. L'APK
+signée est construite localement et le manifeste `latest.json` est prêt :
+870 494 872 octets, SHA-256
+`5dba069157d62238b171a34053ffbc47fe8919790621888fb128dbd5c04cfc50`.
+Le script de diffusion et le contrôle de manifeste lancent Java directement,
+ce qui accepte le chemin du dépôt contenant des espaces. Sur le nouveau PC,
+le JDK 21 portable est installé dans le profil utilisateur pour les modules
+Capacitor ; le JBR 25 d'Android Studio ne suffit pas à leur compilation.
+
+`corepack pnpm test` et `corepack pnpm build` passent. Un nouveau jeton R2
+limité au bucket privé a été configuré localement, hors dépôt. L'APK a été
+envoyée sous `updates/android/pokemon-z-battle-3.apk` ; sa taille distante
+est de 870 494 872 octets, identique au manifeste. `latest.json` a ensuite
+été publié et relu depuis R2 : version 0.1.2, code 3, taille et SHA-256
+attendus. Aucun téléphone n'est connecté en ADB pour la recette sur appareil.
+Le choix de partie, le cloud, la reprise Coop et le parcours de préparation
+restent à valider dans l'APK réelle ; aucune règle de jeu ni contrat réseau
+nouveau n'est introduit par cette diffusion.

@@ -30,9 +30,11 @@ const env = { ...process.env, JAVA_HOME: javaHome,
   PZB_RELEASE_STORE_PASSWORD: credentials.password,
   PZB_RELEASE_KEY_ALIAS: credentials.alias,
   PZB_RELEASE_KEY_PASSWORD: credentials.password };
-const gradle = path.join(androidDirectory, windows ? "gradlew.bat" : "gradlew");
-const built = spawnSync(gradle, ["assembleRelease"], { cwd: androidDirectory, env,
-  shell: windows, stdio: "inherit" });
+const java = path.join(javaHome, "bin", javaBinary);
+const wrapper = path.join(androidDirectory, "gradle", "wrapper", "gradle-wrapper.jar");
+if (!existsSync(wrapper)) throw new Error("Gradle Wrapper introuvable.");
+const built = spawnSync(java, ["-cp", wrapper, "org.gradle.wrapper.GradleWrapperMain", "assembleRelease"],
+  { cwd: androidDirectory, env, stdio: "inherit" });
 if (built.error) throw built.error;
 if (built.status !== 0) process.exit(built.status ?? 1);
 
@@ -43,10 +45,10 @@ const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT
 const toolsDirectory = path.join(sdk, "build-tools");
 const versions = readdirSync(toolsDirectory).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
 const apksigner = versions.map((version) => path.join(toolsDirectory, version,
-  windows ? "apksigner.bat" : "apksigner")).find(existsSync);
+  "lib", "apksigner.jar")).find(existsSync);
 if (!apksigner) throw new Error("apksigner introuvable : signature non vérifiée.");
-const checked = spawnSync(apksigner, ["verify", "--print-certs", apk],
-  { cwd: androidDirectory, env, shell: windows, encoding: "utf8" });
+const checked = spawnSync(java, ["-jar", apksigner, "verify", "--print-certs", apk],
+  { cwd: androidDirectory, env, encoding: "utf8" });
 if (checked.error || checked.status !== 0) {
   throw checked.error ?? new Error("La signature de l'APK est invalide.");
 }

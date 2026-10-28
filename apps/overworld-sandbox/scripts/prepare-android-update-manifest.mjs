@@ -17,7 +17,8 @@ const buildTools = path.join(sdk, "build-tools");
 const tools = (name) => readdirSync(buildTools).sort((a, b) => b.localeCompare(a, undefined,
   { numeric: true })).map((version) => path.join(buildTools, version, name)).find(existsSync);
 const aapt = tools(windows ? "aapt.exe" : "aapt");
-const apksigner = tools(windows ? "apksigner.bat" : "apksigner");
+const apksigner = readdirSync(buildTools).sort((a, b) => b.localeCompare(a, undefined,
+  { numeric: true })).map((version) => path.join(buildTools, version, "lib", "apksigner.jar")).find(existsSync);
 if (!aapt || !apksigner) throw new Error("Outils Android de validation introuvables.");
 const javaHome = [process.env.JAVA_HOME,
   windows ? "C:\\Program Files\\Android\\Android Studio\\jbr" : undefined]
@@ -31,8 +32,9 @@ if (packageInfo.status !== 0 || expectedPackage?.[1] !== "fr.ocytowine.pokemonzb
   || expectedPackage[3] !== androidVersion.versionName) {
   throw new Error("Le nom de paquet ou la version de l'APK ne correspond pas au manifeste demandé.");
 }
-const signature = spawnSync(apksigner, ["verify", "--print-certs", apk],
-  { encoding: "utf8", shell: windows, env: { ...process.env, JAVA_HOME: javaHome } });
+const signature = spawnSync(path.join(javaHome, "bin", windows ? "java.exe" : "java"),
+  ["-jar", apksigner, "verify", "--print-certs", apk],
+  { encoding: "utf8", env: { ...process.env, JAVA_HOME: javaHome } });
 const fingerprint = /Signer #1 certificate SHA-256 digest:\s*([a-f0-9]{64})/i.exec(signature.stdout)?.[1];
 if (signature.status !== 0 || fingerprint?.toLowerCase() !== androidVersion.signingCertificateSha256) {
   throw new Error("Le certificat de diffusion de l'APK ne correspond pas à celui du projet.");

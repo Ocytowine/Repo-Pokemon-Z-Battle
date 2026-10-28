@@ -3450,6 +3450,12 @@ avec les capacités restent dans le suivi des fonctions d'attaque.
 - [ ] vérifier sur l'APK Android les deux parties, la reprise automatique, la
   récupération cloud, les mises à jour et le retour d'un combat Coop actif.
 
+Patch 0.1.2 (`versionCode 3`) construit et signé le 2026-10-28 avec ces écrans
+et les correctifs de chargement/personnalisation. L'APK puis le manifeste ont
+été publiés sur R2 le 2026-10-29, avec taille distante contrôlée. Tester ensuite
+sur Android l'installation par-dessus 0.1.1, la conservation des sauvegardes et
+les parcours ci-dessus avant de cocher la validation réelle.
+
 Autorité : joueur local pour le choix et le cloud personnel ; la room n'est
 rejointe qu'après chargement du même état de jeu en solo, hôte ou invité.
 L'écran est visuel et transitoire ; seul le choix de snapshot est conservé le
