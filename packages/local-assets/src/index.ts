@@ -271,6 +271,24 @@ export function buildBattleScenes(manifest: AssetManifest): readonly BattleScene
   })).sort((left, right) => Number(right.complete) - Number(left.complete) || left.name.localeCompare(right.name, "fr"));
 }
 
+/** A wide `battlebg<Name>Z` can reuse the original scene's bases without duplicating assets. */
+export function selectBattleSceneVisuals(scenes: readonly BattleScene[], requestedId: string): {
+  readonly scene: BattleScene | null;
+  readonly background: AssetManifestEntry | null;
+  readonly wide: boolean;
+} {
+  const requested = requestedId.toLocaleLowerCase("fr");
+  const baseId = requested.endsWith("z") ? requested.slice(0, -1) : requested;
+  const scene = scenes.find((candidate) => candidate.id === requested && candidate.complete)
+    ?? scenes.find((candidate) => candidate.id === baseId && candidate.complete)
+    ?? scenes.find((candidate) => candidate.complete) ?? scenes[0] ?? null;
+  const wideVariant = scene === null ? null : scenes.find((candidate) => candidate.id === `${scene.id}z`
+    && candidate.background?.image !== null && candidate.background?.image !== undefined
+    && candidate.background.image.height > 0
+    && candidate.background.image.width / candidate.background.image.height >= 1.8);
+  return { scene, background: wideVariant?.background ?? scene?.background ?? null, wide: wideVariant !== null && wideVariant !== undefined };
+}
+
 export function findPokemonRecord(manifest: PokemonAssetsManifest, id: number): PokemonAssetRecord | undefined {
   return manifest.records.find((record) => record.id === id);
 }

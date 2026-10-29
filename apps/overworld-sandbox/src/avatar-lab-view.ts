@@ -57,6 +57,12 @@ export class AvatarLabView {
   public show(): void { this.root.hidden = false; this.render(); }
   public hide(): void { this.root.hidden = true; this.overworldAnimationSession += 1; }
 
+  public prepareNewGame(selection: PlayerAvatarSelection): void {
+    this.activeState = selection;
+    this.state = selection;
+    persistPlayerAvatarSelection(localStorage, AVATAR_LAB_STORAGE_KEY, selection);
+  }
+
   private save(profile: PlayerProfile = this.state.profile): void {
     this.state = { ...this.state, profile: parsePlayerProfile(profile) };
     persistPlayerAvatarSelection(localStorage, AVATAR_LAB_STORAGE_KEY, this.state); this.render();

@@ -163,3 +163,16 @@ contrôlée avant l'envoi de `latest.json`. Une lecture R2 après publication
 confirme `versionCode 3`, la taille et le SHA-256 du manifeste. Aucun téléphone
 n'est connecté en ADB pour vérifier l'installation par-dessus 0.1.1 et la
 conservation des sauvegardes. Cette recette reste ouverte.
+
+## Patch 0.1.3 — 2026-10-29
+
+La préparation de l'aventure est découpée en quatre étapes et chaque partie vide
+conserve son brouillon local. L'APK `versionCode 4` est signée avec le certificat
+de diffusion existant et publiée sur R2 sous
+`updates/android/pokemon-z-battle-4.apk`. Sa taille distante contrôlée est de
+870 496 552 octets ; le SHA-256 du manifeste est
+`03cc515b9f8462b0c304e55c044990521d99d2359338bca16b43bd8609ccd0a7`.
+`latest.json` a été envoyé en dernier puis relu depuis R2 : il annonce 0.1.3
+avec la taille et l'empreinte attendues. Le téléphone n'était pas connecté en
+ADB. Tester l'installation par-dessus 0.1.2, les sauvegardes et le parcours
+complet sur Android avant de clore le lot.

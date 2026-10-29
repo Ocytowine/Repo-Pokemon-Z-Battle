@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildBattleScenes, createHttpDirectoryHandle, fileFromLocalPath, resolvePokemonAsset,
+import { buildBattleScenes, createHttpDirectoryHandle, fileFromLocalPath, resolvePokemonAsset, selectBattleSceneVisuals,
   resolvePokemonSummaryAssets, selectBattler, type AssetManifest, type PokemonAssetRecord } from "../src/index.js";
 
 describe("local asset helpers", () => {
@@ -7,6 +7,24 @@ describe("local asset helpers", () => {
     const entry = (path: string) => ({ path: `Graphics/Battlebacks/${path}.png`, category: "graphics/battlebacks", mediaType: "image" as const, image: null });
     const manifest: AssetManifest = { schemaVersion: "1", records: [entry("battlebgField"), entry("playerbaseField"), entry("enemybaseField"), entry("battlebgCave")] };
     expect(buildBattleScenes(manifest).map((scene) => [scene.id, scene.complete])).toEqual([["field", true], ["cave", false]]);
+  });
+
+  it("uses a wide Z background with the complete base scene's original bases", () => {
+    const entry = (path: string, width: number, height: number) => ({ path: `Graphics/Battlebacks/${path}.png`,
+      category: "graphics/battlebacks", mediaType: "image" as const,
+      image: { width, height, animation: null } });
+    const scenes = buildBattleScenes({ schemaVersion: "1", records: [
+      entry("battlebgBosque", 512, 384), entry("playerbaseBosque", 512, 384), entry("enemybaseBosque", 512, 384),
+      entry("battlebgBosqueZ", 2400, 1080),
+      entry("battlebgPradera", 512, 384), entry("playerbasePradera", 512, 384), entry("enemybasePradera", 512, 384),
+      entry("battlebgPraderaZ", 2400, 1080),
+    ] });
+    expect(selectBattleSceneVisuals(scenes, "Bosque")).toMatchObject({ scene: { id: "bosque", complete: true },
+      background: { path: "Graphics/Battlebacks/battlebgBosqueZ.png" }, wide: true });
+    expect(selectBattleSceneVisuals(scenes, "BosqueZ").scene?.playerBase?.path)
+      .toBe("Graphics/Battlebacks/playerbaseBosque.png");
+    expect(selectBattleSceneVisuals(scenes, "Pradera")).toMatchObject({ scene: { id: "pradera", complete: true },
+      background: { path: "Graphics/Battlebacks/battlebgPraderaZ.png" }, wide: true });
   });
 
   it("selects the neutral requested battler first", () => {

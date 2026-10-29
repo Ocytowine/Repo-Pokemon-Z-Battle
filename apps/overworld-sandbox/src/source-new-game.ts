@@ -1,9 +1,12 @@
 import type { SourceEventState } from "./source-event-state.js";
 import { SOURCE_WORLD_SAVE_KEY } from "./source-world-save.js";
+import { parsePlayerAvatarSelection, type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 
 export const SOURCE_EVENT_STATE_STORAGE_KEY = "pokemon-z-battle.source-event-state.v1";
 export const SOURCE_NEW_GAME_STORAGE_KEY = "pokemon-z-battle.source-new-game.v1";
 export const SOURCE_NEW_GAME_SCHEMA_VERSION = 1 as const;
+export const SOURCE_NEW_GAME_DRAFT_SCHEMA_VERSION = 1 as const;
+const SOURCE_NEW_GAME_DRAFT_PREFIX = "pokemon-z-battle.source-new-game-draft.v1";
 
 export type SourceDifficulty = "classic" | "challenging" | "heroic";
 export type SourceAdventureMode = "normal" | "nuzlocke";
@@ -18,6 +21,15 @@ export interface SourceNewGameChoices {
 export interface SourceNewGameSetup extends SourceNewGameChoices {
   readonly schemaVersion: typeof SOURCE_NEW_GAME_SCHEMA_VERSION;
   readonly completed: true;
+}
+
+export type SourceNewGameStep = "story" | "identity" | "settings" | "review";
+export interface SourceNewGameDraft {
+  readonly schemaVersion: typeof SOURCE_NEW_GAME_DRAFT_SCHEMA_VERSION;
+  readonly step: SourceNewGameStep;
+  readonly storyBeat: number;
+  readonly choices: SourceNewGameChoices;
+  readonly player: PlayerAvatarSelection | null;
 }
 
 export const DEFAULT_SOURCE_NEW_GAME_CHOICES: SourceNewGameChoices = Object.freeze({
@@ -42,6 +54,36 @@ const STARTER_REGION_SWITCHES: Readonly<Record<SourceStarterRegion, string>> = O
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function sourceNewGameDraftKey(slot: 1 | 2): string {
+  return `${SOURCE_NEW_GAME_DRAFT_PREFIX}.${slot}`;
+}
+
+export function parseSourceNewGameDraft(value: unknown): SourceNewGameDraft {
+  if (!record(value) || value.schemaVersion !== SOURCE_NEW_GAME_DRAFT_SCHEMA_VERSION
+    || !["story", "identity", "settings", "review"].includes(String(value.step))
+    || !Number.isInteger(value.storyBeat) || (value.storyBeat as number) < 0
+    || (value.storyBeat as number) > 2) throw new Error("Brouillon de nouvelle partie invalide.");
+  return { schemaVersion: SOURCE_NEW_GAME_DRAFT_SCHEMA_VERSION, step: value.step as SourceNewGameStep,
+    storyBeat: value.storyBeat as number, choices: parseSourceNewGameChoices(value.choices),
+    player: value.player === null ? null : parsePlayerAvatarSelection(value.player) };
+}
+
+export function loadSourceNewGameDraft(storage: Pick<Storage, "getItem">, slot: 1 | 2): SourceNewGameDraft | null {
+  const raw = storage.getItem(sourceNewGameDraftKey(slot));
+  if (raw === null) return null;
+  try { return parseSourceNewGameDraft(JSON.parse(raw) as unknown); }
+  catch { return null; }
+}
+
+export function persistSourceNewGameDraft(storage: Pick<Storage, "setItem">, slot: 1 | 2,
+  draft: SourceNewGameDraft): void {
+  storage.setItem(sourceNewGameDraftKey(slot), JSON.stringify(parseSourceNewGameDraft(draft)));
+}
+
+export function clearSourceNewGameDraft(storage: Pick<Storage, "removeItem">, slot: 1 | 2): void {
+  storage.removeItem(sourceNewGameDraftKey(slot));
 }
 
 export function parseSourceNewGameChoices(value: unknown): SourceNewGameChoices {

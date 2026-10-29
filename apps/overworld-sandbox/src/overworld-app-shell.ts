@@ -44,12 +44,11 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <button data-source-menu-tab="options"><img data-source-menu-icon data-icon-inactive="optionsA" data-icon-active="optionsB" src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/optionsA.png" alt=""><span>Options</span></button>
             </nav><div id="source-menu-content" class="source-menu-content"></div></div>
           </section>
-          <section id="encounter-panel" class="encounter-panel source-battle-overlay" hidden aria-label="Combat en cours">
+          <section id="encounter-panel" class="encounter-panel source-battle-overlay battle-ui-unified" hidden aria-label="Combat en cours">
             <div id="source-battle-stage" class="source-battle-stage incomplete-scene" hidden>
-              <img id="source-battle-background" class="source-battle-background" alt="" hidden><div class="source-stage-wash"></div>
+              <img id="source-battle-background" class="source-battle-background" alt="" hidden><div id="source-stage-wash" class="source-stage-wash"></div>
               <img id="source-enemy-base" class="source-battle-base source-enemy-base" alt="" hidden><img id="source-player-base" class="source-battle-base source-player-base" alt="" hidden>
               <div id="source-effects-back" class="source-animation-layer source-effects-back" aria-hidden="true"></div>
-              <div id="source-sendout-flash" class="source-sendout-flash" aria-hidden="true"></div>
               <img id="source-opponent-trainer" class="source-intro-trainer source-opponent-trainer" alt="" hidden>
               <img id="source-opponent-trainer-2" class="source-intro-trainer source-opponent-trainer source-intro-trainer-2" alt="" hidden>
               <div id="source-opponent-sprite" class="source-battle-sprite source-opponent-sprite sprite-fallback">?</div>
@@ -67,8 +66,7 @@ export function mountOverworldApp(): HTMLCanvasElement {
               <div id="source-battle-message" class="source-battle-message" role="status" aria-live="polite" tabindex="0">Un Pokémon sauvage apparaît !</div>
               <div id="source-battle-curtain" class="source-battle-curtain" aria-hidden="true"></div>
             </div>
-            <div class="encounter-overlay-heading"><h2 id="encounter-title">Combat</h2><span id="encounter-turn">Tour 1</span></div>
-            <p id="encounter-summary" class="network-notice"></p><div id="encounter-actions" class="encounter-actions"></div>
+            <div id="encounter-actions" class="encounter-actions"></div>
           </section>
         </div>
       </section>
@@ -77,6 +75,20 @@ export function mountOverworldApp(): HTMLCanvasElement {
         <section id="engine-panel" class="panel"><div class="log-heading"><div><p class="eyebrow">Moteur</p><h2>Événements</h2></div><span id="tick">0,0</span></div><div id="progress" class="progress"></div><div id="events" class="events">Chargement du monde…</div></section>
       </aside>
     </main>`;
+  const battleOverlay = requiredAppElement<HTMLElement>("encounter-panel");
+  const battleStage = requiredAppElement<HTMLElement>("source-battle-stage");
+  for (const id of ["source-battle-background", "source-stage-wash", "source-opponent-hud-2", "source-player-hud-2",
+    "source-battle-message", "source-battle-curtain"]) battleOverlay.insertBefore(requiredAppElement(id), battleStage);
+  const sendOutFlash = document.createElement("div");
+  sendOutFlash.id = "source-sendout-flash";
+  sendOutFlash.className = "source-sendout-flash";
+  sendOutFlash.setAttribute("aria-hidden", "true");
+  battleOverlay.insertBefore(sendOutFlash, battleStage);
+  for (const selector of [".source-opponent-hud:not(.source-battle-hud-2)",
+    ".source-player-hud:not(.source-battle-hud-2)"]) {
+    const hud = battleStage.querySelector<HTMLElement>(selector);
+    if (hud !== null) battleOverlay.insertBefore(hud, battleStage);
+  }
   const shortcutBar = document.createElement("nav");
   shortcutBar.id = "source-field-shortcuts";
   shortcutBar.className = "source-field-shortcuts";

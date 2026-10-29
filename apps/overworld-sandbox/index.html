@@ -11,14 +11,26 @@
         text-align: center; font: 700 14px system-ui, sans-serif; }
       #source-boot-splash strong { color: #ffe5a3; font-size: 25px; }
       #source-boot-splash span { color: #c8d8e5; font-size: 12px; }
+      #source-boot-retry { margin: 10px auto 0; padding: 9px 16px; border: 1px solid #ffe5a3;
+        border-radius: 8px; color: #09172b; background: #ffe5a3; cursor: pointer; font-weight: 800; }
     </style>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-    <link rel="preload" href="/__pokemon-z/source/Graphics/Titles/armaTituloZ.jpg" as="image" fetchpriority="high">
     <title>Pokemon Z-Battle — Overworld Sandbox</title>
   </head>
   <body>
-    <div id="source-boot-splash" role="status"><strong>Pokémon Z</strong><span>Chargement de l’aventure…</span></div>
+    <div id="source-boot-splash" role="status"><strong>Pokémon Z</strong><span>Chargement de l’aventure…</span>
+      <button id="source-boot-retry" type="button" hidden>Réessayer</button></div>
     <div id="app"></div>
+    <script>
+      window.setTimeout(() => {
+        const splash = document.getElementById("source-boot-splash");
+        if (splash === null) return;
+        splash.querySelector("span").textContent = "Le chargement prend trop de temps. Vérifiez que le serveur local fonctionne, puis réessayez.";
+        const retry = document.getElementById("source-boot-retry");
+        retry.hidden = false;
+        retry.addEventListener("click", () => location.reload(), { once: true });
+      }, 20000);
+    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

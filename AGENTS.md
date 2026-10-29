@@ -15,6 +15,15 @@ du projet.
 - Avant livraison, executer au minimum `corepack pnpm test` et
   `corepack pnpm build`.
 
+## Regle de distribution des ressources du jeu
+
+Avant de changer la copie Android de `Graphics` ou `Audio`, les fonds de combat
+ou les mises a jour de ressources, consulter `docs/ASSET_DISTRIBUTION.md` et y
+tenir le registre des decisions. Un asset absent du portage actuel ne peut pas
+etre exclu sur ce seul motif. Separer les donnees de l'APK est possible sans
+supprimer de ressources ; toute exclusion demande la preuve source et les tests
+prevus par ce document. Ne jamais versionner les fichiers du jeu ou les packs.
+
 ## Regle d'architecture solo et multijoueur
 
 Toute nouvelle mecanique de jeu doit etre concue une seule fois pour fonctionner

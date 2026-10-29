@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createSourceEventState } from "../src/source-event-state.js";
+import { createDefaultPlayerAvatarSelection } from "@pokemon-z-battle/player-state";
 import { applySourceNewGameAvatar, applySourceNewGameChoices, parseSourceNewGameSetup, persistSourceNewGameSetup,
-  sourceAdventureSaveExists, sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY,
+  clearSourceNewGameDraft, loadSourceNewGameDraft, persistSourceNewGameDraft, sourceAdventureSaveExists,
+  sourceNewGameDraftKey, sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY,
   SOURCE_NEW_GAME_STORAGE_KEY } from "../src/source-new-game.js";
 import { SOURCE_WORLD_SAVE_KEY } from "../src/source-world-save.js";
 
@@ -61,5 +63,20 @@ describe("source new game", () => {
     expect(sourceNewGameOpeningScenePending(target, { mapId: 2 }, {
       ...createSourceEventState(), switches: { "61": true },
     })).toBe(false);
+  });
+
+  it("keeps each unfinished adventure's step, choices and character in its own slot", () => {
+    const target = storage();
+    const player = { ...createDefaultPlayerAvatarSelection(), avatarId: "legacy-1" };
+    persistSourceNewGameDraft(target, 2, { schemaVersion: 1, step: "review", storyBeat: 2,
+      choices: { difficulty: "heroic", adventureMode: "nuzlocke", starterRegion: "johto" }, player });
+    expect(loadSourceNewGameDraft(target, 1)).toBeNull();
+    expect(loadSourceNewGameDraft(target, 2)).toMatchObject({ step: "review", storyBeat: 2,
+      choices: { difficulty: "heroic", starterRegion: "johto" }, player: { avatarId: "legacy-1" } });
+    expect(sourceAdventureSaveExists(target)).toBe(false);
+    target.setItem(sourceNewGameDraftKey(1), "{broken");
+    expect(loadSourceNewGameDraft(target, 1)).toBeNull();
+    clearSourceNewGameDraft(target, 2);
+    expect(loadSourceNewGameDraft(target, 2)).toBeNull();
   });
 });

@@ -7,7 +7,7 @@ import { loadSourceMovementTestOverride, persistSourceMovementTestOverride,
 describe("source player movement unlocks", () => {
   it("keeps progression requirements separate from the test override", () => {
     const initial = createSourceEventState();
-    expect(sourceMovementUnlocks(initial, false)).toMatchObject({ sprint: false, mount: false,
+    expect(sourceMovementUnlocks(initial, false)).toMatchObject({ sprint: true, mount: false,
       climb: false, surf: false, dive: false, waterfall: false, fly: false, testOverride: false });
     expect(sourceMovementUnlocks(initial, true)).toMatchObject({ sprint: true, mount: true,
       climb: true, surf: true, dive: true, waterfall: true, fly: true, testOverride: true });

@@ -1,4 +1,4 @@
-import { pokemonItemTargetMode, type BattlePosition, type BattleSide, type BattleTeam,
+import { pokemonItemTargetMode, type BattleMove, type BattlePosition, type BattleSide, type BattleTeam,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { SOURCE_BATTLE_BAG_PAGE_SIZE, sourceBagFamilyEntries, sourceBagNodes, sourceBagPage,
@@ -70,6 +70,12 @@ function hpPercent(hp: number, maximum: number): number {
   return Math.max(0, Math.min(100, Math.round((hp / Math.max(1, maximum)) * 100)));
 }
 
+function moveCategoryPresentation(category: BattleMove["category"]): { symbol: string; label: string } {
+  if (category === "Physical") return { symbol: "⚔", label: "Physique" };
+  if (category === "Special") return { symbol: "✦", label: "Spéciale" };
+  return { symbol: "◇", label: "Statut" };
+}
+
 export function sourceBattleReplacementSubmitted(state: TeamBattleState, submittedTurn: number | null,
   submittedActiveSlots: readonly number[], activeSlot: number,
   locallyPending: { readonly turn: number; readonly activeSlot: number } | null = null): boolean {
@@ -92,6 +98,7 @@ export class SourceBattleOverlay {
   private selectedBagFamilyId: string | null = null;
   private bagPage = 0;
   private pendingReplacement: { readonly turn: number; readonly activeSlot: number } | null = null;
+  private menuPrompt: string | null = null;
   private readonly megaEvolutionSelections = new Set<number>();
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {
@@ -110,6 +117,7 @@ export class SourceBattleOverlay {
       this.menu = "root";
       this.renderedTurn = null;
       this.pendingReplacement = null;
+      this.menuPrompt = null;
       this.megaEvolutionSelections.clear();
       return;
     }
@@ -136,14 +144,26 @@ export class SourceBattleOverlay {
     const player = playerTeam.members[playerTeam.activeIndex];
     const opponent = opponentTeam.members[opponentTeam.activeIndex];
     if (player === undefined || opponent === undefined) return;
-    const title = document.querySelector<HTMLElement>("#encounter-title");
-    if (title !== null) title.textContent = `${player.name} contre ${opponent.name}`;
-    const turn = document.querySelector<HTMLElement>("#encounter-turn");
-    if (turn !== null) turn.textContent = `Tour ${model.state.turn}`;
-    const summary = document.querySelector<HTMLElement>("#encounter-summary");
-    if (summary !== null) summary.textContent = sourceBattleSummary(model.state,
-      !model.local && model.networkSide === null);
     this.renderActions(model, playerTeam);
+    this.syncMenuPrompt(panel, model);
+  }
+
+  private syncMenuPrompt(panel: HTMLElement, model: SourceBattleOverlayModel): void {
+    const message = panel.querySelector<HTMLElement>("#source-battle-message");
+    if (message === null) return;
+    const heading = !model.animating && model.joinPause === null
+      ? panel.querySelector<HTMLElement>("#encounter-actions .source-battle-submenu > header > div") : null;
+    const prompt = heading === null ? null : [heading.querySelector("small")?.textContent,
+      heading.querySelector("strong")?.textContent].filter(Boolean).join(" · ");
+    if (prompt !== null && prompt.length > 0) {
+      message.textContent = prompt;
+      this.menuPrompt = prompt;
+    } else {
+      if (this.menuPrompt !== null && message.textContent === this.menuPrompt) {
+        message.textContent = "Choisissez une action.";
+      }
+      this.menuPrompt = null;
+    }
   }
 
   private renderActions(model: SourceBattleOverlayModel, team: BattleTeam): void {
@@ -268,12 +288,17 @@ export class SourceBattleOverlay {
 
   private renderMoves(actions: HTMLElement, active: BattleTeam["members"][number],
     model: SourceBattleOverlayModel, blocked: boolean): void {
-    const megaOwner = model.state.megaEvolution?.owners[active.id] ?? (this.activeSlot === 0 ? "player" : active.id);
+    const megaOwner = model.state?.megaEvolution?.owners[active.id] ?? (this.activeSlot === 0 ? "player" : active.id);
     const megaAvailable = model.megaEvolutionEnabled && active.megaEvolution !== undefined
       && active.megaEvolution.activationAvailable && active.appearance?.form !== active.megaEvolution.form
-      && !model.state.megaEvolution?.usedOwnerIds.includes(megaOwner);
+      && !model.state?.megaEvolution?.usedOwnerIds.includes(megaOwner);
     const megaSelected = megaAvailable && this.megaEvolutionSelections.has(this.activeSlot);
-    const cards = active.moves.map((slot, index) => `<button data-encounter-move="${index}"${disabled(blocked || slot.pp <= 0)}><span class="source-move-name"><img src="${pokemonTypeIconUrl(slot.move.type)}" alt="">${escapeSourceHtml(slot.move.name)}</span><small>${slot.pp} PP · ${escapeSourceHtml(slot.move.type)}</small></button>`).join("");
+    const cards = active.moves.map((slot, index) => {
+      const category = moveCategoryPresentation(slot.move.category);
+      const power = slot.move.power === 0 ? "—" : slot.move.power === 1 ? "Var." : String(slot.move.power);
+      const accuracy = slot.move.accuracy === 0 ? "Auto" : `${slot.move.accuracy}%`;
+      return `<button data-encounter-move="${index}" data-move-type="${escapeSourceHtml(slot.move.type)}"${disabled(blocked || slot.pp <= 0)}><span class="source-move-name"><img src="${pokemonTypeIconUrl(slot.move.type)}" alt="${escapeSourceHtml(slot.move.type)}"><span>${escapeSourceHtml(slot.move.name)}</span><em class="source-move-category" title="${category.label}" aria-label="${category.label}">${category.symbol}</em></span><span class="source-move-metrics"><small>${slot.pp} PP</small><small>Pui. ${power}</small><small>Préc. ${accuracy}</small></span></button>`;
+    }).join("");
     const mega = active.megaEvolution === undefined ? "" : `<button type="button" class="source-battle-mega${megaSelected ? " active" : ""}" data-battle-mega${disabled(blocked || !megaAvailable)}><span>${megaSelected ? "MÉGA ACTIVÉE" : "MÉGA-ÉVOLUTION"}</span><small>${escapeSourceHtml(active.megaEvolution.heldItem)}</small></button>`;
     actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ATTAQUE</small><strong>Quelle capacité ?</strong></div>${mega}</header><div class="source-battle-move-grid">${cards}</div></div>`;
     this.bindBack(actions, model);

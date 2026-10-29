@@ -234,7 +234,7 @@ export class SourceMenuView {
   private devPokemonPage = 0;
   private devPokemonLevel = 5;
   private devPokemonGender: SourceDevPokemonGender = "auto";
-  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" | "narrative-battles" | "minigames" = "movement";
+  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" | "narrative-battles" | "minigames" | null = null;
   private selectedAlchemyRecipeId: string | null = null;
   private alchemyQuantity = 1;
   private alchemyNotice: string | null = null;
@@ -266,11 +266,12 @@ export class SourceMenuView {
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
-    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; return; }
+    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; this.openDevSection = null; return; }
     if (!this.wasOpen) this.clearTeamSelection();
     this.wasOpen = true;
     if (model.tab !== "team") this.clearTeamSelection();
     if (model.tab !== "bag") this.characterGuideOpen = false;
+    if (model.tab !== "movement") this.openDevSection = null;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
@@ -1271,7 +1272,12 @@ export class SourceMenuView {
       this.callbacks.onSelectTab("options"));
     content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((details) => {
       details.addEventListener("toggle", () => {
-        if (details.open) this.openDevSection = details.dataset.devSection as typeof this.openDevSection;
+        if (details.open) {
+          this.openDevSection = details.dataset.devSection as typeof this.openDevSection;
+          content.querySelectorAll<HTMLDetailsElement>("[data-dev-section]").forEach((other) => {
+            if (other !== details) other.open = false;
+          });
+        } else if (this.openDevSection === details.dataset.devSection) this.openDevSection = null;
       });
     });
     content.querySelectorAll<HTMLButtonElement>("[data-movement-mode]").forEach((button) => button.addEventListener("click", () => {

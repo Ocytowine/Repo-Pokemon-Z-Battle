@@ -31,7 +31,7 @@ export function sourceMovementUnlocks(state: SourceEventState, testOverride: boo
   const hasMount = MOUNT_ITEMS.some((item) => (state.inventory[item] ?? 0) > 0);
   const unlocked = (value: boolean): boolean => testOverride || value;
   return {
-    sprint: unlocked(state.runningShoes),
+    sprint: true,
     mount: unlocked(hasMount),
     climb: unlocked((state.inventory.BICYCLE ?? 0) > 0),
     surf: unlocked(badges >= 5 && (state.inventory.SURFMONTURA ?? 0) > 0),

@@ -1,1 +1,1 @@
-Premier patch aventure : écran titre, choix des deux parties et accès au cloud. Prologue et personnalisation adaptés au paysage. Chargement et validation du personnage corrigés. Les sauvegardes sont conservées.
+Préparation de l'aventure refondue : prologue, personnage, règles et récapitulatif avant le départ. Les choix et le héros sont repris dans chaque partie vide après fermeture de l'application. Parcours adapté au paysage sans défilement. Les sauvegardes existantes sont conservées.

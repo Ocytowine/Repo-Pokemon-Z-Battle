@@ -114,7 +114,8 @@ import { cloudIdentity, sourceCloudApi } from "./source-cloud-api.js";
 import { cloudAutomaticUploadDelay, keepLocalCloudSave, linkCloudAccount, linkedCloudEmail,
   recoverCloudSave, syncCloudSaves,
   type CloudSaveItem } from "./source-cloud-sync.js";
-import { applySourceNewGameAvatar, applySourceNewGameChoices, persistSourceNewGameSetup, sourceAdventureSaveExists,
+import { applySourceNewGameAvatar, applySourceNewGameChoices, clearSourceNewGameDraft,
+  loadSourceNewGameDraft, persistSourceNewGameSetup, sourceAdventureSaveExists,
   sourceNewGameOpeningScenePending, SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_DESTINATION,
   type SourceNewGameChoices } from "./source-new-game.js";
 import { SourceNewGameView } from "./source-new-game-view.js";
@@ -398,6 +399,8 @@ let pendingSourceMapEntryAutorun: number | null = null;
 let sourceTransitionInProgress = false;
 let sourceFollowerImage: HTMLImageElement | null = null;
 let sourceFollowerAssetPath: string | null = null;
+const pendingNewGamePlayer = sourceNewGameActive ? loadSourceNewGameDraft(localStorage, activeSaveSlot)?.player : null;
+if (pendingNewGamePlayer != null) persistSessionPlayerAvatarSelection(sessionStorage, localStorage, pendingNewGamePlayer);
 let activePlayerSelection = loadSessionPlayerAvatarSelection(sessionStorage, localStorage);
 let sourcePlayerVisuals: SourcePlayerVisuals | null = null;
 let sourcePlayerCharacterName = "player";
@@ -1230,8 +1233,9 @@ sourceLoadErrorRetry.addEventListener("click", () => {
   clearImportedMapCaches();
   void retry().catch((error: unknown) => { showSourceLoadError(error, retry); });
 });
-const sourceNewGameView = new SourceNewGameView(requiredAppElement("source-new-game"), {
+const sourceNewGameView = new SourceNewGameView(requiredAppElement("source-new-game"), localStorage, activeSaveSlot, {
   onCustomize: openPrologueCustomization,
+  onBackToSaves: () => { sourceLaunchScreen.show(); },
   onStart: startSourceNewGame,
 });
 const avatarLabView = new AvatarLabView(requiredAppElement("embedded-avatar-lab"), applyActivePlayerProfile,
@@ -4042,7 +4046,7 @@ async function applyActivePlayerProfile(selection: PlayerAvatarSelection): Promi
   sourcePlayerVisuals = visuals;
   sourceBattleVisuals.setPlayerTrainerImage(visuals.battleBack);
   multiplayer.updateProfile(activeNetworkPlayerProfile());
-  sourceNewGameView.updatePlayerName(selection.profile.displayName);
+  if (sourceNewGameActive) sourceNewGameView.updatePlayerSelection(selection);
   importedNotice = `Profil de ${selection.profile.displayName} appliqué au monde et aux combats.`;
   if (viewedMapId === AVATAR_LAB_MAP_ID) closePlayerCustomization();
   else render();
@@ -4109,6 +4113,7 @@ async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> 
     sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction,
       Date.now(), "walk", sourceEventState);
     persistSourceWorldSave(localStorage, sourceWorldSave);
+    clearSourceNewGameDraft(localStorage, activeSaveSlot);
     activateSourceWorld(world);
     sourceMovementMode = "walk";
     sourceMovementAction = "idle";
@@ -4228,6 +4233,7 @@ function render(): void {
   avatarLabView.hide();
   if (sourceNewGameActive) {
     if (importedAnimationFrame !== null) { cancelAnimationFrame(importedAnimationFrame); importedAnimationFrame = null; }
+    if (sourceTitleScreen.open || sourceLaunchScreen.open) { sourceNewGameView.hide(); return; }
     sourceNewGameView.show(activePlayerSelection.profile.displayName);
     return;
   }
@@ -4672,6 +4678,7 @@ function openPlayerCustomization(): void {
 function openPrologueCustomization(): void {
   avatarLabReturnContext = "prologue";
   avatarLabReturnMapId = viewedMapId;
+  avatarLabView.prepareNewGame(activePlayerSelection);
   viewedMapId = AVATAR_LAB_MAP_ID;
   render();
 }

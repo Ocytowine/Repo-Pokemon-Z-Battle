@@ -1093,22 +1093,6 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       }
     }
   }
-  const drawnTransferEvents = new Set<number>();
-  for (const transfer of map.transfers) {
-    if (drawnTransferEvents.has(transfer.eventId) || hiddenEventIds.has(transfer.eventId)) continue;
-    const event = assets.events.find((candidate) => candidate.id === transfer.eventId);
-    const selection = event === undefined ? null : selectActiveEventPage(event, map.id, state);
-    if (event === undefined || selection === null || selection.pageIndex !== transfer.pageIndex) continue;
-    drawnTransferEvents.add(transfer.eventId);
-    for (const point of eventFootprint(event)) {
-      const x = point.x * 32 - cameraX;
-      const y = point.y * 32 - cameraY;
-      if (x > -32 && y > -32 && x < canvas.width && y < canvas.height) {
-        context.fillStyle = "#ffe27822"; context.fillRect(x + 3, y + 3, 26, 26);
-        context.strokeStyle = "#ffe278"; context.lineWidth = 2; context.strokeRect(x + 4, y + 4, 24, 24);
-      }
-    }
-  }
   const eventEntries = assets.events.flatMap((event) => {
     if (hiddenEventIds.has(event.id)) return [];
     const selection = selectActiveEventPage(event, map.id, state);

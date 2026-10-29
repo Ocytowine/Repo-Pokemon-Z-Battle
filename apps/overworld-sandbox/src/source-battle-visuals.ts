@@ -1,4 +1,4 @@
-import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, selectCry,
+import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, selectBattleSceneVisuals, selectCry,
   type AssetManifest, type BattleAnimationCel, type BattleAnimationRecord, type BattleAnimationsManifest,
   type LocalManifests, type PokemonAssetReference, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import type { BattleMove, BattleSide, BattlerState, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -343,8 +343,7 @@ export class SourceBattleVisuals {
       const secondTrainer = document.getElementById(`source-${side}-trainer-2`) as HTMLImageElement | null;
       if (secondTrainer !== null) secondTrainer.hidden = true;
     }
-    panel?.classList.remove("leaving");
-    panel?.classList.add("entering");
+    panel?.classList.remove("leaving", "entering");
     panel?.classList.add("intro-playing");
     stage?.classList.add("intro-playing");
     stage?.classList.remove("trainer-outro");
@@ -353,8 +352,8 @@ export class SourceBattleVisuals {
     const experienceBar = document.getElementById("source-player-exp-bar");
     experienceTrack?.classList.remove("active");
     if (experienceBar !== null) experienceBar.style.width = "0%";
-    window.setTimeout(() => panel?.classList.remove("entering"), 700);
     const session = ++this.#audioSession;
+    this.prepareOpeningCurtain();
     // Le chargement asynchrone des manifestes peut sortir de la fenêtre d'activation
     // utilisateur. Démarrer la BGM source immédiatement évite un blocage d'autoplay.
     const battleMusic = audio.battleMusic ?? "Salvaje.ogg";
@@ -432,12 +431,17 @@ export class SourceBattleVisuals {
         await this.playStatusVisual("opponent", "stat-up", sendOutState);
         await readableMessageDelay(700);
       }
-    } catch {
-      // Les visuels et le moteur de combat restent utilisables si l'audio local est absent.
+    } catch (error) {
+      console.warn(`[battle-presentation] ${error instanceof Error ? error.message : "introduction interrompue"}`);
     } finally {
       if (session === this.#audioSession) {
+        this.message("Choisissez une action.");
         panel?.classList.remove("intro-playing");
         stage?.classList.remove("intro-playing", "opponent-intro", "revealing-opponent", "revealing-player");
+        const curtain = document.getElementById("source-battle-curtain");
+        curtain?.replaceChildren();
+        curtain?.removeAttribute("style");
+        curtain?.classList.remove("active");
       }
     }
   }
@@ -535,10 +539,9 @@ export class SourceBattleVisuals {
         // brièvement pendant un changement de format ou de composition.
         this.synchronizeFaintedSprites(state);
         const scenes = buildBattleScenes(manifests.assets);
-        const requestedScene = battleback.toLocaleLowerCase("fr");
-        const scene = scenes.find((candidate) => candidate.id === requestedScene && candidate.complete)
-          ?? scenes.find((candidate) => candidate.complete) ?? scenes[0];
-        this.setImage("source-battle-background", scene?.background?.path ?? null);
+        const { scene, background, wide } = selectBattleSceneVisuals(scenes, battleback);
+        document.getElementById("encounter-panel")?.classList.toggle("wide-background", wide);
+        this.setImage("source-battle-background", background?.path ?? null);
         this.setImage("source-player-base", scene?.playerBase?.path ?? null);
         this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
         document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
@@ -713,10 +716,21 @@ export class SourceBattleVisuals {
     return this.#manifests;
   }
 
+  private prepareOpeningCurtain(): void {
+    const curtain = document.getElementById("source-battle-curtain");
+    if (curtain === null) return;
+    const world = document.getElementById("world") as HTMLCanvasElement | null;
+    let snapshot: string | null = null;
+    try { snapshot = world?.toDataURL("image/png") ?? null; } catch { /* Canvas indisponible. */ }
+    curtain.replaceChildren();
+    curtain.style.opacity = "1";
+    curtain.style.background = snapshot === null ? "#050706" : `#050706 url("${snapshot}") center / contain no-repeat`;
+    curtain.classList.add("active");
+  }
+
   private async playOpeningTransition(session: number, trainerBattle: boolean): Promise<void> {
     const curtain = document.getElementById("source-battle-curtain");
-    const stage = document.getElementById("source-battle-stage");
-    if (curtain === null || stage === null) return;
+    if (curtain === null) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const width = 512;
     const height = 384;
@@ -729,13 +743,7 @@ export class SourceBattleVisuals {
     canvas.style.height = "100%";
     const context = canvas.getContext("2d");
     if (context === null) return;
-    const world = document.getElementById("world") as HTMLCanvasElement | null;
-    let snapshot: string | null = null;
-    try { snapshot = world?.toDataURL("image/png") ?? null; } catch { /* Le canvas peut être protégé par le navigateur. */ }
     curtain.replaceChildren(canvas);
-    curtain.style.opacity = "1";
-    curtain.style.background = snapshot === null ? "#050706" : `center / cover no-repeat url("${snapshot}")`;
-    curtain.classList.add("active");
     try {
       if (!reduced) {
         for (let pulse = 0; pulse < 3; pulse += 1) {
@@ -764,7 +772,7 @@ export class SourceBattleVisuals {
       context.clearRect(0, 0, width, height);
       context.fillStyle = "#050706";
       context.fillRect(0, 0, width, height);
-      const reveal = canvas.animate([{ opacity: 1 }, { opacity: 0 }],
+      const reveal = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
         { duration: reduced ? 20 : 18 * SOURCE_TRANSITION_FRAME_MS, fill: "forwards", easing: "linear" });
       await reveal.finished.catch(() => undefined);
       reveal.cancel();

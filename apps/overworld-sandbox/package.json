@@ -12,7 +12,8 @@
     "android:manifest": "node scripts/prepare-android-update-manifest.mjs",
     "android:open": "cap open android",
     "android:sync": "vite build && node scripts/prepare-android-assets.mjs && cap sync android",
-    "dev": "vite --host 127.0.0.1 --port 5174",
+    "dev": "vite --host 127.0.0.1 --port 5174 --strictPort",
+    "preview:chrome": "vite build && node scripts/prepare-android-assets.mjs && vite preview --host 127.0.0.1 --port 5175 --strictPort",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },

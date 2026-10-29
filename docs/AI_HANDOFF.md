@@ -8989,3 +8989,269 @@ attendus. Aucun téléphone n'est connecté en ADB pour la recette sur appareil.
 Le choix de partie, le cloud, la reprise Coop et le parcours de préparation
 restent à valider dans l'APK réelle ; aucune règle de jeu ni contrat réseau
 nouveau n'est introduit par cette diffusion.
+
+## Refonte de la préparation de l'aventure — 2026-10-29
+
+Après sélection d'une partie vide, le parcours propose quatre étapes : prologue
+à trois temps avec retour et saut, identité/apparence, difficulté/mode/région,
+puis récapitulatif avant le départ. La palette, le cadrage et les cibles tactiles
+suivent l'écran des sauvegardes. À 800 × 360 et 640 × 320, les boutons tiennent
+dans le viewport, le corps ne défile pas et les mêmes contrôles restent visibles
+avec le mode Android simulé. Un test navigateur a traversé le parcours jusqu'à
+la scène de la calèche.
+
+Un `SourceNewGameDraft` versionné et propre à chaque emplacement vide conserve
+localement l'étape, le temps du prologue, les trois choix et le profil du héros
+appliqué. Retour aux parties, rechargement et fermeture de l'application peuvent
+reprendre ce brouillon ; une entrée invalide est ignorée. L'éditeur de personnage
+est réinitialisé avec le profil de l'emplacement concerné pour éviter de reprendre
+l'apparence d'une autre partie. Seule la validation finale utilise
+`applySourceNewGameChoices` et `applySourceNewGameAvatar`, déjà partagés par la
+suite solo et Coop, puis écrit la sauvegarde et efface le brouillon.
+
+Contrat : le joueur local est autoritaire sur le brouillon personnel ; celui-ci
+n'est ni une sauvegarde complète, ni une intention serveur, ni un état répliqué.
+Après création, les choix source sont persistés dans l'état personnel et le
+profil visible suit `multiplayer.updateProfile`. Le monde narratif reste sous
+l'autorité de l'hôte en Coop ; l'invité rejoint avec sa propre sauvegarde et la
+reconnexion conserve les contrats existants. Aucun rendu distant du brouillon
+n'est attendu. `corepack pnpm test` et `corepack pnpm build` passent. L'APK 0.1.3
+(`versionCode 4`) est construite avec le même certificat de diffusion, puis
+publiée sur R2 après contrôle de sa taille distante : 870 496 552 octets,
+SHA-256 `03cc515b9f8462b0c304e55c044990521d99d2359338bca16b43bd8609ccd0a7`.
+Le manifeste R2 a été publié en dernier et relu avec version, taille et
+empreinte attendues. Validation sur WebView Android réelle, installation
+par-dessus 0.1.2 et reprise Coop à faire avant de clore le lot.
+
+## Cadrage de la distribution des assets et du combat large — 2026-10-29
+
+Voir `docs/ASSET_DISTRIBUTION.md` et le jalon correspondant dans la roadmap.
+Les ressources source ne doivent pas être élaguées sur la seule base du portage
+actuel : narration, cartes et combats ne couvrent pas encore tout le jeu. Le
+prochain objectif de taille est d'abord de séparer tous les assets du moteur APK
+en packs privés, vérifiés et conservés hors ligne, sans exclusion présumée.
+
+Premier pilote : `Graphics/Battlebacks/battlebgBosqueZ.png` est présent dans le
+jeu source local en 2400 × 1080 (2 318 047 octets), avec la même copie dans
+`dist/__pokemon-z`. Le manifeste extrait sous `.pokemon-z/data` est obsolète :
+il indique encore 1870 × 841 et une autre empreinte. Relancer `prepare:local`
+avant le test. Le moteur exige actuellement les trois parties de scène au même
+suffixe ; seuls `playerbaseBosque` et `enemybaseBosque` existent, et les cartes
+consultées demandent `Bosque`. Prévoir une association de variante générique et
+une sélection explicite du pilote. Aucun code, asset source ou objet R2 n'a été
+modifié lors de ce cadrage ; la recette Android 0.1.3 reste ouverte.
+
+## Premier travail du patch suivant — 2026-10-29
+
+`prepare:local` a remis à jour le manifeste local de `battlebgBosqueZ.png` :
+2400 × 1080, 2 318 047 octets et SHA-256
+`56b106ec0ed2df7fd86ac3fe31a25cb57d27cced28f55d98fb6f7043b46a1f66`.
+La résolution des Battlebacks accepte maintenant une variante large
+`battlebg<scène>Z` lorsque son ratio est au moins 1,8, et réutilise les socles
+de la scène complète. Le même lecteur de combat sert solo, hôte et invité ;
+aucune donnée de combat, persistance ou intention réseau n'a changé. Sur
+Android, le fond occupe le viewport sans étirement tandis que sprites, socles,
+Poké Balls et effets restent dans le plan 4:3. HUD et message occupent la
+surface externe. Une capture Chrome isolée à 800 × 360 et 640 × 320 montre la
+composition ; la recette en vrai combat Android et en Duo/Coop reste ouverte.
+
+Les repères jaunes de transfert ont été retirés du dessin, sans toucher aux
+déclencheurs. `sourceMovementUnlocks` autorise le sprint dès le début et sur les
+anciennes sauvegardes, tandis que `runningShoes` reste disponible pour la
+narration source. Les panneaux Test dev se referment en quittant l'écran et un
+seul panneau reste ouvert à la fois. Le bouton Menu conserve son déclenchement
+sur `click`, protégé par le test existant ; le défaut signalé au premier appui
+reste à reproduire sur appareil. Aucun pack R2 ni exclusion d'asset n'est encore
+réalisé ; l'APK 0.1.3 publiée n'a pas été modifiée.
+
+`corepack pnpm test`, `corepack pnpm build` et `corepack pnpm android:sync`
+passent. La construction debug Android a d'abord révélé que son script lançait
+`gradlew.bat` avec un chemin de dépôt contenant des espaces ; elle utilise
+maintenant Java et le wrapper JAR comme le script release. L'APK debug locale
+est construite avec succès. Sa copie de `battlebgBosqueZ.png` et le manifeste
+embarqué portent tous deux le SHA-256 attendu et les dimensions 2400 × 1080.
+La recette sur téléphone reste ouverte : `adb devices` ne listait aucun appareil.
+Le `typecheck` autonome conserve les erreurs préexistantes des modules de combat
+et de rencontre, sans erreur signalée dans les fichiers de ce lot.
+
+## Extension des fonds larges Pradera et contrôle navigateur — 2026-10-29
+
+Le porteur a signalé que le mode combat élargi n'apparaissait pas dans son test
+local et a ajouté `Graphics/Battlebacks/battlebgPraderaZ.png` au jeu source.
+Le fichier mesure 2400 × 1080, 2 472 933 octets, SHA-256
+`ac7cb98019ff31b31dc49861b5dd4ff9bfd703b9ac74022c8175a96963dfab4d`.
+Il manquait dans le manifeste extrait. `corepack pnpm prepare:local` a été
+relancé et l'y inscrit avec les bonnes dimensions. Les métadonnées de plusieurs
+cartes demandent `Pradera` ; le sélecteur générique `battlebg<scène>Z` fournit
+donc `PraderaZ` avec `playerbasePradera` et `enemybasePradera`. Le test du
+sélecteur couvre cette association en plus de `BosqueZ`.
+
+Le style large n'était auparavant appliqué que sous `html.source-android` :
+un essai dans Chrome PC restait au format de l'overworld. Les mêmes règles de
+viewport, fond sans déformation et plan de combat 4:3 interne sont maintenant
+appliquées à tout rendu où la variante large est sélectionnée. Autorité : rendu
+local de chaque participant ; aucun changement d'état, de persistance ou de
+protocole Coop. Vérifier encore le combat réel dans Chrome et sur téléphone,
+simple et Duo, hôte, invité et reconnexion avant de clore la recette visuelle.
+`corepack pnpm test` et `corepack pnpm build` passent. `corepack pnpm android:sync`
+termine sans erreur ; la copie Android de `battlebgPraderaZ.png` a la même taille
+et le même SHA-256 que la source. La version 0.1.3 publiée ne contient pas ce
+changement ; une installation existante doit être reconstruite avec une APK
+signée compatible avant qu'il soit visible sur téléphone.
+
+## Ajustement de la scène de combat large — 2026-10-29
+
+La capture locale `Capture combat.PNG` (PraderaZ, 800 × 360) montre la coupe
+verticale du `playerbase` au bord gauche du plan interne 4:3 et de l'`enemybase`
+au bord droit. Les images source sont transparentes (426 × 192 et 272 × 128),
+mais le `overflow: hidden` du plan interne coupait leurs débords. Le fond et son
+voile sont maintenant sur l'overlay extérieur ; en mode large, le plan 4:3
+laisse déborder les socles, tandis que l'overlay limite l'ensemble au viewport.
+Les positions source des Pokémon et des socles restent les mêmes, en solo et
+pour tous les participants Coop.
+
+La capture montre aussi le titre au-dessus du HUD adverse et le message d'envoi
+encore affiché avec le menu d'actions. Le titre est placé entre les deux HUD.
+Après l'introduction, le message devient « Choisissez une action. ». Une erreur
+d'introduction est désormais journalisée au lieu d'être absorbée silencieusement.
+
+Le rideau d'entrée était enfant du plan 4:3 : sur un fond large, la transition
+ne couvrait que le centre et laissait voir les côtés du combat prématurément.
+Il est maintenant enfant de l'overlay entier, activé avant le chargement
+asynchrone des visuels. La capture de l'overworld est montrée en `contain` sur
+fond sombre, sans zoom, et le rideau entier s'estompe à la révélation du combat.
+Le flash CSS d'entrée, qui précédait le chargement et pouvait exposer le décor
+avant cette transition, n'est plus déclenché. Aucun changement de règle de jeu,
+d'état persistant ou de protocole réseau. Recette visuelle réelle encore à
+effectuer pour entrée sauvage/Dresseur, fin, capture, simple/Duo et Coop.
+Une capture de contrôle isolée sous Chrome à 800 × 360 montre les deux socles
+entiers, sans les coupes verticales visibles sur la capture du porteur, et le
+titre entre les HUD. Elle ne remplace pas une recette dans le vrai combat.
+`corepack pnpm test` et `corepack pnpm build` passent.
+`corepack pnpm android:sync` a recopié ce rendu dans le projet Android local.
+
+## Démarrage local et avertissement de préchargement — 2026-10-29
+
+Le porteur signale un chargement figé avant l'écran titre sur
+`http://127.0.0.1:5174/`, accompagné de l'avertissement Chrome sur le preload
+de `armaTituloZ.jpg`. Le lien avait bien `as="image"` ; l'avertissement était
+une conséquence de l'écran titre non atteint à temps, pas une erreur de format.
+Une reproduction CDP a vu le splash initial seul, sans DOM de l'application,
+pendant que le serveur Vite 5174 cessait de répondre ou redémarrait. Les
+requêtes `@vite/client`, `src/main.ts` et l'image préchargée ont alors reçu
+`ERR_CONNECTION_REFUSED`. Après reprise du serveur, la même page a chargé le
+titre sans erreur réseau ; le portage du titre n'était pas bloqué par l'image.
+
+`index.html` n'impose plus le preload inconditionnel ; l'image du titre garde
+`fetchpriority="high"` sur son élément réel et le décodage avant révélation.
+Si le script principal n'a pas retiré le splash après 20 secondes, un message
+et un bouton « Réessayer » apparaissent, sans boucle de rechargement. Le script
+Vite local utilise `--strictPort` afin qu'un second lancement ne se déplace
+pas silencieusement sur 5175 ou 5176. Contrôle CDP : en bloquant volontairement
+`src/main.ts`, le repli apparaît ; en rechargement normal, le splash disparaît,
+le titre existe et aucune requête ne reste pendante. Aucun changement de
+sauvegarde ni de réseau Coop.
+`corepack pnpm test` et `corepack pnpm build` passent ; le serveur local 5174
+répond à nouveau en HTTP 200. Le correctif du splash est dans le code local et
+sera embarqué à la prochaine synchronisation Android.
+Le porteur confirme ensuite le 2026-10-29 que le rechargement local et l'arrivée
+à l'écran titre fonctionnent. Cette validation ne couvre pas encore la recette
+visuelle du combat sur téléphone.
+
+## Flash d'envoi et HUD large du combat — 2026-10-29
+
+Le porteur confirme que la transition precedente fonctionne en jeu, puis signale
+que le flash d'apparition du Pokemon joueur reste borne au plan interne 4:3.
+`source-sendout-flash` est maintenant enfant direct de l'overlay du combat et
+couvre donc le viewport entier en simple et en Duo. Sa logique d'animation et
+les etats de combat restent communs au solo, a l'hote et a l'invite Coop.
+
+Sur fond de combat large, les HUD adverses sont compacts en haut a gauche et
+les HUD joueurs en bas a droite ; en Duo, chaque paire est decalee et resserree.
+Les cartes et fonds du HUD sont retires. Les quatre actions racines occupent
+une ligne horizontale en bas, sans panneau. Les capacites, cibles, categories
+du Sac, Pokemon de l'equipe et objets suivent une presentation horizontale ;
+les listes longues defilent lateralement. Le texte garde une ombre pour rester
+lisible sur les fonds clairs. Seule la presentation change : aucune nouvelle
+autorite, persistance, intention reseau ou duplication de mecanique.
+
+Captures de controle isolees dans Chrome a 800 x 360 et 640 x 320 : simple,
+Duo et liste des capacites. La geometrie tient dans le viewport avec les HUD
+et les actions separes. Cette simulation utilise des sprites factices et ne
+remplace pas la verification sur telephone avec un vrai combat Duo Coop hote et
+invite, notamment pour la lisibilite et les gestes tactiles. `corepack pnpm test`
+et `corepack pnpm build` passent.
+`corepack pnpm android:sync` a recopie cette interface dans le projet Android
+local pour un essai dans Android Studio ; aucun APK de distribution n'a ete publie.
+
+## Demarrage Chrome local lent apres redemarrage de Vite — 2026-10-29
+
+Le porteur constate encore une forte latence avant l'ecran titre dans Chrome.
+Une mesure CDP sur `127.0.0.1:5174` apres une recompilation froide donne environ
+16,5 s avant la fin du chargement : le navigateur demande environ 240 modules
+du moteur, dont plusieurs reponses Vite attendent pres de 9 s. Le titre n'est
+pas bloque par `armaTituloZ.jpg` ; une fois les transformations en cache, le
+meme serveur sert les fichiers rapidement et une nouvelle session charge en
+moins d'une seconde.
+
+Pour les essais Chrome rapides, `corepack pnpm sandbox:overworld:chrome`
+construit l'application, copie les donnees locales dans `dist` et sert la
+version compilee sur `http://127.0.0.1:5175/`. La mesure CDP de cette version
+donne environ 0,25 s pour le chargement complet en session Chrome neuve. La
+premiere preparation des assets peut prendre une vingtaine de secondes, mais
+les rechargements de page n'ont plus la cascade de transformations Vite.
+Relancer cette commande apres une modification du code pour reconstruire la
+version servie ; `5174` reste le mode developpement avec rechargement a chaud.
+Ni le jeu source ni `.pokemon-z/` ne sont ajoutes a Git.
+
+## Presentation commune des combats et bandeau bas — 2026-10-29
+
+Le porteur a constate deux interfaces selon la carte : la presentation
+horizontale etait limitee aux fonds `wide-background`, tandis que les anciens
+fonds conservaient les cartes 2 x 2. La classe `battle-ui-unified` applique
+maintenant le meme HUD aux deux formats de fond. Le cadrage de l'image reste
+adapte a son ratio, mais les controles suivent le meme contrat de presentation
+en solo, pour l'hote et pour l'invite Coop. Aucune autorite, intention reseau,
+persistance ou regle de combat n'est modifiee.
+
+Le message de combat occupe le bord gauche du bandeau inferieur, les quatre
+actions et les sous-actions sont a sa droite, et le bouton Retour des sous-menus
+occupe l'extremite droite avec une vraie zone tactile. Les boutons ont des
+gradients colores semi-transparents sans cadre autour de l'ensemble. Les HUD
+adverses et joueurs gardent leurs positions mais recoivent un halo diffus
+violet ou bleu pour rester lisibles sur des decors varies. En Duo, le selecteur
+du Pokemon actif se place au-dessus du debut des actions pour ne pas couvrir
+les HUD des joueurs. La commande Mega reste au-dessus des actions, du cote
+gauche du bandeau.
+
+Captures isolees Chrome : simple, Duo, capacites a 800 x 360, et Duo avec
+selecteur sur ancien fond a 640 x 320. Elles verifient la geometrie avec des
+sprites factices ; recette tactile et vrai combat Coop hote/invite encore a
+effectuer sur appareil. `corepack pnpm test` et `corepack pnpm build` passent.
+`corepack pnpm android:sync` a recopie le rendu dans le projet Android local.
+Le serveur Chrome rapide `5175` sert la nouvelle feuille de style et les
+ressources du titre avec reponses HTTP 200.
+
+## Informations des capacites et objets dans le bandeau de combat — 2026-10-29
+
+Le porteur demande les couleurs par type de capacite, le symbole de categorie
+(Physique, Speciale, Statut), la puissance et la precision dans les boutons.
+L'affichage lit `type`, `category`, `power` et `accuracy` du `BattleMove` commun
+au solo et a la room Coop ; le nom de type redondant a cote des PP disparait.
+Puissance nulle affiche un tiret, puissance variable (`1`) « Var. », precision
+nulle « Auto ». Les cartes de Poké Balls et de soins restent de taille constante :
+leur compteur passe sous l'icone, et la description agrandie utilise la largeur
+restante. Le Sac hors combat continue d'utiliser son propre agencement.
+
+Le titre du sous-menu est presente dans la fenetre de message du bandeau bas ;
+les vrais messages narratifs du combat continuent d'etre ecrits par les visuels
+et reprennent la priorite pendant l'animation. Le titre, le tour et le resume
+redondants au sommet du combat ont ete retires du DOM. Aucune regle de combat,
+intention reseau ou donnee persistante n'a change. Controles isoles sous Chrome
+a 640 x 320 pour les quatre capacites et les objets ; la lisibilite sur appareils
+reels, y compris pour un invite Coop, reste a confirmer.
+`corepack pnpm test`, `corepack pnpm build` et `corepack pnpm android:sync`
+passent. Le serveur Chrome rapide `5175` sert le nouveau CSS et le nouveau JS
+en HTTP 200. Le controle TypeScript strict du sandbox garde 23 erreurs deja
+presentes dans d'autres fichiers du portage, aucune dans
+`source-battle-overlay.ts`.

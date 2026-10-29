@@ -19,11 +19,12 @@ if (javaHome === undefined) {
   throw new Error("JDK Android introuvable. Lancez Android Studio ou définissez JAVA_HOME avant de construire l’APK.");
 }
 
-const wrapper = path.join(androidDirectory, windows ? "gradlew.bat" : "gradlew");
-const result = spawnSync(wrapper, ["assembleDebug"], {
+const wrapper = path.join(androidDirectory, "gradle", "wrapper", "gradle-wrapper.jar");
+if (!existsSync(wrapper)) throw new Error("Gradle Wrapper introuvable.");
+const java = path.join(javaHome, "bin", javaExecutable);
+const result = spawnSync(java, ["-cp", wrapper, "org.gradle.wrapper.GradleWrapperMain", "assembleDebug"], {
   cwd: androidDirectory,
   env: { ...process.env, JAVA_HOME: javaHome },
-  shell: windows,
   stdio: "inherit",
 });
 

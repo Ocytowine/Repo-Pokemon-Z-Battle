@@ -3476,15 +3476,60 @@ contenu du parcours de création restent à refondre dans ce lot.
   personnage ; rendre une erreur d'application visible et supprimer la demande
   de plein écran Web inutile dans l'APK ;
 
-- [ ] reprendre, après le choix d'un emplacement vide, le parcours actuel de
+- [x] reprendre, après le choix d'un emplacement vide, le parcours actuel de
   prologue, identité et apparence du joueur, mode d'aventure et difficulté ;
-- [ ] rendre les étapes, les retours et la validation finale lisibles sur le
+- [x] rendre les étapes, les retours et la validation finale lisibles sur le
   format paysage Android, en conservant les choix déjà persistés ;
-- [ ] définir une seule règle de création de partie utilisable en solo, comme
+- [x] définir une seule règle de création de partie utilisable en solo, comme
   hôte et comme invité Coop : autorité des choix personnels, état persistant,
   reprise après fermeture et reconnexion, données minimales présentées aux
   autres joueurs ;
 - [ ] valider le parcours complet sur Android avant de déclarer le lot terminé.
 
-Cette refonte est le lot suivant : le choix de partie conduit encore au
-parcours de préparation existant.
+Refonte du 2026-10-29 : prologue, identité, règles et récapitulatif forment
+quatre étapes plein écran. Chaque partie vide garde localement son étape,
+ses choix et son personnage appliqué ; un retour aux parties puis un rechargement
+reprennent le même brouillon. La validation finale seule crée l'état persistant
+et lance la scène de la calèche via le noyau source commun. Le brouillon est
+personnel, sans intention réseau ni rendu distant. Après création, les choix
+source et l'apparence suivent les contrats existants : hôte autoritaire pour
+la narration et le monde, profil personnel visible aux participants, invité
+reconnecté depuis son propre état. Les anciens emplacements sont inchangés.
+Contrôle navigateur à 800 × 360 et 640 × 320 : étapes, retours, avatar appliqué,
+brouillon repris et départ dans le monde, sans bouton coupé ni défilement.
+La recette WebView Android, la conservation des sauvegardes après mise à jour
+et la reconnexion Coop réelle restent ouvertes.
+L'APK 0.1.3 (`versionCode 4`) est signée et publiée sur R2 le 2026-10-29 ;
+la taille de l'objet distant et le manifeste final ont été contrôlés.
+
+### Patch suivant : ressources et fond de combat large — cadrage du 2026-10-29
+
+Le contrat d'intégration et le registre initial sont dans
+[`ASSET_DISTRIBUTION.md`](ASSET_DISTRIBUTION.md). Le portage narratif, l'audit de
+chaque carte et les dépendances de combat ne sont pas assez complets pour
+qualifier d'inutile une ressource absente du parcours actuel.
+
+- [ ] conserver tous les fichiers source pendant le pilote de packs privés R2 ;
+- [ ] réduire les téléchargements de patch en séparant moteur APK et ressources
+  versionnées, avec intégrité, activation atomique et jeu hors ligne ;
+- [ ] utiliser `battlebgBosqueZ.png` (2400 × 1080) comme premier fond large de
+  test, après régénération du manifeste et association vérifiée des socles ;
+- [ ] garder les coordonnées de Pokémon, socles, Poké Balls et effets ; étendre
+  le fond au viewport utile et placer les HUD sans masquer le combat ;
+- [ ] commencer le registre des ressources candidates à la publication et des
+  exclusions prouvées ; aucune exclusion n'est encore validée ;
+- [ ] valider écran Android réel, solo, hôte, invité, reprise et mise à jour
+  depuis l'APK signée précédente avant publication du patch.
+
+Premier travail local du 2026-10-29 : le manifeste extrait reconnaît le fond
+`BosqueZ` en 2400 × 1080. Le rendu de combat utilise sa variante large avec les
+socles `Bosque` et sépare le fond plein viewport du plan d'animation 4:3. Un
+contrôle visuel isolé à 800 × 360 et 640 × 320 est passé ; la recette dans un
+combat réel sur Android, simple/Duo et Coop reste ouverte. Les carrés jaunes de
+transfert ne sont plus dessinés, le sprint est disponible dès le départ, et
+les panneaux Test dev sont repliés en quittant leur écran. Le saut du menu au
+premier clic reste à reproduire sur appareil avant correction ciblée. Aucun pack
+R2 ni aucune exclusion de ressource n'ont encore été réalisés.
+`android:sync` et la construction de l'APK debug locale passent ; le fond et le
+manifeste embarqués ont la même empreinte vérifiée. Aucun téléphone n'était
+connecté pour l'installation.
