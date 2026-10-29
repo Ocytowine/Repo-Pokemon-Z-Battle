@@ -2302,3 +2302,286 @@ body:has(.source-new-game:not([hidden])) { height: 100dvh; min-height: 0; overfl
 .source-battle-overlay.battle-ui-unified .source-battle-bag-items .source-inventory-copy { grid-area: copy; gap: 2px; padding: 0; }
 .source-battle-overlay.battle-ui-unified .source-battle-bag-items .source-inventory-copy > strong { padding: 0; font-size: 10px; line-height: 1.1; }
 .source-battle-overlay.battle-ui-unified .source-battle-bag-items .source-inventory-copy > small { font-size: 9px; line-height: 1.12; -webkit-line-clamp: 4; line-clamp: 4; }
+
+/* Battle controls reuse the source game's menu icons. */
+.source-battle-overlay.battle-ui-unified .source-player-hud footer { justify-content: flex-end; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.bag > b img {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 1px 2px #000a);
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.pokemon {
+  flex-direction: column;
+  gap: 2px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.pokemon > .source-battle-team-action-icons {
+  display: flex;
+  width: 100%;
+  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons img {
+  width: 13px;
+  height: 13px;
+  min-width: 0;
+  flex: 0 0 13px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-submenu > header > button[data-battle-back] {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-submenu > header > button[data-battle-back]::before {
+  content: "";
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  background: url("/__pokemon-z/source/Graphics/Icons/itemBack.png") center / contain no-repeat;
+  filter: brightness(0) invert(1);
+  image-rendering: auto;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-submenu > header > button[data-battle-back]::after {
+  content: "Retour";
+  font-size: 11px;
+  font-weight: 900;
+}
+
+/* Trainer identity belongs to its own compact strip above the opponent Pokémon. */
+.source-battle-overlay.battle-ui-unified > .source-npc-opponent-roster {
+  position: absolute;
+  z-index: 7;
+  top: max(5px, 1.8%);
+  left: 2%;
+  display: flex;
+  max-width: min(64%, 420px);
+  min-height: 33px;
+  gap: 9px;
+  padding: 4px 8px;
+  align-items: center;
+  color: #fff9e8;
+  border: 1px solid #d7e9db77;
+  border-radius: 9px;
+  background: linear-gradient(120deg, #102a3cdd, #1a4a51c9);
+  box-shadow: 0 2px 8px #061a25a6, inset 0 1px #ffffff24;
+  backdrop-filter: blur(3px);
+  text-shadow: 0 1px 3px #061319;
+}
+.source-battle-overlay.battle-ui-unified > .source-npc-opponent-roster[hidden] { display: none; }
+.source-battle-overlay.battle-ui-unified.intro-playing > .source-npc-opponent-roster { visibility: hidden; }
+.source-npc-opponent-roster > strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-npc-opponent-team { display: flex; flex: 0 0 auto; gap: 1px; align-items: center; }
+.source-npc-opponent-ball { display: grid; width: 18px; height: 18px; place-items: center; }
+.source-npc-opponent-ball img { width: 18px; height: 18px; object-fit: contain; image-rendering: auto; }
+.source-battle-overlay.battle-ui-unified.npc-opponent > .source-opponent-hud,
+.source-battle-overlay.battle-ui-unified.npc-opponent:has(.source-battle-stage.double-battle) > .source-opponent-hud:not(.source-battle-hud-2) { top: 18%; }
+.source-battle-overlay.battle-ui-unified.npc-opponent:has(.source-battle-stage.double-battle) > .source-opponent-hud.source-battle-hud-2 { top: 37%; }
+.source-battle-overlay.battle-ui-unified.npc-opponent > .source-opponent-hud .source-battle-team-dots { display: none; }
+.source-battle-overlay.battle-ui-unified.npc-opponent > .source-opponent-hud footer { min-height: 0; margin-top: 0; }
+
+/* High-resolution type artwork needs smooth downsampling; Pokémon sprites keep their pixel art. */
+.source-battle-overlay.battle-ui-unified .source-battle-types img {
+  width: 19px;
+  height: 19px;
+  image-rendering: auto;
+}
+.source-battle-overlay.battle-ui-unified .source-move-name { grid-template-columns: 18px minmax(0, 1fr); }
+.source-battle-overlay.battle-ui-unified .source-move-name img {
+  width: 18px;
+  height: 18px;
+  image-rendering: auto;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-gender {
+  font-family: "Segoe UI Symbol", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  text-shadow: 0 1px 2px #061319;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.bag > b img {
+  width: 31px;
+  height: 31px;
+  image-rendering: auto;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.escape > b img {
+  display: block;
+  width: clamp(43px, 6vw, 50px);
+  height: auto;
+  aspect-ratio: 108 / 77;
+  object-fit: contain;
+  image-rendering: auto;
+  filter: drop-shadow(0 1px 2px #061319b0);
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.escape {
+  gap: 3px;
+  padding-inline: 3px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root button.escape > span { font-size: 11px; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.pokemon > .source-battle-team-action-icons {
+  display: grid;
+  width: auto;
+  grid-template-columns: repeat(3, 16px);
+  grid-auto-rows: 16px;
+  gap: 1px 2px;
+  justify-content: center;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons img {
+  width: 16px;
+  height: 16px;
+  image-rendering: auto;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons:has(img:nth-child(7)) {
+  grid-template-columns: repeat(6, 12px);
+  grid-auto-rows: 12px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons:has(img:nth-child(7)) img { width: 12px; height: 12px; }
+
+/* Compact command strip with one visible row of up to six team icons. */
+.source-battle-overlay.battle-ui-unified > .source-battle-message,
+.source-battle-overlay.battle-ui-unified:has(.source-battle-team, .source-battle-bag-items) > .source-battle-message {
+  min-height: 48px;
+  padding: 6px 9px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-root,
+.source-battle-overlay.battle-ui-unified .source-battle-submenu { min-height: 48px; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button,
+.source-battle-overlay.battle-ui-unified .source-battle-move-grid button,
+.source-battle-overlay.battle-ui-unified .source-battle-bag-categories button,
+.source-battle-overlay.battle-ui-unified .source-battle-submenu > header > button[data-battle-back] {
+  min-height: 48px;
+  border-radius: 14px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-submenu > header > button[data-battle-back] { height: 48px; }
+.source-battle-overlay.battle-ui-unified .source-battle-move-grid button[data-encounter-move] { height: 48px; padding: 3px 5px; }
+.source-battle-overlay.battle-ui-unified .source-move-name { grid-template-rows: 10px 10px; }
+.source-battle-overlay.battle-ui-unified .source-move-name > span { font-size: 8.5px; }
+.source-battle-overlay.battle-ui-unified .source-move-metrics small { font-size: 7.5px; line-height: 1; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.attack > b { font-size: 25px; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.bag > b img { width: 34px; height: 34px; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.escape > b img { width: clamp(45px, 6vw, 50px); }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.pokemon { gap: 3px; }
+.source-battle-overlay.battle-ui-unified .source-battle-root button.pokemon > .source-battle-team-action-icons {
+  display: flex;
+  width: 100%;
+  gap: 1px;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons img,
+.source-battle-overlay.battle-ui-unified .source-battle-team-action-icons:has(img:nth-child(7)) img {
+  width: 14px;
+  height: 14px;
+  flex: 0 1 14px;
+}
+
+/* Bag category art is shared with the source game's item icons. */
+.source-battle-overlay.battle-ui-unified .source-battle-bag-categories button {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 5px;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-bag-categories .source-battle-bag-category-icon {
+  position: relative;
+  display: block;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 0;
+  background: transparent;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-bag-category-icon img { width: 30px; height: 30px; object-fit: contain; image-rendering: auto; }
+.source-battle-overlay.battle-ui-unified .source-battle-bag-category-icon em {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  min-width: 12px;
+  padding: 1px 2px;
+  color: #fff;
+  border-radius: 7px;
+  background: #102c3ddf;
+  font: 800 8px/1 sans-serif;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-bag-categories button > span { font-size: 10px; }
+.source-battle-overlay.battle-ui-unified .source-battle-bag-categories button > small { display: none; }
+
+/* Team cards expose only the battle essentials; actions open in a larger floating panel. */
+.source-battle-overlay.battle-ui-unified .source-battle-team-list { max-height: 64px; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-row {
+  display: grid;
+  width: 150px;
+  min-width: 150px;
+  height: 60px;
+  flex: 0 0 150px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 4px;
+  padding: 3px 5px;
+  align-items: center;
+  border: 1px solid #ffffff38;
+  border-radius: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.source-battle-overlay.battle-ui-unified .source-battle-team-row:focus-visible { outline: 2px solid #fff4cb; outline-offset: -2px; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-row.fainted { opacity: .72; }
+.source-battle-team-sprite { display: block; width: 40px; height: 40px; background-position: left center; background-size: auto 40px; background-repeat: no-repeat; image-rendering: pixelated; }
+.source-battle-team-copy { display: grid; min-width: 0; gap: 2px; }
+.source-battle-team-heading { display: flex; min-width: 0; gap: 2px; align-items: baseline; justify-content: space-between; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-heading strong { overflow: hidden; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-heading small { flex: 0 0 auto; color: #e9f3e7; font-size: 8px; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-hp { display: block; min-width: 0; }
+.source-battle-overlay.battle-ui-unified .source-battle-team-hp i { display: block; height: 5px; }
+.source-battle-team-badges { display: flex; min-height: 17px; gap: 2px; align-items: center; }
+.source-battle-team-badges > img { width: 17px; height: 17px; object-fit: contain; image-rendering: auto; }
+.source-battle-team-status { display: inline-block; width: 36px; height: 13px; background: url("/__pokemon-z/source/Graphics/Pictures/battleStatuses.png") 0 var(--status-y, 0) / 36px 104px no-repeat; image-rendering: pixelated; }
+.source-battle-team-choice {
+  position: absolute;
+  z-index: 25;
+  right: 0;
+  bottom: calc(100% + 7px);
+  width: min(100%, 274px);
+  padding: 8px;
+  color: #fff9e8;
+  border: 1px solid #c9e8ed73;
+  border-radius: 14px;
+  background: linear-gradient(145deg, #153c50f5, #0a2233f5);
+  box-shadow: 0 8px 22px #000b;
+}
+.source-battle-team-choice > strong { display: block; margin-bottom: 7px; font-size: 12px; }
+.source-battle-team-choice > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; }
+.source-battle-team-choice button { min-height: 44px; padding: 4px; color: #fffdf0; border: 1px solid #ffffff54; border-radius: 10px; background: #245477e0; font-size: 11px; font-weight: 850; }
+.source-battle-team-choice button[data-encounter-switch],
+.source-battle-team-choice button[data-encounter-replacement] { background: #237056e0; }
+.source-battle-team-choice button:disabled { opacity: .48; }
+.source-battle-team-choice button:focus-visible { outline: 2px solid #fff4cb; outline-offset: 1px; }
+.source-battle-overlay.battle-ui-unified > .source-battle-message.switch-announcement {
+  z-index: 26;
+  right: auto;
+  bottom: 25%;
+  left: 50%;
+  width: max-content;
+  max-width: 85%;
+  min-height: 0;
+  padding: 10px 16px;
+  visibility: visible;
+  transform: translateX(-50%);
+  background: #112e42ef;
+  box-shadow: 0 8px 24px #000b;
+  font-size: 16px;
+  text-align: center;
+  pointer-events: none;
+}

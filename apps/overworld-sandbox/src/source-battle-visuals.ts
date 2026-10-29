@@ -283,6 +283,7 @@ export class SourceBattleVisuals {
   #playerTrainerImage: HTMLImageElement | null = null;
   #opponentTrainerImage: HTMLImageElement | null = null;
   #opponentTrainerData: { readonly id: number; readonly name: string } | null = null;
+  #npcOpponent = false;
   #musicVolume: number;
   #effectsVolume: number;
   #audioBaseVolumes = new WeakMap<HTMLAudioElement, number>();
@@ -323,6 +324,7 @@ export class SourceBattleVisuals {
 
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null; readonly battleback?: string;
+    readonly npcOpponent?: boolean;
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
     readonly initialOpponentStatBoost?: boolean;
     readonly waitBeforeSendOut?: () => Promise<void>;
@@ -333,6 +335,8 @@ export class SourceBattleVisuals {
     this.options.onBattleAudioStart?.();
     this.#capturePresented = false;
     this.#opponentTrainerData = audio.opponentTrainer ?? null;
+    this.#npcOpponent = audio.npcOpponent === true;
+    this.updateNpcOpponentRoster(state);
     this.#battleback = audio.battleback ?? "snow";
     this.#renderedSpecies = "";
     this.#renderedState = state;
@@ -504,6 +508,8 @@ export class SourceBattleVisuals {
     this.stopAudio();
     this.#victoryMusicPath = null;
     this.#opponentTrainerData = null;
+    this.#npcOpponent = false;
+    this.updateNpcOpponentRoster(null);
     this.options.onBattleAudioEnd?.();
   }
 
@@ -689,12 +695,17 @@ export class SourceBattleVisuals {
         const nextSprite = spriteId === null ? null : document.getElementById(spriteId);
         await this.playCue("recall", 0.8);
         const replacement = step.state.teams[step.side].members[step.state.teams[step.side].activeIndex];
+        const announcement = step.side === "player" ? document.getElementById("source-battle-message") : null;
+        if (announcement !== null && replacement !== undefined) {
+          announcement.classList.add("switch-announcement");
+          this.message(`${replacement.name} GO !!`);
+        }
         void this.playBattlerCry(replacement);
         const reveal = nextSprite?.animate([{ opacity: 0, transform: "scale(.125)", filter: "brightness(3)" },
           { opacity: 1, transform: "scale(1)", filter: "brightness(1)" }],
           { duration: reduced ? 20 : 360, fill: "forwards" });
-        await Promise.all([reveal?.finished.catch(() => undefined), readableMessageDelay(800)]);
-        reveal?.cancel();
+        try { await Promise.all([reveal?.finished.catch(() => undefined), readableMessageDelay(800)]); }
+        finally { reveal?.cancel(); announcement?.classList.remove("switch-announcement"); }
       } else if (step.kind === "capture") {
         await this.playCapture(step, session);
       }
@@ -1085,7 +1096,32 @@ export class SourceBattleVisuals {
     element.style.height = sourceBattlePercent(placement.height, "y");
   }
 
+  private updateNpcOpponentRoster(state: TeamBattleState | null): void {
+    const roster = document.getElementById("source-npc-opponent-roster");
+    const visible = this.#npcOpponent && this.#opponentTrainerData !== null && state !== null;
+    document.getElementById("encounter-panel")?.classList.toggle("npc-opponent", visible);
+    if (roster === null) return;
+    roster.hidden = !visible;
+    if (!visible || state === null || this.#opponentTrainerData === null) return;
+    const name = document.getElementById("source-npc-opponent-name");
+    if (name !== null) name.textContent = this.#opponentTrainerData.name;
+    const team = document.getElementById("source-npc-opponent-team");
+    team?.replaceChildren(...state.teams.opponent.members.map((member) => {
+      const marker = document.createElement("span");
+      marker.className = "source-npc-opponent-ball";
+      marker.title = `${member.name} · ${member.hp}/${member.stats.maxHp} PV`;
+      marker.setAttribute("role", "img");
+      marker.setAttribute("aria-label", `${member.name} : ${member.hp <= 0 ? "K.O." : "disponible"}`);
+      const icon = document.createElement("img");
+      icon.src = sourceUrl(`Graphics/Pictures/DP Pause Menu/${member.hp <= 0 ? "pokemonA" : "pokemonB"}.png`);
+      icon.alt = "";
+      marker.append(icon);
+      return marker;
+    }));
+  }
+
   private updateHud(state: TeamBattleState): void {
+    this.updateNpcOpponentRoster(state);
     for (const side of ["player", "opponent"] as const) {
       const team = state.teams[side];
       const active = team.activeIndices ?? [team.activeIndex];

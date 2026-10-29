@@ -3502,6 +3502,13 @@ et la reconnexion Coop réelle restent ouvertes.
 L'APK 0.1.3 (`versionCode 4`) est signée et publiée sur R2 le 2026-10-29 ;
 la taille de l'objet distant et le manifeste final ont été contrôlés.
 
+Patch 0.1.4 (`versionCode 5`) construit, signé et publié le 2026-10-29,
+avec les ajustements du HUD de combat, des menus tactiles et de l'aperçu Android
+dans Chrome. Tests, build, synchronisation Capacitor, certificat et manifeste
+local vérifiés. L'APK et le manifeste sont sur R2 ; taille distante, version,
+empreinte et type du manifeste relus. Elle reste à installer et valider sur
+téléphone en solo et en Coop.
+
 ### Patch suivant : ressources et fond de combat large — cadrage du 2026-10-29
 
 Le contrat d'intégration et le registre initial sont dans

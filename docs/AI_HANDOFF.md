@@ -138,8 +138,9 @@ reconnexion Coop.
 
 Correctif apres premier retour Android : les media queries `pointer: coarse` et
 `hover: none` ne suffisaient pas sur le navigateur du porteur. Le mode dedie est
-maintenant active explicitement par le User-Agent Android et jamais sur le PC de
-developpement. Le selecteur de mise en page historique visait aussi `body > main`
+maintenant active explicitement par le User-Agent Android dans l'application ;
+la previsualisation locale Chrome peut aussi l'activer en simulation tactile.
+Le selecteur de mise en page historique visait aussi `body > main`
 alors que le shell monte le jeu dans `#app > main` : ce selecteur est corrige. En
 paysage Android, le canvas est donc centre dans une grille a colonne unique, le
 panneau et le bouton du moteur sont forces masques et les controles tactiles sont
@@ -9255,3 +9256,133 @@ passent. Le serveur Chrome rapide `5175` sert le nouveau CSS et le nouveau JS
 en HTTP 200. Le controle TypeScript strict du sandbox garde 23 erreurs deja
 presentes dans d'autres fichiers du portage, aucune dans
 `source-battle-overlay.ts`.
+
+## Icones des commandes de combat et etat de l'equipe — 2026-10-29
+
+Le bouton Retour des sous-menus utilise `Graphics/Icons/itemBack.png`, le Sac
+utilise `Graphics/Pictures/DP Pause Menu/bagBm.png`. Le bouton « Pokémon » devient
+« Équipe » et affiche sous le libelle une icone par membre de l'equipe joueur :
+`pokemonB.png` si ses PV sont positifs, `pokemonA.png` s'il est K.O. La liste
+vient de `TeamBattleState.teams.player.members`, commune au solo, a l'hote et
+a l'invite Coop ; aucune liste d'especes ou d'etats parallele n'est entretenue.
+Le compteur equivalent a ete retire du HUD joueur. Les indicateurs adverses
+restent en place en attendant le HUD separe souhaite par le porteur. Aucun
+changement d'autorite, d'intention reseau ou de persistance. Les fichiers du jeu
+sont references depuis la source locale et ne sont pas ajoutes au depot.
+
+Controle visuel isole Chrome a 640 x 320 : six membres dont deux K.O., icone
+du Sac et bouton Retour visibles sans debordement. La recette sur vrai combat
+simple/Duo et sur invite Coop reste ouverte.
+`corepack pnpm test`, `corepack pnpm build` et `corepack pnpm android:sync`
+passent. Les quatre URLs des nouvelles icones repondent HTTP 200 sur le serveur
+Chrome rapide `5175`, qui sert aussi le JS compile du bouton « Équipe ».
+
+## HUD du Dresseur adverse et nettete des icones — 2026-10-29
+
+Le Dresseur PNJ dispose d'un bandeau compact separe, avec son nom et une icone
+par Pokemon de son equipe (`pokemonB.png` disponible, `pokemonA.png` K.O.). Il
+apparait uniquement si le combat local est lance comme combat de Dresseur, ou
+si le contexte autoritaire Coop indique `source-trainer` face au joueur qui
+regarde. Il n'apparait ni contre un sauvage ni contre un autre joueur. Les
+fiches des Pokemon adverses descendent dans ce cas, y compris en Duo, et leur
+ancien compteur d'equipe est masque. Le bandeau attend la fin de l'intro pour
+apparaitre. L'etat des membres vient du `TeamBattleState` commun : il n'y a
+aucune nouvelle autorite, intention reseau ou donnee persistante. Pour l'hote
+et l'invite Coop, l'affichage est derive du contexte de la room et du cote du
+spectateur ; une reconnexion recalcule le meme affichage depuis le snapshot.
+
+Les logos de type sont des images 220 x 220 autrefois reduites a 15 px avec
+`image-rendering: pixelated` : ils passent a 19 px dans les fiches et 18 px
+dans les attaques avec reduction lissee. Les symboles de genre sont du texte,
+agrandi et rendu sans ombre epaisse. Le bouton Sac charge `bagBmZ.png` depuis
+la source locale ; Fuite utilise `fuiteZ.png` de la source locale, sans cadre
+ajoute. Les icones de l'equipe joueur sont recentrees sur une seule rangee de
+six maximum. Les sprites Pokemon conservent leur rendu pixelise.
+
+`corepack pnpm test`, `corepack pnpm build` et `corepack pnpm android:sync`
+passent. Le serveur local de
+developpement retourne HTTP 200 pour `bagBmZ.png` et `fuiteZ.png`.
+Recette visuelle en combat simple/Duo sur telephone, puis hote/invite Coop,
+encore a effectuer.
+
+Correctif de l'icone Fuite : le SVG provisoire est retire au profit de
+`Graphics/Pictures/DP Pause Menu/fuiteZ.png` fourni par le porteur. Son ratio
+108:77 est preserve ; sa largeur varie de 45 a 50 px apres reduction de la
+hauteur du bandeau d'actions. Il garde sa place selon la largeur du
+bouton, y compris lorsque le texte devient « Abandon » en duel. Le fichier
+source reste hors Git ; la synchronisation Android le copie avec les autres
+ressources locales.
+Le premier `android:sync` a signale un `ENOENT` pendant la copie Capacitor alors
+que `dist` finissait de se remplir ; `corepack pnpm exec cap copy android` relance
+depuis `apps/overworld-sandbox` a reussi. Controle final : `fuiteZ.png` present
+dans `dist` et les assets Android, SVG provisoire absent des deux dossiers.
+
+## Sac et equipe dans le bandeau de combat — 2026-10-29
+
+Les trois categories du Sac utilisent respectivement les icones source
+`Graphics/Icons/item267.png` (Poke Balls), `item006.png` (Soins) et
+`item081.png` (Objets combat). Leur compteur reste lisible sur l'icone.
+Les commandes racines, capacites, categories et Retour passent de 58 a 48 px
+de haut avec des coins plus doux ; les icones du Sac et d'Attaque grossissent.
+Le bouton Equipe montre au plus six Poke Balls sur une seule ligne. Les membres
+supplementaires d'une equipe Coop restent accessibles dans la liste de l'equipe.
+
+La liste de combat affiche une carte de 150 px par Pokemon : icone animee du
+manifeste source (premiere pose fixe), nom, niveau, barre de PV, types et statut.
+Le clic ouvre un panneau contextuel au premier plan avec Détails, Échanger ou
+Envoyer pour un remplacement impose, et Retour. Les boutons de ce panneau ont
+une cible de 44 px ; Echap le ferme. Les cartes sont consultables meme si le
+Pokemon est K.O. ou au combat, mais l'envoi reste bloque par les regles
+existantes. L'icone est resolue a partir de l'apparence publique du
+`TeamBattleState` commun au solo et a la room Coop ; l'etat de selection du
+panneau est local, transitoire, sans sauvegarde ni intention reseau nouvelle.
+L'envoi d'un remplacant joueur affiche temporairement « Nom GO !! » au premier
+plan pendant son apparition ; la resolution du changement reste autoritaire
+dans la room en Coop et dans le noyau local en solo.
+
+`corepack pnpm test` et `corepack pnpm build` passent. Les trois icones du Sac
+repondent en HTTP 200 ; la copie Android reussit apres preparation explicite
+des assets. Le controle TypeScript du sandbox conserve 23 erreurs dans d'autres
+fichiers, aucune dans les fichiers modifies pour ce lot. Recette visuelle
+simple, Duo et hote/invite encore ouverte.
+
+## Emulation Android dans Chrome — 2026-10-29
+
+Le mode Android etait fixe une seule fois au chargement par le User-Agent.
+La barre d'emulation de Chrome activee ensuite conservait donc la presentation
+PC, et certains profils mobiles gardent un User-Agent Windows. Sur les seuls
+serveurs locaux `127.0.0.1`/`localhost` en ports 5174 et 5175, la presentation
+Android s'active desormais si Chrome emule un pointeur tactile sans survol, ou
+si l'URL contient `?android=1`. Elle se recalcule lors d'un changement de
+pointeur, de survol ou de taille du viewport ; les entrees tactiles tenues sont
+relachees a chaque bascule. La logique native de plein ecran, barre systeme et
+mise a jour APK reste limitee au vrai Android Capacitor. Le mode standard du
+PC hors previsualisation locale reste inchange. Aucune sauvegarde, autorite de
+jeu ou intention Coop ne change.
+`corepack pnpm test` et `corepack pnpm build` passent. Les assets du build ont
+ete prepares puis recopies dans le projet Android avec `cap copy android` ;
+`http://127.0.0.1:5175/?android=1` repond HTTP 200. Recette visuelle en
+emulation Chrome paysage encore a confirmer par le porteur.
+
+## APK 0.1.4 publiee — 2026-10-29
+
+Le patch local `versionCode 5` / `versionName 0.1.4` rassemble les ajustements
+du combat et du controle tactile decrits ci-dessus. `corepack pnpm test` et
+`corepack pnpm build` passent. Les ressources locales ont ete preparees,
+`cap sync android` a reussi, puis l'APK de diffusion a ete construite et signee
+avec le certificat de la 0.1.3 (SHA-256 du certificat :
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`).
+Le manifeste local `latest.json` a ete genere et controle : APK de 914063736
+octets, SHA-256 `95bff4af9aab87a2754be3a0bad6c2ed885d7c3a776de3655df30a01dc49207a`.
+Les trois icones du Sac et `fuiteZ.png` sont presentes dans l'APK. Apres
+confirmation du porteur, `pokemon-z-battle-5.apk` a ete publie dans le bucket
+R2 prive : sa taille distante est bien de 914063736 octets. `latest.json` a ete
+envoye en dernier via `rclone` car la session Wrangler locale est expiree ; la
+relecture distante confirme 0.1.4, le code 5, la taille, le SHA-256 et le type
+`application/json`. La mise a jour est donc annoncee par le manifeste R2.
+
+Recette restante apres publication : installation par-dessus la 0.1.3 et
+conservation des sauvegardes sur appareil ; combat simple et Duo sur les fonds
+concernes, navigation Sac/Equipe et changement de Pokemon ; hote et invite Coop ;
+presentation en Chrome emule Android paysage. Les packs de ressources incrementaux
+ne sont pas encore implementes : la 0.1.4 reste une APK complete.

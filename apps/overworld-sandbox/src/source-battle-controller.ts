@@ -45,6 +45,7 @@ export interface SourceBattlePresentation {
     readonly battleMusic?: string | null;
     readonly victoryMusic?: string | null;
     readonly battleback?: string;
+    readonly npcOpponent?: boolean;
     readonly opponentTrainer?: { readonly id: number; readonly name: string };
     readonly initialOpponentStatBoost?: boolean;
   }) => Promise<void>;
@@ -325,7 +326,7 @@ export class SourceBattleController {
       this.escapeAttempts = 0;
       this.trainerCompletion = onComplete;
       this.trainerAudio = audio;
-      void this.presentation.startBattle(this.battle, { ...audio, battleback: resources.battleback,
+      void this.presentation.startBattle(this.battle, { ...audio, battleback: resources.battleback, npcOpponent: true,
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name } });
       this.callbacks.setNotice(`Combat de Dresseur lancé contre ${trainer.name}.`);
     } catch (error) {

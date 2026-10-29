@@ -1,1 +1,1 @@
-Préparation de l'aventure refondue : prologue, personnage, règles et récapitulatif avant le départ. Les choix et le héros sont repris dans chaque partie vide après fermeture de l'application. Parcours adapté au paysage sans défilement. Les sauvegardes existantes sont conservées.
+Combats plus lisibles sur les fonds larges : HUD des Pokémon et du Dresseur adverse, menus Sac et Équipe revus pour le tactile, icônes et messages d'échange améliorés. Aperçu Android dans Chrome corrigé. Les sauvegardes existantes sont conservées.

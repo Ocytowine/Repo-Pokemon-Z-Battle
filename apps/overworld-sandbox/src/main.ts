@@ -66,7 +66,7 @@ import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-se
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceTitleScreen } from "./source-title-screen.js";
 import { SourceLaunchScreen } from "./source-launch-screen.js";
-import { isSourceAndroidUserAgent, SourceTouchControls } from "./source-touch-controls.js";
+import { isSourceAndroidUserAgent, sourceAndroidPresentationMode, SourceTouchControls } from "./source-touch-controls.js";
 import { hideSourceAndroidSystemBars } from "./source-native-android.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceCompassView } from "./source-compass.js";
@@ -153,9 +153,15 @@ import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   type SourceFieldMark } from "./source-field-effects.js";
 import "./style.css";
 
-const sourceAndroidMode = isSourceAndroidUserAgent(navigator.userAgent);
-document.documentElement.classList.toggle("source-android", sourceAndroidMode);
-const sourceNativeAndroidMode = sourceAndroidMode && Capacitor.getPlatform() === "android";
+const sourceNativeAndroidMode = isSourceAndroidUserAgent(navigator.userAgent) && Capacitor.getPlatform() === "android";
+const sourceLocalChromePreview = ["127.0.0.1", "localhost"].includes(window.location.hostname)
+  && ["5174", "5175"].includes(window.location.port);
+const sourceAndroidPointerQuery = window.matchMedia("(pointer: coarse)");
+const sourceAndroidHoverQuery = window.matchMedia("(hover: none)");
+const sourceAndroidPresentationEnabled = (): boolean => sourceAndroidPresentationMode(navigator.userAgent,
+  sourceLocalChromePreview, sourceAndroidPointerQuery.matches && sourceAndroidHoverQuery.matches,
+  new URLSearchParams(window.location.search).get("android") === "1");
+document.documentElement.classList.toggle("source-android", sourceAndroidPresentationEnabled());
 const hideSourceNativeSystemBars = (): void => {
   if (sourceNativeAndroidMode) void hideSourceAndroidSystemBars(SystemBars);
 };
@@ -1195,6 +1201,15 @@ const sourceTouchControls = new SourceTouchControls({
   },
   onSprint: (held) => { touchSprintHeld = sourceDocumentInputActive && held; },
 });
+const syncSourceAndroidPresentation = (): void => {
+  const enabled = sourceAndroidPresentationEnabled();
+  if (document.documentElement.classList.contains("source-android") === enabled) return;
+  document.documentElement.classList.toggle("source-android", enabled);
+  sourceTouchControls.release();
+};
+sourceAndroidPointerQuery.addEventListener("change", syncSourceAndroidPresentation);
+sourceAndroidHoverQuery.addEventListener("change", syncSourceAndroidPresentation);
+window.addEventListener("resize", syncSourceAndroidPresentation);
 requiredAppElement<HTMLElement>("app").addEventListener("pointerdown",
   hideSourceNativeSystemBars, { capture: true });
 const touchPortraitQuery = window.matchMedia("(orientation: portrait)");
@@ -1672,6 +1687,16 @@ const sourceBattleOverlay = new SourceBattleOverlay({
     else multiplayer.attemptBattleEscape();
   },
   onDetails: (pokemonId) => openSourcePokemonSummary("battle", pokemonId),
+  onPokemonIcon: (member) => {
+    const record = importedAssets?.pokemonAssets.records.find((candidate) => candidate.internalName === member.species);
+    const icon = record === undefined ? null : resolvePokemonAsset(record, { kind: "icon",
+      form: member.appearance?.form ?? 0, shiny: member.appearance?.shiny ?? false,
+      female: member.appearance?.gender === "female" }).asset;
+    return icon === null || icon === undefined
+      ? `/__pokemon-z/source/Graphics/Icons/icon${String(record?.id ?? 0).padStart(3, "0")}.png`
+      : `/__pokemon-z/source/${icon.path.replaceAll("\\", "/").split("/")
+        .map((part) => encodeURIComponent(part).replaceAll("'", "%27")).join("/")}`;
+  },
   onUiSound: (kind) => { void sourceBattleVisuals.playInterfaceSound(kind); },
 });
 const sourcePlayerDuelView = new SourcePlayerDuelView({
@@ -1909,6 +1934,7 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     const opponentName = multiplayer.current?.snapshot?.players
       .find((player) => player.playerId === trainerIds.opponent)?.profile.profile.displayName ?? "L'autre Dresseur";
     await sourceBattleVisuals.startBattle(viewerBattle, {
+      npcOpponent: sourceTrainerFacesViewer,
       battleback: sourceContext?.presentation.battlebackId ?? importedAssets?.battleback ?? "snow",
       battleMusic: sourceContext?.presentation.battleMusicId
         ?? (visibleBattle?.duel === true ? "Entrenador.ogg" : importedAssets?.wildBattleBgm ?? null),

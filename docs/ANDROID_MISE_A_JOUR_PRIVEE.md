@@ -176,3 +176,15 @@ de diffusion existant et publiée sur R2 sous
 avec la taille et l'empreinte attendues. Le téléphone n'était pas connecté en
 ADB. Tester l'installation par-dessus 0.1.2, les sauvegardes et le parcours
 complet sur Android avant de clore le lot.
+
+## Patch 0.1.4 — 2026-10-29
+
+Après confirmation du porteur, l'APK `versionCode 5` / `versionName 0.1.4` a
+été publiée sous `updates/android/pokemon-z-battle-5.apk`. Sa taille distante
+est de 914 063 736 octets. Le manifeste `latest.json` a été envoyé en dernier,
+par le remote R2 local car la session Wrangler avait expiré. Sa relecture dans
+R2 confirme la version, la taille et le SHA-256
+`95bff4af9aab87a2754be3a0bad6c2ed885d7c3a776de3655df30a01dc49207a` ;
+son type est `application/json`. Le certificat de diffusion est identique aux
+versions précédentes. L'installation sur téléphone, les sauvegardes et les
+combats solo/Duo/Coop restent à tester par le porteur.

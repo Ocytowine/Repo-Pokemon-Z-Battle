@@ -1,11 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { isSourceAndroidUserAgent, sourceJoystickDirection, SourceTouchControls }
+import { isSourceAndroidUserAgent, sourceAndroidPresentationMode, sourceJoystickDirection, SourceTouchControls }
   from "../src/source-touch-controls.js";
 
 describe("source Android touch controls", () => {
   it("activates the dedicated layout only for Android user agents", () => {
     expect(isSourceAndroidUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36")).toBe(true);
     expect(isSourceAndroidUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")).toBe(false);
+  });
+
+  it("enables Android presentation for local Chrome touch emulation or an explicit preview override", () => {
+    const desktop = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+    expect(sourceAndroidPresentationMode(desktop, false, true, true)).toBe(false);
+    expect(sourceAndroidPresentationMode(desktop, true, false, false)).toBe(false);
+    expect(sourceAndroidPresentationMode(desktop, true, true, false)).toBe(true);
+    expect(sourceAndroidPresentationMode(desktop, true, false, true)).toBe(true);
   });
 
   it("keeps the fixed joystick cardinal with a central dead zone", () => {

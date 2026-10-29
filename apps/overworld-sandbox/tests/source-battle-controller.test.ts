@@ -267,7 +267,7 @@ describe("source battle controller", () => {
     expect(visuals.startBattle).toHaveBeenCalledWith(controller.current,
       { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6,
         defeatText: "J'ai encore beaucoup à apprendre !",
-        battleback: "town", opponentTrainer: { id: 6, name: "Crisanto" } });
+        battleback: "town", npcOpponent: true, opponentTrainer: { id: 6, name: "Crisanto" } });
     expect(eventState.money).toBe(3000);
     for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
     expect(controller.active).toBe(false);

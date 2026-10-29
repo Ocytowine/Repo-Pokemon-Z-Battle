@@ -49,11 +49,21 @@ export interface SourceBattleOverlayCallbacks {
   readonly onLeave: () => void;
   readonly onEscape: (local: boolean) => void;
   readonly onDetails: (pokemonId: string) => void;
+  readonly onPokemonIcon?: (member: BattleTeam["members"][number]) => string;
   readonly onUiSound: (kind: "decision" | "cancel" | "error") => void;
 }
 
 type BattleMenu = "root" | "moves" | "targets" | "pokemon" | "bag" | "balls" | "medicine" | "battle-items" | "forfeit"
   | "item-targets" | "item-moves";
+
+const BATTLE_ACTION_ICONS = "/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/";
+const BATTLE_ITEM_ICONS = "/__pokemon-z/source/Graphics/Icons/";
+const BATTLE_TEAM_STATUS: Readonly<Record<string, { readonly row: number; readonly label: string }>> = {
+  sleep: { row: 0, label: "Sommeil" }, poison: { row: 1, label: "Poison" },
+  burn: { row: 2, label: "Brûlure" }, paralysis: { row: 3, label: "Paralysie" },
+  frozen: { row: 4, label: "Gel" }, caduco: { row: 5, label: "Exténuation" },
+  hemorrhage: { row: 6, label: "Hémorragie" }, fainted: { row: 7, label: "K.O." },
+};
 
 export function sourceBattleSummary(state: TeamBattleState, observing: boolean): string {
   const playerTeam = state.teams.player;
@@ -99,6 +109,7 @@ export class SourceBattleOverlay {
   private bagPage = 0;
   private pendingReplacement: { readonly turn: number; readonly activeSlot: number } | null = null;
   private menuPrompt: string | null = null;
+  private selectedTeamIndex: number | null = null;
   private readonly megaEvolutionSelections = new Set<number>();
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {
@@ -118,6 +129,7 @@ export class SourceBattleOverlay {
       this.renderedTurn = null;
       this.pendingReplacement = null;
       this.menuPrompt = null;
+      this.selectedTeamIndex = null;
       this.megaEvolutionSelections.clear();
       return;
     }
@@ -132,6 +144,7 @@ export class SourceBattleOverlay {
       this.selectedBagFamilyId = null;
       this.bagPage = 0;
       this.pendingReplacement = null;
+      this.selectedTeamIndex = null;
     }
     const visualStage = document.querySelector<HTMLElement>("#source-battle-stage");
     if (visualStage !== null) {
@@ -238,7 +251,8 @@ export class SourceBattleOverlay {
 
   private renderRoot(actions: HTMLElement, model: SourceBattleOverlayModel, team: BattleTeam, blocked: boolean): void {
     const activeIndices = team.activeIndices ?? [team.activeIndex];
-    const reserves = team.members.filter((member, index) => !activeIndices.includes(index) && member.hp > 0).length;
+    const readyCount = team.members.filter((member) => member.hp > 0).length;
+    const teamIcons = team.members.slice(0, 6).map((member) => `<img src="${BATTLE_ACTION_ICONS}${member.hp <= 0 ? "pokemonA" : "pokemonB"}.png" alt="" title="${escapeSourceHtml(member.name)} · ${member.hp}/${member.stats.maxHp} PV${member.hp <= 0 ? " · K.O." : ""}">`).join("");
     const bagCount = [...model.bag.balls, ...model.bag.medicine, ...model.bag.battleItems]
       .filter((entry) => entry.usable !== false).length;
     const exitBlocked = model.animating || !model.duel && (model.escapeConfirmedByMe
@@ -246,9 +260,9 @@ export class SourceBattleOverlay {
     const activePicker = activeIndices.length < 2 ? "" : `<div class="source-battle-active-picker">${activeIndices.map((index, slot) => `<button data-active-slot="${slot}"${disabled(model.submittedActiveSlots.includes(slot))}>${escapeSourceHtml(team.members[index]!.name)}${slot === this.activeSlot ? " ✓" : ""}</button>`).join("")}</div>`;
     actions.innerHTML = `${activePicker}<div class="source-battle-menu source-battle-root" aria-label="Commandes de combat">
       <button data-battle-menu="moves" class="attack"${disabled(blocked)}><b>⚔</b><span>Attaque</span><small>Choisir une capacité</small></button>
-      <button data-battle-menu="pokemon" class="pokemon"${disabled(blocked)}><b>●</b><span>Pokémon</span><small>${reserves} remplaçant${reserves > 1 ? "s" : ""}</small></button>
-      <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b>▣</b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
-      <button id="escape-source-encounter" class="escape"${disabled(exitBlocked)}><b>↗</b><span>${model.duel ? "Abandon" : "Fuite"}</span><small>${model.duel
+      <button data-battle-menu="pokemon" class="pokemon" aria-label="Équipe : ${team.members.length} Pokémon, ${readyCount} en état de combattre"${disabled(blocked)}><span>Équipe</span><span class="source-battle-team-action-icons" aria-hidden="true">${teamIcons}</span></button>
+      <button data-battle-menu="bag" class="bag"${disabled(blocked)}><b><img src="${BATTLE_ACTION_ICONS}bagBmZ.png" alt=""></b><span>Sac</span><small>${bagCount} objet${bagCount > 1 ? "s" : ""} dans ces poches</small></button>
+      <button id="escape-source-encounter" class="escape"${disabled(exitBlocked)}><b><img src="${BATTLE_ACTION_ICONS}fuiteZ.png" alt=""></b><span>${model.duel ? "Abandon" : "Fuite"}</span><small>${model.duel
           ? "Concéder la victoire"
           : model.escapeConfirmedByMe
             ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
@@ -258,6 +272,7 @@ export class SourceBattleOverlay {
     </div>`;
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
+      this.selectedTeamIndex = null;
       this.selectedBagFamilyId = null;
       this.bagPage = 0;
       this.render(model);
@@ -351,28 +366,66 @@ export class SourceBattleOverlay {
     blocked: boolean, replacement: boolean): void {
     const rows = team.members.map((member, index) => {
       const active = (team.activeIndices ?? [team.activeIndex]).includes(index);
-      const cannotSwitch = blocked || active || member.hp <= 0
-        || model.controllableMemberIds !== null && !model.controllableMemberIds.includes(member.id);
-      return `<article class="source-battle-team-row${active ? " active" : ""}"><div><strong>${escapeSourceHtml(member.name)}</strong><small>N.${member.level}${active ? " · AU COMBAT" : member.hp <= 0 ? " · K.O." : ""}</small></div><span class="source-battle-team-hp"><i><b style="width:${hpPercent(member.hp, member.stats.maxHp)}%"></b></i><em>${member.hp}/${member.stats.maxHp} PV</em></span><nav><button data-battle-details="${escapeSourceHtml(member.id)}"${disabled(model.animating)}>Détails</button><button data-${replacement ? "encounter-replacement" : "encounter-switch"}="${index}"${disabled(cannotSwitch)}>${replacement ? "Envoyer" : "Changer"}</button></nav></article>`;
+      const icon = escapeSourceHtml(this.callbacks.onPokemonIcon?.(member)
+        ?? `${BATTLE_ITEM_ICONS}icon000.png`);
+      const types = member.types.map((type) => `<img src="${escapeSourceHtml(pokemonTypeIconUrl(type))}" alt="${escapeSourceHtml(type)}" title="${escapeSourceHtml(type)}">`).join("");
+      const status = member.hp <= 0 ? BATTLE_TEAM_STATUS.fainted
+        : member.majorStatus === null ? null : BATTLE_TEAM_STATUS[member.majorStatus.kind] ?? null;
+      const statusHtml = status === null || status === undefined ? ""
+        : `<i class="source-battle-team-status" style="--status-y:${-13 * status.row}px" role="img" aria-label="${status.label}" title="${status.label}"></i>`;
+      return `<button type="button" class="source-battle-team-row${active ? " active" : ""}${member.hp <= 0 ? " fainted" : ""}" data-team-select="${index}" aria-haspopup="dialog" aria-expanded="${this.selectedTeamIndex === index}" aria-label="${escapeSourceHtml(member.name)}, niveau ${member.level}${active ? ", au combat" : ""}${member.hp <= 0 ? ", K.O." : ""}"><span class="source-battle-team-sprite" style="background-image:url(&quot;${icon}&quot;)" aria-hidden="true"></span><span class="source-battle-team-copy"><span class="source-battle-team-heading"><strong>${escapeSourceHtml(member.name)}</strong><small>N.${member.level}</small></span><span class="source-battle-team-hp" role="meter" aria-label="Points de vie" aria-valuemin="0" aria-valuemax="${member.stats.maxHp}" aria-valuenow="${member.hp}"><i><b style="width:${hpPercent(member.hp, member.stats.maxHp)}%"></b></i></span><span class="source-battle-team-badges">${types}${statusHtml}</span></span></button>`;
     }).join("");
+    const selectedIndex = this.selectedTeamIndex;
+    const selected = selectedIndex === null ? undefined : team.members[selectedIndex];
+    const selectedActive = selectedIndex !== null
+      && (team.activeIndices ?? [team.activeIndex]).includes(selectedIndex);
+    const cannotSwitch = selected === undefined || blocked || selectedActive || selected.hp <= 0
+      || model.controllableMemberIds !== null && !model.controllableMemberIds.includes(selected.id);
+    const canInspect = selected !== undefined && (model.controllableMemberIds === null
+      || model.controllableMemberIds.includes(selected.id));
+    const choice = selected === undefined || selectedIndex === null ? ""
+      : `<section id="source-battle-team-choice" class="source-battle-team-choice" role="dialog" aria-label="Actions pour ${escapeSourceHtml(selected.name)}" tabindex="-1"><strong>${escapeSourceHtml(selected.name)}</strong><div><button type="button" data-battle-details="${escapeSourceHtml(selected.id)}"${disabled(model.animating || !canInspect)}>Détails</button><button type="button" data-${replacement ? "encounter-replacement" : "encounter-switch"}="${selectedIndex}"${disabled(cannotSwitch)}>${replacement ? "Envoyer" : "Échanger"}</button><button type="button" data-team-choice-close>Retour</button></div></section>`;
     const escape = replacement && model.escapable && !model.duel
       ? `<footer class="source-battle-replacement-exit"><button id="escape-source-replacement" class="escape"${disabled(blocked)}><span>Fuite</span><small>${model.escapeConfirmedByMe
         ? `Confirmation envoyée · ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
         : model.escapeConfirmationRequired > 1
           ? `Quitter la rencontre · accord ${model.escapeConfirmationCount}/${model.escapeConfirmationRequired}`
           : "Quitter la rencontre sauvage"}</small></button></footer>` : "";
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-team"><header>${replacement ? "" : '<button data-battle-back aria-label="Retour">‹</button>'}<div><small>POKÉMON</small><strong>${replacement ? "Choisissez un remplaçant" : "Équipe et détails"}</strong></div></header><div class="source-battle-team-list">${rows}</div>${escape}</div>`;
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-team"><header>${replacement ? "" : '<button data-battle-back aria-label="Retour">‹</button>'}<div><small>POKÉMON</small><strong>${replacement ? "Choisissez un remplaçant" : "Équipe et détails"}</strong></div></header><div class="source-battle-team-list">${rows}</div>${choice}${escape}</div>`;
     if (!replacement) this.bindBack(actions, model);
+    actions.querySelectorAll<HTMLButtonElement>("[data-team-select]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const scroll = actions.querySelector<HTMLElement>(".source-battle-team-list")?.scrollLeft ?? 0;
+        this.selectedTeamIndex = Number(button.dataset.teamSelect);
+        this.renderPokemon(actions, team, model, blocked, replacement);
+        const list = actions.querySelector<HTMLElement>(".source-battle-team-list");
+        if (list !== null) list.scrollLeft = scroll;
+        actions.querySelector<HTMLElement>("#source-battle-team-choice")?.focus();
+      }));
+    const closeChoice = (): void => {
+      const index = this.selectedTeamIndex;
+      this.selectedTeamIndex = null;
+      this.renderPokemon(actions, team, model, blocked, replacement);
+      actions.querySelector<HTMLButtonElement>(`[data-team-select="${index}"]`)?.focus();
+    };
+    actions.querySelector<HTMLButtonElement>("[data-team-choice-close]")?.addEventListener("click", closeChoice);
+    actions.querySelector<HTMLElement>("#source-battle-team-choice")?.addEventListener("keydown", (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeChoice();
+    });
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-details]").forEach((button) =>
       button.addEventListener("click", () => this.callbacks.onDetails(button.dataset.battleDetails!)));
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-switch]").forEach((button) =>
       button.addEventListener("click", () => {
+        this.selectedTeamIndex = null;
         this.menu = "root";
         this.callbacks.onSwitch(Number(button.dataset.encounterSwitch), model.local, this.activeSlot);
       }));
     actions.querySelectorAll<HTMLButtonElement>("[data-encounter-replacement]").forEach((button) =>
       button.addEventListener("click", () => {
         if (model.state === null) return;
+        this.selectedTeamIndex = null;
         this.pendingReplacement = { turn: model.state.turn, activeSlot: this.activeSlot };
         this.callbacks.onReplacement(Number(button.dataset.encounterReplacement), this.activeSlot, model.local);
       }));
@@ -383,11 +436,11 @@ export class SourceBattleOverlay {
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {
     const categories = [
-      { id: "balls", label: "Poké Balls", hint: model.capturable ? "Pokémon sauvage" : "Cible non capturable", count: model.bag.balls.filter((entry) => entry.usable !== false).length, unavailable: !model.capturable },
-      { id: "medicine", label: "Soins", hint: "PV et statuts", count: model.bag.medicine.filter((entry) => entry.usable !== false).length, unavailable: false },
-      { id: "battle-items", label: "Objets combat", hint: "Bonus temporaires", count: model.bag.battleItems.filter((entry) => entry.usable !== false).length, unavailable: false },
+      { id: "balls", label: "Poké Balls", icon: "item267.png", hint: model.capturable ? "Pokémon sauvage" : "Cible non capturable", count: model.bag.balls.filter((entry) => entry.usable !== false).length, unavailable: !model.capturable },
+      { id: "medicine", label: "Soins", icon: "item006.png", hint: "PV et statuts", count: model.bag.medicine.filter((entry) => entry.usable !== false).length, unavailable: false },
+      { id: "battle-items", label: "Objets combat", icon: "item081.png", hint: "Bonus temporaires", count: model.bag.battleItems.filter((entry) => entry.usable !== false).length, unavailable: false },
     ] as const;
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>SAC</small><strong>Choisir une catégorie</strong></div></header><div class="source-battle-bag-categories">${categories.map((category) => `<button data-battle-menu="${category.id}"${disabled(blocked || category.unavailable)}><b>${category.count}</b><span>${category.label}</span><small>${category.hint}</small></button>`).join("")}</div></div>`;
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>SAC</small><strong>Choisir une catégorie</strong></div></header><div class="source-battle-bag-categories">${categories.map((category) => `<button data-battle-menu="${category.id}"${disabled(blocked || category.unavailable)}><b class="source-battle-bag-category-icon"><img src="${BATTLE_ITEM_ICONS}${category.icon}" alt=""><em>${category.count}</em></b><span>${category.label}</span><small>${category.hint}</small></button>`).join("")}</div></div>`;
     this.bindBack(actions, model);
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;
@@ -520,6 +573,7 @@ export class SourceBattleOverlay {
 
   private bindBack(actions: HTMLElement, model: SourceBattleOverlayModel, destination: BattleMenu = "root"): void {
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-back]").forEach((button) => button.addEventListener("click", () => {
+      this.selectedTeamIndex = null;
       this.menu = destination;
       this.render(model);
     }));

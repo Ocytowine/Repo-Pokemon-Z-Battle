@@ -12,6 +12,12 @@ export function isSourceAndroidUserAgent(userAgent: string): boolean {
   return /Android/iu.test(userAgent);
 }
 
+/** Local Chrome preview may emulate touch without changing its desktop user agent. */
+export function sourceAndroidPresentationMode(userAgent: string, localPreview: boolean,
+  touchEmulation: boolean, forcedPreview: boolean): boolean {
+  return isSourceAndroidUserAgent(userAgent) || localPreview && (touchEmulation || forcedPreview);
+}
+
 export function sourceJoystickDirection(x: number, y: number, radius: number): Direction | null {
   const threshold = Math.max(12, radius * 0.24);
   if (Math.hypot(x, y) < threshold) return null;
