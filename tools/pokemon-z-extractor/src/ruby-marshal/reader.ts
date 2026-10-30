@@ -42,6 +42,27 @@ export class RubyMarshalReader {
     return value;
   }
 
+  /** RPG Maker saves concatenate independent Marshal.dump streams. Each stream resets its link tables. */
+  public readSequence(expectedCount?: number): readonly RubyMarshalValue[] {
+    const values: RubyMarshalValue[] = [];
+    while (this.offset < this.bytes.length) {
+      this.objects.length = 0;
+      this.symbols.length = 0;
+      const start = this.offset;
+      const major = this.readByte();
+      const minor = this.readByte();
+      if (major !== 4 || minor !== 8) throw new RubyMarshalError("En-tête de bloc invalide.", start);
+      values.push(this.readValue());
+      if (expectedCount !== undefined && values.length > expectedCount) {
+        throw new RubyMarshalError("Trop de blocs dans la sauvegarde.", this.offset);
+      }
+    }
+    if (expectedCount !== undefined && values.length !== expectedCount) {
+      throw new RubyMarshalError(`Sauvegarde incomplète : ${values.length}/${expectedCount} blocs.`, this.offset);
+    }
+    return values;
+  }
+
   private readValue(): RubyMarshalValue {
     const tagOffset = this.offset;
     const tag = String.fromCharCode(this.readByte());

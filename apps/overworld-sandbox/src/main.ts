@@ -103,10 +103,14 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
   type SourceItemGain } from "./source-item-presentation.js";
 import { clearSourceWorldSave, createSourceGuestProgressSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   sourceEventStateForLaunch, type SourceWorldSave } from "./source-world-save.js";
-import { activateSourceSaveSlot, createSourceSaveSlotSnapshot, initializeSourceSaveSlots,
+import { activeSourceSaveSlot, activateSourceSaveSlot, createSourceSaveSlotSnapshot,
+  importSourceSaveSlot, initializeSourceSaveSlots,
   ignoreSourceAutoSave, loadSourceSaveSlot, markSourceManualSave, persistSourceSaveSlot, restoreSelectedSourceAutoSave,
-  sourceAutoResumeSelected, sourceAutoSaveNeedsRecovery, sourceSaveSlotSummaries,
+  restoreSourceImportBackup, sourceAutoResumeSelected, sourceAutoSaveNeedsRecovery, sourceSaveSlotSummaries,
   type SourceSaveSlotId, type SourceSaveSlotSnapshot } from "./source-save-slots.js";
+import { convertRxdataSave, type RxdataImportCatalog } from "./source-rxdata-import.js";
+import { readOriginalSaveCandidate, searchOriginalSaveFolder,
+  type OriginalSaveCandidate } from "./source-save-locator.js";
 import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-session.js";
 import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
   type SourceAndroidUpdate } from "./source-android-update.js";
@@ -232,6 +236,7 @@ async function downloadAndroidUpdate(): Promise<void> {
 const CLOUD_AUTO_LAST_ATTEMPT_KEY = "pokemon-z-battle.cloud-auto-last-attempt.v1";
 let pendingManualCloudSync: ReturnType<typeof setTimeout> | null = null;
 let pendingAutoCloudSync: ReturnType<typeof setTimeout> | null = null;
+let queuedExplicitCloudSync = false;
 let sourceSaveSlotReloadPending = false;
 function reloadActivatedSourceSaveSlot(): void {
   // The working copy already belongs to the selected slot. Saving the old scene
@@ -249,8 +254,22 @@ function refreshCloudMenu(): void {
 }
 async function runCloudSync(explicit: boolean, uploadAutomatic = true): Promise<void> {
   if (sourceCloudBusy) {
-    if (!explicit) scheduleCloudSync(uploadAutomatic ? "auto" : "manual");
+    if (explicit) queuedExplicitCloudSync = true;
+    else scheduleCloudSync(uploadAutomatic ? "auto" : "manual");
     return;
+  }
+  if (explicit && importedAssets !== null && !sourceTitleScreen.open && !sourceLaunchScreen.open
+    && !sourceNewGameActive) {
+    if (!canAutoSaveSourceWorld()) {
+      sourceCloudStatus = "Termine l'action en cours avant de synchroniser sa progression.";
+      refreshCloudMenu();
+      return;
+    }
+    if (!saveAutomaticSourceWorld()) {
+      sourceCloudStatus = "Sauvegarde locale impossible : la progression récente n'a pas été envoyée.";
+      refreshCloudMenu();
+      return;
+    }
   }
   if (!navigator.onLine) {
     if (explicit && !navigator.onLine) sourceCloudStatus = "Hors ligne : sauvegardes locales conservées.";
@@ -270,7 +289,7 @@ async function runCloudSync(explicit: boolean, uploadAutomatic = true): Promise<
       if (!explicit) return;
       linkCloudAccount(localStorage, email);
     }
-    sourceCloudItems = await syncCloudSaves(localStorage, email, sourceCloudApi, uploadAutomatic);
+    sourceCloudItems = await syncCloudSaves(localStorage, email, sourceCloudApi, uploadAutomatic, explicit);
     if (uploadAutomatic && sourceCloudItems.some((item) => item.kind === "auto" && item.state === "uploaded")) {
       localStorage.setItem(CLOUD_AUTO_LAST_ATTEMPT_KEY, String(Date.now()));
       if (pendingAutoCloudSync !== null) clearTimeout(pendingAutoCloudSync);
@@ -287,6 +306,10 @@ async function runCloudSync(explicit: boolean, uploadAutomatic = true): Promise<
   } finally {
     sourceCloudBusy = false;
     refreshCloudMenu();
+    if (queuedExplicitCloudSync) {
+      queuedExplicitCloudSync = false;
+      void runCloudSync(true);
+    }
   }
 }
 function scheduleCloudSync(kind: "manual" | "auto" = "auto"): void {
@@ -1135,6 +1158,10 @@ const sourceTitleScreen = new SourceTitleScreen(requiredAppElement("source-title
 const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-launch-screen"), localStorage, {
   select: (slot, kind) => activateLaunchSelection(slot, kind),
   newGame: (slot) => activateLaunchSelection(slot, "manual"),
+  importSave: (slot, file) => importLaunchRxdataSave(slot, file),
+  searchFolder: (slot) => searchLaunchSaveFolder(slot),
+  importFoundSave: (slot, candidate) => importLaunchFoundSave(slot, candidate),
+  restoreImportBackup: (slot) => restoreLaunchImportBackup(slot),
   cloudConnect: () => {
     sourceCloudStatus = "Ouverture de la connexion…";
     renderSourceLaunchScreen();
@@ -1147,6 +1174,84 @@ const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-lau
   downloadUpdate: () => { void downloadAndroidUpdate(); },
   back: () => { sourceLaunchScreen.hide(); sourceTitleScreen.show(); },
 });
+let rxdataImportCatalogPromise: Promise<RxdataImportCatalog> | null = null;
+function loadRxdataImportCatalog(): Promise<RxdataImportCatalog> {
+  rxdataImportCatalogPromise ??= (async () => {
+    const load = async (name: string): Promise<unknown[]> => {
+      const response = await fetch(`/__pokemon-z/data/${name}.json`);
+      if (!response.ok) throw new Error(`Catalogue ${name} indisponible.`);
+      const value: unknown = await response.json();
+      if (typeof value !== "object" || value === null || !("records" in value)
+        || !Array.isArray(value.records)) throw new Error(`Catalogue ${name} invalide.`);
+      return value.records;
+    };
+    const [pokemon, moves, items, trainerTypes, avatars] = await Promise.all([
+      load("pokemon"), load("moves"), load("items"), load("trainer-types"), load("player-avatars")]);
+    return { pokemon, moves, items, trainerTypes, avatars } as RxdataImportCatalog;
+  })().catch((error: unknown) => { rxdataImportCatalogPromise = null; throw error; });
+  return rxdataImportCatalogPromise;
+}
+async function importLaunchRxdataSave(slot: SourceSaveSlotId, file: File): Promise<void> {
+  try {
+    if (!/\.rxdata$/iu.test(file.name)) throw new Error("Choisis un fichier Game.rxdata ou Game_*.rxdata.");
+    sourceLaunchScreen.setImportStatus("Lecture et conversion de la sauvegarde…");
+    const catalog = await loadRxdataImportCatalog();
+    const preview = convertRxdataSave(new Uint8Array(await file.arrayBuffer()), catalog);
+    const mapId = preview.snapshot.worldSave!.mapId;
+    const mapResponse = await fetch(`/__pokemon-z/data/maps/Map${String(mapId).padStart(3, "0")}.json`);
+    if (!mapResponse.ok || (await mapResponse.json() as { id?: number }).id !== mapId) {
+      throw new Error(`La carte ${mapId} de cette partie n'est pas disponible dans l'application.`);
+    }
+    const occupied = sourceSaveSlotSummaries(localStorage).find((entry) => entry.id === slot)!;
+    const explanation = [
+      `Importer la partie de ${preview.trainerName} dans la partie ${slot} ?`,
+      `Carte ${mapId} · Équipe ${preview.partyCount}/6 · Boîtes ${preview.storageCount} · Objets ${preview.itemCount}`,
+      occupied.manual !== null || occupied.auto !== null
+        ? "La partie actuelle sera conservée dans une copie de secours restaurable."
+        : "Ce slot est vide.",
+      ...preview.warnings,
+      "Le cloud attendra une synchronisation manuelle avant d'envoyer cette partie.",
+    ].join("\n\n");
+    sourceLaunchScreen.setImportStatus("Aucune donnée écrite. Confirme l'aperçu pour importer.");
+    if (!window.confirm(explanation)) {
+      sourceLaunchScreen.setImportStatus("Import annulé : les sauvegardes sont inchangées.");
+      return;
+    }
+    importSourceSaveSlot(localStorage, slot, preview.snapshot);
+    sourceLaunchScreen.setImportStatus(`Partie ${slot} importée. Ouverture…`);
+    activateLaunchSelection(slot, "manual");
+  } catch (error) {
+    sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Import impossible : sauvegardes inchangées.");
+  }
+}
+async function searchLaunchSaveFolder(slot: SourceSaveSlotId): Promise<void> {
+  try {
+    sourceLaunchScreen.setImportStatus("Recherche des sauvegardes dans le dossier choisi…");
+    sourceLaunchScreen.showFoundSaves(slot, await searchOriginalSaveFolder());
+  } catch (error) {
+    sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Recherche impossible.");
+  }
+}
+async function importLaunchFoundSave(slot: SourceSaveSlotId,
+  candidate: OriginalSaveCandidate): Promise<void> {
+  try {
+    sourceLaunchScreen.setImportStatus(`Lecture de ${candidate.name}…`);
+    await importLaunchRxdataSave(slot, await readOriginalSaveCandidate(candidate));
+  } catch (error) {
+    sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Lecture impossible.");
+  }
+}
+function restoreLaunchImportBackup(slot: SourceSaveSlotId): void {
+  if (!window.confirm(`Restaurer la partie ${slot} telle qu'elle était avant l'import ? La partie importée actuelle de ce slot sera remplacée.`)) return;
+  try {
+    restoreSourceImportBackup(localStorage, slot);
+    sourceLaunchScreen.setImportStatus(`Partie ${slot} restaurée.`);
+    if (activeSourceSaveSlot(localStorage) === slot) activateLaunchSelection(slot,
+      loadSourceSaveSlot(localStorage, slot, "manual") === null ? "auto" : "manual");
+  } catch (error) {
+    sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Restauration impossible.");
+  }
+}
 function renderSourceLaunchScreen(): void {
   if (sourceLaunchScreen?.open) sourceLaunchScreen.render(sourceCloudStatus, sourceCloudItems,
     sourceAndroidUpdateStatus, sourceAndroidUpdate !== null, sourceCloudBusy);
@@ -2425,22 +2530,22 @@ function canAutoSaveSourceWorld(allowHidden = false): boolean {
   return !activity.dialogue && !activity.battle && !activity.transition && !activity.sequence && !activity.movement;
 }
 
-function saveAutomaticSourceWorld(allowHidden = false): void {
-  if (sourceSaveSlotReloadPending || !canAutoSaveSourceWorld(allowHidden)) return;
-  const now = Date.now();
-  const guestProgressOnly = multiplayer.active && isNetworkGuest();
-  const world = guestProgressOnly
-    ? createSourceGuestProgressSave(sourceWorldSave, sourceEventState, now)
-    : createSourceWorldSave(importedAssets!.map.id, importedAvatar.x, importedAvatar.y,
-      importedAvatar.direction, now, sourceMovementMode === "run" ? "walk" : sourceMovementMode,
-      sourceEventState);
-  const snapshot = createSourceSaveSlotSnapshot(localStorage, world, sourceEventState, now);
-  const previous = loadSourceSaveSlot(localStorage, activeSaveSlot, "auto");
-  const manual = loadSourceSaveSlot(localStorage, activeSaveSlot, "manual");
-  const content = sourceSaveContent(snapshot);
-  if (previous !== null && content === sourceSaveContent(previous)
-    || manual !== null && content === sourceSaveContent(manual)) return;
+function saveAutomaticSourceWorld(allowHidden = false): boolean {
+  if (sourceSaveSlotReloadPending || !canAutoSaveSourceWorld(allowHidden)) return false;
   try {
+    const now = Date.now();
+    const guestProgressOnly = multiplayer.active && isNetworkGuest();
+    const world = guestProgressOnly
+      ? createSourceGuestProgressSave(sourceWorldSave, sourceEventState, now)
+      : createSourceWorldSave(importedAssets!.map.id, importedAvatar.x, importedAvatar.y,
+        importedAvatar.direction, now, sourceMovementMode === "run" ? "walk" : sourceMovementMode,
+        sourceEventState);
+    const snapshot = createSourceSaveSlotSnapshot(localStorage, world, sourceEventState, now);
+    const previous = loadSourceSaveSlot(localStorage, activeSaveSlot, "auto");
+    const manual = loadSourceSaveSlot(localStorage, activeSaveSlot, "manual");
+    const content = sourceSaveContent(snapshot);
+    if (previous !== null && content === sourceSaveContent(previous)
+      || manual !== null && content === sourceSaveContent(manual)) return true;
     persistSourceSaveSlot(localStorage, activeSaveSlot, "auto", snapshot);
     scheduleCloudSync("auto");
     if (sourceAutoResumeSelected(localStorage, activeSaveSlot)) {
@@ -2448,8 +2553,10 @@ function saveAutomaticSourceWorld(allowHidden = false): void {
       persistSourceWorldSave(localStorage, world);
     }
     if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") renderSourceMenu();
+    return true;
   } catch (error) {
     console.error("Sauvegarde automatique impossible.", error);
+    return false;
   }
 }
 

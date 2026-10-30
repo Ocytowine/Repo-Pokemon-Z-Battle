@@ -423,7 +423,7 @@ function battleStages(value: unknown): Partial<Record<BattleStat, number>> | nul
 
 function speciesList(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > 10_000
-    || value.some((entry) => typeof entry !== "string" || !/^[A-Z0-9_]{1,64}$/u.test(entry))) return null;
+    || value.some((entry) => typeof entry !== "string" || !/^[A-Za-z0-9_]{1,64}$/u.test(entry))) return null;
   return [...new Set(value as string[])];
 }
 

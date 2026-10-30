@@ -1,5 +1,34 @@
 # Parties locales, sauvegarde automatique, cloud et mises à jour
 
+## Import d'une sauvegarde du fangame — code local du 2026-10-30
+
+Le choix de partie propose un fichier `Game*.rxdata` ou, dans l'APK Android,
+une recherche limitée au dossier choisi par le joueur. Le convertisseur affiche
+un aperçu et ses limites avant de toucher au slot. Si ce slot contient déjà une
+partie, ses branches manuelle et automatique sont mises en copie de secours ;
+« Restaurer la partie précédente » permet de les remettre. Le fichier d'origine
+reste intact. L'import et la restauration suspendent l'envoi cloud automatique
+du slot jusqu'a une synchronisation manuelle complete. « Garder ma version
+locale » n'envoie que la branche choisie ; l'autre reste protegee.
+Les données non converties sont signalées dans l'aperçu ; garder le `.rxdata`
+pour une reprise après extension du portage.
+
+## Audit du 2026-10-30
+
+Le transport cloud conserve le snapshot complet de chaque slot : monde,
+progression, Pokémon, Sac et profil. Un test de retour enrichi vérifie aussi
+`POKERIDER`, les switches, les variables, l'équipe et le Ranch. Le bouton
+« Synchroniser » prépare désormais le dernier point automatique stable avant
+l'envoi et rejoue une demande reçue pendant une synchronisation en cours.
+Une scène active ou un échec d'écriture locale empêche d'annoncer la progression
+récente comme envoyée. L'automatique cloud reste différée de dix minutes.
+
+Les données du fangame original sans équivalent actuel (`visitedMaps`,
+`movedEvents`, `erasedEvents`) attendent le contrat de conversion ; elles ne
+peuvent pas encore figurer dans le cloud de l'app. Un contrôle de parité entre
+le téléphone et la révision distante appartient à la recette du prochain lot
+complet ; il n'est pas nécessaire pour l'audit local du code.
+
 État au 2026-10-28 : le premier lot local est codé et les tests automatisés
 passent. Sa vérification sur téléphone reste à faire. La passerelle de connexion
 cloud est déployée dans `apps/cloud-save-worker` et sa politique Access est

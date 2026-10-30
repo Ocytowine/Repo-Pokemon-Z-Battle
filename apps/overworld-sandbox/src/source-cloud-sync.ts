@@ -1,4 +1,4 @@
-import { loadSourceSaveSlot, parseSourceSaveSlotSnapshot, persistSourceSaveSlot,
+import { loadSourceSaveSlot, parseSourceSaveSlotSnapshot, persistSourceSaveSlot, sourceImportCloudHoldKey,
   type SourceSaveKind, type SourceSaveSlotId, type SourceSaveSlotSnapshot } from "./source-save-slots.js";
 
 export interface CloudSaveHead {
@@ -99,8 +99,8 @@ function remember(storage: Pick<Storage, "getItem" | "setItem">, email: string,
 }
 
 /** Never replaces a local save or advances a remote head unless its known revision still matches. */
-export async function syncCloudSaves(storage: Pick<Storage, "getItem" | "setItem">,
-  email: string, api: CloudSaveApi, uploadAutomatic = true): Promise<readonly CloudSaveItem[]> {
+export async function syncCloudSaves(storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
+  email: string, api: CloudSaveApi, uploadAutomatic = true, allowImported = false): Promise<readonly CloudSaveItem[]> {
   const state = link(storage, email);
   if (state === null) throw new Error("Associe d'abord ce compte cloud à l'appareil.");
   const heads = await api.list();
@@ -114,6 +114,14 @@ export async function syncCloudSaves(storage: Pick<Storage, "getItem" | "setItem
     const localDigest = local === null ? null : await digest(local);
     let state: CloudSaveState;
     let currentRemote = remote;
+    if (local !== null && storage.getItem(sourceImportCloudHoldKey(slot)) !== null && !allowImported) {
+      const heldState = remote !== null && known?.revisionId === remote.revisionId
+        && known.digest === localDigest ? "saved" : "pending";
+      items.push({ slot, kind, state: heldState, localAt: local.savedAt,
+        remoteAt: remote?.savedAt ?? null, localPreview: sourceSavePreview(local),
+        remotePreview: remoteCopy === null ? null : sourceSavePreview(remoteCopy.snapshot) });
+      continue;
+    }
     if (local === null) state = remote === null ? "local-only" : "cloud-only";
     else if (remote === null && (known === undefined || known.revisionId === "")
       && kind === "auto" && !uploadAutomatic) state = "pending";
@@ -150,13 +158,20 @@ export async function syncCloudSaves(storage: Pick<Storage, "getItem" | "setItem
       remotePreview: state === "uploaded" && local !== null ? sourceSavePreview(local)
         : remoteCopy === null ? null : sourceSavePreview(remoteCopy.snapshot) });
   }
+  if (allowImported) for (const slot of [1, 2] as const) {
+    if (storage.getItem(sourceImportCloudHoldKey(slot)) !== null
+      && items.filter((item) => item.slot === slot && item.localAt !== null)
+        .every((item) => item.state === "uploaded" || item.state === "saved")) {
+      storage.removeItem?.(sourceImportCloudHoldKey(slot));
+    }
+  }
   return items;
 }
 
 export class CloudSaveConflict extends Error {}
 
 /** Explicit recovery: caller must present both dates and obtain confirmation first. */
-export async function recoverCloudSave(storage: Pick<Storage, "getItem" | "setItem">,
+export async function recoverCloudSave(storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
   email: string, api: CloudSaveApi, slot: SourceSaveSlotId, kind: SourceSaveKind): Promise<void> {
   if (link(storage, email) === null) throw new Error("Compte cloud non lié.");
   const copy = await api.get(slot, kind);
@@ -166,7 +181,7 @@ export async function recoverCloudSave(storage: Pick<Storage, "getItem" | "setIt
 }
 
 /** Explicit upload after conflict; the fetched head is used as a compare-and-swap guard. */
-export async function keepLocalCloudSave(storage: Pick<Storage, "getItem" | "setItem">,
+export async function keepLocalCloudSave(storage: Pick<Storage, "getItem" | "setItem"> & Partial<Pick<Storage, "removeItem">>,
   email: string, api: CloudSaveApi, slot: SourceSaveSlotId, kind: SourceSaveKind): Promise<void> {
   if (link(storage, email) === null) throw new Error("Compte cloud non lié.");
   const local = loadSourceSaveSlot(storage, slot, kind);

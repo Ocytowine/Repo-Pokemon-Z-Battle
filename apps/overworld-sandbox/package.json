@@ -22,6 +22,7 @@
     "@capacitor/core": "8.5.3",
     "@capacitor/inappbrowser": "4.1.0",
     "@pokemon-z-battle/battle-engine": "workspace:*",
+    "@pokemon-z-battle/extractor": "workspace:*",
     "@pokemon-z-battle/game-assets": "workspace:*",
     "@pokemon-z-battle/game-data": "workspace:*",
     "@pokemon-z-battle/local-assets": "workspace:*",

@@ -1,14 +1,18 @@
 import { describe, expect, it } from "vitest";
+import { createDefaultPlayerAvatarSelection, createPersistentPokemonMetadata } from "@pokemon-z-battle/player-state";
 import { createSourceEventState } from "../src/source-event-state.js";
+import { createSourceWorldSave } from "../src/source-world-save.js";
 import { cloudAutomaticUploadDelay, CloudSaveConflict, keepLocalCloudSave, linkCloudAccount, recoverCloudSave,
   syncCloudSaves, type CloudSaveApi, type CloudSaveHead } from "../src/source-cloud-sync.js";
-import { loadSourceSaveSlot, persistSourceSaveSlot, type SourceSaveKind, type SourceSaveSlotId,
+import { importSourceSaveSlot, loadSourceSaveSlot, persistSourceSaveSlot, sourceImportCloudHoldKey,
+  type SourceSaveKind, type SourceSaveSlotId,
   type SourceSaveSlotSnapshot } from "../src/source-save-slots.js";
 
 function storage() {
   const entries = new Map<string, string>();
   return { getItem: (key: string) => entries.get(key) ?? null,
-    setItem: (key: string, value: string) => { entries.set(key, value); } };
+    setItem: (key: string, value: string) => { entries.set(key, value); },
+    removeItem: (key: string) => { entries.delete(key); } };
 }
 
 function snapshot(savedAt: number, money: number): SourceSaveSlotSnapshot {
@@ -38,6 +42,43 @@ function fakeApi(): CloudSaveApi {
 }
 
 describe("cloud save synchronization", () => {
+  it("holds an imported slot locally until the player explicitly synchronizes", async () => {
+    const local = storage(); const api = fakeApi();
+    linkCloudAccount(local, "tester@example.org");
+    importSourceSaveSlot(local, 1, snapshot(1000, 777));
+    expect((await syncCloudSaves(local, "tester@example.org", api))
+      .find((item) => item.slot === 1 && item.kind === "manual")?.state).toBe("pending");
+    expect(await api.list()).toHaveLength(0);
+    await syncCloudSaves(local, "tester@example.org", api, true, true);
+    expect(await api.list()).toHaveLength(1);
+    expect(local.getItem(sourceImportCloudHoldKey(1))).toBeNull();
+  });
+  it("restores a complete personal snapshot with inventory, progression and Pokemon collections", async () => {
+    const local = storage(); const restored = storage(); const api = fakeApi();
+    const pokemon = (id: string) => ({ id, species: "PIKACHU", nickname: null, level: 12, experience: 900,
+      stats: { maxHp: 35, attack: 20, defense: 16, specialAttack: 19, specialDefense: 18, speed: 28 },
+      hp: 20, majorStatus: null, ability: "STATIC", heldItem: null,
+      moves: [{ internalName: "TACKLE", pp: 30, maxPp: 35 }],
+      metadata: createPersistentPokemonMetadata(id, "PIKACHU", 12) });
+    const eventState = { ...createSourceEventState(), switches: { "42": true }, variables: { "99": 2 },
+      selfSwitches: { "3:8:A": true }, inventory: { POKERIDER: 1, POTION: 8 }, money: 4321,
+      party: { schemaVersion: 1 as const, activeIndex: 0, members: [pokemon("team-1")] },
+      ranch: { schemaVersion: 1 as const, members: [pokemon("box-1")] },
+      fieldItemEffects: { ...createSourceEventState().fieldItemEffects, repelSteps: 20 } };
+    const original: SourceSaveSlotSnapshot = { schemaVersion: 1, savedAt: 1_000,
+      worldSave: createSourceWorldSave(3, 10, 11, "down", 1_000, "walk", eventState),
+      eventState, player: createDefaultPlayerAvatarSelection(), newGame: null,
+      fieldShortcuts: '["mount"]' };
+    linkCloudAccount(local, "tester@example.org");
+    linkCloudAccount(restored, "tester@example.org");
+    persistSourceSaveSlot(local, 1, "manual", original);
+    const expected = loadSourceSaveSlot(local, 1, "manual");
+    expect((await syncCloudSaves(local, "tester@example.org", api))
+      .find((item) => item.slot === 1 && item.kind === "manual")?.state).toBe("uploaded");
+    await recoverCloudSave(restored, "tester@example.org", api, 1, "manual");
+    expect(loadSourceSaveSlot(restored, 1, "manual")).toEqual(expected);
+  });
+
   it("delays automatic uploads for ten minutes while leaving manual uploads immediate", async () => {
     expect(cloudAutomaticUploadDelay(100_000, 101_000)).toBe(599_000);
     expect(cloudAutomaticUploadDelay(100_000, 700_000)).toBe(4_000);

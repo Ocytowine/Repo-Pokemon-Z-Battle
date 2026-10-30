@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readRubyMarshal, RubyMarshalError } from "../src/ruby-marshal/reader.js";
+import { readRubyMarshal, RubyMarshalError, RubyMarshalReader } from "../src/ruby-marshal/reader.js";
 import { decodeRpgTable } from "../src/ruby-marshal/table.js";
 
 function marshal(...body: number[]): Uint8Array {
@@ -7,6 +7,12 @@ function marshal(...body: number[]): Uint8Array {
 }
 
 describe("RubyMarshalReader", () => {
+  it("reads concatenated independent save blocks and rejects an incomplete sequence", () => {
+    const bytes = Uint8Array.from([4, 8, 0x5b, 0x06, 0x30, 4, 8, 0x5b, 0x06, 0x30]);
+    expect(new RubyMarshalReader(bytes).readSequence(2)).toEqual([[null], [null]]);
+    expect(() => new RubyMarshalReader(bytes).readSequence(3)).toThrow("Sauvegarde incomplète");
+    expect(() => new RubyMarshalReader(bytes).readSequence(1)).toThrow("Trop de blocs");
+  });
   it("reads symbols plus symbol and object links without losing identity", () => {
     const value = readRubyMarshal(marshal(
       0x5b, 0x09,

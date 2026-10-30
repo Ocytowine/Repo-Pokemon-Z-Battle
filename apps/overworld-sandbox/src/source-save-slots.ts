@@ -29,10 +29,71 @@ const ACTIVE_SLOT_KEY = "pokemon-z-battle.source-save-active-slot.v1";
 const AUTO_RESUME_KEY = "pokemon-z-battle.source-save-auto-resume.v1";
 const AUTO_IGNORED_PREFIX = "pokemon-z-battle.source-save-auto-ignored.v1";
 const SLOT_PREFIX = "pokemon-z-battle.source-save-slot.v1";
+const IMPORT_BACKUP_PREFIX = "pokemon-z-battle.rxdata-import-backup.v1";
+const IMPORT_CLOUD_HOLD_PREFIX = "pokemon-z-battle.rxdata-cloud-hold.v1";
 const SLOT_IDS = [1, 2] as const;
 
 export function sourceSaveSlotKey(id: SourceSaveSlotId, kind: SourceSaveKind): string {
   return `${SLOT_PREFIX}.${id}.${kind}`;
+}
+
+function importBackupKey(id: SourceSaveSlotId): string { return `${IMPORT_BACKUP_PREFIX}.${id}`; }
+export function sourceImportCloudHoldKey(id: SourceSaveSlotId): string { return `${IMPORT_CLOUD_HOLD_PREFIX}.${id}`; }
+export function sourceImportBackupExists(storage: Pick<Storage, "getItem">, id: SourceSaveSlotId): boolean {
+  return storage.getItem(importBackupKey(id)) !== null;
+}
+
+/** A preview is mandatory before this call. Existing manual and auto branches are backed up together. */
+export function importSourceSaveSlot(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  id: SourceSaveSlotId, snapshot: SourceSaveSlotSnapshot): void {
+  const validated = parseSourceSaveSlotSnapshot(snapshot);
+  const manualKey = sourceSaveSlotKey(id, "manual");
+  const autoKey = sourceSaveSlotKey(id, "auto");
+  const backupKey = importBackupKey(id);
+  const holdKey = sourceImportCloudHoldKey(id);
+  const keys = [manualKey, autoKey, backupKey, holdKey, ignoredAutoKey(id), AUTO_RESUME_KEY];
+  const before = keys.map((key) => [key, storage.getItem(key)] as const);
+  try {
+    if (storage.getItem(backupKey) === null && (before[0]![1] !== null || before[1]![1] !== null)) {
+      storage.setItem(backupKey, JSON.stringify({ manual: before[0]![1], auto: before[1]![1] }));
+    }
+    storage.setItem(manualKey, JSON.stringify(validated));
+    storage.removeItem(autoKey);
+    storage.removeItem(ignoredAutoKey(id));
+    storage.removeItem(AUTO_RESUME_KEY);
+    storage.setItem(holdKey, "1");
+  } catch (error) {
+    for (const [key, value] of before) {
+      try { setOrRemove(storage, key, value); } catch { /* Keep the original failure. */ }
+    }
+    throw error;
+  }
+}
+
+export function restoreSourceImportBackup(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  id: SourceSaveSlotId): void {
+  const backupKey = importBackupKey(id);
+  const raw = storage.getItem(backupKey);
+  if (raw === null) throw new Error("Aucune sauvegarde antérieure à restaurer.");
+  const value: unknown = JSON.parse(raw);
+  if (!record(value) || !(value.manual === null || typeof value.manual === "string")
+    || !(value.auto === null || typeof value.auto === "string")) throw new Error("Copie de secours invalide.");
+  const manualKey = sourceSaveSlotKey(id, "manual");
+  const autoKey = sourceSaveSlotKey(id, "auto");
+  const holdKey = sourceImportCloudHoldKey(id);
+  const keys = [manualKey, autoKey, backupKey, holdKey];
+  const before = keys.map((key) => [key, storage.getItem(key)] as const);
+  try {
+    setOrRemove(storage, manualKey, value.manual);
+    setOrRemove(storage, autoKey, value.auto);
+    storage.removeItem(backupKey);
+    storage.setItem(holdKey, "1");
+  } catch (error) {
+    for (const [key, previous] of before) {
+      try { setOrRemove(storage, key, previous); } catch { /* Keep the original failure. */ }
+    }
+    throw error;
+  }
 }
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {

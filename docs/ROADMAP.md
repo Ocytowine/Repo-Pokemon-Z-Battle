@@ -3509,6 +3509,113 @@ local vérifiés. L'APK et le manifeste sont sur R2 ; taille distante, version,
 empreinte et type du manifeste relus. Elle reste à installer et valider sur
 téléphone en solo et en Coop.
 
+### Prochain patch : Vol de progression et import des sauvegardes Z — 2026-10-30
+
+Le retour sur téléphone de la 0.1.4 révèle un blocage du Vol :
+`sourceMovementUnlocks` ne l'accorde actuellement qu'avec le contournement
+`Tous les déplacements` de Test dev. La Carte renvoie donc à cet outil de test
+même si le joueur possède une Poké Monture rare comme Flambusard. Le contrôle
+existe encore dans le code sous Options → Test dev → Déblocages, mais son accès
+réel sur téléphone et sa présentation doivent être vérifiés. Il ne doit pas
+servir de condition normale de progression.
+
+Vérification source : la séquence narrative de `Map003` donne
+`$PokemonBag.pbStoreItem(:POKERIDER,1)`. L'objet PBS n° 660 est `POKERIDER`
+(« Poké Monture Flambusard » dans `Data/french.dat`). Son gestionnaire
+`pokerider.rb` lance `useMoveFly` depuis le Sac uniquement sur une carte
+extérieure ; il ne teste pas de badge. La règle simple à porter est donc la
+possession effective de cet objet, sous réserve de confirmer que la séquence
+du portage le dépose bien dans l'inventaire. Les destinations disponibles
+restent une condition distincte.
+
+- [ ] Vérifier que la commande narrative de remise de `POKERIDER` est exécutée
+  dans le portage et sauvegardée ; auditer toute autre voie source d'obtention
+  ou restriction de Vol. Distinguer le droit de voler des destinations visitées.
+- [ ] Déduire le droit de Vol des données personnelles persistantes du joueur,
+  en premier lieu `inventory.POKERIDER > 0`, dans le résolveur de mouvements
+  commun au solo et à la Coop. Conserver Test dev comme contournement explicite
+  et temporaire, sans l'intégrer à la progression normale.
+- [ ] Corriger le texte de la Carte selon le prérequis réellement manquant,
+  vérifier les parties existantes, le rechargement et la reconnexion hôte/invité,
+  puis tester un objet donnant le Vol, un objet sans Vol et une carte interdite.
+- [ ] Ajouter à l'écran de choix de partie un import explicite d'une sauvegarde
+  du fangame présent sur le téléphone : sélection d'un fichier
+  `Game*.rxdata` manuel ou automatique via le sélecteur de fichiers Android,
+  sans supposer l'accès direct aux données privées d'une autre application.
+- [x] Premier parcours local codé : import depuis le sélecteur de fichier dans
+  Partie 1 ou 2, et recherche Android dans un dossier choisi par l'utilisateur.
+  Le résultat classe d'abord les `Game*.rxdata` sous un chemin ressemblant à
+  « Pokémon Z V2.12 - Français ». Aucun accès global aux fichiers n'est demandé.
+- [ ] Tester ce sélecteur et la recherche sur téléphone. Android 11+ ne permet
+  pas de choisir `Android/data` ; si le fangame y place sa sauvegarde, guider
+  la copie de `Game.rxdata` vers Téléchargements puis son import.
+- [ ] Décoder la séquence Ruby Marshal 4.8 écrite par Pokémon Z 2.12 FR,
+  convertir position/carte, personnage, équipe/Ranch, Sac, Pokédex et états
+  narratifs vers un `SourceSaveSlotSnapshot` validé ; consigner tout champ
+  inconnu ou non convertible sans inventer de progression. Réutiliser le
+  lecteur Marshal du dépôt après contrôle de sa compatibilité mobile. Étendre
+  son API pour lire quinze objets concaténés, avec limites de taille et de
+  complexité ; vérifier aussi les événements déplacés/effacés et les cartes
+  visitées, absents du snapshot actuel, avant toute promesse d'import complet.
+- [ ] Prévisualiser le résultat et les limites avant confirmation ; choisir
+  l'un des deux slots, préserver une copie de l'ancien slot occupé et écrire
+  atomiquement. Ne jamais modifier le fichier original ni envoyer la partie
+  importée au cloud sans décision explicite du joueur.
+- [x] Aperçu des quantités, carte et limites, sauvegarde de secours des deux
+  branches, restauration et blocage de l'envoi cloud automatique codés et
+  testés localement. Une synchronisation manuelle reste un choix explicite.
+- [ ] Tester des sauvegardes réelles à divers stades, une sauvegarde corrompue,
+  l'annulation, le manque d'espace, le redémarrage, puis le jeu en solo et en
+  Coop comme hôte et invité avec reconnexion. Vérifier en particulier les
+  montures et les accès Vol après conversion.
+- [ ] Afficher dans le HUD de l'équipe adverse le nom français du Dresseur et
+  de sa classe à partir des traductions `trainerNames` et `trainerTypeNames`
+  déjà extraites. Garder l'identité source espagnole pour résoudre le combat,
+  son équipe et sa graine aléatoire ; localiser seulement la présentation,
+  avec repli explicite si une traduction manque. Contrôler combat simple/Duo,
+  hôte, invité et reconnexion.
+
+Un premier `Game.rxdata` privé fourni le 2026-10-30 a été analysé en lecture
+seule, hors dépôt : 363 032 octets, quinze objets Ruby Marshal 4.8 décodés sans
+octet résiduel. Il contient les structures attendues (Dresseur, équipe de six
+emplacements, position, switches/variables, Sac, 36 boîtes de stockage) et
+`POKERIDER` dans le Sac. Le convertisseur local lit maintenant les quinze
+blocs et valide sur cet échantillon 6 Pokémon d'équipe, 205 en boîtes,
+323 types d'objets et la carte 24 ; le snapshot résultant fait environ 540 Ko.
+L'APK n'a pas encore été testé sur téléphone. La conversion annonce avant
+confirmation les cinq variables non numériques et le groupe d'événements
+effacés qu'elle ne sait pas restaurer ; elle ne prétend pas être complète.
+Le fichier original reste intact et hors Git. Il faut encore préserver ou
+porter ces états, les cartes visitées et les événements déplacés, puis couvrir
+les sauvegardes de plusieurs stades avant de cocher la conversion complète.
+
+### Vérification de complétude du cloud — 2026-10-30
+
+L'import du fichier source sert de référence pour distinguer les données que
+le portage sait déjà sauvegarder de celles qui n'ont pas encore de modèle.
+Le cloud envoie le `SourceSaveSlotSnapshot` complet des quatre emplacements :
+position, état narratif et personnel, équipe, Ranch, Sac, Pokédex, profil,
+préparation achevée et raccourcis. La sauvegarde d'origine contient aussi des
+cartes visitées et des événements déplacés/effacés qui ne figurent pas encore
+dans le snapshot de l'app ; le cloud ne peut pas restaurer un état absent du
+portage. Les brouillons de nouvelle aventure, préférences audio et outils de
+test restent locaux selon le contrat actuel.
+
+Deux défauts du lancement manuel de synchronisation ont été corrigés dans le
+code local : il crée d'abord le dernier point automatique stable avant l'envoi,
+et une demande faite pendant un envoi en cours est rejouée ensuite. Si une
+action empêche la sauvegarde ou si l'écriture locale échoue, le bouton ne doit
+plus annoncer la progression récente comme envoyée. La cadence automatique
+cloud de dix minutes demeure ; une différence locale peut donc être normale
+entre deux envois.
+
+- [ ] Comparer sur téléphone un slot local et sa révision cloud relue, champ
+  par champ (équipe/Ranch, Sac, argent, Pokédex, switches/variables, position,
+  profil), après synchronisation explicite et après la cadence automatique.
+- [ ] Tester fermeture pendant une scène, hors ligne, conflit entre deux
+  appareils, hôte/invité et reconnexion ; définir la reprise des états source
+  encore absents avant de promettre une restauration complète du fangame.
+
 ### Patch suivant : ressources et fond de combat large — cadrage du 2026-10-29
 
 Le contrat d'intégration et le registre initial sont dans

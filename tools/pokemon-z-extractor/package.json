@@ -11,6 +11,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./ruby-marshal/reader": {
+      "types": "./src/ruby-marshal/reader.ts",
+      "default": "./src/ruby-marshal/reader.ts"
+    },
+    "./ruby-marshal/types": {
+      "types": "./src/ruby-marshal/types.ts",
+      "default": "./src/ruby-marshal/types.ts"
     }
   },
   "scripts": {

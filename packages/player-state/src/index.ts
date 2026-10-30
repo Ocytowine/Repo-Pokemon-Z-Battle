@@ -737,7 +737,7 @@ const SOURCE_GENDER_THRESHOLDS: Readonly<Record<string, number>> = {
   Female75Percent: 191,
 };
 
-function pokemonGender(genderRate: string, personalId: number): PokemonGender {
+export function sourcePokemonGender(genderRate: string, personalId: number): PokemonGender {
   if (genderRate === "Genderless") return "genderless";
   if (genderRate === "AlwaysFemale") return "female";
   if (genderRate === "AlwaysMale") return "male";
@@ -746,7 +746,7 @@ function pokemonGender(genderRate: string, personalId: number): PokemonGender {
   return (personalId & 0xff) <= threshold ? "female" : "male";
 }
 
-function sourceShiny(personalId: number, trainerId: number): boolean {
+export function sourceShiny(personalId: number, trainerId: number): boolean {
   const mixed = (personalId ^ trainerId) >>> 0;
   return ((mixed & 0xffff) ^ (mixed >>> 16)) < 100;
 }
@@ -775,7 +775,7 @@ function createdPokemonMetadata(instanceId: string, species: string, level: numb
     || !nullableMapId(origin.mapId) || !["encounter", "egg", "trade", "gift", "fateful", "unknown"].includes(origin.method)
     || !nullableString(origin.ball))) throw new Error("Contexte d'obtention du Pokémon invalide.");
   return { ...metadata,
-    gender: pokemonGender(definition.genderRate, metadata.personalId),
+    gender: sourcePokemonGender(definition.genderRate, metadata.personalId),
     happiness: definition.happiness,
     shiny: owner === undefined ? false : sourceShiny(metadata.personalId, owner.trainerId),
     owner: owner === undefined ? metadata.owner : { trainerId: owner.trainerId,

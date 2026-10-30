@@ -5,8 +5,9 @@ import { createSourceEventState } from "../src/source-event-state.js";
 import { SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_STORAGE_KEY } from "../src/source-new-game.js";
 import { SOURCE_WORLD_SAVE_KEY, createSourceGuestProgressSave, createSourceWorldSave }
   from "../src/source-world-save.js";
-import { activateSourceSaveSlot, activeSourceSaveSlot, createSourceSaveSlotSnapshot,
+import { activateSourceSaveSlot, activeSourceSaveSlot, createSourceSaveSlotSnapshot, importSourceSaveSlot,
   initializeSourceSaveSlots, loadSourceSaveSlot, persistSourceSaveSlot, sourceAutoSaveNeedsRecovery,
+  sourceImportBackupExists, sourceImportCloudHoldKey, restoreSourceImportBackup,
   sourceSaveSlotSummaries } from "../src/source-save-slots.js";
 
 function storage(values = new Map<string, string>()) {
@@ -16,6 +17,39 @@ function storage(values = new Map<string, string>()) {
 }
 
 describe("local save slots", () => {
+  it("backs up both branches before an import and restores them without touching the other slot", () => {
+    const local = storage();
+    const original = (money: number, savedAt: number) => ({ schemaVersion: 1 as const, savedAt,
+      worldSave: null, eventState: { ...createSourceEventState(), money }, player: null,
+      newGame: null, fieldShortcuts: null });
+    persistSourceSaveSlot(local, 1, "manual", original(100, 1000));
+    persistSourceSaveSlot(local, 1, "auto", original(200, 2000));
+    persistSourceSaveSlot(local, 2, "manual", original(400, 4000));
+    importSourceSaveSlot(local, 1, original(300, 3000));
+    expect(loadSourceSaveSlot(local, 1, "manual")?.eventState.money).toBe(300);
+    expect(loadSourceSaveSlot(local, 1, "auto")).toBeNull();
+    expect(sourceImportBackupExists(local, 1)).toBe(true);
+    expect(local.getItem(sourceImportCloudHoldKey(1))).toBe("1");
+    restoreSourceImportBackup(local, 1);
+    expect(loadSourceSaveSlot(local, 1, "manual")?.eventState.money).toBe(100);
+    expect(loadSourceSaveSlot(local, 1, "auto")?.eventState.money).toBe(200);
+    expect(loadSourceSaveSlot(local, 2, "manual")?.eventState.money).toBe(400);
+    expect(local.getItem(sourceImportCloudHoldKey(1))).toBe("1");
+  });
+  it("rolls back the backup and slot when storage refuses an imported save", () => {
+    const local = storage();
+    const original = { schemaVersion: 1 as const, savedAt: 1000, worldSave: null,
+      eventState: createSourceEventState(), player: null, newGame: null, fieldShortcuts: null };
+    persistSourceSaveSlot(local, 1, "manual", original);
+    const failing = { ...local, setItem: (key: string, value: string) => {
+      if (key.endsWith(".1.manual")) throw new Error("quota");
+      local.setItem(key, value);
+    } };
+    expect(() => importSourceSaveSlot(failing, 1, { ...original, savedAt: 2000 })).toThrow("quota");
+    expect(loadSourceSaveSlot(local, 1, "manual")?.savedAt).toBe(1000);
+    expect(sourceImportBackupExists(local, 1)).toBe(false);
+    expect(local.getItem(sourceImportCloudHoldKey(1))).toBeNull();
+  });
   it("migrates the existing manual save and keeps newer working progress as recovery", () => {
     const manualState = { ...createSourceEventState(), money: 100 };
     const workingState = { ...createSourceEventState(), money: 200 };

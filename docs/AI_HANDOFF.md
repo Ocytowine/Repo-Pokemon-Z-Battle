@@ -9386,3 +9386,134 @@ conservation des sauvegardes sur appareil ; combat simple et Duo sur les fonds
 concernes, navigation Sac/Equipe et changement de Pokemon ; hote et invite Coop ;
 presentation en Chrome emule Android paysage. Les packs de ressources incrementaux
 ne sont pas encore implementes : la 0.1.4 reste une APK complete.
+
+## Retour telephone 0.1.4 et prochain patch — 2026-10-30
+
+Le porteur signale que les objets rares de monture, notamment une Poke Monture
+Flambusard, ne debloquent pas systematiquement le Vol ; la Carte demande de
+l'activer depuis Test dev, dont le controle n'est plus trouve sur telephone.
+Diagnostic du code : `sourceMovementUnlocks` calcule actuellement `fly` avec
+`testOverride` seul, alors que les autres mouvements lisent inventaire, badges
+et capacites. La Carte contient un texte fixe qui renvoie a Test dev. Le
+controle de test reste declare sous Options > Test dev > Deblocages, mais son
+accessibilite reelle sur appareil n'est pas verifiee. Aucun correctif moteur
+n'est encore livre pour ce retour.
+
+Le prochain lot doit retrouver dans la source les identifiants et conditions
+des montures aeriennes, porter le deblocage personnel persistant dans le
+resolveur partage solo/Coop, et garder le contournement Test dev separe de la
+progression. Verifier hote, invite, reprise et reconnexion, y compris les
+destinations visitees et les restrictions de carte.
+
+Le meme patch prevoit l'import volontaire d'une sauvegarde du fangame sur
+telephone vers l'un des deux slots. Les scripts source `pscreen-save.rb` et
+`pscreen-load.rb` confirment les fichiers `Game.rxdata`, `Game_<n>.rxdata` et
+leurs variantes `_autosave`, avec une suite de 15 objets Ruby Marshal (Dresseur,
+carte, switches/variables, joueur, Sac, stockage, etc.). Le depot possede un
+lecteur Marshal pour les donnees du jeu, pas encore un convertisseur de
+sauvegarde joueur. Le fichier doit etre choisi par le joueur dans Android,
+analyse localement, previsualise et converti vers `SourceSaveSlotSnapshot` ;
+un slot occupe demande sauvegarde de secours et confirmation. Le fichier
+original reste intact, l'envoi cloud est un choix separe. Couverture des
+classes serializees, acces par le selecteur Android et recette solo/hote/invite
+restent ouverts. Voir la section correspondante de `docs/ROADMAP.md`.
+
+Complement de l'audit source du 2026-10-30 : l'evenement de `Map003` contient
+`$PokemonBag.pbStoreItem(:POKERIDER,1)`. Dans `PBS/items.txt`, l'objet 660 est
+`POKERIDER`, traduit « Poke Monture Flambusard » dans `Data/french.dat` ;
+`pokerider.rb` autorise `useMoveFly` depuis une carte exterieure sans badge.
+Verifier que la remise narrative est bien executee par le portage avant de
+brancher le droit de Vol sur `inventory.POKERIDER`. Le nom du Dresseur affiche
+dans le HUD adverse provient actuellement de `trainer.name` source ; les
+catalogues extraits contiennent `trainerNames` et `trainerTypeNames` en francais.
+Le prochain lot doit localiser l'affichage sans changer l'identite de combat
+ni le tirage, en solo et en Coop. Le fichier `.rxdata` fourni pour l'etude du
+convertisseur reste hors Git.
+
+Audit du premier echantillon de sauvegarde source fourni le 2026-10-30 : le
+fichier `Game.rxdata` reste uniquement dans le dossier prive du porteur, hors
+depot. Il fait 363032 octets. Le lecteur Ruby Marshal du depot a decode les
+15 objets successifs sans erreur ni reste : Dresseur, compteur de trames,
+systeme, options, carte, switches, variables, self-switches, ecran, usine de
+cartes, joueur, metadonnees globales et de carte, Sac, stockage Pokemon. La
+racine de l'equipe expose six emplacements et le stockage 36 boites ; le Sac
+contient l'objet source `POKERIDER` (numero 660). Aucun nom de joueur ou de
+Pokemon n'a ete affiche ni ecrit dans le depot.
+
+Le parseur actuel `readRubyMarshal` exige la fin du buffer apres un seul
+objet ; l'essai a lu les 15 objets avec des instances successives du lecteur.
+Le lot d'import doit exposer cette lecture en sequence avec limites de taille,
+valider les classes et convertir les donnees vers `SourceSaveSlotSnapshot`.
+Les `@movedEvents`/`@erasedEvents` et `@visitedMaps` de la source n'ont pas
+encore d'equivalent evident dans le snapshot actuel : etablir leur contrat ou
+signaler la perte avant toute ecriture dans un slot. Aucune conversion ou
+modification de la sauvegarde personnelle n'a encore ete faite.
+
+## Audit de completude du cloud et correctif local — 2026-10-30
+
+La chaine locale de synchronisation envoie chaque `SourceSaveSlotSnapshot` en
+entier au Worker : position et `SourceEventState` (equipe, Ranch, Sac,
+switches/variables, Pokedex, Pension, incubateur), identite, preparation de
+partie achevee et raccourcis. Le Worker stocke le JSON entier, borne a 1,5 Mo,
+et le client le valide de nouveau au retour. Un test de retour complet couvre
+inventaire `POKERIDER`, switches, variables, equipe, Ranch, position et profil.
+Les brouillons de nouvelle partie, preferences audio et reglages Test dev sont
+locaux selon le contrat actuel. Les champs source `@visitedMaps`,
+`@movedEvents` et `@erasedEvents` ne sont pas encore modelises dans l'app ;
+leur absence apres un futur import ne serait pas une perte du transport cloud.
+
+Deux faiblesses du bouton « Synchroniser » ont ete corrigees localement :
+quand le monde est actif, l'app ecrit d'abord un point automatique stable pour
+inclure les dernieres mutations avant l'envoi ; si la scene ou l'ecriture
+locale l'empeche, elle affiche le motif au lieu de declarer le cloud a jour.
+Une demande explicite pendant un autre envoi est conservee et rejouee apres
+celui-ci. L'automatique cloud reste espacee d'au moins dix minutes ; un retard
+temporaire de cette revision est attendu et signale comme en attente.
+Autorite et audience : sauvegarde personnelle du joueur concerne, meme chemin
+en solo, hote et invite ; aucun snapshot prive n'est replique aux participants.
+La derniere revision connue est comparee apres connexion ; le contenu distant
+est recupere sur choix explicite, avec conflit si un autre appareil a avance.
+ADB n'est pas requis pour cet audit de code. La comparaison reelle entre un
+slot de l'appareil et sa revision R2 fait partie de la recette du prochain
+lot complet ; ce correctif reste local jusque-la.
+
+## Premier import local Game.rxdata et recherche Android — 2026-10-30
+
+Le code local ajoute la lecture des quinze blocs Ruby Marshal 4.8 successifs,
+un convertisseur `source-rxdata-import.ts`, l'import au choix dans Partie 1 ou 2,
+un apercu avant confirmation, une copie de secours des branches manuelle et
+automatique, la restauration et un marqueur qui suspend l'envoi cloud automatique
+du slot importe. Le joueur choisit explicitement « Synchroniser » pour l'envoyer.
+Les donnees du fichier source sont lues seulement et ne sont jamais versionnees.
+
+L'echantillon prive fourni a ete converti en lecture seule : 6 Pokemon d'equipe,
+205 en boites, 323 types d'objets, carte 24, environ 540 Ko de snapshot. Le
+convertisseur restaure position, mode surf/velo, equipe, stockage, Sac, argent,
+Pokedex, switches, variables numeriques, self-switches, points de bonheur et
+repulsif. Il preserve les identifiants de Dresseur et de Pokemon, les IV/EV,
+experience, PV, capacites et PP. Aucun nom prive n'a ete inscrit au depot.
+
+La recherche native `SourceSaveLocatorPlugin` ouvre le selecteur de dossier
+Android, parcourt uniquement l'arborescence autorisee et classe les fichiers
+`Game*.rxdata` en favorisant un chemin « Pokemon Z V2.12 - Francais ». L'app
+permet aussi la selection directe d'un fichier. Android 11+ bloque l'acces SAF
+a `Android/data` ; si le fangame y est installe, copier la sauvegarde dans un
+dossier partage comme Telechargements. Voir la documentation Android officielle :
+https://developer.android.com/training/data-storage/shared/documents-files .
+
+Dette avant une annonce d'import complet : l'echantillon contient cinq
+variables non numeriques et un groupe d'evenements effaces, affiches comme
+limites dans l'apercu. Les cartes visitees, les evenements deplaces, les
+services personnels et certains attributs secondaires du fangame attendent un
+contrat de conversion. Conserver le fichier original. Tester le parcours sur
+telephone, un fichier corrompu, l'annulation, le stockage plein, la reprise
+solo/hote/invite et la reconnexion. L'autorite de l'import reste le joueur
+concerne ; le snapshot personnel est utilise par les memes chemins de sauvegarde
+solo et Coop, sans replication aux autres participants. Aucun APK n'a ete publie.
+
+Verification locale : `corepack pnpm test` et `corepack pnpm build` reussissent ;
+la compilation Java Android `:app:compileDebugJavaWithJavac` reussit. Le
+`typecheck` de l'app garde 23 erreurs preexistantes dans des fichiers de combat
+non modifies par cet import, sans erreur dans les fichiers d'import. La
+conversion du fichier prive a ete executee en lecture seule ; aucun slot reel
+et aucune revision R2 n'ont ete modifies.

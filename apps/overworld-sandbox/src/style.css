@@ -41,6 +41,10 @@ html.source-android body:has(.source-title-screen:not([hidden])) .source-touch-c
 .source-launch-tabs button[aria-current="page"] { color: #302008; border-color: #fff3bf; background: linear-gradient(#fff4c7, #efba54); }
 .source-launch-view { min-height: 0; min-width: 0; }
 .source-launch-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.source-launch-import-status { grid-column: 1 / -1; margin: 0; color: #ffe2a2; font-size: 12px; }
+.source-launch-found { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+.source-launch-found > .source-launch-save { flex: 0 1 auto; min-height: 0; }
+.source-launch-found > .source-launch-service-actions { flex-wrap: wrap; }
 .source-launch-slot, .source-launch-service { min-width: 0; min-height: 0; padding: 10px; border: 1px solid #8bb5c85e; border-radius: 12px; background: #06192ec7; box-shadow: 0 6px 20px #0004; }
 .source-launch-slot { display: flex; flex-direction: column; gap: 6px; }
 .source-launch-slot p, .source-launch-service p { margin: 0; color: #c9d9e2; font-size: 11px; line-height: 1.35; }
