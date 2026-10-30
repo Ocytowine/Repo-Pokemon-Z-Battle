@@ -262,12 +262,13 @@ describe("source battle controller", () => {
     expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
       pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
     { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6,
-      defeatText: "J'ai encore beaucoup à apprendre !" }, completed)).toBe(true);
+      displayName: "Rival Christian", defeatText: "J'ai encore beaucoup à apprendre !" }, completed)).toBe(true);
     expect(controller.current?.teams.opponent.members[0]).toMatchObject({ species: "BIDOOF", level: 2 });
     expect(visuals.startBattle).toHaveBeenCalledWith(controller.current,
       { battleMusic: "Rival.ogg", victoryMusic: "Victoria.ogg", baseMoney: 60, trainerTypeId: 6,
-        defeatText: "J'ai encore beaucoup à apprendre !",
+        displayName: "Rival Christian", defeatText: "J'ai encore beaucoup à apprendre !",
         battleback: "town", npcOpponent: true, opponentTrainer: { id: 6, name: "Crisanto" } });
+    expect(callbacks.setNotice).toHaveBeenCalledWith("Combat de Dresseur lancé contre Rival Christian.");
     expect(eventState.money).toBe(3000);
     for (let turn = 0; turn < 20 && controller.active; turn += 1) await controller.submitAction(0);
     expect(controller.active).toBe(false);

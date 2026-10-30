@@ -37,7 +37,7 @@ export function sourceMovementUnlocks(state: SourceEventState, testOverride: boo
     surf: unlocked(badges >= 5 && (state.inventory.SURFMONTURA ?? 0) > 0),
     dive: unlocked(badges >= 7 && partyKnows(state, "DIVE")),
     waterfall: unlocked(badges >= 8 && partyKnows(state, "WATERFALL")),
-    fly: testOverride,
+    fly: unlocked((state.inventory.POKERIDER ?? 0) > 0),
     testOverride,
   };
 }

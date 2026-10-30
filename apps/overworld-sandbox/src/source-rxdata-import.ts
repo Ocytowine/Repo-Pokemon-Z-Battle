@@ -17,7 +17,7 @@ export interface RxdataImportCatalog {
   readonly items: readonly CatalogRecord[];
   readonly trainerTypes: readonly CatalogRecord[];
   readonly avatars: readonly { readonly id: string; readonly trainerType: string;
-    readonly presentation: string }[];
+    readonly presentation: string; readonly legacyPalette?: "classic" | "light" | "dark" }[];
 }
 export interface RxdataImportPreview {
   readonly snapshot: SourceSaveSlotSnapshot;
@@ -189,6 +189,11 @@ export function convertRxdataSave(bytes: Uint8Array, catalog: RxdataImportCatalo
     selfSwitchState[`${sourceInteger(tuple[0], "Carte")}:${sourceInteger(tuple[1], "Événement")}:${letter}`] = true;
   }
   const mapId = sourceInteger(roots[4], "Carte", 999);
+  const sourceVisitedMaps = globalMetadata["@visitedMaps"];
+  const visitedMaps = Array.isArray(sourceVisitedMaps)
+    ? sourceVisitedMaps.flatMap((visited, id) => visited === true && id > 0 && id <= 999 ? [id] : [])
+    : [];
+  if (!visitedMaps.includes(mapId)) visitedMaps.push(mapId);
   const x = sourceInteger(playerPosition["@x"], "Position X");
   const y = sourceInteger(playerPosition["@y"], "Position Y");
   const directionNumber = sourceInteger(playerPosition["@direction"], "Direction");
@@ -200,19 +205,22 @@ export function convertRxdataSave(bytes: Uint8Array, catalog: RxdataImportCatalo
   const trainerTypeId = sourceInteger(trainer["@trainertype"], "Type de joueur");
   const trainerType = catalog.trainerTypes.find((entry) => entry.id === trainerTypeId)?.internalName;
   const avatar = catalog.avatars.find((entry) => entry.trainerType === trainerType);
+  const palette = avatar?.legacyPalette ?? "classic";
   const defaultPlayer = createDefaultPlayerAvatarSelection();
   const player: PlayerAvatarSelection = { ...defaultPlayer,
     avatarId: avatar !== undefined && /^legacy-\d+$/u.test(avatar.id) ? avatar.id : defaultPlayer.avatarId,
     profile: { ...defaultPlayer.profile, displayName: trainerName,
       pronouns: avatar?.presentation === "masculine" ? "masculine"
         : avatar?.presentation === "feminine" ? "feminine" : "neutral",
-      bodyModel: avatar?.presentation === "feminine" ? "legacy-feminine" : "legacy-masculine" },
+      bodyModel: avatar?.presentation === "feminine" ? "legacy-feminine" : "legacy-masculine",
+      skinTone: palette, hairColor: `legacy-${palette}` },
     trainerIdentity: { schemaVersion: 1, trainerId, publicId: trainerId & 0xffff } };
   const seen = sourceArray(trainer["@seen"], "Pokédex vu");
   const owned = sourceArray(trainer["@owned"], "Pokédex capturé");
   const speciesNames = (values: RubyMarshalValue[]) => values.flatMap((entry, id) => entry === true
     ? [speciesById.get(id)?.internalName].filter((name): name is string => name !== undefined) : []);
   const eventState = parseSourceEventState({ ...createSourceEventState(), switches: switchState,
+    visitedMaps,
     variables: variableState, selfSwitches: selfSwitchState, inventory,
     money: sourceInteger(trainer["@money"], "Argent", 999_999),
     runningShoes: globalMetadata["@runningShoes"] === true, pokedexEnabled: trainer["@pokedex"] === true,

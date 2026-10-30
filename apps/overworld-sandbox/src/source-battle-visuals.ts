@@ -12,6 +12,7 @@ import type { SourceBattleStatusVisual } from "./source-battle-presentation-sequ
 import { selectSourceBattleTransition, SOURCE_TRANSITION_FRAME_MS, sourceTrainerBandFrames,
   sourceWildOutdoorFrames } from "./source-battle-transition.js";
 import { startSourcePokemonSpriteAnimation } from "./source-pokemon-sprite-animator.js";
+import { wideBattlebackAvailability } from "./source-resource-packs.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -217,6 +218,7 @@ export interface SourceBattleVisualOptions {
   readonly onBattleAudioEnd?: () => void;
   readonly abilityName?: (internalName: string) => string;
   readonly itemName?: (internalName: string) => string;
+  readonly trainerDisplayName?: (trainer: { readonly id: number; readonly name: string }) => string;
   /** Personal Pokédex history, read locally and never projected into shared battle state. */
   readonly caughtSpecies?: () => readonly string[];
 }
@@ -320,6 +322,10 @@ export class SourceBattleVisuals {
 
   setOpponentTrainerImage(image: HTMLImageElement | null): void {
     this.#opponentTrainerImage = image;
+  }
+
+  private trainerName(trainer: { readonly id: number; readonly name: string }): string {
+    return this.#npcOpponent ? this.options.trainerDisplayName?.(trainer) ?? trainer.name : trainer.name;
   }
 
   async startBattle(state: TeamBattleState, audio: { readonly battleMusic?: string | null;
@@ -545,7 +551,9 @@ export class SourceBattleVisuals {
         // brièvement pendant un changement de format ou de composition.
         this.synchronizeFaintedSprites(state);
         const scenes = buildBattleScenes(manifests.assets);
-        const { scene, background, wide } = selectBattleSceneVisuals(scenes, battleback);
+        const available = await wideBattlebackAvailability();
+        const { scene, background, wide } = selectBattleSceneVisuals(scenes, battleback,
+          (entry) => available(entry.path));
         document.getElementById("encounter-panel")?.classList.toggle("wide-background", wide);
         this.setImage("source-battle-background", background?.path ?? null);
         this.setImage("source-player-base", scene?.playerBase?.path ?? null);
@@ -931,7 +939,7 @@ export class SourceBattleVisuals {
       customPlayer?.naturalHeight ?? player.naturalHeight);
     opponent.hidden = false;
     player.hidden = false;
-    this.message(`${trainerData.name} vous défie !`);
+    this.message(`${this.trainerName(trainerData)} vous défie !`);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const opponentArrival = opponent.animate([
       { transform: "translateX(-208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
@@ -988,7 +996,7 @@ export class SourceBattleVisuals {
     this.placeTrainer(trainer, "opponent", customTrainer?.naturalWidth ?? trainer.naturalWidth,
       customTrainer?.naturalHeight ?? trainer.naturalHeight);
     trainer.hidden = false;
-    this.message(`${trainerData.name} vous défie !`);
+    this.message(`${this.trainerName(trainerData)} vous défie !`);
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const arrival = trainer.animate([
       { transform: "translateX(-208px)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 },
@@ -996,7 +1004,7 @@ export class SourceBattleVisuals {
     await arrival.finished.catch(() => undefined);
     await delay(reduced ? 20 : 530);
     stage.classList.add("revealing-opponent");
-    this.message(`${trainerData.name} envoie ${pokemonName} !`);
+    this.message(`${this.trainerName(trainerData)} envoie ${pokemonName} !`);
     if (sendOutSound !== null) this.playAudio(sendOutSound, { volume: 0.8, oneShot: true });
     if (opponentCry !== null) this.playAudio(opponentCry, { volume: 0.8, oneShot: true });
     const trainerAnimation = trainer.animate([
@@ -1104,7 +1112,7 @@ export class SourceBattleVisuals {
     roster.hidden = !visible;
     if (!visible || state === null || this.#opponentTrainerData === null) return;
     const name = document.getElementById("source-npc-opponent-name");
-    if (name !== null) name.textContent = this.#opponentTrainerData.name;
+    if (name !== null) name.textContent = this.trainerName(this.#opponentTrainerData);
     const team = document.getElementById("source-npc-opponent-team");
     team?.replaceChildren(...state.teams.opponent.members.map((member) => {
       const marker = document.createElement("span");

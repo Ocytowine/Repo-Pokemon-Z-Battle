@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createSourceEventState } from "../src/source-event-state.js";
+import { createSourceEventState, parseSourceEventState } from "../src/source-event-state.js";
 import { loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   isSourceFacingFishableTerrain, sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
   sourceMovementVisualOffset, sourceMovementVisualPattern } from "../src/source-player-movement.js";
@@ -23,6 +23,18 @@ describe("source player movement unlocks", () => {
     expect(loadSourceMovementTestOverride(storage)).toBe(true);
     persistSourceMovementTestOverride(storage, false);
     expect(loadSourceMovementTestOverride(storage)).toBe(false);
+  });
+
+  it("unlocks flight from each player's persistent Poké Monture, including after reload", () => {
+    const initial = createSourceEventState();
+    const host = { ...initial, inventory: { POKERIDER: 1 } };
+    const guest = { ...initial, inventory: { BICYCLE: 1, POKERIDER: 0 } };
+    expect(sourceMovementUnlocks(host, false).fly).toBe(true);
+    expect(sourceMovementUnlocks(guest, false).fly).toBe(false);
+    const restored = parseSourceEventState(JSON.parse(JSON.stringify(host)) as unknown);
+    expect(sourceMovementUnlocks(restored, false).fly).toBe(true);
+    expect(sourceMovementUnlocks({ ...restored, inventory: {} }, false).fly).toBe(false);
+    expect(sourceMovementUnlocks(guest, true).fly).toBe(true);
   });
 
   it("separates water bobbing, Surf transitions and Chevroum timing", () => {

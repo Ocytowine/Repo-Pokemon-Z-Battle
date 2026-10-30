@@ -25,6 +25,53 @@ describe("local asset helpers", () => {
       .toBe("Graphics/Battlebacks/playerbaseBosque.png");
     expect(selectBattleSceneVisuals(scenes, "Pradera")).toMatchObject({ scene: { id: "pradera", complete: true },
       background: { path: "Graphics/Battlebacks/battlebgPraderaZ.png" }, wide: true });
+    expect(selectBattleSceneVisuals(scenes, "Bosque", () => false)).toMatchObject({
+      background: { path: "Graphics/Battlebacks/battlebgBosque.png" }, wide: false });
+  });
+
+  it("uses wide backgrounds when the legacy battlebg files were archived", () => {
+    const entry = (path: string) => ({ path: `Graphics/Battlebacks/${path}.png`,
+      category: "graphics/battlebacks", mediaType: "image" as const,
+      image: { width: 2400, height: 1080, animation: null } });
+    const scenes = buildBattleScenes({ schemaVersion: "1", records: [
+      entry("battlebgBosqueZ"), entry("playerbaseBosque"), entry("enemybaseBosque"),
+      entry("battlebgNightSkyZ"),
+    ] });
+    expect(selectBattleSceneVisuals(scenes, "Bosque")).toMatchObject({ scene: { id: "bosque", complete: true },
+      background: { path: "Graphics/Battlebacks/battlebgBosqueZ.png" }, wide: true });
+    expect(selectBattleSceneVisuals(scenes, "NightSky")).toMatchObject({ scene: { id: "nightsky", complete: false },
+      background: { path: "Graphics/Battlebacks/battlebgNightSkyZ.png" }, wide: true });
+  });
+
+  it("keeps an archived background for scenes without a Z replacement", () => {
+    const entry = (path: string, category = "graphics/battlebacks") => ({ path, category,
+      mediaType: "image" as const, image: { width: 512, height: 384, animation: null } });
+    const scenes = buildBattleScenes({ schemaVersion: "1", records: [
+      entry("Graphics/Battlebacks/OLD/battlebgMirra.png", "graphics/battlebacks/old"),
+      entry("Graphics/Battlebacks/playerbaseMirra.png"), entry("Graphics/Battlebacks/enemybaseMirra.png"),
+    ] });
+    expect(selectBattleSceneVisuals(scenes, "Mirra")).toMatchObject({ scene: { id: "mirra", complete: true },
+      background: { path: "Graphics/Battlebacks/OLD/battlebgMirra.png" }, wide: false });
+  });
+
+  it("uses the archived background offline and a retained wide background when no legacy exists", () => {
+    const entry = (path: string, width: number, height: number) => ({ path,
+      category: path.includes("/OLD/") ? "graphics/battlebacks/old" : "graphics/battlebacks",
+      mediaType: "image" as const, image: { width, height, animation: null } });
+    const scenes = buildBattleScenes({ schemaVersion: "1", records: [
+      entry("Graphics/Battlebacks/OLD/battlebgBosque.png", 512, 384),
+      entry("Graphics/Battlebacks/playerbaseBosque.png", 512, 384),
+      entry("Graphics/Battlebacks/enemybaseBosque.png", 512, 384),
+      entry("Graphics/Battlebacks/battlebgBosqueZ.png", 2400, 1080),
+      entry("Graphics/Battlebacks/battlebgCorazonArmaZ.png", 2400, 1080),
+      entry("Graphics/Battlebacks/playerbaseCorazonArma.png", 512, 384),
+      entry("Graphics/Battlebacks/enemybaseCorazonArma.png", 512, 384),
+    ] });
+    const available = (background: { path: string }) => background.path.endsWith("CorazonArmaZ.png");
+    expect(selectBattleSceneVisuals(scenes, "Bosque", available)).toMatchObject({
+      background: { path: "Graphics/Battlebacks/OLD/battlebgBosque.png" }, wide: false });
+    expect(selectBattleSceneVisuals(scenes, "CorazonArma", available)).toMatchObject({
+      background: { path: "Graphics/Battlebacks/battlebgCorazonArmaZ.png" }, wide: true });
   });
 
   it("selects the neutral requested battler first", () => {

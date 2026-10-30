@@ -42,11 +42,20 @@ html.source-android body:has(.source-title-screen:not([hidden])) .source-touch-c
 .source-launch-view { min-height: 0; min-width: 0; }
 .source-launch-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .source-launch-import-status { grid-column: 1 / -1; margin: 0; color: #ffe2a2; font-size: 12px; }
+.source-launch-import-guide { grid-column: 1 / -1; margin: 0; color: #e0e9ec; font-size: clamp(10px, 1.2dvh, 12px); line-height: 1.25; }
+.source-launch-search-helper { border-color: #8bb5c888 !important; color: #d5e8ee !important; background: #24485a70 !important; }
+.source-launch-import .source-launch-service-actions { flex-wrap: wrap; }
+.source-launch-import-slots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.source-launch-import-slot { display: flex; min-width: 0; gap: 7px; padding: 8px; align-items: center; justify-content: space-between; border: 1px solid #8bb5c85e; border-radius: 9px; background: #24485a80; }
+.source-launch-import-slot span { min-width: 0; font-size: 11px; }
+.source-launch-import-slot button { flex: 0 0 auto; }
+.source-launch-import-warning { color: #ffe2a2 !important; }
 .source-launch-found { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
-.source-launch-found > .source-launch-save { flex: 0 1 auto; min-height: 0; }
+.source-launch-found > .source-launch-save { width: 100%; flex: 0 1 auto; min-height: 0; }
 .source-launch-found > .source-launch-service-actions { flex-wrap: wrap; }
 .source-launch-slot, .source-launch-service { min-width: 0; min-height: 0; padding: 10px; border: 1px solid #8bb5c85e; border-radius: 12px; background: #06192ec7; box-shadow: 0 6px 20px #0004; }
 .source-launch-slot { display: flex; flex-direction: column; gap: 6px; }
+.source-launch-slot .source-launch-delete-save { align-self: flex-end; min-height: 25px; margin-top: auto; padding: 2px 7px; border-color: #d4979788; color: #ffcece; background: #582c3a99; font-size: 9px; }
 .source-launch-slot p, .source-launch-service p { margin: 0; color: #c9d9e2; font-size: 11px; line-height: 1.35; }
 .source-launch-save, .source-launch-cloud-item { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; padding: 6px; border-radius: 8px; background: #24485a80; }
 .source-launch-save span { display: -webkit-box; flex: 1 1 0; min-width: 0; overflow: hidden; font-size: 11px; line-height: 1.25; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -59,7 +68,7 @@ html.source-android body:has(.source-title-screen:not([hidden])) .source-touch-c
 .source-launch-pages span { font-size: 11px; }
 html.source-android .source-launch-screen { inset: var(--source-safe-top, 0px) var(--source-safe-side, 8px) var(--source-safe-bottom, 0px) var(--source-safe-side, 8px); border-radius: 10px; }
 html.source-android body:has(.source-launch-screen:not([hidden])) .source-touch-controls { display: none !important; }
-@media (orientation: portrait) { .source-launch-slots { grid-template-columns: 1fr; } }
+@media (orientation: portrait) { .source-launch-slots, .source-launch-import-slots { grid-template-columns: 1fr; } }
 @keyframes source-title-reveal { from { opacity: 0; filter: brightness(.25); } to { opacity: 1; filter: brightness(.83); } }
 @keyframes source-title-logo-arrive { from { opacity: 0; transform: translate(-50%, 36px) scale(.9); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
 @keyframes source-title-turn { from { transform: translate(-50%, -50%) rotate(0); } to { transform: translate(-50%, -50%) rotate(360deg); } }
@@ -974,6 +983,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
   animation: source-region-cursor .7s steps(1, end) infinite;
 }
 .source-region-map.fly-mode .source-region-hit:not(.flyable) { cursor: default; opacity: .22; }
+.source-region-map.fly-mode .source-region-hit.unvisited { cursor: pointer; opacity: .5; }
 .source-region-map.fly-mode .source-region-hit.selected::after { display: none; }
 @keyframes source-region-cursor { 50% { background-position: right center; } }
 .source-region-player {
@@ -2588,4 +2598,157 @@ body:has(.source-new-game:not([hidden])) { height: 100dvh; min-height: 0; overfl
   font-size: 16px;
   text-align: center;
   pointer-events: none;
+}
+
+.source-dialogue p, .source-dialogue .source-choices { margin: 0; }
+
+/* Bag and Ranch pages use the measured space left after their controls, never a clipped scroll area. */
+.source-menu-content.source-menu-content-bag { overflow: hidden; }
+.source-menu-content-bag .source-inventory-browser,
+.source-menu-content-bag .source-bag-list { min-width: 0; min-height: 0; }
+.source-menu-content-bag .source-bag-list .source-inventory-grid {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-columns: repeat(var(--source-bag-columns, 3), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--source-bag-rows, 3), minmax(0, 1fr));
+  grid-auto-rows: 0;
+  gap: 6px;
+  align-content: stretch;
+  overflow: hidden;
+}
+.source-menu-content-bag .source-bag-list .source-inventory-card {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 5px;
+}
+.source-menu-content-bag .source-bag-list .source-inventory-copy > strong {
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
+}
+.source-menu-content-bag .source-bag-list .source-inventory-copy > small {
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.source-ranch-team-list {
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  align-content: stretch;
+  overflow: hidden;
+  padding: 4px;
+}
+.source-ranch-team-list .source-pokemon-card.compact,
+.source-ranch-team-list .source-ranch-team-empty {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.source-ranch-team-list .source-pokemon-card.compact {
+  grid-template-columns: 20px minmax(0, 1fr);
+  padding: 2px;
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-icon {
+  width: 20px;
+  height: 20px;
+  background-size: auto 20px;
+}
+.source-ranch-team-list .source-pokemon-held-item,
+.source-ranch-team-list .source-pokemon-card-status { display: none; }
+.source-ranch-tools-slot:not(:empty) {
+  position: absolute;
+  z-index: 6;
+  top: 48px;
+  right: 0;
+  left: 0;
+  max-height: calc(100% - 48px);
+  overflow: hidden;
+  box-shadow: 0 12px 24px #00150eb8;
+}
+.source-ranch-storage .source-pokemon-grid {
+  min-height: 0;
+  grid-template-columns: repeat(var(--source-ranch-columns, 3), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--source-ranch-rows, 3), minmax(0, 1fr));
+  grid-auto-rows: 0;
+  align-content: stretch;
+  overflow: hidden;
+  padding: 4px;
+}
+.source-ranch-storage .source-pokemon-grid > .source-pokemon-card.compact {
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  padding: 3px 5px;
+}
+.source-ranch-storage .source-pokemon-grid .source-pokemon-moves { display: none; }
+.source-ranch-storage .source-pokemon-grid .source-pokemon-card-metrics {
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.source-ranch-storage .source-pokemon-grid .source-pokemon-card-metrics b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+html.source-android .source-ranch-storage .source-pokemon-grid { overflow-y: hidden; }
+.source-menu-content.source-menu-content-options {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  overflow: hidden;
+}
+.source-options-pages {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.source-options-pages button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 7px;
+  color: #d6eefa;
+  border: 1px solid #8bcfff66;
+  border-radius: 7px;
+  background: #10314dcc;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 850;
+}
+.source-options-pages button.active { color: #09213a; border-color: #d6f4ff; background: #a2dcf2; }
+.source-menu-content-options .source-options-list {
+  min-height: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 6px;
+  overflow: hidden;
+}
+.source-menu-content-options .source-options-list > * { min-width: 0; min-height: 0; padding: 7px 9px; }
+.source-menu-content-options .source-shortcut-options { grid-column: 1 / -1; }
+.source-menu-content-options .source-shortcut-options > div { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.source-menu-content-options .source-shortcut-option { min-height: 0; }
+.source-menu-content-options .source-options-dev-link { align-self: stretch; }
+@media (max-width: 520px) {
+  .source-menu-content-options .source-options-list { grid-template-columns: minmax(0, 1fr); }
+  .source-menu-content-options .source-shortcut-options > div { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .source-incubator-panel > main { overflow: hidden; }
+  .source-incubator-grid { grid-template-rows: repeat(3, minmax(0, 1fr)); }
+  .source-day-care-slots { grid-template-rows: repeat(2, minmax(0, 1fr)); overflow: hidden; }
+  .source-day-care-slot, .source-day-care-empty { min-height: 0; }
+}
+@media (max-width: 620px) and (orientation: landscape) {
+  .source-incubator-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+  }
+  .source-day-care-slots {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: minmax(0, 1fr);
+  }
 }

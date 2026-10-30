@@ -1,1 +1,1 @@
-Combats plus lisibles sur les fonds larges : HUD des Pokémon et du Dresseur adverse, menus Sac et Équipe revus pour le tactile, icônes et messages d'échange améliorés. Aperçu Android dans Chrome corrigé. Les sauvegardes existantes sont conservées.
+Correction de la lecture des musiques après installation du pack privé : le titre, les cartes et les combats retrouvent leur son. Les musiques restent aussi incluses dans l'APK pour jouer hors ligne sans pack. Les sauvegardes et les packs déjà installés sont conservés.

@@ -2,14 +2,19 @@ import { sourceSavePreview, type CloudSaveItem } from "./source-cloud-sync.js";
 import { sourceImportBackupExists, sourceSaveSlotSummaries,
   type SourceSaveKind, type SourceSaveSlotId } from "./source-save-slots.js";
 import { originalSaveFolderSearchAvailable, type OriginalSaveCandidate } from "./source-save-locator.js";
+import type { RxdataImportPreview } from "./source-rxdata-import.js";
+import { loadSourceNewGameDraft } from "./source-new-game.js";
 
 export interface SourceLaunchActions {
   select(slot: SourceSaveSlotId, kind: SourceSaveKind): void;
   newGame(slot: SourceSaveSlotId): void;
-  importSave(slot: SourceSaveSlotId, file: File): Promise<void>;
-  searchFolder(slot: SourceSaveSlotId): Promise<void>;
-  importFoundSave(slot: SourceSaveSlotId, candidate: OriginalSaveCandidate): Promise<void>;
+  prepareImport(file: File): Promise<void>;
+  searchFolder(): Promise<void>;
+  prepareFoundSave(candidate: OriginalSaveCandidate): Promise<void>;
+  confirmImport(slot: SourceSaveSlotId): void;
+  cancelImport(): void;
   restoreImportBackup(slot: SourceSaveSlotId): void;
+  deleteSave(slot: SourceSaveSlotId): void;
   cloudConnect(): void;
   cloudSync(): void;
   cloudRecover(slot: SourceSaveSlotId, kind: SourceSaveKind): void;
@@ -19,29 +24,40 @@ export interface SourceLaunchActions {
   back(): void;
 }
 
-type LaunchTab = "saves" | "cloud" | "version";
+type LaunchTab = "saves" | "import" | "cloud" | "version";
 
 /** Personal launch UI. Selection loads the same local snapshot in solo and Coop. */
 export class SourceLaunchScreen {
   private tab: LaunchTab = "saves";
   private cloudPage = 0;
   private importStatus = "";
-  private foundSaves: { readonly slot: SourceSaveSlotId; readonly candidates: readonly OriginalSaveCandidate[] } | null = null;
+  private foundSaves: readonly OriginalSaveCandidate[] | null = null;
   private foundPage = 0;
+  private importPreview: { readonly fileName: string; readonly value: RxdataImportPreview } | null = null;
 
   public constructor(private readonly root: HTMLElement, private readonly storage: Pick<Storage, "getItem">,
     private readonly actions: SourceLaunchActions) {}
 
   public get open(): boolean { return !this.root.hidden; }
   public hide(): void { this.root.hidden = true; }
-  public show(): void { this.tab = "saves"; this.foundSaves = null; this.root.hidden = false; this.render(); }
-  public setImportStatus(status: string): void { this.importStatus = status; this.render(); }
-  public showFoundSaves(slot: SourceSaveSlotId, candidates: readonly OriginalSaveCandidate[]): void {
-    this.foundSaves = { slot, candidates };
+  public show(): void { this.tab = "saves"; this.foundSaves = null; this.importPreview = null; this.root.hidden = false; this.render(); }
+  public setImportStatus(status: string): void { this.tab = "import"; this.importStatus = status; this.render(); }
+  public clearImportSelection(): void { this.foundSaves = null; this.importPreview = null; this.importStatus = ""; this.render(); }
+  public showImportPreview(fileName: string, preview: RxdataImportPreview): void {
+    this.tab = "import";
+    this.foundSaves = null;
+    this.importPreview = { fileName, value: preview };
+    this.importStatus = "";
+    this.render();
+  }
+  public showFoundSaves(candidates: readonly OriginalSaveCandidate[], limited: boolean): void {
+    this.tab = "import";
+    this.foundSaves = candidates;
     this.foundPage = 0;
     this.importStatus = candidates.length === 0
-      ? "Aucun Game.rxdata trouvé. Si le jeu est dans Android/data, copie la sauvegarde dans Téléchargements."
-      : `${candidates.length} sauvegarde(s) trouvée(s), classées par pertinence.`;
+      ? limited ? "Dossier trop vaste : sélectionne plutôt le dossier Pokémon Z V2.12 - Français."
+        : "Aucun Game.rxdata trouvé. Sélectionne le dossier du jeu, pas Data ou Graphics."
+      : `${candidates.length} sauvegarde(s) trouvée(s)${limited ? " avant la limite de recherche" : ""}.`;
     this.render();
   }
 
@@ -52,13 +68,14 @@ export class SourceLaunchScreen {
       <nav class="source-launch-tabs" aria-label="Rubriques de démarrage"></nav><div class="source-launch-view"></div></div>`;
     this.root.querySelector<HTMLButtonElement>("[data-back]")!.onclick = this.actions.back;
     const tabs = this.root.querySelector<HTMLElement>(".source-launch-tabs")!;
-    for (const [tab, label] of [["saves", "Parties"], ["cloud", "Cloud"], ["version", "Version"]] as const) {
+    for (const [tab, label] of [["saves", "Parties"], ["import", "Import"], ["cloud", "Cloud"], ["version", "Version"]] as const) {
       const button = this.button(tabs, label, () => { this.tab = tab; this.render(cloudStatus, cloudItems,
         updateStatus, updateAvailable, busy); });
       button.setAttribute("aria-current", this.tab === tab ? "page" : "false");
     }
     const view = this.root.querySelector<HTMLElement>(".source-launch-view")!;
     if (this.tab === "saves") this.renderSaves(view);
+    else if (this.tab === "import") this.renderImport(view);
     else if (this.tab === "cloud") this.renderCloud(view, cloudStatus, cloudItems,
       updateStatus, updateAvailable, busy);
     else this.renderVersion(view, updateStatus, updateAvailable);
@@ -66,17 +83,6 @@ export class SourceLaunchScreen {
 
   private renderSaves(view: HTMLElement): void {
     view.className += " source-launch-slots";
-    if (this.foundSaves !== null) {
-      this.renderFoundSaves(view);
-      return;
-    }
-    if (this.importStatus !== "") {
-      const status = document.createElement("p");
-      status.className = "source-launch-import-status";
-      status.role = "status";
-      status.textContent = this.importStatus;
-      view.append(status);
-    }
     for (const summary of sourceSaveSlotSummaries(this.storage)) {
       const card = document.createElement("article");
       card.className = "source-launch-slot";
@@ -103,55 +109,136 @@ export class SourceLaunchScreen {
         card.append(empty);
         this.button(card, "Nouvelle aventure", () => this.actions.newGame(summary.id));
       }
-      const picker = document.createElement("input");
-      picker.type = "file";
-      picker.accept = ".rxdata,application/octet-stream";
-      picker.hidden = true;
-      picker.setAttribute("aria-label", `Sauvegarde Pokémon Z pour la partie ${summary.id}`);
-      picker.onchange = () => {
-        const file = picker.files?.[0];
-        if (file !== undefined) void this.actions.importSave(summary.id, file);
-        picker.value = "";
-      };
-      card.append(picker);
-      this.button(card, "Importer Game.rxdata", () => picker.click());
-      if (originalSaveFolderSearchAvailable()) {
-        this.button(card, "Chercher dans un dossier", () => { void this.actions.searchFolder(summary.id); });
-      }
-      if (sourceImportBackupExists(this.storage, summary.id)) {
-        this.button(card, "Restaurer la partie précédente", () => this.actions.restoreImportBackup(summary.id));
-      }
+      const removable = summary.manual !== null || summary.auto !== null
+        || sourceImportBackupExists(this.storage, summary.id)
+        || loadSourceNewGameDraft(this.storage, summary.id) !== null;
+      const remove = this.button(card, "Supprimer la partie", () => this.actions.deleteSave(summary.id), !removable);
+      remove.className = "source-launch-delete-save";
       view.append(card);
     }
+  }
+
+  private renderImport(view: HTMLElement): void {
+    view.className += " source-launch-service source-launch-import";
+    if (this.importPreview !== null) {
+      if (this.importStatus !== "") {
+        const status = document.createElement("p");
+        status.className = "source-launch-import-status";
+        status.role = "status";
+        status.textContent = this.importStatus;
+        view.append(status);
+      }
+      this.renderImportPreview(view);
+      return;
+    }
+    if (this.foundSaves !== null) {
+      this.renderFoundSaves(view);
+      return;
+    }
+    const heading = document.createElement("h2");
+    heading.textContent = "Importer une sauvegarde Pokémon Z";
+    const guide = document.createElement("p");
+    guide.className = "source-launch-import-guide";
+    guide.textContent = "Choisis Game.rxdata ou Game_2.rxdata dans le dossier Pokémon Z V2.12 - Français. Tu choisiras la partie de destination après vérification du fichier.";
+    view.append(heading, guide);
+    if (this.importStatus !== "") {
+      const status = document.createElement("p");
+      status.className = "source-launch-import-status";
+      status.role = "status";
+      status.textContent = this.importStatus;
+      view.append(status);
+    }
+    const picker = document.createElement("input");
+    picker.type = "file";
+    picker.accept = ".rxdata,application/octet-stream";
+    picker.hidden = true;
+    picker.setAttribute("aria-label", "Sauvegarde Pokémon Z à importer");
+    picker.onchange = () => {
+      const file = picker.files?.[0];
+      if (file !== undefined) void this.actions.prepareImport(file);
+      picker.value = "";
+    };
+    view.append(picker);
+    const actions = document.createElement("div");
+    actions.className = "source-launch-service-actions";
+    this.button(actions, "Choisir le fichier de sauvegarde", () => picker.click());
+    if (originalSaveFolderSearchAvailable()) {
+      const search = this.button(actions, "Rechercher dans un dossier choisi", () => {
+        void this.actions.searchFolder();
+      });
+      search.className = "source-launch-search-helper";
+      search.title = "Choisis le dossier Pokémon Z, pas Data ou Graphics.";
+    }
+    view.append(actions);
+    for (const summary of sourceSaveSlotSummaries(this.storage)) {
+      if (!sourceImportBackupExists(this.storage, summary.id)) continue;
+      const restore = document.createElement("div");
+      restore.className = "source-launch-import-restore";
+      this.button(restore, `Restaurer l'ancienne Partie ${summary.id}`,
+        () => this.actions.restoreImportBackup(summary.id));
+      view.append(restore);
+    }
+  }
+
+  private renderImportPreview(view: HTMLElement): void {
+    const { fileName, value } = this.importPreview!;
+    const heading = document.createElement("h2");
+    heading.textContent = "Choisir la partie de destination";
+    const details = document.createElement("p");
+    details.textContent = `${fileName} · ${value.trainerName} · Carte ${value.snapshot.worldSave?.mapId ?? "?"} · Équipe ${value.partyCount}/6 · Boîtes ${value.storageCount} · Objets ${value.itemCount}`;
+    view.append(heading, details);
+    if (value.warnings.length > 0) {
+      const message = document.createElement("p");
+      message.className = "source-launch-import-warning";
+      message.textContent = `${value.warnings.length} limite(s) de conversion : détails affichés avant confirmation.`;
+      view.append(message);
+    }
+    const slots = document.createElement("div");
+    slots.className = "source-launch-import-slots";
+    for (const summary of sourceSaveSlotSummaries(this.storage)) {
+      const occupied = summary.manual !== null || summary.auto !== null;
+      const card = document.createElement("div");
+      card.className = "source-launch-import-slot";
+      const label = document.createElement("span");
+      label.textContent = `Partie ${summary.id} · ${occupied ? "occupée — copie de secours prévue" : "vide"}`;
+      card.append(label);
+      this.button(card, `Importer dans Partie ${summary.id}`, () => this.actions.confirmImport(summary.id));
+      slots.append(card);
+    }
+    view.append(slots);
+    const note = document.createElement("p");
+    note.textContent = "Le fichier original reste intact. Le cloud attendra une synchronisation manuelle.";
+    view.append(note);
+    this.button(view, "Annuler l'import", () => { this.actions.cancelImport(); this.clearImportSelection(); });
   }
 
   private renderFoundSaves(view: HTMLElement): void {
     const result = this.foundSaves!;
     view.className += " source-launch-found";
     const heading = document.createElement("h2");
-    heading.textContent = `Recherche pour la partie ${result.slot}`;
+    heading.textContent = "Sauvegardes trouvées";
     const status = document.createElement("p");
     status.role = "status";
     status.textContent = this.importStatus;
     view.append(heading, status);
-    for (const candidate of result.candidates.slice(this.foundPage * 4, this.foundPage * 4 + 4)) {
+    for (const candidate of result.slice(this.foundPage * 4, this.foundPage * 4 + 4)) {
       const row = document.createElement("div");
       row.className = "source-launch-save";
       const label = document.createElement("span");
       label.textContent = candidate.path;
       label.title = candidate.path;
       row.append(label);
-      this.button(row, "Importer", () => { void this.actions.importFoundSave(result.slot, candidate); });
+      this.button(row, "Choisir", () => { void this.actions.prepareFoundSave(candidate); });
       view.append(row);
     }
     const navigation = document.createElement("div");
     navigation.className = "source-launch-service-actions";
-    this.button(navigation, "Retour aux parties", () => { this.foundSaves = null; this.render(); });
-    this.button(navigation, "Autre dossier", () => { void this.actions.searchFolder(result.slot); });
-    if (result.candidates.length > 4) {
+    this.button(navigation, "Retour à l'import", () => { this.foundSaves = null; this.render(); });
+    this.button(navigation, "Autre dossier", () => { void this.actions.searchFolder(); });
+    if (result.length > 4) {
       this.button(navigation, "Précédent", () => { this.foundPage -= 1; this.render(); }, this.foundPage === 0);
       this.button(navigation, "Suivant", () => { this.foundPage += 1; this.render(); },
-        (this.foundPage + 1) * 4 >= result.candidates.length);
+        (this.foundPage + 1) * 4 >= result.length);
     }
     view.append(navigation);
   }

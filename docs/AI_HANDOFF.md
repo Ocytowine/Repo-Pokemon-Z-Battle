@@ -9517,3 +9517,483 @@ la compilation Java Android `:app:compileDebugJavaWithJavac` reussit. Le
 non modifies par cet import, sans erreur dans les fichiers d'import. La
 conversion du fichier prive a ete executee en lecture seule ; aucun slot reel
 et aucune revision R2 n'ont ete modifies.
+
+## Installation USB de l'import sur telephone — 2026-10-30
+
+Le Samsung SM-S911U1 a ete reconnu et autorise via l'ADB du SDK Android local.
+La version locale de l'APK 0.1.4 (versionCode 5) a ete reconstruite avec les
+ressources completes, signee par le certificat de diffusion attendu, puis
+installee avec `adb install -r`. Android a repondu `Success` ; la date de premiere
+installation est restee celle du 2026-10-28, ce qui confirme que la mise a jour
+n'a pas desinstalle l'application. L'app s'ouvre, affiche les deux slots existants
+et les nouveaux boutons d'import. Le bouton « Chercher dans un dossier » ouvre
+le selecteur de dossier natif Android ; le retour a l'app fonctionne. Aucun
+fichier `Game.rxdata` n'a ete importe dans un slot du telephone, aucune partie
+n'a ete ecrasee, aucun objet R2 n'a ete publie. Le parcours de conversion puis
+restauration sur telephone reste a valider avec le porteur.
+
+## Recherche de sauvegarde corrigee sur telephone — 2026-10-30
+
+Le porteur a confirme que l'import direct de sa partie fonctionne depuis le
+dossier `Pokemon/Z V2.12 (Patch 1) - Francais/Pokemon Z V2.12 - Francais` du
+telephone. L'ancienne recherche par dossier echouait : ce repertoire parent
+contient plus de 19 000 fichiers et le parcours abandonnait tous ses resultats
+des 8 000 fichiers examines. Le parcours Android classe maintenant en priorite
+les dossiers Pokemon, evite les sous-dossiers de ressources `Audio`, `Graphics`,
+`Data`, `Fonts`, `PBS`, `Movies` et `Plugins`, et rend les candidats deja trouves
+si la limite est atteinte. Le message indique alors que la recherche est partielle.
+
+L'ecran des parties explique quel dossier et quel fichier choisir. La selection
+directe du fichier est le bouton principal ; la recherche dans un dossier choisi
+reste une aide. L'APK locale 0.1.4 a ete reconstruite, signee et installee par
+`adb install -r`, sans effacer les donnees. Sur le Samsung SM-S911U1, choisir
+le dossier du jeu puis le dossier parent `Pokemon` retrouve dans les deux cas
+`Game.rxdata` et `Game_2.rxdata`. Les deux resultats s'affichent dans l'ecran
+de recherche. Aucun bouton « Importer » n'a ete presse pendant cette recette :
+aucun slot existant n'a ete ecrase. Aucun APK ni pack n'a ete publie sur R2.
+
+## Onglet Import et choix du slot apres lecture — 2026-10-30
+
+L'ecran de lancement separe maintenant `Parties`, `Import`, `Cloud` et `Version`.
+Les cartes Partie 1/2 ne montrent que les reprises et la nouvelle aventure.
+Les choix de fichier et de dossier Android ainsi que la restauration de la copie
+de secours sont dans `Import`. La lecture Ruby Marshal, la conversion et la
+verification de la carte se font avant de proposer Partie 1 ou Partie 2. Le
+snapshot converti reste seulement en memoire jusqu'au choix du slot et a la
+confirmation ; le fichier source reste intact. Un slot occupe annonce la copie
+de secours qui sera creee lors de la confirmation, et l'envoi cloud reste manuel.
+La presentation est personnelle et utilise le meme stockage en solo/hote/invite.
+
+L'APK locale a ete reconstruite et installee avec `adb install -r` sur le
+Samsung. L'ecran `Parties` allege, l'onglet `Import`, la recherche dans le dossier
+parent `Pokemon` et l'apercu de `Game.rxdata` avec choix des deux destinations
+ont ete controles. Aucune destination n'a ete confirmee pendant cette recette ;
+les deux parties du telephone sont restees intactes. Aucun objet R2 n'a ete publie.
+
+## Suppression locale d'une partie par slot — 2026-10-30
+
+Chaque carte Partie 1/2 possede un petit bouton de suppression, desactive si le
+slot ne contient ni sauvegarde, ni copie d'import, ni brouillon. Une confirmation
+nomme le slot et precise que les branches manuelle/automatique, la copie de
+secours de l'import et le brouillon de preparation seront effaces. Cette action
+reste locale : une eventuelle revision cloud n'est pas supprimee et pourra etre
+recuperee depuis l'onglet Cloud. Aucune suppression distante n'est implantee.
+
+La transaction de `deleteSourceSaveSlot` restaure les anciennes valeurs si une
+ecriture locale echoue. Si le slot supprime etait actif, la copie de travail
+est videe, l'autre slot devient actif et l'app recharge l'ecran titre pour
+qu'une sauvegarde automatique ne recree pas l'ancien slot. Les donnees restent
+personnelles, avec le meme chemin local en solo, hote et invite Coop ; aucun
+etat prive n'est replique a la room. Tests unitaires : autre slot preserve,
+copie de secours effacee et rollback sur echec de stockage. Ne pas tester le
+bouton destructeur sur la partie personnelle du porteur sans besoin explicite.
+
+L'APK locale signee a ete installee par USB avec `adb install -r`. Le bouton est
+visible sur chaque slot du Samsung, la confirmation de Partie 1 a ete ouverte
+puis annulee ; les quatre branches locales des deux parties sont toujours
+affichees. La suppression effective n'a ete verifiee que sur stockage simule,
+jamais sur les parties personnelles. `corepack pnpm test` et
+`corepack pnpm build` reussissent. Le `typecheck` complet garde les erreurs
+preexistantes des fichiers de combat non modifies par ce lot.
+
+## Profil de personnalisation apres import — 2026-10-30
+
+Le menu Personnalisation lisait un brouillon global qui pouvait appartenir a
+une autre partie. Il lit desormais un brouillon propre au slot actif et prend
+le profil actif comme base quand ce brouillon n'existe pas. Une partie deja
+importee reprend ainsi son nom et son avatar sans nouvel import. Si l'avatar
+enregistre manque au catalogue, seul l'identifiant d'avatar est remplace :
+le nom et les autres choix du profil sont conserves. La palette et le modele
+sont remis en accord avec l'avatar selectionne, y compris pour les imports
+faits avant ce correctif ; les couleurs personnalisees restent intactes.
+
+Le convertisseur `Game.rxdata` recopie aussi la palette de l'avatar source dans
+le profil (teint et couleur des cheveux). Un import, une restauration locale
+ou une recuperation cloud efface le brouillon du slot concerne ; les autres
+slots et l'ancien brouillon global restent intacts. Le profil et son brouillon
+sont des donnees personnelles, restaurees depuis le slot en solo, hote et
+invite ; aucun profil prive n'est replique a la room.
+
+Les tests de slots couvrent le nom, l'apparence et l'isolement du brouillon
+apres import. `corepack pnpm test` et `corepack pnpm build` reussissent. Le
+`typecheck` global garde les erreurs preexistantes dans les fichiers de combat.
+Le telephone n'etait pas connecte pour une verification visuelle de ce
+correctif ; ne pas presenter cette verification comme acquise.
+
+## Vol donne par la Poke Monture Flambusard — 2026-10-30
+
+La source donne `POKERIDER` dans la sequence de Map003 via
+`$PokemonBag.pbStoreItem(:POKERIDER,1)`. Cette instruction passe deja par le
+port Ruby generique `grant-item` (audite dans le registre), applique le gain
+personnel et enregistre `SourceEventState`. Le script source `pokerider.rb`
+n'exige pas de badge : il limite le lancement du Vol aux cartes exterieures.
+
+Le resolveur `sourceMovementUnlocks` accorde maintenant `fly` si
+`inventory.POKERIDER > 0`, ou si l'option locale Test dev est activee. Le menu
+Carte et l'action Vol utilisent ce meme resultat ; leur message indique
+desormais l'objet manquant. La carte exterieure et la visibilite de la
+destination restent controlees separement. Une partie existante ou importee
+qui possede deja l'objet obtient le Vol sans migration de sauvegarde.
+
+Autorite et etat : l'objet appartient au joueur concerne, est persiste dans
+son slot et restaure au chargement. Solo, hote et invite utilisent le meme
+resolveur et leur propre inventaire ; aucun droit prive n'est replique.
+La transition de carte reutilise le transfert existant, y compris l'excursion
+personnelle de l'invite hors de la carte partagee et son retour. La recette
+sur APK doit encore couvrir l'obtention reelle en Map003, les lieux interieurs,
+les destinations, solo, hote/invite et reconnexion. Ne pas installer ni publier
+l'APK avant le prochain lot demande par le porteur.
+
+Tests d'integration : le script narratif de gain d'objet donne `POKERIDER` et
+ouvre le Vol ; le droit revient apres rechargement et reste propre a chaque
+inventaire. `corepack pnpm test` et `corepack pnpm build` passent. Le typecheck
+de l'app garde ses erreurs preexistantes dans les fichiers de combat, sans
+erreur dans les fichiers touches par ce lot.
+
+## Noms francais des Dresseurs adverses — 2026-10-30
+
+Le HUD PNJ et les messages de debut de combat affichaient `trainer.name` issu
+du catalogue espagnol. Le parseur de `localization.json` lit maintenant les
+categories `trainerNames` (cle = nom source) et `trainerTypeNames` (cle = ID
+numerique de classe). Le libelle de presentation combine classe et nom
+francais, par exemple `Rival Christian` pour `CRISANTO1/Crisanto` ; chaque
+champ absent retombe independamment sur le nom source ou sur le nom seul.
+
+Seule la presentation est traduite : la recherche de l'equipe, les graines
+aleatoires, les recompenses et le `SourceBattleContext` Coop conservent les
+identifiants et noms source. Solo, hote et invite passent par le meme composant
+visuel ; le mode PNJ conditionne la traduction afin qu'un nom de joueur en PvP
+ne soit jamais remplace. Le catalogue de traduction est charge avec la carte ;
+une reprise Coop ouverte avant celle-ci charge le meme fichier a la demande.
+Les textes du ralliement et les notices de lancement affichent aussi le nom
+francais lorsqu'il est disponible. Le reste de la presentation PvP conserve
+le nom personnel.
+
+Tests cibles : assemblage classe/nom, replis et conservation de l'identite
+source transmise au controleur. `corepack pnpm test` et `corepack pnpm build`
+passent ; le typecheck conserve ses erreurs preexistantes dans les fichiers
+de combat non touches. Validation visuelle simple/Duo, hote/invite et
+reconnexion sur APK encore a faire lors du lot groupe. Aucun APK installe ou
+publie pour ce correctif.
+
+## Nettoyage de la fenetre de dialogue overworld — 2026-10-30
+
+Le composant de dialogue n'affiche plus son `label` technique (par exemple
+`Evenement 32 · EV032`), ni les indices 1/2 devant les reponses, ni le texte
+de raccourcis clavier en pied de fenetre. Le HTML du panneau ne contient plus
+les emplacements de titre et de pied ; les choix restent des boutons avec leur
+index interne `data-source-choice` pour le controle tactile et clavier.
+La lecture seule des scenes partagees chez l'invite Coop reprend la meme
+presentation sans numerotation. Les marges de texte et de choix ont ete
+resserrees pour la fenetre basse. Seule la presentation change : le label
+reste dans les snapshots de scene pour l'audit, les intentions et l'autorite
+de la narration ne changent pas. La verification visuelle Android a ete
+autorisee puis commencee avec l'APK locale. `corepack pnpm test` et
+`corepack pnpm build` reussissent.
+
+Recette APK locale du meme jour : l'APK signee a ete reconstruite avec les
+ressources completes et installee sur le Samsung SM-S911U1 par `adb install -r`
+(`Success`). La signature correspond au certificat attendu, l'installation
+initiale du 2026-10-28 est preservee et l'application demarre. Depuis la
+Partie 2 existante, une fenetre de dialogue a trois choix a ete controlee par
+capture : aucun label `Evenement`, numero de reponse ni rappel clavier. Aucun
+bouton d'import, suppression ou synchronisation n'a ete presse. Le lancement
+d'une partie peut produire sa sauvegarde automatique normale. Les dialogues
+simples et la lecture seule Coop restent a verifier visuellement. `corepack
+pnpm test` et `corepack pnpm build` reussissent apres l'installation.
+
+## Reprise des ressources et fonds larges — 2026-10-30
+
+Le porteur a fourni 51 `battlebg*Z.png` de 2400 × 1080 dans le dossier source
+local, soit 127 879 642 octets. Les anciens `battlebg*.png` ont été rangés dans
+`Graphics/Battlebacks/OLD` ; les socles demeurent à la racine.
+`corepack pnpm prepare:local` a régénéré les données non versionnées. Le
+résolveur `packages/local-assets/src/index.ts` accepte maintenant un fond `Z`
+sans ancien fond à la racine, avec les socles correspondants ; 49 des 51 scènes
+sont complètes. `MirraZ` et `NocturnoZ` ont été ajoutés et le manifeste local
+régénéré ; `NightSkyZ` a disparu. `CaveBrownZ` est un doublon exact de
+`CuevaZ` sans socles propres ni référence directe de carte ; `MolinoZ` a un
+socle joueur mais pas de socle adverse alors qu'une carte l'utilise. Une
+recette visuelle de `Molino` reste nécessaire. Les fonds sous `OLD` sont des
+replis si une variante large manque.
+
+`corepack pnpm resources:manifest` produit
+`.pokemon-z/packs/battlebacks-wide.json` avec chemin, taille, SHA-256 et clé
+immuable par fichier ; 50 contenus uniques (125 263 409 octets). Le script et
+les tests du résolveur sont versionnables, aucun asset ou pack ne l'est. Ce
+n'est pas encore un déploiement de packs : la migration depuis l'APK intégrale
+reste à réaliser selon `docs/ASSET_DISTRIBUTION.md`. Ne retirer aucune ressource
+de l'APK avant cette recette et la disponibilité privée des objets.
+
+Pilote suivant du même jour : `ResourcePackStore` et `ResourcePackPlugin`
+servent des `battlebg*Z.png` depuis le stockage privé Android si un pack entier
+a été vérifié et activé ; les fichiers de l'APK restent le repli. Un objet
+est identifié par SHA-256 et l'activation remplace atomiquement le manifeste.
+La route Worker `/api/resources/` reste derrière Access, et Options propose
+l'installation explicite des fonds. Le téléchargement reprend au fichier
+manquant, sans reprise intra-PNG ; aucun état de jeu ou réseau Coop ne change.
+Tests et build passent, APK debug locale construite, mais aucun pack ni Worker
+publié et aucun appareil ADB connecté. Ne retirer aucune ressource de l'APK
+avant publication des objets puis du manifeste, et recette migration/hors ligne
+sur téléphone selon `docs/ASSET_DISTRIBUTION.md`.
+`corepack pnpm resources:publish` est une vérification locale par défaut :
+51 fichiers, 50 objets uniques, 125 263 409 octets, sans écriture R2.
+L'option `--publish` téléverserait les objets puis le manifeste privé en dernier,
+mais n'a pas été exécutée. Le remote `r2-prive` accède au chemin direct du
+bucket `pokemon-z-battle-saves-private` ; ListBuckets à la racine renvoie 403
+avec ce jeton limité, ce qui n'empêche pas l'accès au bucket désigné.
+
+Publication privée autorisée ensuite : les 50 objets PNG ont été envoyés sur
+R2 via `--publish --objects-only` et leur taille distante correspond au
+manifeste (50/50, 125 263 409 octets). Le manifeste reste absent. Le premier
+`wrangler deploy` a échoué avant écriture car la session Wrangler du PC a
+expiré ; le premier `wrangler login` a lui aussi expiré sans code OAuth.
+Relancer la connexion quand le porteur est présent devant le navigateur.
+Après reconnexion, déployer le Worker, vérifier la route privée puis publier
+`resources/packs/battlebacks-wide/latest.json` en dernier. Aucun APK allégé
+ni Worker nouveau n'est encore diffusé.
+
+La seconde autorisation OAuth a réussi. `wrangler deploy` a publié le Worker
+`274b89af-9c7e-4b21-993c-6ee06f3b735b`. La route privée répond `302`
+sans session Access. Les 50 objets R2 ont été revérifiés à la taille attendue,
+puis `resources/packs/battlebacks-wide/latest.json` a été publié en dernier.
+La lecture R2 retourne 51 fichiers, 127 879 642 octets logiques et la version
+locale `d2b48f82764d5a8c0c2efb8198e7b558a9efb7293b5f4eb6582140547deefc8d`.
+Le test authentifié de l'app et le rendu Android restent ouverts sans appareil
+ADB connecté ; aucune APK allégée ni nouvelle APK signée n'a été publiée.
+
+Recette sur Samsung SM-S911U1 branché le 2026-10-30 : une APK locale signée
+`0.1.4` (versionCode 5) a été reconstruite et installée par `adb install -r`.
+Le certificat de diffusion correspond à celui déjà utilisé, la date de première
+installation est inchangée et les deux slots existants sont restés visibles.
+Le fichier APK local mesure 996 007 535 octets et contient encore les 51 fonds
+larges, dont `MirraZ`, `NocturnoZ` et `BosqueZ` ; leurs SHA-256 ont été comparés
+au manifeste. Une copie de l'APK précédente est dans `.pokemon-z/backups/`.
+
+Le premier téléchargement a révélé un défaut du pont Capacitor : `getLong`
+renvoyait `null` pour les tailles JavaScript reçues comme `Integer`, ce qui
+produisait « Objet invalide ». `ResourcePackPlugin` lit maintenant `sizeBytes`
+avec `getInt`, compatible avec la limite de 8 Mo par objet. Après
+reconstruction/réinstallation, l'app a téléchargé les 50 objets distincts et
+affiché « Pack installé et vérifié ». Après arrêt et relance, elle retrouve le
+pack local ; une nouvelle vérification répond « Pack déjà à jour » sans nouvel
+objet à transférer. Relancée en mode avion, elle affiche encore « Pack local
+vérifié lors de son activation ; fonds disponibles hors ligne ». Le mode avion
+a ensuite été désactivé. Le porteur confirme avoir testé le rendu en direct sur
+ce téléphone et que cela fonctionne. Ces contrôles valident l'installation
+native, sa persistance et le rendu observé ; la provenance exacte du PNG affiché
+(pack privé ou repli APK identique) n'a pas été instrumentée.
+
+Aucun APK allégé ni nouvel APK distant n'a été publié. La copie complète dans
+l'APK reste le repli ; la taille des prochains patchs ne baisse pas encore.
+Restent à contrôler : les cas particuliers `BosqueZ`/`MolinoZ`, première installation
+et interruption de téléchargement, manque d'espace, solo/hôte/invité et
+reconnexion avant toute suppression d'asset embarqué. Le menu Options déborde
+encore verticalement sur téléphone : sa grille et ses panneaux devront être
+revus dans le chantier des menus sans scroll.
+Après cette recette et le correctif Java, `corepack pnpm test` et
+`corepack pnpm build` réussissent ; le build Worker reste un dry-run.
+
+## Premier essai d'APK allégée — 2026-10-30
+
+`android:release:slim` prépare un paquet local à partir du manifeste vérifié.
+Il garde dans l'APK les 49 anciens fonds 4:3 de `Battlebacks/OLD` et les deux
+fonds larges dépourvus d'ancien équivalent (`CaveBrownZ`, `CorazonArmaZ`), mais
+omet les 49 autres fonds larges déjà disponibles dans le pack privé. Aucun
+fichier source n'a été supprimé ni déclaré inutile. Le moteur utilise le fond
+large lorsqu'il est embarqué ou lorsque la version exacte du pack est active ;
+sinon il sélectionne l'ancien fond. L'état du pack appartient à l'installation
+Android, sans effet sur les sauvegardes ou l'autorité Coop.
+
+L'APK signée est passée de 996 007 535 à 872 454 607 octets, soit
+123 552 928 octets gagnés (12,4 %). Le ZIP a été contrôlé : 49 fonds larges
+absents, 2 conservés et 49 anciens fonds présents. La signature est conforme.
+L'installation USB `adb install -r` sur le Samsung SM-S911U1 a réussi ; l'écran
+titre démarre, les deux slots sont encore visibles et le pack local actif est
+retrouvé dans Options. La copie complète précédente est gardée dans le dossier
+ignoré `.pokemon-z/backups`. Aucun nouvel APK n'a été publié sur R2.
+
+Le porteur confirme ensuite sur ce téléphone que le combat démarre bien avec
+l'APK allégée, toujours affichée en `0.1.4 (5)` comme prévu pour cet essai local.
+La scène précise et le fond large observé ne sont pas renseignés ; ne pas
+attribuer à tort ce rendu au pack plutôt qu'aux deux fonds restés embarqués.
+Le porteur précise ensuite avoir combattu sur la scène `Snow` et vu
+`battlebgSnowZ.png` en direct sur le téléphone. Le contrôle ZIP confirme que
+`battlebgSnowZ.png` est absent de l'APK allégée tandis que
+`OLD/battlebgSnow.png` y est présent : le fond large affiché vient donc du pack
+privé installé. La provenance du fond est validée pour cette scène.
+La diffusion attend encore le premier combat sans pack, l'échec de
+téléchargement/espace et hôte/invité/reconnexion.
+Le build Android complet reste disponible via `android:release` pour comparaison.
+`corepack pnpm test`, `corepack pnpm build` et `git diff --check` passent après
+ce jalon ; le build Android allégé signé a aussi réussi.
+
+Suite de la recette : le porteur a combattu sur `Snow` avec l'APK allégée et a
+vu `battlebgSnowZ.png`. Ce fichier est absent de l'APK, tandis que
+`OLD/battlebgSnow.png` y est présent : le pack privé a donc bien fourni l'image
+large. La future diffusion est préparée en `0.1.5` (versionCode 6), avec notes
+de version, APK signée allégée et `latest.json` local vérifiant package,
+signature, taille et SHA-256. Installée par USB sur le Samsung, cette version
+démarre et conserve les deux slots ; `firstInstallTime` reste le 2026-10-28.
+
+L'AVD Android du PC ne peut pas démarrer car son image système est absente.
+Pour tester la première installation sans toucher aux parties, un build signé
+temporaire utilise le suffixe d'identifiant `.freshprobe` ; son `latest.json`
+ne peut pas être publié par le script normal qui exige le package principal.
+Installée séparément sur le même téléphone, cette copie fraîche a été lancée
+en mode avion : titre, deux slots vides et début du prologue d'une nouvelle
+aventure sont utilisables sans pack. La copie de test a ensuite été désinstallée,
+le réseau rétabli, et l'APK candidate principale restaurée dans les sorties de
+build avec SHA-256 identique à son manifeste. L'application principale 0.1.5
+reste installée sur le téléphone. Le premier combat sans pack et les scénarios
+de transfert interrompu, espace insuffisant et reconnexion Coop restent à
+contrôler. Aucun APK ni manifeste de mise à jour n'a été publié sur R2.
+
+Recette complémentaire du 2026-10-30 : une nouvelle copie `.freshprobe` sans
+pack a été installée. Une nouvelle aventure a atteint l'overworld, puis un
+combat sur une scène enneigée s'est ouvert avec l'ancien fond 4:3 ; le porteur
+a confirmé visuellement ce repli. La capture de test montre les Pokémon et HUD
+présents, sans écran vide. Le porteur a demandé d'abréger la recette et de la
+valider : ne pas poursuivre le scénario de coupure du téléchargement. La copie
+temporaire a été désinstallée, le mode avion est désactivé, l'application
+principale `0.1.5 (6)` remise au premier plan, et l'APK/`latest.json` candidats
+restaurés avec SHA-256 conforme. La reprise d'un téléchargement interrompu
+reste non vérifiée sur téléphone et doit être signalée comme telle.
+
+## APK 0.1.5 publiée — 2026-10-30
+
+Après validation écourtée du porteur, `corepack pnpm test`, `corepack pnpm build`
+et `git diff --check` passent. La copie temporaire `.freshprobe` a été supprimée.
+Le candidat principal signé `0.1.5` (code 6) a été contrôlé à
+**872 454 603 octets**, SHA-256
+`acba2b08068aaad78e85cf1e9f5e97c01c96e121e4be101291abed7960c2c850`.
+L'objet privé `updates/android/pokemon-z-battle-6.apk` a été envoyé sur R2 ;
+sa taille distante est identique. `updates/android/latest.json` a été publié
+en dernier et relu : code, version, taille et SHA-256 correspondent au candidat.
+Le type MIME distant du manifeste est `application/json`.
+
+La version 0.1.4 réellement publiée pesait 914 063 736 octets : le gain de
+téléchargement entre versions publiques est **41 609 133 octets (4,55 %)**.
+Le gain de 123 552 928 octets (12,4 %) compare la 0.1.5 allégée à l'APK
+locale complète de transition, qui n'avait pas été diffusée. La 0.1.5 demeure
+une APK complète de moteur et de nombreuses ressources ; les mises à jour
+suivantes retéléchargeront encore ces octets tant que les autres familles
+d'assets ne seront pas séparées. Le test réel d'une coupure en cours de pack
+et le manque d'espace n'ont pas été effectués, conformément à l'arrêt demandé
+par le porteur ; ne pas les déclarer validés.
+
+## Pack BGM privé pilote — 2026-10-30
+
+La plus grande famille restante est `Audio/BGM` : 165 pistes, 487 582 775
+octets dans la source. `bgm:manifest` écrit dans `.pokemon-z/packs` un
+inventaire SHA-256 de 164 contenus distincts. `bgm:publish` vérifie les
+sources, publie les objets sur R2, contrôle les tailles distantes et écrit le
+manifeste en dernier. Le Worker privé expose le manifeste et des lectures par
+tranches de 4 Mio. Le pont Android `BgmPack` reprend aux objets manquants,
+vérifie le SHA-256 et active uniquement le pack complet ; le WebView lit les
+pistes locales avec plages HTTP. L'APK pilote conserve les BGM embarqués comme
+repli. Le pack est propre à chaque appareil en solo, hôte et invité ; aucune
+donnée de sauvegarde ou de room n'est modifiée.
+
+Les 164 objets sont sur R2 (485 656 802 octets) ; 165 références ont été
+comparées aux tailles distantes sans écart. Le manifeste privé de 46 944 octets
+a été publié après déploiement du Worker ; l'accès anonyme renvoie 302 vers
+Cloudflare Access. Tests ciblés Worker et sandbox, tests et build du monorepo,
+et compilation Java debug passent. Le contrôle TypeScript autonome de la
+sandbox échoue sur des erreurs préexistantes dans les fichiers de combat,
+rencontre et méga, sans erreur dans le pack. Le téléchargement authentifié,
+la persistance hors ligne et la lecture depuis le pack ont ensuite été
+confirmés sur téléphone. Aucun APK musical allégé ni mise à jour publique n'a
+été publié ; ne pas retirer les BGM avant la finalisation de l'écran d'accueil
+et le choix de la musique à conserver pour le démarrage hors ligne.
+
+Recette USB supplémentaire : l'APK locale signée 0.1.5 (6), installée avec
+`adb install -r`, garde les deux slots. Options a téléchargé les 164 objets ;
+le second contrôle a répondu « déjà à jour » sans nouveau transfert. Après
+arrêt forcé et redémarrage en mode avion, Options a reconnu le pack actif.
+Le réseau a été rétabli. Le porteur confirme que les musiques sont lues depuis
+le pack. Le lancement hors ligne doit garder une musique, à choisir après
+finalisation de l'écran d'accueil. Pas de réduction d'APK musical ni de
+publication de mise à jour à ce stade.
+
+### Correctif de lecture du pack BGM — 2026-10-30
+
+Retour du porteur après le pilote : les musiques étaient silencieuses après
+le téléchargement, malgré le pack activé. Reproduction sur Samsung : le
+bouton du titre restait en attente et Chromium consignait
+`PIPELINE_ERROR_READ`. Cause : `BgmPackStore.audioFor` sautait et limitait
+la plage avant de retourner un `WebResourceResponse` 206 ; WebView Android
+appliquait ensuite lui-même la plage au flux intercepté. Le pont laisse
+désormais le `FileInputStream` entier au WebView, tout en indiquant la plage
+dans les en-têtes. L'APK locale signée 0.1.5 (6) a été reconstruite et
+réinstallée avec `adb install -r`. Le bouton du titre passe à « Couper la
+musique », les erreurs de lecture ont disparu, et le porteur confirme que
+la musique est revenue dans l'app. Les sauvegardes et le pack installé sont
+conservés. Aucun APK public ni objet/manifeste R2 n'a été modifié ; livrer
+ce correctif avec le prochain patch de code avant d'alléger l'APK.
+
+## APK 0.1.6 publiée — 2026-10-30
+
+À la demande du porteur, le correctif de lecture BGM est diffusé dans
+`0.1.6` (`versionCode 7`). `corepack pnpm test`, `corepack pnpm build` et
+`git diff --check` passent. Le build `android:release:slim` est signé par le
+certificat déjà enregistré (`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`).
+L'APK fait **872 460 135 octets**, SHA-256
+`40041a5a4af9950857860c347f5da3e1361ca75bdfe7086c9ecba6b5159fe62d`.
+Installée sur le téléphone par-dessus la version 0.1.5, elle affiche toujours
+les deux slots ; le bouton du titre lance la musique. Le package Android
+déclare bien `0.1.6 (7)`.
+
+L'objet `updates/android/pokemon-z-battle-7.apk` a été envoyé dans le bucket
+R2 privé et contrôlé à 872 460 135 octets. Le manifeste
+`updates/android/latest.json` a été publié ensuite et relu : version, code,
+taille, notes et SHA-256 correspondent au candidat. MIME `application/json` ;
+l'URL du Worker renvoie 302 vers Cloudflare Access sans session. Le pack BGM
+et son manifeste n'ont pas changé. Cette version conserve tous les BGM dans
+l'APK pour le premier lancement hors ligne ; l'allègement musical attend la
+finition de l'écran d'accueil. Les futurs correctifs de code retéléchargeront
+donc encore l'APK entière à ce stade.
+
+## Vol limité aux lieux visités — implémentation locale du 2026-10-30
+
+`SourceEventState.visitedMaps` conserve les identifiants des cartes réellement
+entrées par le joueur. Les entrées ordinaires et le début d'une aventure
+enregistrent la carte courante ; la reprise d'une ancienne sauvegarde sans
+historique n'ajoute que sa carte sauvée. La téléportation Test dev ne marque
+pas la carte, même après une reprise. L'import `Game.rxdata` convertit les valeurs vraies de
+`PokemonGlobalMetadata.@visitedMaps` et ajoute seulement la carte de position.
+Les anciens slots migrent de façon conservatrice avec leur seule carte sauvée.
+Le champ est personnel en Coop : les projections de narration de l'hôte ne le
+remplacent pas et le cloud transporte le snapshot entier.
+
+Le Vol vérifie maintenant la carte de soin du point régional contre cet
+historique, en plus de la monture, du terrain extérieur et de la visibilité
+du point. Le point inconnu reste consultable et annonce qu'il doit être visité.
+Le contournement Test dev agit uniquement sur le contrôle de départ. Les tests
+unitaires ciblés d'état, de slots et de politique Coop passent. Le fichier
+`Game.rxdata` fourni précédemment n'est plus disponible à son ancien chemin
+sur ce poste ; vérifier l'import réel, le cloud, l'hôte, l'invité et la
+reconnexion sur téléphone avant de déclarer ce lot validé ou de diffuser une APK.
+
+## Menus paginés et grilles adaptatives — implémentation locale du 2026-10-30
+
+Le Sac utilise maintenant le contenu réel de sa zone de liste pour choisir
+colonnes et lignes par page ; le Ranch fait de même après avoir réservé son
+en-tête, sa barre et sa pagination. `ResizeObserver` recalcule les pages à
+chaque changement de taille. Les grilles restent bornées et l'index de page
+est recalculé pour garder l'entrée visible lors d'un changement de capacité.
+La liste de l'équipe du Ranch affiche six places en deux colonnes sur trois
+rangées ; les cartes du stockage masquent leurs capacités dans la liste
+compacte, qui restent disponibles dans la fiche. Les filtres s'affichent
+comme une étape au-dessus du stockage. Le défilement vertical forcé sur
+Android a été supprimé. Les Options sont réparties en trois pages (Audio,
+Mises à jour, Raccourcis) ; les grilles étroites de la Pension et de
+l'Incubateur ne demandent plus de défilement vertical.
+
+Un contrôle de géométrie dans Chrome sans interface à 610×250 et 780×360 a
+montré les six cartes du Sac, les six places de l'équipe et les neuf cartes
+du Ranch dans leurs cadres. Ce contrôle est synthétique : valider encore sur
+l'APK, en solo, hôte et invité, avec inventaire et Ranch réels. La suite de
+l'audit de la roadmap concerne les fiches détaillées du Pokédex, de l'Équipe
+et les sous-menus de combat ; ne pas déclarer la règle sans scroll pleinement
+terminée avant ce contrôle.

@@ -237,7 +237,8 @@ export class ObjectUrlStore {
 type ScenePart = "background" | "playerBase" | "enemyBase";
 
 function sceneIdentity(entry: AssetManifestEntry): { readonly part: ScenePart; readonly key: string } | null {
-  if (entry.category.toLowerCase() !== "graphics/battlebacks" || entry.mediaType !== "image") return null;
+  if (!["graphics/battlebacks", "graphics/battlebacks/old"].includes(entry.category.toLowerCase())
+    || entry.mediaType !== "image") return null;
   const filename = entry.path.replaceAll("\\", "/").split("/").at(-1)?.replace(/\.[^.]+$/u, "") ?? "";
   const match = /^(battlebg|playerbase|enemybase)[\s_-]*(.*)$/iu.exec(filename);
   if (match === null) return null;
@@ -258,8 +259,15 @@ export function buildBattleScenes(manifest: AssetManifest): readonly BattleScene
     const identity = sceneIdentity(entry);
     if (identity === null) continue;
     const group = groups.get(identity.key) ?? {};
-    group[identity.part] ??= entry;
+    if (group[identity.part] === undefined || (entry.category.toLowerCase() === "graphics/battlebacks"
+      && group[identity.part]?.category.toLowerCase() === "graphics/battlebacks/old")) group[identity.part] = entry;
     groups.set(identity.key, group);
+  }
+  for (const [id, group] of groups) {
+    if (id.endsWith("z") && isWideBattleBackground(group.background)) {
+      const baseId = id.slice(0, -1);
+      if (!groups.has(baseId)) groups.set(baseId, {});
+    }
   }
   return [...groups.entries()].map(([id, group]) => ({
     id,
@@ -267,25 +275,34 @@ export function buildBattleScenes(manifest: AssetManifest): readonly BattleScene
     background: group.background ?? null,
     playerBase: group.playerBase ?? null,
     enemyBase: group.enemyBase ?? null,
-    complete: group.background !== undefined && group.playerBase !== undefined && group.enemyBase !== undefined,
+    complete: (group.background !== undefined || isWideBattleBackground(groups.get(`${id}z`)?.background))
+      && group.playerBase !== undefined && group.enemyBase !== undefined,
   })).sort((left, right) => Number(right.complete) - Number(left.complete) || left.name.localeCompare(right.name, "fr"));
 }
 
 /** A wide `battlebg<Name>Z` can reuse the original scene's bases without duplicating assets. */
-export function selectBattleSceneVisuals(scenes: readonly BattleScene[], requestedId: string): {
+function isWideBattleBackground(background: AssetManifestEntry | undefined): boolean {
+  return background?.image !== null && background?.image !== undefined
+    && background.image.height > 0 && background.image.width / background.image.height >= 1.8;
+}
+
+export function selectBattleSceneVisuals(scenes: readonly BattleScene[], requestedId: string,
+  wideAvailable: (background: AssetManifestEntry) => boolean = () => true): {
   readonly scene: BattleScene | null;
   readonly background: AssetManifestEntry | null;
   readonly wide: boolean;
 } {
   const requested = requestedId.toLocaleLowerCase("fr");
   const baseId = requested.endsWith("z") ? requested.slice(0, -1) : requested;
-  const scene = scenes.find((candidate) => candidate.id === requested && candidate.complete)
-    ?? scenes.find((candidate) => candidate.id === baseId && candidate.complete)
-    ?? scenes.find((candidate) => candidate.complete) ?? scenes[0] ?? null;
-  const wideVariant = scene === null ? null : scenes.find((candidate) => candidate.id === `${scene.id}z`
-    && candidate.background?.image !== null && candidate.background?.image !== undefined
-    && candidate.background.image.height > 0
-    && candidate.background.image.width / candidate.background.image.height >= 1.8);
+  const availableVariant = (id: string) => scenes.find((candidate) => candidate.id === `${id}z`
+    && candidate.background !== null && isWideBattleBackground(candidate.background)
+    && wideAvailable(candidate.background));
+  const scene = scenes.find((candidate) => candidate.id === baseId && (candidate.background !== null
+    || availableVariant(baseId) !== undefined))
+    ?? scenes.find((candidate) => candidate.id === requested && candidate.background !== null && candidate.complete)
+    ?? scenes.find((candidate) => candidate.complete && candidate.background !== null)
+    ?? scenes.find((candidate) => candidate.background !== null) ?? null;
+  const wideVariant = scene === null ? null : availableVariant(scene.id);
   return { scene, background: wideVariant?.background ?? scene?.background ?? null, wide: wideVariant !== null && wideVariant !== undefined };
 }
 

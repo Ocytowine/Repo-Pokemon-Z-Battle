@@ -8,6 +8,7 @@ import { OverworldNetworkSession } from "./network-session.js";
 import { SourceDialogueController, type SourceDialogueSession, type SourceDialogueUpdate } from "./source-dialogue-controller.js";
 import { applySafeStateCommands, createSourceEventState, parseSourceEventState, reconcileSourcePokedex,
   recordSourcePokedexEvolution, recordSourcePokedexRelease, recordSourcePokedexSeen,
+  recordSourceVisitedMap, sourceFlyDestinationVisited,
   type SourceEventState, type SourceFishingRod } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
@@ -62,6 +63,8 @@ import { SourceSceneCoordinator, isSourceMenuTab,
 import { parseSourceAudio, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./source-region-map.js";
+import { parseSourceTrainerLocalizations, sourceTrainerDisplayName,
+  type SourceTrainerLocalizations } from "./source-trainer-localization.js";
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceTitleScreen } from "./source-title-screen.js";
@@ -104,16 +107,18 @@ import { sourceItemGainMessage, sourceItemGains, sourceItemPickupOffset,
 import { clearSourceWorldSave, createSourceGuestProgressSave, createSourceWorldSave, loadSourceWorldSave, persistSourceWorldSave,
   sourceEventStateForLaunch, type SourceWorldSave } from "./source-world-save.js";
 import { activeSourceSaveSlot, activateSourceSaveSlot, createSourceSaveSlotSnapshot,
-  importSourceSaveSlot, initializeSourceSaveSlots,
+  deleteSourceSaveSlot, importSourceSaveSlot, initializeSourceSaveSlots,
   ignoreSourceAutoSave, loadSourceSaveSlot, markSourceManualSave, persistSourceSaveSlot, restoreSelectedSourceAutoSave,
   restoreSourceImportBackup, sourceAutoResumeSelected, sourceAutoSaveNeedsRecovery, sourceSaveSlotSummaries,
   type SourceSaveSlotId, type SourceSaveSlotSnapshot } from "./source-save-slots.js";
-import { convertRxdataSave, type RxdataImportCatalog } from "./source-rxdata-import.js";
+import { convertRxdataSave, type RxdataImportCatalog, type RxdataImportPreview } from "./source-rxdata-import.js";
 import { readOriginalSaveCandidate, searchOriginalSaveFolder,
   type OriginalSaveCandidate } from "./source-save-locator.js";
 import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-session.js";
 import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
   type SourceAndroidUpdate } from "./source-android-update.js";
+import { installWideBattlebackPack, installedWideBattlebackPackVersion } from "./source-resource-packs.js";
+import { installBgmPack, installedBgmPackVersion } from "./source-bgm-pack.js";
 import { cloudIdentity, sourceCloudApi } from "./source-cloud-api.js";
 import { cloudAutomaticUploadDelay, keepLocalCloudSave, linkCloudAccount, linkedCloudEmail,
   recoverCloudSave, syncCloudSaves,
@@ -184,6 +189,14 @@ let sourceAndroidUpdateNoticePending = false;
 let sourceAndroidUpdateStatus = sourceNativeAndroidMode ? "Vérification au démarrage…"
   : "Mises à jour disponibles dans l’APK Android.";
 let sourceAndroidUpdateChecking = false;
+let sourceResourcePackBusy = false;
+let sourceResourcePackStatus = sourceNativeAndroidMode
+  ? "Les fonds intégrés à l’APK restent disponibles hors ligne."
+  : "Disponible dans l’APK Android.";
+let sourceBgmPackBusy = false;
+let sourceBgmPackStatus = sourceNativeAndroidMode
+  ? "Les musiques intégrées à l’APK restent disponibles hors ligne."
+  : "Disponible dans l’APK Android.";
 function refreshAndroidUpdateMenu(): void {
   if (sourceScenes.menuOpen && sourceScenes.menuTab === "options") renderSourceMenu();
   renderSourceLaunchScreen();
@@ -232,6 +245,52 @@ async function downloadAndroidUpdate(): Promise<void> {
     sourceAndroidUpdateStatus = "Impossible d’ouvrir le téléchargement. Réessaie plus tard.";
   }
   refreshAndroidUpdateMenu();
+}
+async function installSourceResourcePack(): Promise<void> {
+  if (sourceResourcePackBusy) return;
+  sourceResourcePackBusy = true;
+  sourceResourcePackStatus = "Vérification du pack privé…";
+  refreshAndroidUpdateMenu();
+  try {
+    const result = await installWideBattlebackPack((done, total) => {
+      sourceResourcePackStatus = `Téléchargement vérifié : ${done}/${total} fichiers.`;
+      refreshAndroidUpdateMenu();
+    });
+    sourceResourcePackStatus = result === "installed" ? "Pack installé et vérifié. Les fonds sont disponibles hors ligne."
+      : result === "current" ? "Pack déjà à jour et disponible hors ligne."
+        : result === "not-published" ? "Aucun pack privé publié pour le moment. Les fonds de l’APK restent disponibles."
+          : result === "login-required" ? "Connecte-toi depuis Sauvegardes pour accéder aux ressources privées."
+            : "Disponible dans l’APK Android.";
+  } catch (error) {
+    sourceResourcePackStatus = error instanceof Error ? `Installation interrompue : ${error.message}`
+      : "Installation interrompue. Les fonds de l’APK restent disponibles.";
+  } finally {
+    sourceResourcePackBusy = false;
+    refreshAndroidUpdateMenu();
+  }
+}
+async function installSourceBgmPack(): Promise<void> {
+  if (sourceBgmPackBusy) return;
+  sourceBgmPackBusy = true;
+  sourceBgmPackStatus = "Vérification du pack de musiques…";
+  refreshAndroidUpdateMenu();
+  try {
+    const result = await installBgmPack((done, total) => {
+      sourceBgmPackStatus = `Musiques vérifiées : ${done}/${total} fichiers.`;
+      refreshAndroidUpdateMenu();
+    });
+    sourceBgmPackStatus = result === "installed" ? "Musiques installées et disponibles hors ligne."
+      : result === "current" ? "Musiques déjà à jour et disponibles hors ligne."
+        : result === "not-published" ? "Pack de musiques non encore publié. Les pistes de l’APK restent disponibles."
+          : result === "login-required" ? "Connecte-toi depuis Sauvegardes pour accéder au pack privé."
+            : "Disponible dans l’APK Android.";
+  } catch (error) {
+    sourceBgmPackStatus = error instanceof Error ? `Installation interrompue : ${error.message}`
+      : "Installation interrompue. Les musiques de l’APK restent disponibles.";
+  } finally {
+    sourceBgmPackBusy = false;
+    refreshAndroidUpdateMenu();
+  }
 }
 const CLOUD_AUTO_LAST_ATTEMPT_KEY = "pokemon-z-battle.cloud-auto-last-attempt.v1";
 let pendingManualCloudSync: ReturnType<typeof setTimeout> | null = null;
@@ -351,6 +410,19 @@ let viewedMapId = SOURCE_MAP_ID;
 let avatarLabReturnMapId = viewedMapId;
 let avatarLabReturnContext: "menu" | "prologue" = "menu";
 let importedAssets: ImportedMapAssets | null = null;
+let fallbackTrainerLocalizations: SourceTrainerLocalizations | null = null;
+let trainerLocalizationLoad: Promise<void> | null = null;
+function displayedSourceTrainerName(trainer: { readonly id: number; readonly name: string }): string {
+  return sourceTrainerDisplayName(trainer, importedAssets?.trainerLocalizations ?? fallbackTrainerLocalizations);
+}
+async function ensureTrainerLocalizations(): Promise<void> {
+  if (importedAssets !== null || fallbackTrainerLocalizations !== null) return;
+  trainerLocalizationLoad ??= (async () => {
+    const response = await fetch("/__pokemon-z/data/localization.json");
+    if (response.ok) fallbackTrainerLocalizations = parseSourceTrainerLocalizations(await response.json() as unknown);
+  })().catch(() => undefined).finally(() => { trainerLocalizationLoad = null; });
+  await trainerLocalizationLoad;
+}
 let importedAvatar: ImportedAvatar = { x: 28, y: 15, direction: "up" };
 let sourceMovementMode: SourceMovementMode = "walk";
 let sourceMovementAction: SourceMovementAction = "idle";
@@ -1158,10 +1230,13 @@ const sourceTitleScreen = new SourceTitleScreen(requiredAppElement("source-title
 const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-launch-screen"), localStorage, {
   select: (slot, kind) => activateLaunchSelection(slot, kind),
   newGame: (slot) => activateLaunchSelection(slot, "manual"),
-  importSave: (slot, file) => importLaunchRxdataSave(slot, file),
-  searchFolder: (slot) => searchLaunchSaveFolder(slot),
-  importFoundSave: (slot, candidate) => importLaunchFoundSave(slot, candidate),
+  prepareImport: (file) => prepareLaunchRxdataSave(file),
+  searchFolder: () => searchLaunchSaveFolder(),
+  prepareFoundSave: (candidate) => prepareLaunchFoundSave(candidate),
+  confirmImport: (slot) => confirmLaunchRxdataImport(slot),
+  cancelImport: () => { pendingRxdataImport = null; },
   restoreImportBackup: (slot) => restoreLaunchImportBackup(slot),
+  deleteSave: (slot) => deleteLaunchSaveSlot(slot),
   cloudConnect: () => {
     sourceCloudStatus = "Ouverture de la connexion…";
     renderSourceLaunchScreen();
@@ -1175,6 +1250,7 @@ const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-lau
   back: () => { sourceLaunchScreen.hide(); sourceTitleScreen.show(); },
 });
 let rxdataImportCatalogPromise: Promise<RxdataImportCatalog> | null = null;
+let pendingRxdataImport: RxdataImportPreview | null = null;
 function loadRxdataImportCatalog(): Promise<RxdataImportCatalog> {
   rxdataImportCatalogPromise ??= (async () => {
     const load = async (name: string): Promise<unknown[]> => {
@@ -1191,7 +1267,9 @@ function loadRxdataImportCatalog(): Promise<RxdataImportCatalog> {
   })().catch((error: unknown) => { rxdataImportCatalogPromise = null; throw error; });
   return rxdataImportCatalogPromise;
 }
-async function importLaunchRxdataSave(slot: SourceSaveSlotId, file: File): Promise<void> {
+async function prepareLaunchRxdataSave(file: File): Promise<void> {
+  pendingRxdataImport = null;
+  sourceLaunchScreen.clearImportSelection();
   try {
     if (!/\.rxdata$/iu.test(file.name)) throw new Error("Choisis un fichier Game.rxdata ou Game_*.rxdata.");
     sourceLaunchScreen.setImportStatus("Lecture et conversion de la sauvegarde…");
@@ -1202,6 +1280,17 @@ async function importLaunchRxdataSave(slot: SourceSaveSlotId, file: File): Promi
     if (!mapResponse.ok || (await mapResponse.json() as { id?: number }).id !== mapId) {
       throw new Error(`La carte ${mapId} de cette partie n'est pas disponible dans l'application.`);
     }
+    pendingRxdataImport = preview;
+    sourceLaunchScreen.showImportPreview(file.name, preview);
+  } catch (error) {
+    sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Import impossible : sauvegardes inchangées.");
+  }
+}
+function confirmLaunchRxdataImport(slot: SourceSaveSlotId): void {
+  const preview = pendingRxdataImport;
+  if (preview === null) return;
+  try {
+    const mapId = preview.snapshot.worldSave!.mapId;
     const occupied = sourceSaveSlotSummaries(localStorage).find((entry) => entry.id === slot)!;
     const explanation = [
       `Importer la partie de ${preview.trainerName} dans la partie ${slot} ?`,
@@ -1212,31 +1301,30 @@ async function importLaunchRxdataSave(slot: SourceSaveSlotId, file: File): Promi
       ...preview.warnings,
       "Le cloud attendra une synchronisation manuelle avant d'envoyer cette partie.",
     ].join("\n\n");
-    sourceLaunchScreen.setImportStatus("Aucune donnée écrite. Confirme l'aperçu pour importer.");
     if (!window.confirm(explanation)) {
-      sourceLaunchScreen.setImportStatus("Import annulé : les sauvegardes sont inchangées.");
       return;
     }
     importSourceSaveSlot(localStorage, slot, preview.snapshot);
+    pendingRxdataImport = null;
     sourceLaunchScreen.setImportStatus(`Partie ${slot} importée. Ouverture…`);
     activateLaunchSelection(slot, "manual");
   } catch (error) {
     sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Import impossible : sauvegardes inchangées.");
   }
 }
-async function searchLaunchSaveFolder(slot: SourceSaveSlotId): Promise<void> {
+async function searchLaunchSaveFolder(): Promise<void> {
   try {
     sourceLaunchScreen.setImportStatus("Recherche des sauvegardes dans le dossier choisi…");
-    sourceLaunchScreen.showFoundSaves(slot, await searchOriginalSaveFolder());
+    const result = await searchOriginalSaveFolder();
+    sourceLaunchScreen.showFoundSaves(result.candidates, result.limited);
   } catch (error) {
     sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Recherche impossible.");
   }
 }
-async function importLaunchFoundSave(slot: SourceSaveSlotId,
-  candidate: OriginalSaveCandidate): Promise<void> {
+async function prepareLaunchFoundSave(candidate: OriginalSaveCandidate): Promise<void> {
   try {
     sourceLaunchScreen.setImportStatus(`Lecture de ${candidate.name}…`);
-    await importLaunchRxdataSave(slot, await readOriginalSaveCandidate(candidate));
+    await prepareLaunchRxdataSave(await readOriginalSaveCandidate(candidate));
   } catch (error) {
     sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Lecture impossible.");
   }
@@ -1250,6 +1338,29 @@ function restoreLaunchImportBackup(slot: SourceSaveSlotId): void {
       loadSourceSaveSlot(localStorage, slot, "manual") === null ? "auto" : "manual");
   } catch (error) {
     sourceLaunchScreen.setImportStatus(error instanceof Error ? error.message : "Restauration impossible.");
+  }
+}
+function deleteLaunchSaveSlot(slot: SourceSaveSlotId): void {
+  const explanation = [
+    `Supprimer la Partie ${slot} de cet appareil ?`,
+    "Ses sauvegardes manuelle et automatique, sa copie de secours éventuelle et son brouillon seront effacés.",
+    "Une éventuelle copie cloud restera récupérable dans l'onglet Cloud.",
+    "Cette suppression locale ne peut pas être annulée.",
+  ].join("\n\n");
+  if (!window.confirm(explanation)) return;
+  try {
+    const wasActive = deleteSourceSaveSlot(localStorage, sessionStorage, slot);
+    if (wasActive) {
+      window.location.reload();
+      return;
+    }
+    sourceCloudItems = sourceCloudItems.map((item) => item.slot !== slot ? item : {
+      ...item, localAt: null, localPreview: null,
+      state: item.remoteAt === null ? "local-only" as const : "cloud-only" as const,
+    });
+    renderSourceLaunchScreen();
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "Suppression impossible : partie inchangée.");
   }
 }
 function renderSourceLaunchScreen(): void {
@@ -1488,6 +1599,8 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   },
   onCheckAndroidUpdate: () => { void checkAvailableAndroidUpdate(false); },
   onDownloadAndroidUpdate: () => { void downloadAndroidUpdate(); },
+  onInstallResourcePack: () => { void installSourceResourcePack(); },
+  onInstallBgmPack: () => { void installSourceBgmPack(); },
   onAudioSettingsChange: (settings) => {
     sourceAudioPreferences = settings;
     sourcePresentation.setAudioMix(normalizedSourceAudio(settings));
@@ -1642,6 +1755,7 @@ const sourceBattleVisuals = new SourceBattleVisuals({
   abilityName: (internalName) => importedAssets?.battleCatalog.abilities
     .find((ability) => ability.internalName === internalName)?.name ?? internalName,
   itemName: (internalName) => importedAssets?.items.get(internalName)?.name ?? internalName,
+  trainerDisplayName: displayedSourceTrainerName,
   caughtSpecies: () => sourceEventState.pokedex.caughtSpecies,
 });
 void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
@@ -1982,7 +2096,8 @@ async function networkJoiningTrainerPresentation(battleId: string, viewer: "play
   const ownerSide = (["player", "opponent"] as const)
     .find((side) => participation.camps[side].trainerIds.includes(ownerId));
   const helpsOwner = joined.side === ownerSide;
-  const opponentName = battle.sourceContext.presentation.opponentTrainer?.name ?? "le Dresseur adverse";
+  const opponentName = battle.sourceContext.presentation.opponentTrainer === null
+    ? "le Dresseur adverse" : displayedSourceTrainerName(battle.sourceContext.presentation.opponentTrainer);
   const message = session.ticket.playerId === ownerId
     ? helpsOwner ? `${joinerName} : J'arrive t'aider, ${ownerName} !`
       : `${joinerName} se rallie à ${opponentName} !`
@@ -2033,6 +2148,8 @@ function beginNetworkBattlePresentation(battleId: string, state: TeamBattleState
     if (networkPresentedBattle?.id !== battleId) return;
     const sourceContext = networkBattleContexts.get(battleId) ?? null;
     const sourceTrainerFacesViewer = sourceContext?.origin === "source-trainer" && side === "player";
+    if (sourceTrainerFacesViewer) await ensureTrainerLocalizations();
+    if (networkPresentedBattle?.id !== battleId) return;
     sourceBattleVisuals.setPlayerTrainerImage(ownVisuals?.battleBack ?? null);
     sourceBattleVisuals.setOpponentTrainerImage(sourceTrainerFacesViewer
       ? null : opponentVisuals?.battleFront ?? null);
@@ -2635,7 +2752,8 @@ function sourceMovementMenuModel(): import("./source-menu-view.js").SourceMenuMo
       && importedAssets?.mapMetadata.diveMap !== null && unlocks.dive,
     canSurfaceHere: sourceMovementMode === "dive"
       && importedAssets?.mapMetadata.surfaceMap !== null && unlocks.dive,
-    canFlyHere: importedAssets?.mapMetadata.outdoor === true && unlocks.fly };
+    canFlyHere: importedAssets?.mapMetadata.outdoor === true && unlocks.fly,
+    testOverride: sourceMovementTestOverride };
 }
 
 function selectSourceMovementMode(mode: "walk" | "mount"): void {
@@ -2700,7 +2818,7 @@ async function requestSourceDevTeleport(destination: {
   await followSourceTransfer({ eventId: 0, pageIndex: 0,
     eventX: importedAvatar.x, eventY: importedAvatar.y,
     targetMapId: destination.mapId, targetX: destination.x,
-    targetY: destination.y, direction: destination.direction });
+    targetY: destination.y, direction: destination.direction }, false);
 }
 
 function accelerateSourceDevEggs(): void {
@@ -2728,7 +2846,7 @@ async function requestSourceFlight(destination: SourceRegionDestination): Promis
   if (importedAssets === null || sourceTransitionInProgress) return;
   const unlocks = sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride);
   if (!unlocks.fly) {
-    importedNotice = "Activez Tous les déplacements dans Test dev pour essayer le Vol.";
+    importedNotice = "Il faut la Poké Monture Flambusard pour utiliser le Vol.";
     renderImportedView();
     return;
   }
@@ -2742,6 +2860,11 @@ async function requestSourceFlight(destination: SourceRegionDestination): Promis
       && point.destination.x === destination.x && point.destination.y === destination.y));
   if (!visibleDestination) {
     importedNotice = "Cette destination de Vol n'est pas disponible.";
+    renderImportedView();
+    return;
+  }
+  if (!sourceFlyDestinationVisited(sourceEventState, destination.mapId, sourceMovementTestOverride)) {
+    importedNotice = "Ce lieu n'a pas encore été visité : le Vol est indisponible.";
     renderImportedView();
     return;
   }
@@ -2854,6 +2977,9 @@ function renderSourceMenu(): void {
     cloudItems: sourceCloudItems,
     androidVersion: installedSourceAndroidVersion(), androidUpdateStatus: sourceAndroidUpdateStatus,
     androidUpdateAvailable: sourceAndroidUpdate !== null,
+    resourcePackStatus: sourceResourcePackStatus, resourcePackBusy: sourceResourcePackBusy,
+    resourcePackInstallable: sourceNativeAndroidMode,
+    bgmPackStatus: sourceBgmPackStatus, bgmPackBusy: sourceBgmPackBusy,
     personalProgressSaveOnly: multiplayer.active && isNetworkGuest(),
     alchemyUnlockLevel: sourceAlchemyUnlockLevel(assets.alchemy, renderedState.variables),
     fieldShortcuts: sourceFieldShortcuts,
@@ -4239,8 +4365,8 @@ async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> 
     hideSourceLoadError();
     const destination = SOURCE_NEW_GAME_DESTINATION;
     const world = await loadSourceWorldAt(destination.mapId, destination);
-    sourceEventState = applySourceNewGameAvatar(
-      applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId);
+    sourceEventState = recordSourceVisitedMap(applySourceNewGameAvatar(
+      applySourceNewGameChoices(sourceEventState, choices), activePlayerSelection.avatarId), destination.mapId);
     persistSourceEventState();
     persistSourceNewGameSetup(localStorage, choices);
     sourceWorldSave = createSourceWorldSave(destination.mapId, destination.x, destination.y, destination.direction,
@@ -4289,7 +4415,7 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
   publishCurrentSourceWorld(true);
 }
 
-async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
+async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = true): Promise<void> {
   if (!sourceScenes.allows("source-transfer", sourceSceneActivity())) return;
   const guestSession = multiplayer.current?.ticket.side === "opponent";
   const hostMapId = networkSourceWorld?.mapId;
@@ -4308,6 +4434,7 @@ async function followSourceTransfer(transfer: ImportedTransfer): Promise<void> {
       x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction,
       outdoor: importedAssets.mapMetadata.outdoor === true };
     const next = await loadSourceTransfer(importedAssets, importedAvatar, transfer);
+    if (recordVisit) sourceEventState = recordSourceVisitedMap(sourceEventState, next.assets.map.id);
     sourceEventState = reconcileSourceEscapePointAfterTransfer(sourceEventState, origin,
       { outdoor: next.assets.mapMetadata.outdoor === true,
         caveEncounters: next.assets.encounter?.methods.some((entry) => entry.method === "Cave") === true });
@@ -4539,7 +4666,10 @@ function renderEncounter(): void {
     available: joinableBattle?.sourceContext === null || side === null
       ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared",
     ownerName: battleOwnerName, guestName,
-    opponentName: joinableBattle?.sourceContext?.presentation.opponentTrainer?.name ?? "le Dresseur adverse" });
+    opponentName: joinableBattle?.sourceContext?.presentation.opponentTrainer === null
+      || joinableBattle?.sourceContext?.presentation.opponentTrainer === undefined
+        ? "le Dresseur adverse"
+        : displayedSourceTrainerName(joinableBattle.sourceContext.presentation.opponentTrainer) });
   if (networkBattle?.duel === true && networkBattle.state.status === "finished"
     && side !== null && storedPlayerDuelBattleId !== networkBattle.id) {
     sourceEventState = { ...sourceEventState,
@@ -5018,6 +5148,10 @@ async function initializeSourceWorld(): Promise<void> {
       importedNotice = "Sauvegarde de position ignorée car elle était inaccessible ; retour à Bourg Canvas.";
     }
     activateSourceWorld(world);
+    if (requestedSave?.eventState === null && world.saveStatus === "restored") {
+      const visited = recordSourceVisitedMap(sourceEventState, world.assets.map.id);
+      if (visited !== sourceEventState) { sourceEventState = visited; persistSourceEventState(); }
+    }
     const resumeOpeningScene = sourceNewGameOpeningScenePending(localStorage, requestedSave, sourceEventState);
     if (resumeOpeningScene) pendingSourceMapEntryAutorun = world.assets.map.id;
     if (world.saveStatus === "restored") {
@@ -5101,3 +5235,15 @@ else if (launchSelectionReady) startInitialSourceSession();
 else { sourceNewGameView.hide(); sourceTitleScreen.show(); }
 requestAnimationFrame(() => document.getElementById("source-boot-splash")?.remove());
 if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableAndroidUpdate(true); }, 8_000);
+if (sourceNativeAndroidMode) void installedWideBattlebackPackVersion().then((version) => {
+  if (version !== null && !sourceResourcePackBusy) {
+    sourceResourcePackStatus = "Pack local vérifié lors de son activation ; fonds disponibles hors ligne.";
+    refreshAndroidUpdateMenu();
+  }
+}).catch(() => { /* Les fonds intégrés à l'APK restent disponibles. */ });
+if (sourceNativeAndroidMode) void installedBgmPackVersion().then((version) => {
+  if (version !== null && !sourceBgmPackBusy) {
+    sourceBgmPackStatus = "Pack local vérifié lors de son activation ; musiques disponibles hors ligne.";
+    refreshAndroidUpdateMenu();
+  }
+}).catch(() => { /* Les musiques intégrées à l'APK restent disponibles. */ });

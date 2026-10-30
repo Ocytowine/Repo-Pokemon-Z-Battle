@@ -5,6 +5,7 @@ import { createDefaultPlayerAvatarSelection, loadPlayerAvatarSelection, loadSess
   type PlayerProfile } from "@pokemon-z-battle/player-state";
 import { AVATAR_FISHING_EQUIPMENT_COLORS, AVATAR_PALETTE_COLORS,
   loadRecoloredAvatarCanvas } from "@pokemon-z-battle/local-assets";
+import { activeSourceSaveSlot, sourceAvatarDraftKey } from "./source-save-slots.js";
 
 export const AVATAR_LAB_MAP_ID = "avatar-lab";
 export const AVATAR_LAB_STORAGE_KEY = PLAYER_AVATAR_DRAFT_STORAGE_KEY;
@@ -30,8 +31,9 @@ export class AvatarLabView {
   private catalog: AvatarCatalog | null = null;
   private report: AuditReport | null = null;
   private loadError: string | null = null;
-  private state = loadState(localStorage);
+  private readonly draftKey = sourceAvatarDraftKey(activeSourceSaveSlot(localStorage));
   private activeState = loadSessionPlayerAvatarSelection(sessionStorage, localStorage);
+  private state = loadState(localStorage, this.draftKey, this.activeState);
   private overworldAnimationSession = 0;
   private previewContext = "overworld";
 
@@ -44,7 +46,12 @@ export class AvatarLabView {
       const responses = await Promise.all([fetch("/__pokemon-z/data/player-avatars.json"), fetch("/__pokemon-z/data/player-avatar-report.json")]);
       if (responses.some((response) => !response.ok)) throw new Error("Catalogue des personnages indisponible. Relancez corepack pnpm prepare:local.");
       [this.catalog, this.report] = await Promise.all([responses[0]!.json() as Promise<AvatarCatalog>, responses[1]!.json() as Promise<AuditReport>]);
-      if (!this.catalog.records.some((record) => record.id === this.state.avatarId)) this.state = freshState();
+      const avatar = this.catalog.records.find((record) => record.id === this.state.avatarId)
+        ?? this.catalog.records.find((record) => record.id === this.activeState.avatarId)
+        ?? this.catalog.records[0];
+      if (avatar !== undefined) this.state = { ...this.state, avatarId: avatar.id,
+        profile: { ...this.state.profile, bodyModel: `legacy-${avatar.presentation}`,
+          skinTone: avatar.legacyPalette, hairColor: `legacy-${avatar.legacyPalette}` } };
       this.loadError = null;
     } catch (error) {
       this.catalog = null;
@@ -60,12 +67,12 @@ export class AvatarLabView {
   public prepareNewGame(selection: PlayerAvatarSelection): void {
     this.activeState = selection;
     this.state = selection;
-    persistPlayerAvatarSelection(localStorage, AVATAR_LAB_STORAGE_KEY, selection);
+    persistPlayerAvatarSelection(localStorage, this.draftKey, selection);
   }
 
   private save(profile: PlayerProfile = this.state.profile): void {
     this.state = { ...this.state, profile: parsePlayerProfile(profile) };
-    persistPlayerAvatarSelection(localStorage, AVATAR_LAB_STORAGE_KEY, this.state); this.render();
+    persistPlayerAvatarSelection(localStorage, this.draftKey, this.state); this.render();
   }
 
   private render(): void {

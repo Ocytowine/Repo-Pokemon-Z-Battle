@@ -1,6 +1,7 @@
 import type { Direction } from "@pokemon-z-battle/overworld-engine";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
-import { parseSourceEventState, type SourceEventState } from "./source-event-state.js";
+import { parseSourceEventState, recordSourceVisitedMap,
+  type SourceEventState } from "./source-event-state.js";
 
 export const SOURCE_WORLD_SAVE_KEY = "pokemon-z-battle.source-world-save.v1";
 export const SOURCE_WORLD_SAVE_SCHEMA_VERSION = 2 as const;
@@ -58,6 +59,9 @@ export function parseSourceWorldSave(value: unknown): SourceWorldSave {
   let eventState: SourceEventState | null = null;
   try {
     eventState = value.schemaVersion === 1 ? null : parseSourceEventState(value.eventState);
+    if (eventState !== null && record(value.eventState) && value.eventState.visitedMaps === undefined) {
+      eventState = recordSourceVisitedMap(eventState, value.mapId as number);
+    }
   } catch {
     throw new Error("Sauvegarde de position invalide.");
   }

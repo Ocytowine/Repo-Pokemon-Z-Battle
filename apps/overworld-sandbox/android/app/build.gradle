@@ -34,6 +34,9 @@ android {
     }
     buildTypes {
         release {
+            if (System.getenv('PZB_FRESH_INSTALL_PROBE') == '1') {
+                applicationIdSuffix '.freshprobe'
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
             signingConfig signingConfigs.release

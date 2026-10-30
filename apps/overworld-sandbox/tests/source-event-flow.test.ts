@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedEventPage } from "../src/imported-map.js";
 import { resolveEventFlow } from "../src/source-event-flow.js";
-import { createSourceEventState } from "../src/source-event-state.js";
+import { applySafeStateCommands, createSourceEventState } from "../src/source-event-state.js";
+import { sourceMovementUnlocks } from "../src/source-player-movement.js";
 import { expandSourceCommonEvents, type SourceCommonEvent } from "../src/source-common-events.js";
 
 type Command = ImportedEventPage["commands"][number];
@@ -143,6 +144,18 @@ describe("source event choice and condition flow", () => {
     expect(result).toMatchObject({ complete: true, blockedReason: null });
     expect(result.page.commands.map((entry) => entry.kind)).toEqual(["grant-item", "play-cry", "set-self-switch"]);
     expect(result.page.commands[0]?.data).toMatchObject({ itemId: "ORANBERRY", quantity: 1, policy: "PERSONAL" });
+  });
+
+  it("turns the narrative Poké Monture gift into a persistent flight entitlement", () => {
+    const initial = createSourceEventState();
+    const flow = resolveEventFlow(page([
+      command("ruby-script", 0, { source: "$PokemonBag.pbStoreItem(:POKERIDER,1)" }),
+    ]), [], initial, 3, 1);
+    expect(flow).toMatchObject({ complete: true, blockedReason: null });
+    const applied = applySafeStateCommands(initial, flow.page, 3, 1);
+    expect(applied).toMatchObject({ safe: true, appliedCommands: 1 });
+    expect(applied.state.inventory.POKERIDER).toBe(1);
+    expect(sourceMovementUnlocks(applied.state, false).fly).toBe(true);
   });
 
   it("ports fixed and variable source boss fights into host-authoritative encounters", () => {

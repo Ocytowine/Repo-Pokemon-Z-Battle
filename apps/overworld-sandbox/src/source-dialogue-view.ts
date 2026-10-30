@@ -3,13 +3,6 @@ import type { SourceDialogueSession } from "./source-dialogue-controller.js";
 import type { SourceSceneDialogueSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { escapeSourceHtml } from "./source-menu-view.js";
 
-export function sourceDialogueHint(session: Pick<SourceDialogueSession, "choosing" | "index" | "lines">): string {
-  if (session.choosing) return "Choisissez une réponse · Échap pour annuler";
-  return session.index + 1 < session.lines.length
-    ? `Espace/Entrée · ${session.index + 1}/${session.lines.length}`
-    : "Espace/Entrée pour continuer";
-}
-
 export class SourceDialogueView {
   public constructor(private readonly onChoose: (index: number) => void) {}
 
@@ -18,16 +11,12 @@ export class SourceDialogueView {
     if (panel === null) return;
     panel.hidden = session === null || !visible;
     if (session === null || !visible) return;
-    const label = panel.querySelector<HTMLElement>("strong");
-    if (label !== null) label.textContent = session.label;
     const text = panel.querySelector<HTMLElement>("p");
     if (text !== null) {
       text.hidden = session.choosing;
       text.textContent = session.lines[session.index] ?? "";
     }
     this.renderChoices(panel, session);
-    const hint = panel.querySelector<HTMLElement>("small");
-    if (hint !== null) hint.textContent = sourceDialogueHint(session);
   }
 
   public renderReadonly(dialogue: SourceSceneDialogueSnapshot | null, visible: boolean): void {
@@ -35,19 +24,15 @@ export class SourceDialogueView {
     if (panel === null) return;
     panel.hidden = dialogue === null || !visible;
     if (dialogue === null || !visible) return;
-    const label = panel.querySelector<HTMLElement>("strong");
-    if (label !== null) label.textContent = dialogue.label;
     const text = panel.querySelector<HTMLElement>("p");
     if (text !== null) { text.hidden = dialogue.text === null; text.textContent = dialogue.text ?? ""; }
     const choices = panel.querySelector<HTMLElement>(".source-choices");
     if (choices !== null) {
       delete choices.dataset.sourceChoiceSignature;
       choices.hidden = dialogue.choices.length === 0;
-      choices.innerHTML = dialogue.choices.map((choice, index) =>
-        `<div class="source-readonly-choice"><span>${index + 1}</span>${escapeSourceHtml(choice)}</div>`).join("");
+      choices.innerHTML = dialogue.choices.map((choice) =>
+        `<div class="source-readonly-choice">${escapeSourceHtml(choice)}</div>`).join("");
     }
-    const hint = panel.querySelector<HTMLElement>("small");
-    if (hint !== null) hint.textContent = "L'hote controle cette scene";
   }
 
   private renderChoices(panel: HTMLElement, session: SourceDialogueSession): void {
@@ -67,7 +52,7 @@ export class SourceDialogueView {
     if (choices.dataset.sourceChoiceSignature === signature) return;
     choices.dataset.sourceChoiceSignature = signature;
     choices.innerHTML = labels.map((choice, index) =>
-      `<button type="button" data-source-choice="${index}"><span>${index + 1}</span>${escapeSourceHtml(choice)}</button>`).join("");
+      `<button type="button" data-source-choice="${index}">${escapeSourceHtml(choice)}</button>`).join("");
     choices.querySelectorAll<HTMLButtonElement>("[data-source-choice]").forEach((button) =>
       button.addEventListener("click", () => {
         const index = Number(button.dataset.sourceChoice);

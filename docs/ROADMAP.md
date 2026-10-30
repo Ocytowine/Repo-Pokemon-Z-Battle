@@ -3528,16 +3528,21 @@ possession effective de cet objet, sous réserve de confirmer que la séquence
 du portage le dépose bien dans l'inventaire. Les destinations disponibles
 restent une condition distincte.
 
-- [ ] Vérifier que la commande narrative de remise de `POKERIDER` est exécutée
-  dans le portage et sauvegardée ; auditer toute autre voie source d'obtention
-  ou restriction de Vol. Distinguer le droit de voler des destinations visitées.
-- [ ] Déduire le droit de Vol des données personnelles persistantes du joueur,
+- [x] Vérifier que la commande narrative de remise de `POKERIDER` est traduite
+  en gain d'objet personnel, exécutée par le moteur et sauvegardée. L'objet
+  ouvre le droit de voler ; les cartes extérieures et destinations restent
+  des conditions séparées. Le déroulement complet de la scène Map003 sur
+  téléphone reste à confirmer.
+- [x] Déduire le droit de Vol des données personnelles persistantes du joueur,
   en premier lieu `inventory.POKERIDER > 0`, dans le résolveur de mouvements
   commun au solo et à la Coop. Conserver Test dev comme contournement explicite
   et temporaire, sans l'intégrer à la progression normale.
-- [ ] Corriger le texte de la Carte selon le prérequis réellement manquant,
-  vérifier les parties existantes, le rechargement et la reconnexion hôte/invité,
-  puis tester un objet donnant le Vol, un objet sans Vol et une carte interdite.
+- [x] Corriger le texte de la Carte et le retour de l'action Vol selon le
+  prérequis réellement manquant : Poké Monture Flambusard. Les tests couvrent
+  l'objet présent/absent, le rechargement et l'option Test dev.
+- [ ] Vérifier sur une prochaine APK la scène Map003 et les parties existantes
+  ou importées ; contrôler carte intérieure, destination indisponible, solo,
+  hôte, invité et reconnexion Coop avant la publication du lot.
 - [ ] Ajouter à l'écran de choix de partie un import explicite d'une sauvegarde
   du fangame présent sur le téléphone : sélection d'un fichier
   `Game*.rxdata` manuel ou automatique via le sélecteur de fichiers Android,
@@ -3546,9 +3551,12 @@ restent une condition distincte.
   Partie 1 ou 2, et recherche Android dans un dossier choisi par l'utilisateur.
   Le résultat classe d'abord les `Game*.rxdata` sous un chemin ressemblant à
   « Pokémon Z V2.12 - Français ». Aucun accès global aux fichiers n'est demandé.
-- [ ] Tester ce sélecteur et la recherche sur téléphone. Android 11+ ne permet
-  pas de choisir `Android/data` ; si le fangame y place sa sauvegarde, guider
-  la copie de `Game.rxdata` vers Téléchargements puis son import.
+- [x] Sélection directe et recherche par dossier testées sur téléphone :
+  `Game.rxdata` et `Game_2.rxdata` sont trouvés depuis le dossier du jeu et
+  depuis son parent `Pokemon`. L'import direct a été confirmé par le porteur.
+- [ ] Android 11+ ne permet pas de choisir `Android/data` ; si le fangame y
+  place sa sauvegarde, guider la copie de `Game.rxdata` vers Téléchargements
+  puis son import.
 - [ ] Décoder la séquence Ruby Marshal 4.8 écrite par Pokémon Z 2.12 FR,
   convertir position/carte, personnage, équipe/Ranch, Sac, Pokédex et états
   narratifs vers un `SourceSaveSlotSnapshot` validé ; consigner tout champ
@@ -3564,16 +3572,33 @@ restent une condition distincte.
 - [x] Aperçu des quantités, carte et limites, sauvegarde de secours des deux
   branches, restauration et blocage de l'envoi cloud automatique codés et
   testés localement. Une synchronisation manuelle reste un choix explicite.
+- [x] Écran des parties allégé : les commandes d'import et de restauration
+  sont regroupées dans un onglet `Import`. Le fichier est lu et prévisualisé
+  avant le choix de Partie 1 ou 2 ; l'écriture reste soumise à confirmation.
+  Parcours contrôlé sur téléphone jusqu'au choix du slot, sans écrire de partie.
+- [x] Petit bouton de suppression sur chaque slot : confirmation explicite,
+  retrait local des sauvegardes manuelle et automatique, de la copie de secours
+  d'import et du brouillon. Une copie cloud éventuelle reste récupérable ;
+  la suppression distante demande un contrat distinct. Le slot actif bascule
+  vers l'autre avant rechargement pour éviter une nouvelle sauvegarde fantôme.
+- [x] Personnalisation liée au slot actif : une partie importée affiche son nom
+  et son avatar au lieu du brouillon global d'une ancienne partie. L'import
+  traduit aussi la palette du personnage source ; les brouillons du slot sont
+  invalidés lors d'un import, d'une restauration ou d'une récupération cloud.
 - [ ] Tester des sauvegardes réelles à divers stades, une sauvegarde corrompue,
   l'annulation, le manque d'espace, le redémarrage, puis le jeu en solo et en
   Coop comme hôte et invité avec reconnexion. Vérifier en particulier les
   montures et les accès Vol après conversion.
-- [ ] Afficher dans le HUD de l'équipe adverse le nom français du Dresseur et
+- [x] Afficher dans le HUD de l'équipe adverse le nom français du Dresseur et
   de sa classe à partir des traductions `trainerNames` et `trainerTypeNames`
   déjà extraites. Garder l'identité source espagnole pour résoudre le combat,
   son équipe et sa graine aléatoire ; localiser seulement la présentation,
-  avec repli explicite si une traduction manque. Contrôler combat simple/Duo,
-  hôte, invité et reconnexion.
+  avec repli sur le nom source si une traduction manque. Le même affichage
+  dessert les combats simples/Duo en solo et Coop, ainsi que les introductions
+  et le panneau de ralliement.
+- [ ] Contrôler visuellement sur la prochaine APK le HUD d'un combat simple
+  et Duo contre PNJ, côté hôte et invité, après reconnexion ; vérifier aussi
+  qu'un duel entre joueurs ne traduit jamais le nom personnel de l'adversaire.
 
 Un premier `Game.rxdata` privé fourni le 2026-10-30 a été analysé en lecture
 seule, hors dépôt : 363 032 octets, quinze objets Ruby Marshal 4.8 décodés sans
@@ -3582,7 +3607,14 @@ emplacements, position, switches/variables, Sac, 36 boîtes de stockage) et
 `POKERIDER` dans le Sac. Le convertisseur local lit maintenant les quinze
 blocs et valide sur cet échantillon 6 Pokémon d'équipe, 205 en boîtes,
 323 types d'objets et la carte 24 ; le snapshot résultant fait environ 540 Ko.
-L'APK n'a pas encore été testé sur téléphone. La conversion annonce avant
+L'APK a été installé en mise à jour USB le 2026-10-30. L'ouverture de l'app,
+les deux slots et l'ouverture du sélecteur de dossier Android ont été contrôlés.
+Le porteur a confirmé que l'import réel par sélection directe du fichier
+fonctionne sur téléphone. La recherche par dossier a ensuite été corrigée et
+vérifiée sur le dossier du jeu et son parent `Pokemon` : elle retrouve
+`Game.rxdata` et `Game_2.rxdata`, même avec plus de 19 000 fichiers dans
+l'arborescence parent. La recette de recherche n'a réimporté aucun fichier.
+La conversion annonce avant
 confirmation les cinq variables non numériques et le groupe d'événements
 effacés qu'elle ne sait pas restaurer ; elle ne prétend pas être complète.
 Le fichier original reste intact et hors Git. Il faut encore préserver ou
@@ -3616,12 +3648,206 @@ entre deux envois.
   appareils, hôte/invité et reconnexion ; définir la reprise des états source
   encore absents avant de promettre une restauration complète du fangame.
 
+### Reprise des grilles et des menus sans défilement vertical — 2026-10-30
+
+Retour sur téléphone : certains objets du Sac et Pokémon du Ranch débordent de
+leur carte ou de leur grille et sont coupés par le cadre. Ce défaut est visible
+malgré les anciens ajustements de pagination ; le cadrage Android du 2026-10-27
+autorisait même le défilement vertical du Ranch. La règle retenue désormais pour
+les menus de jeu est **aucun défilement vertical** : le contenu de chaque page,
+ses commandes et son état doivent rester visibles dans la surface utile de
+l'écran, zones sûres comprises. Une collection longue passe par une pagination
+explicite, sans réduire les éléments jusqu'à les rendre illisibles.
+
+- [ ] Auditer Sac, Ranch, Équipe, Pension, Incubateur, Pokédex et les sous-menus
+  de combat sur téléphone. Pour chaque écran, relever les éléments coupés,
+  les conteneurs `overflow`, les cartes trop hautes et les textes longs.
+- [ ] Recalculer les colonnes, lignes, tailles de cartes et nombre d'entrées
+  par page selon la hauteur et la largeur réellement disponibles. Réserver
+  l'espace des titres, filtres, descriptions, boutons et indicateurs de page ;
+  garder les contenus internes ancrés et les commandes tactiles accessibles.
+- [ ] Remplacer tout défilement vertical nécessaire à la navigation par des
+  pages ou étapes visibles, notamment dans le Ranch et le Sac. Si une fiche
+  détaillée contient trop d'informations, la répartir sur plusieurs onglets
+  ou pages plutôt que la masquer derrière un cadre.
+- [ ] Vérifier sur l'APK Android en paysage aux tailles d'écran courantes et
+  compactes, avec Sac rempli, six Pokémon dans l'Équipe, Ranch dense, noms et
+  descriptions longs, clavier ou panneau ouvert. Aucun élément essentiel ne
+  doit être rogné, aucun geste vertical ne doit être requis pour atteindre une
+  action ; les pages doivent rester navigables au toucher.
+
+Ce lot concerne la présentation personnelle du joueur : les mêmes composants
+doivent fonctionner en solo, chez l'hôte et chez l'invité Coop. Il ne change ni
+les règles du Sac ou du Ranch, ni leur persistance et leur réplication.
+
+Implémentation locale du 2026-10-30 : le Sac et le Ranch calculent la capacité
+de chaque page à partir de la surface mesurée après titres, filtres et
+pagination ; un changement de taille conserve approximativement la première
+entrée visible. Les cartes compactes du Ranch et les six places de l'équipe
+occupent des grilles bornées, sans défilement Android. Les filtres du Ranch
+s'ouvrent au-dessus de la grille pour ne pas lui retirer sa hauteur. Options
+est réparti en pages Audio, Mises à jour et Raccourcis. Les grilles étroites de
+la Pension et de l'Incubateur n'activent plus de défilement vertical. Un contrôle
+visuel de référence dans Chrome sans interface a montré les six objets et
+les neuf cartes du Ranch dans des cadres de 610×250 et 780×360. Le contrôle
+sur APK et les fiches détaillées du Pokédex, de l'Équipe et des sous-menus de
+combat restent à auditer avant de cocher les tâches générales ci-dessus.
+
+### Nettoyage du HUD des dialogues overworld — 2026-10-30
+
+- [x] Retirer de la fenêtre de conversation les identifiants techniques des
+  événements, les numéros devant les réponses et les rappels de touches clavier.
+  Appliquer la même présentation à la lecture seule des scènes chez l'invité.
+- [ ] Vérifier sur la prochaine APK les dialogues ordinaires, les choix tactiles,
+  les scènes partagées en Coop et la hauteur de la fenêtre en paysage Android.
+  Premier contrôle Samsung : un dialogue à trois réponses affiche les boutons
+  sans titre technique, numéros ni consignes clavier ; les autres cas restent
+  à voir sur appareil.
+
+### Chantier de fidélité du monde : Vol, statistiques et nom des lieux — 2026-10-30
+
+Retour de jeu sur la partie importée : le droit de Vol par `POKERIDER` fonctionne,
+mais les destinations ne sont pas encore filtrées par exploration. Dans la source,
+la carte régionale n'accepte un point de soin pour le Vol que si
+`$PokemonGlobal.visitedMaps[healspot[0]]` est vrai (hors contournement de debug).
+L'import `Game.rxdata` laisse actuellement `@visitedMaps` hors du snapshot : il
+faut corriger à la fois le parcours neuf et la conversion des anciennes parties.
+
+- [ ] Porter un historique personnel des cartes réellement visitées, alimenté
+  lors des entrées de carte normales, persisté dans les deux slots et le cloud,
+  restauré après reconnexion, puis convertir `@visitedMaps` des sauvegardes
+  source. Une carte affichée dans la Carte ou révélée par Test dev ne doit pas
+  devenir « visitée » pour autant. Définir la migration des slots existants sans
+  attribuer arbitrairement toutes les destinations.
+- [ ] Filtrer les points de Vol par leur carte de soin source et cet historique,
+  en plus de `POKERIDER` et des restrictions de terrain. Afficher un retour
+  explicite pour une destination non visitée ; conserver le contournement Test
+  dev clairement séparé. Vérifier le voyage après une visite, un import, une
+  sauvegarde locale/cloud et une reconnexion, en solo, hôte et invité. L'état
+  « visité » appartient au joueur ; seul le déplacement validé et nécessaire
+  à la présence Coop doit être répliqué.
+
+Implémentation locale du 2026-10-30 : historique personnel `visitedMaps` ajouté
+à l'état source, enregistré à l'entrée normale d'une carte, converti depuis
+`Game.rxdata` et conservé par les snapshots des deux slots/cloud. Une ancienne
+sauvegarde ne gagne que sa carte de position. La carte régionale distingue les
+destinations non visitées et le départ les refuse avec un message ; Test dev
+garde son contournement sans enregistrer ses téléportations. Tests automatisés
+ciblés validés ; contrôle sur téléphone avec import source réel, cloud et Coop
+encore nécessaire avant de cocher les deux points.
+
+Sur Map024, l'événement source `EV050` exécute
+`$game_variables[226]=$Trainer.pokedexOwned()`, affiche la valeur, puis teste les
+seuils 250/500/750 et appelle `setLogro`. Ces scripts et conditions sont encore
+classés « reference-only » dans l'extraction. Cela donne une cause plausible de
+l'erreur de dialogue, mais le message exact et son point de rupture restent à
+reproduire. `pokedexOwned()` compte des espèces possédées, pas le nombre total de
+captures ; les succès constituent une étape distincte de cette statistique.
+
+- [ ] Reproduire l'erreur sur téléphone et dans l'audit de scène ; porter dans le
+  noyau d'événements l'évaluation générique des statistiques du Pokédex et leur
+  affectation aux variables/conditions source, sans traitement spécial pour
+  `EV050`, Map024 ou la variable 226. Afficher la vraie valeur dans le dialogue,
+  et ne jamais exposer au joueur une erreur technique de script. Vérifier les
+  autres événements utilisant les mêmes expressions.
+- [ ] Auditer puis porter séparément `setLogro` et le modèle des succès de la
+  v2.12 FR : seuils, octroi unique, présentation, sauvegarde/import et cloud.
+  Définir leur autorité personnelle ou narrative avant de raccorder les scènes
+  Coop ; vérifier hôte, invité et reconnexion. Ne pas simuler un succès tant que
+  son effet source n'est pas établi.
+
+Le jeu source affiche un `LocationWindow` à l'entrée d'une carte dont la
+métadonnée `MetadataShowArea` est active. Il le supprime notamment si le nom du
+lieu est identique à celui de la carte quittée ou pour certaines transitions
+exclues. La variante configurée utilise le style graphique `LetsGO` du dossier
+`Graphics/Windowskins/Jess_Letreros`.
+
+- [ ] Extraire les métadonnées d'affichage et les règles source de transition,
+  puis afficher un bandeau temporaire avec le nom français du lieu lors des
+  entrées pertinentes (marche, transfert, Vol, reprise/import). Respecter la
+  taille de l'écran Android, la mise en pause des dialogues et les préférences
+  d'animation ; ne pas rejouer le bandeau à chaque reconnexion ou déplacement
+  entre cartes portant le même nom. Contrôler les ressources selon
+  `ASSET_DISTRIBUTION.md` avant toute copie Android. Le bandeau est une
+  présentation locale pour chaque joueur, sans état réseau supplémentaire.
+
+Ordre proposé : historique des visites et Vol, statistique Pokédex et erreur de
+dialogue, bannière de lieu, puis système complet de succès après audit source.
+
 ### Patch suivant : ressources et fond de combat large — cadrage du 2026-10-29
 
 Le contrat d'intégration et le registre initial sont dans
 [`ASSET_DISTRIBUTION.md`](ASSET_DISTRIBUTION.md). Le portage narratif, l'audit de
 chaque carte et les dépendances de combat ne sont pas assez complets pour
 qualifier d'inutile une ressource absente du parcours actuel.
+
+Premier lot repris le 2026-10-30 : les 51 fonds larges fournis (2400 × 1080,
+127 879 642 octets) sont inventoriés. Le moteur peut les associer aux socles
+malgré l'archivage des fonds anciens dans `Battlebacks/OLD`. Un manifeste local
+à clés SHA-256 est généré pour 50 contenus distincts. Aucun pack n'est encore
+publié ou consommé par l'APK : la réduction effective du téléchargement attend
+la migration et la recette hors ligne du lecteur Android. `MirraZ` et
+`NocturnoZ` sont intégrés. `CaveBrownZ` n'a pas de socles homonymes mais duplique
+`CuevaZ` et n'est pas demandé par une carte extraite ; `MolinoZ` a son
+`playerbase` mais pas d'`enemybase`, et une carte source l'utilise. Contrôler
+visuellement `Molino` avant de décider si ce socle est nécessaire.
+
+Pilote de distribution suivant, codé localement : un lecteur Android vérifie
+taille et SHA-256, stocke les PNG par contenu, active le manifeste atomiquement
+et revient à la copie APK si un objet manque. Le Worker dispose d'une route
+privée de manifeste et d'objets ; Options propose l'installation des fonds.
+L'APK debug compile. Le Worker, les 50 objets privés et le manifeste ont été
+publiés dans cet ordre, avec vérification de leurs tailles ; la route exige
+Cloudflare Access. Aucun téléphone n'est connecté pour la recette. Contrôler
+le téléchargement authentifié, interruption, espace libre, offline,
+solo/hôte/invité, puis seulement réduire les ressources embarquées et mesurer
+la nouvelle taille des patchs.
+
+Recette USB du 2026-10-30 : APK locale signée installée sans perdre les deux
+slots ; le pont natif a été corrigé pour lire les tailles d'objets reçues comme
+entiers JavaScript. Les 50 objets privés ont été téléchargés et vérifiés, le
+pack persiste après redémarrage, la seconde vérification le trouve à jour et
+son état reste disponible lors d'un lancement en mode avion. Le porteur a
+également validé le rendu en direct sur ce téléphone. La provenance exacte du
+fond, les échecs de transfert, le premier démarrage sans réseau et les
+parcours solo/Coop reste ouvert. L'APK de transition fait 996 007 535 octets
+et embarque encore toutes les ressources ; aucun gain de taille ni nouvel APK
+distant à annoncer. Le débordement vertical d'Options observé sur téléphone
+rejoint la refonte prévue des grilles de menus sans scroll.
+
+Premier essai d'APK allégée du 2026-10-30 : un build séparé vérifie le
+manifeste, omet 49 fonds larges déjà publiés en pack et garde leurs anciens
+fonds 4:3 pour le premier jeu hors réseau ; deux fonds sans ancien équivalent
+restent embarqués. Le moteur choisit le large uniquement si le pack exact est
+actif ou le fond présent dans l'APK. Taille mesurée : 872 454 607 octets contre
+996 007 535 avant, soit 123 552 928 octets économisés (12,4 %). L'APK signée
+s'installe sur le téléphone, démarre, conserve les deux slots et retrouve le
+pack. Le porteur confirme que le combat démarre sur cette APK locale `0.1.4 (5)`.
+Il valide ensuite `battlebgSnowZ.png` en combat réel sur téléphone. Ce fond est
+absent du ZIP allégé : le pack actif est bien la source de l'image large.
+Le premier combat sans pack, les échecs de transfert et la reconnexion Coop
+précèdent toute publication APK.
+
+La candidate `0.1.5` (code 6) est construite, signée et installée localement ;
+les deux slots sont préservés. Une copie temporaire sous identifiant distinct
+a validé le titre, les slots vides et le début d'une nouvelle aventure lors
+d'une première installation en mode avion, sans pack. Elle a été désinstallée
+et la connexion rétablie. Avant diffusion, vérifier le premier combat sans
+pack ainsi que les échecs de téléchargement/espace et la reconnexion Coop.
+L'APK et son manifeste restent locaux.
+
+Le porteur valide également un combat enneigé sur la copie neuve sans pack :
+l'ancien fond 4:3 prend bien le relais. Le test de téléchargement interrompu a
+été écourté à sa demande et reste non vérifié sur téléphone. La copie isolée a
+été supprimée, l'app principale `0.1.5 (6)` et le réseau rétablis.
+
+La 0.1.5 (code 6) a ensuite été publiée en privé sur R2 : APK d'abord, taille
+distante vérifiée, puis `latest.json` relu avec le SHA-256 attendu. La baisse
+effective par rapport à la 0.1.4 publique est de **41 609 133 octets** ; les
+123 552 928 octets comparent deux variantes locales du nouveau build. Les
+autres familles de ressources restent à distribuer par packs pour réduire
+davantage les patchs. Les cas de coupure/espace et Coop restent des dettes de
+recette clairement identifiées.
 
 - [ ] conserver tous les fichiers source pendant le pilote de packs privés R2 ;
 - [ ] réduire les téléchargements de patch en séparant moteur APK et ressources
@@ -3647,3 +3873,66 @@ R2 ni aucune exclusion de ressource n'ont encore été réalisés.
 `android:sync` et la construction de l'APK debug locale passent ; le fond et le
 manifeste embarqués ont la même empreinte vérifiée. Aucun téléphone n'était
 connecté pour l'installation.
+
+### Pack musical BGM — pilote du 2026-10-30
+
+Les 165 pistes `Audio/BGM` de la source locale sont inventoriées sans exclusion
+(162 OGG, 3 MP3 ; 487 582 775 octets). Le manifeste SHA-256 référence 164
+objets distincts, soit 485 656 802 octets. Objets et manifeste sont sur R2
+privé ; les tailles distantes ont été contrôlées avant publication du manifeste.
+Le Worker vérifie Access et sert les pistes par tranches de 4 Mio. L'APK pilote
+sait reprendre un transfert aux fichiers déjà validés, vérifier chaque SHA-256
+et activer le pack complet. Options propose l'installation des musiques.
+
+Le téléchargement et la persistance hors ligne ont été vérifiés sur téléphone ;
+le porteur confirme la lecture des musiques depuis le pack. L'APK conserve
+encore tous les BGM intégrés :
+aucun gain de 487 Mo sur l'APK n'est acquis. Avant un APK musical allégé,
+terminer l'écran d'accueil puis identifier la musique à conserver pour le
+lancement hors ligne et les pistes nécessaires au premier jeu sans réseau,
+puis contrôler les appels narration, cartes et combats. Les clés de contenu
+éviteront de retélécharger toutes les pistes après un petit patch.
+
+Recette USB : l'APK locale signée 0.1.5 (6) a préservé les deux slots. Les
+164 objets du pack ont été vérifiés sur le téléphone ; une seconde vérification
+les déclare à jour sans transfert. Après arrêt forcé, le pack est reconnu en
+mode avion. Le mode avion a été désactivé. Le porteur confirme que les
+musiques sont lues depuis le pack. Il reste à préparer l'APK allégée après
+finalisation de l'écran d'accueil et choix de la musique hors ligne.
+
+Correctif audio du pilote : après activation du pack, les musiques ne jouaient
+plus. Le WebView Android appliquait déjà la plage HTTP au flux fourni par le
+pont natif ; le double découpage produisait `PIPELINE_ERROR_READ`. Le pont
+fournit maintenant le fichier entier. Sur l'APK locale réinstallée, le titre
+et la carte ne signalent plus cette erreur et le porteur confirme le retour
+de la musique. Ce correctif doit accompagner le prochain APK publié ; le
+pack R2 et le manifeste existants restent inchangés.
+
+Diffusion du 2026-10-30 : `0.1.6 (7)` signée a été installée par-dessus la
+version précédente en conservant les deux slots et la lecture du titre, puis
+publiée sur R2 avec son manifeste après contrôle de taille et de SHA-256.
+Le pack musical reste identique ; l'APK contient toujours les BGM. L'étape
+suivante reste la finition de l'accueil avant l'allègement musical.
+
+### Écran d'accueil — finition avant l'APK musical allégé
+
+Le porteur veut terminer l'écran d'accueil avant de fixer la musique du
+lancement hors ligne. Reprendre le titre actuel et sa transition vers le choix
+de partie ; cette finition précède le retrait des BGM de l'APK.
+
+- [ ] contrôler sur téléphone la composition, les animations et le temps de
+  chargement du titre, avec `armaTituloZ` et une surface adaptée à la taille
+  du menu Android, sans défilement ni cadrage imposé par l'overworld 4:3 ;
+- [ ] finaliser les commandes et la transition vers les deux sauvegardes,
+  l'import, le cloud et la version, tout en conservant la reprise directe d'un
+  combat Coop interrompu ;
+- [ ] choisir avec le porteur la musique définitive de cet accueil. La garder
+  dans l'APK pour qu'un premier lancement sans réseau ait de la musique,
+  même avant l'installation du pack BGM ; respecter l'activation audio par
+  geste utilisateur imposée par Android/WebView ;
+- [ ] vérifier le titre et la musique sur une installation neuve en mode avion,
+  puis après installation du pack, et seulement ensuite produire et mesurer
+  l'APK sans les autres BGM embarqués.
+
+Cet écran est local et transitoire en solo, hôte et invité : il ne modifie ni
+la sauvegarde, ni l'état narratif de la room, ni la reconnexion Coop.

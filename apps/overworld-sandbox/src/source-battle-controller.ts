@@ -155,6 +155,7 @@ export interface SourceTrainerBattleAudio {
   readonly victoryMusic: string | null;
   readonly baseMoney: number;
   readonly trainerTypeId: number;
+  readonly displayName?: string;
   readonly defeatText: string;
   readonly format?: "single" | "double";
 }
@@ -313,7 +314,7 @@ export class SourceBattleController {
         this.sharedContinuationPending = true;
         this.trainerCompletion = onComplete;
         this.trainerAudio = audio;
-        this.callbacks.setNotice(`Combat partagé demandé contre ${trainer.name}.`);
+        this.callbacks.setNotice(`Combat partagé demandé contre ${audio.displayName ?? trainer.name}.`);
         this.callbacks.render();
         return true;
       }
@@ -328,7 +329,7 @@ export class SourceBattleController {
       this.trainerAudio = audio;
       void this.presentation.startBattle(this.battle, { ...audio, battleback: resources.battleback, npcOpponent: true,
         opponentTrainer: { id: audio.trainerTypeId, name: trainer.name } });
-      this.callbacks.setNotice(`Combat de Dresseur lancé contre ${trainer.name}.`);
+      this.callbacks.setNotice(`Combat de Dresseur lancé contre ${audio.displayName ?? trainer.name}.`);
     } catch (error) {
       this.battle = null;
       this.rng = null;

@@ -1,20 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SourceDialogueSession } from "../src/source-dialogue-controller.js";
-import { SourceDialogueView, sourceDialogueHint } from "../src/source-dialogue-view.js";
+import { SourceDialogueView } from "../src/source-dialogue-view.js";
 
 describe("source dialogue view", () => {
-  it("describes progress through ordinary dialogue lines", () => {
-    expect(sourceDialogueHint({ choosing: false, index: 0, lines: ["a", "b"] }))
-      .toBe("Espace/Entrée · 1/2");
-    expect(sourceDialogueHint({ choosing: false, index: 1, lines: ["a", "b"] }))
-      .toBe("Espace/Entrée pour continuer");
-  });
-
-  it("gives choice input precedence over line progress", () => {
-    expect(sourceDialogueHint({ choosing: true, index: 0, lines: [] }))
-      .toBe("Choisissez une réponse · Échap pour annuler");
-  });
-
   it("keeps choice buttons mounted when an unrelated render repeats", () => {
     let markupWrites = 0;
     let markup = "";
@@ -39,6 +27,7 @@ describe("source dialogue view", () => {
       view.render(session, true);
       expect(markupWrites).toBe(1);
       expect(markup).toContain("Oui, Ariane");
+      expect(markup).not.toContain("<span>");
     } finally {
       vi.unstubAllGlobals();
     }

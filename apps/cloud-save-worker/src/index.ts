@@ -1,6 +1,7 @@
 /** Access guards every route; storage endpoints are scoped to its verified email. */
 import { handleSaveRequest, type SaveEnv } from "./save-store.js";
 import { handleAndroidUpdateRequest } from "./update-distribution.js";
+import { handleResourceRequest } from "./resource-distribution.js";
 
 export interface AccessIdentity {
   readonly email?: string;
@@ -36,6 +37,7 @@ export default {
     if (!email) return json({ error: "access_required" }, 401);
     try {
       if (path.startsWith("/api/updates/")) return await handleAndroidUpdateRequest(request, env);
+      if (path.startsWith("/api/resources/")) return await handleResourceRequest(request, env);
       return await handleSaveRequest(request, env, email);
     }
     catch (error) {

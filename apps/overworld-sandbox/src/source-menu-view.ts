@@ -3,6 +3,7 @@ import { SOURCE_BAG_PAGE_SIZE, SOURCE_BAG_POCKETS, sourceBagEntries, sourceBagFa
   sourceBagEntryMatches, sourceBagPage, sourceBagPocketCounts, sourceBagSubfamily, sourceItemIconUrl,
   sourceItemIconFallbackUrl, sourcePocketIconUrl } from "./source-bag.js";
 import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
+import { sourceGridPageLayout, type SourceGridPageLayout } from "./source-grid-pagination.js";
 import type { SourceEventState, SourceFishingRod } from "./source-event-state.js";
 import type { SourceMenuTab } from "./source-scene-coordinator.js";
 import type { SourceShopItem } from "./source-economy.js";
@@ -27,6 +28,7 @@ import { SourcePokedexView } from "./source-pokedex-view.js";
 import { sourceAlchemyCraftLimit } from "./source-alchemy.js";
 import { sourceRegionForMap, sourceRegionImageUrl, sourceVisibleRegionPoints,
   type SourceRegionDestination, type SourceRegionPoint } from "./source-region-map.js";
+import { sourceFlyDestinationVisited } from "./source-event-state.js";
 import { bindSourceAspectFrame } from "./source-aspect-frame.js";
 import { sourcePokeVialStatus } from "./source-poke-vial.js";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
@@ -80,6 +82,11 @@ export interface SourceMenuViewModel {
   readonly androidVersion: string;
   readonly androidUpdateStatus: string;
   readonly androidUpdateAvailable: boolean;
+  readonly resourcePackStatus: string;
+  readonly resourcePackBusy: boolean;
+  readonly resourcePackInstallable: boolean;
+  readonly bgmPackStatus: string;
+  readonly bgmPackBusy: boolean;
   readonly personalProgressSaveOnly: boolean;
   readonly coop: SourceMenuCoopModel;
   readonly movement: SourceMenuMovementModel;
@@ -102,6 +109,7 @@ export interface SourceMenuMovementModel {
   readonly canDiveHere: boolean;
   readonly canSurfaceHere: boolean;
   readonly canFlyHere: boolean;
+  readonly testOverride: boolean;
 }
 
 export interface SourceMenuCoopModel {
@@ -130,6 +138,8 @@ export interface SourceMenuViewCallbacks {
   readonly onCloudKeepLocal: (slot: SourceSaveSlotId, kind: "manual" | "auto") => void;
   readonly onCheckAndroidUpdate: () => void;
   readonly onDownloadAndroidUpdate: () => void;
+  readonly onInstallResourcePack: () => void;
+  readonly onInstallBgmPack: () => void;
   readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
   readonly onCreateRoom: (serverUrl: string) => void;
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
@@ -211,6 +221,9 @@ export class SourceMenuView {
   private selectedBagItemId: string | null = null;
   private selectedBagFamilyId: string | null = null;
   private bagPage = 0;
+  private bagLayout: SourceGridPageLayout = { columns: 3, rows: 3, pageSize: 9 };
+  private bagResizeObserver: ResizeObserver | null = null;
+  private bagModel: SourceMenuViewModel | null = null;
   private bagQuery = "";
   private selectedBagPokemonId: string | null = null;
   private bagAction: "wheel" | "use" | "use-party-confirm" | "rare-candy-confirm" | "give" | "discard" | "teach" | "teach-replace" | "teach-confirm" | null = null;
@@ -223,6 +236,7 @@ export class SourceMenuView {
   private heldItemFamilyId: string | null = null;
   private heldItemPage = 0;
   private bagNotice: string | null = null;
+  private optionsPage: "audio" | "downloads" | "shortcuts" = "audio";
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
   private devItemQuery = "";
@@ -266,13 +280,16 @@ export class SourceMenuView {
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
     menu.hidden = !model.open;
-    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; this.openDevSection = null; return; }
+    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; this.openDevSection = null;
+      this.bagResizeObserver?.disconnect(); this.bagResizeObserver = null; this.bagModel = null; return; }
     if (!this.wasOpen) this.clearTeamSelection();
     this.wasOpen = true;
     if (model.tab !== "team") this.clearTeamSelection();
     if (model.tab !== "bag") this.characterGuideOpen = false;
+    if (model.tab !== "bag") { this.bagResizeObserver?.disconnect(); this.bagResizeObserver = null; this.bagModel = null; }
     if (model.tab !== "movement") this.openDevSection = null;
     content.classList.toggle("source-menu-content-bag", model.tab === "bag");
+    content.classList.toggle("source-menu-content-options", model.tab === "options");
     content.classList.toggle("source-menu-content-pokedex", model.tab === "pokedex");
     content.classList.toggle("source-menu-content-alchemy", model.tab === "alchemy");
     content.classList.toggle("source-menu-content-map", model.tab === "map");
@@ -354,8 +371,10 @@ export class SourceMenuView {
     const markers = [...pointGroups].map(([key, group]) => {
       const point = group[0]!;
       const label = [...new Set(group.map((entry) => entry.name))].join(" / ");
-      const flyable = group.some((entry) => entry.destination !== null);
-      return `<button type="button" class="source-region-hit${key === this.selectedRegionPointKey ? " selected" : ""}${flyable ? " flyable" : ""}" data-source-region-point="${key}" style="--map-x:${point.x};--map-y:${point.y}" aria-label="${escapeSourceHtml(label)}"${this.regionMapMode === "fly" && !flyable ? " disabled" : ""}></button>`;
+      const flyable = group.some((entry) => entry.destination !== null
+        && sourceFlyDestinationVisited(model.eventState, entry.destination.mapId, model.movement.testOverride));
+      const hasDestination = group.some((entry) => entry.destination !== null);
+      return `<button type="button" class="source-region-hit${key === this.selectedRegionPointKey ? " selected" : ""}${flyable ? " flyable" : hasDestination ? " unvisited" : ""}" data-source-region-point="${key}" style="--map-x:${point.x};--map-y:${point.y}" aria-label="${escapeSourceHtml(label)}"${this.regionMapMode === "fly" && !hasDestination ? " disabled" : ""}></button>`;
     }).join("");
     const selectedNames = [...new Set(selected.map((point) => point.name))].join(" · ");
     const selectedDescriptions = [...new Set(selected.map((point) => point.description).filter(Boolean))].join(" · ");
@@ -373,8 +392,12 @@ export class SourceMenuView {
     const flyEnabled = model.movement.unlocks.fly && model.movement.canFlyHere;
     const modeControls = `<div class="source-region-modes" role="group" aria-label="Mode de la carte"><button type="button" data-region-mode="consult" class="${this.regionMapMode === "consult" ? "active" : ""}">Consultation</button><button type="button" data-region-mode="fly" class="${this.regionMapMode === "fly" ? "active" : ""}"${flyEnabled ? "" : " disabled"}>Vol</button></div>`;
     const coopLegend = model.coop.active ? `<div class="source-region-presence">${regionalPlayers.filter((player) => player.connected).map((player) => `<span class="${player.side === "player" ? "host" : "guest"}"><i></i>${player.side === "player" ? "Hôte" : "Invité"} · ${escapeSourceHtml(player.name)}</span>`).join("")}</div>` : "";
-    const modeHint = this.regionMapMode === "fly" ? "Choisissez une destination marquée pour décoller."
-      : !model.movement.unlocks.fly ? "Le Vol peut être activé dans Test dev."
+    const selectedFlyable = selected.some((point) => point.destination !== null
+      && sourceFlyDestinationVisited(model.eventState, point.destination.mapId, model.movement.testOverride));
+    const modeHint = this.regionMapMode === "fly" && selected.some((point) => point.destination !== null) && !selectedFlyable
+      ? "Lieu non visité : explorez-le avant de pouvoir y voler."
+      : this.regionMapMode === "fly" ? "Choisissez une destination marquée pour décoller."
+      : !model.movement.unlocks.fly ? "Il faut la Poké Monture Flambusard pour utiliser le Vol."
         : !model.movement.canFlyHere ? "Le Vol doit être lancé depuis une zone extérieure." : "Explorez les lieux et leurs descriptions.";
     this.setMenuHeader(region.name.toLocaleUpperCase("fr-FR"), "Carte régionale", selectedNames || "Zone inconnue");
     content.innerHTML = `<div class="source-menu-title source-region-title"><div><small>CARTE DU MONDE</small><h3>${escapeSourceHtml(region.name)}</h3></div><span>${points.length} REPÈRES</span></div>
@@ -395,8 +418,11 @@ export class SourceMenuView {
         this.selectedRegionPointKey = pointKey;
         if (this.regionMapMode === "fly") {
           const destination = pointKey === null ? null
-            : pointGroups.get(pointKey)?.find((point) => point.destination !== null)?.destination;
+            : pointGroups.get(pointKey)?.find((point) => point.destination !== null
+              && sourceFlyDestinationVisited(model.eventState, point.destination.mapId,
+                model.movement.testOverride))?.destination;
           if (destination !== null && destination !== undefined) { this.regionMapMode = "consult"; this.callbacks.onFly(destination); }
+          else this.renderRegionMap(content, model);
           return;
         }
         this.renderRegionMap(content, model);
@@ -647,6 +673,15 @@ export class SourceMenuView {
   }
 
   private renderBag(content: HTMLElement, model: SourceMenuViewModel): void {
+    this.bagModel = model;
+    if (typeof ResizeObserver !== "undefined" && this.bagResizeObserver === null) {
+      this.bagResizeObserver = new ResizeObserver(() => {
+        if (this.bagModel !== null && content.isConnected && !content.closest("[hidden]")) {
+          this.renderBag(content, this.bagModel);
+        }
+      });
+      this.bagResizeObserver.observe(content);
+    }
     const counts = sourceBagPocketCounts(model.eventState.inventory, model.assets.items);
     const searching = this.bagQuery.trim().length > 0;
     const pocketEntries = sourceBagEntries(model.eventState.inventory, model.assets.items, this.selectedPocket);
@@ -666,7 +701,7 @@ export class SourceMenuView {
     const visibleNodes = searching ? entries.map((entry) => ({ kind: "item" as const, entry }))
       : this.selectedBagFamilyId === null ? sourceBagNodes(entries)
       : familyEntries.map((entry) => ({ kind: "item" as const, entry }));
-    const pageSize = window.matchMedia("(max-width: 430px)").matches ? 4 : SOURCE_BAG_PAGE_SIZE;
+    const pageSize = Math.min(SOURCE_BAG_PAGE_SIZE, this.bagLayout.pageSize);
     const pagedNodes = sourceBagPage(visibleNodes, this.bagPage, pageSize);
     this.bagPage = pagedNodes.page;
     const selectedFamily = searching || familyEntries[0] === undefined ? null : sourceBagSubfamily(familyEntries[0].item);
@@ -773,7 +808,17 @@ export class SourceMenuView {
     content.innerHTML = `<div class="source-bag-toolbar"><label><span>Rechercher un objet</span><input type="search" data-source-bag-search value="${escapeSourceHtml(this.bagQuery)}" placeholder="Nom, effet, CT/CS…" autocomplete="off" spellcheck="false"></label><button type="button" data-source-bag-search-clear${searching ? "" : " disabled"}>Effacer</button><small>${searching ? `${entries.length} résultat${entries.length > 1 ? "s" : ""} dans tout le Sac` : "Recherche dans toutes les poches"}</small></div><nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
         `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === this.selectedPocket ? "active" : ""}" title="${escapeSourceHtml(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeSourceHtml(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
       ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
-      <section class="source-inventory-browser"><div class="source-bag-list">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${characterGuidePanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+      <section class="source-inventory-browser"><div class="source-bag-list" style="--source-bag-columns:${this.bagLayout.columns};--source-bag-rows:${this.bagLayout.rows}">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${characterGuidePanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+    const list = content.querySelector<HTMLElement>(".source-bag-list");
+    if (list !== null && list.clientWidth > 0 && list.clientHeight > 0) {
+      const layout = sourceGridPageLayout(list.clientWidth, list.clientHeight, 140, 70, 3, 3, 6);
+      if (layout.pageSize !== this.bagLayout.pageSize || layout.columns !== this.bagLayout.columns) {
+        this.bagPage = Math.floor(this.bagPage * pageSize / layout.pageSize);
+        this.bagLayout = layout;
+        this.renderBag(content, model);
+        return;
+      }
+    }
     bindSourceItemIconFallback(content);
     const searchInput = content.querySelector<HTMLInputElement>("[data-source-bag-search]");
     searchInput?.addEventListener("input", () => {
@@ -1149,20 +1194,36 @@ export class SourceMenuView {
       shortcut("mount", "Chevroum", "Basculer rapidement entre la marche et la monture.",
         "/__pokemon-z/source/Graphics/Icons/icon673.png", model.movement.unlocks.mount),
     ].join("");
-    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><div class="source-options-list">
+    const options = this.optionsPage === "audio" ? `
       ${control("music", "Musiques", "Musiques de carte, de combat et jingles.", settings.music)}
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
-      ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}
+      ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}`
+      : this.optionsPage === "downloads" ? `
       <article class="source-android-update-options"><strong>Mises à jour Android · ${escapeSourceHtml(model.androidVersion)}</strong><small>${escapeSourceHtml(model.androidUpdateStatus)}</small><div><button type="button" data-source-check-android-update>Vérifier</button>${model.androidUpdateAvailable ? '<button type="button" data-source-download-android-update>Télécharger l’APK</button>' : ""}</div></article>
+      <article class="source-android-update-options"><strong>Ressources hors ligne</strong><small>Fonds : ${escapeSourceHtml(model.resourcePackStatus)}<br>Musiques : ${escapeSourceHtml(model.bgmPackStatus)}</small>${model.resourcePackInstallable ? `<div><button type="button" data-source-install-resource-pack${model.resourcePackBusy ? " disabled" : ""}>${model.resourcePackBusy ? "Installation…" : "Fonds de combat"}</button><button type="button" data-source-install-bgm-pack${model.bgmPackBusy ? " disabled" : ""}>${model.bgmPackBusy ? "Installation…" : "Musiques"}</button></div>` : ""}</article>
+      ` : `
       <article class="source-shortcut-options"><strong>Raccourcis de terrain</strong><small>Les boutons choisis apparaissent en haut à droite du canvas, après la Boussole.</small><div>${shortcuts}</div></article>
       <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article>
-      <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button></div>`;
+      <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button>`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><nav class="source-options-pages" aria-label="Sections des options">
+      <button type="button" data-source-options-page="audio"${this.optionsPage === "audio" ? ' class="active" aria-current="page"' : ""}>Audio</button>
+      <button type="button" data-source-options-page="downloads"${this.optionsPage === "downloads" ? ' class="active" aria-current="page"' : ""}>Mises à jour</button>
+      <button type="button" data-source-options-page="shortcuts"${this.optionsPage === "shortcuts" ? ' class="active" aria-current="page"' : ""}>Raccourcis</button></nav><div class="source-options-list">${options}</div>`;
+    content.querySelectorAll<HTMLButtonElement>("[data-source-options-page]").forEach((button) =>
+      button.addEventListener("click", () => {
+        this.optionsPage = button.dataset.sourceOptionsPage as typeof this.optionsPage;
+        this.renderOptions(content, model);
+      }));
     content.querySelector<HTMLButtonElement>("[data-source-open-dev]")?.addEventListener("click", () =>
       this.callbacks.onSelectTab("movement"));
     content.querySelector<HTMLButtonElement>("[data-source-check-android-update]")?.addEventListener("click",
       this.callbacks.onCheckAndroidUpdate);
     content.querySelector<HTMLButtonElement>("[data-source-download-android-update]")?.addEventListener("click",
       this.callbacks.onDownloadAndroidUpdate);
+    content.querySelector<HTMLButtonElement>("[data-source-install-resource-pack]")?.addEventListener("click",
+      this.callbacks.onInstallResourcePack);
+    content.querySelector<HTMLButtonElement>("[data-source-install-bgm-pack]")?.addEventListener("click",
+      this.callbacks.onInstallBgmPack);
     content.querySelectorAll<HTMLInputElement>("[data-audio-channel]").forEach((input) => {
       input.addEventListener("input", () => {
         const channel = input.dataset.audioChannel as SourceAudioChannel;

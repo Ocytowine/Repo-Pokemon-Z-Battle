@@ -17,11 +17,11 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.text.Normalizer;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.PriorityQueue;
 
 /** Searches only a directory tree explicitly granted by the Android document picker. */
 @CapacitorPlugin(name = "SourceSaveLocator")
@@ -48,6 +48,13 @@ public class SourceSaveLocatorPlugin extends Plugin {
             this.name = name; this.path = path; this.uri = uri; this.size = size; this.score = score;
         }
     }
+    private static class SearchResult {
+        final List<Candidate> candidates;
+        final boolean limited;
+        SearchResult(List<Candidate> candidates, boolean limited) {
+            this.candidates = candidates; this.limited = limited;
+        }
+    }
 
     @PluginMethod
     public void searchFolder(PluginCall call) {
@@ -72,7 +79,8 @@ public class SourceSaveLocatorPlugin extends Plugin {
         }
         getBridge().execute(() -> {
             try {
-                List<Candidate> candidates = search(tree);
+                SearchResult resultFound = search(tree);
+                List<Candidate> candidates = resultFound.candidates;
                 JSArray found = new JSArray();
                 for (int index = 0; index < Math.min(30, candidates.size()); index++) {
                     Candidate candidate = candidates.get(index);
@@ -85,7 +93,7 @@ public class SourceSaveLocatorPlugin extends Plugin {
                 }
                 JSObject response = new JSObject();
                 response.put("candidates", found);
-                response.put("limited", candidates.size() > 30);
+                response.put("limited", resultFound.limited || candidates.size() > 30);
                 call.resolve(response);
             } catch (Exception error) {
                 call.reject("Recherche impossible dans ce dossier : " + error.getMessage());
@@ -93,13 +101,16 @@ public class SourceSaveLocatorPlugin extends Plugin {
         });
     }
 
-    private List<Candidate> search(Uri tree) {
-        ArrayDeque<Folder> folders = new ArrayDeque<>();
+    private SearchResult search(Uri tree) {
+        PriorityQueue<Folder> folders = new PriorityQueue<>(
+            Comparator.comparingInt((Folder folder) -> score(folder.path, "")).reversed()
+                .thenComparingInt(folder -> folder.depth).thenComparing(folder -> folder.path));
         folders.add(new Folder(DocumentsContract.getTreeDocumentId(tree), "", 0));
         List<Candidate> found = new ArrayList<>();
         int visited = 0;
-        while (!folders.isEmpty()) {
-            Folder folder = folders.removeFirst();
+        boolean limited = false;
+        searchLoop: while (!folders.isEmpty()) {
+            Folder folder = folders.remove();
             Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, folder.documentId);
             String[] columns = { DocumentsContract.Document.COLUMN_DOCUMENT_ID,
                 DocumentsContract.Document.COLUMN_DISPLAY_NAME,
@@ -107,7 +118,7 @@ public class SourceSaveLocatorPlugin extends Plugin {
             try (Cursor cursor = getContext().getContentResolver().query(children, columns, null, null, null)) {
                 if (cursor == null) continue;
                 while (cursor.moveToNext()) {
-                    if (++visited > MAX_VISITED) throw new IllegalStateException("trop de fichiers ; choisis un dossier plus précis");
+                    if (++visited > MAX_VISITED) { limited = true; break searchLoop; }
                     String id = cursor.getString(0);
                     String name = cursor.getString(1);
                     String mime = cursor.getString(2);
@@ -115,7 +126,9 @@ public class SourceSaveLocatorPlugin extends Plugin {
                     if (id == null || name == null) continue;
                     String path = folder.path.isEmpty() ? name : folder.path + "/" + name;
                     if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
-                        if (folder.depth < MAX_DEPTH) folders.addLast(new Folder(id, path, folder.depth + 1));
+                        if (folder.depth < MAX_DEPTH && !isResourceDirectory(name)) {
+                            folders.add(new Folder(id, path, folder.depth + 1));
+                        }
                     } else if (name.matches("(?i)^Game(?:_[0-9]+)?(?:_autosave)?\\.rxdata$")
                         && size <= MAX_FILE_BYTES) {
                         Uri file = DocumentsContract.buildDocumentUriUsingTree(tree, id);
@@ -126,13 +139,21 @@ public class SourceSaveLocatorPlugin extends Plugin {
         }
         found.sort(Comparator.comparingInt((Candidate candidate) -> candidate.score).reversed()
             .thenComparing(candidate -> candidate.path));
-        return found;
+        return new SearchResult(found, limited);
+    }
+
+    private static boolean isResourceDirectory(String name) {
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.equals("audio") || lower.equals("graphics") || lower.equals("data")
+            || lower.equals("fonts") || lower.equals("pbs") || lower.equals("movies")
+            || lower.equals("plugins");
     }
 
     private static int score(String path, String name) {
         String normalized = Normalizer.normalize(path, Normalizer.Form.NFD)
             .replaceAll("\\p{M}", "").toLowerCase(Locale.ROOT);
-        int value = normalized.contains("pokemon z") ? 100 : 0;
+        int value = normalized.contains("pokemon z") ? 100
+            : normalized.contains("pokemon") ? 30 : 0;
         if (normalized.contains("v2.12")) value += 40;
         if (normalized.contains("francais")) value += 20;
         if (name.equalsIgnoreCase("Game.rxdata")) value += 10;

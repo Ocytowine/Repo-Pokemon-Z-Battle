@@ -24,6 +24,8 @@
     "extract:events": "corepack pnpm --filter @pokemon-z-battle/extractor extract:events",
     "extract:hooks": "corepack pnpm --filter @pokemon-z-battle/extractor extract:hooks",
     "inventory": "corepack pnpm --filter @pokemon-z-battle/extractor inventory",
+    "resources:manifest": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox resources:manifest",
+    "resources:publish": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox resources:publish",
     "sandbox:battle": "corepack pnpm --filter @pokemon-z-battle/battle-sandbox dev",
     "sandbox:overworld": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox dev",
     "sandbox:overworld:chrome": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox preview:chrome",

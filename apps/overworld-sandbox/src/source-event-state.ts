@@ -14,6 +14,8 @@ export interface SourceEventState {
   readonly variables: Readonly<Record<string, number>>;
   readonly selfSwitches: Readonly<Record<string, boolean>>;
   readonly inventory: Readonly<Record<string, number>>;
+  /** Maps personally entered by this player; never projected into the host story in Coop. */
+  readonly visitedMaps: readonly number[];
   readonly money: number;
   readonly runningShoes: boolean;
   readonly pokedexEnabled: boolean;
@@ -116,7 +118,7 @@ export interface StateCommandResult {
 }
 
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
-  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, pokeVial: Object.freeze({ current: 0, maximum: 0 }), followerEnabled: false, checkpoint: null,
+  switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), visitedMaps: Object.freeze([]), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, pokeVial: Object.freeze({ current: 0, maximum: 0 }), followerEnabled: false, checkpoint: null,
   party: Object.freeze(createEmptyPlayerParty()),
   ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
   dayCare: Object.freeze(createEmptySourceDayCare()),
@@ -133,7 +135,7 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, visitedMaps: [], money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
     typeAmulet: null, fieldItemEffects: EMPTY_SOURCE_FIELD_ITEM_EFFECTS,
     happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
     appliedBattleSettlementIds: [] };
@@ -141,6 +143,16 @@ export function createSourceEventState(): SourceEventState {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function recordSourceVisitedMap(state: SourceEventState, mapId: number): SourceEventState {
+  if (!Number.isSafeInteger(mapId) || mapId < 1 || mapId > 9999 || state.visitedMaps.includes(mapId)) return state;
+  return { ...state, visitedMaps: [...state.visitedMaps, mapId].sort((a, b) => a - b) };
+}
+
+export function sourceFlyDestinationVisited(state: SourceEventState, mapId: number,
+  testOverride = false): boolean {
+  return testOverride || state.visitedMaps.includes(mapId);
 }
 
 function finiteInteger(value: unknown): value is number {
@@ -269,7 +281,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       const randomOperand = finiteInteger(randomMinimum) && finiteInteger(randomMaximum)
         && randomMaximum >= randomMinimum
         ? randomMinimum + wildEncounterRngState % (randomMaximum - randomMinimum + 1) : null;
-      const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
+      const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, visitedMaps: state.visitedMaps, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
         typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
@@ -377,7 +389,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     }
     appliedCommands += 1;
   }
-  const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, money, runningShoes,
+  const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, visitedMaps: state.visitedMaps, money, runningShoes,
     pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
     typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
     ...(state.preferredFishingRod === undefined ? {} : { preferredFishingRod: state.preferredFishingRod }),
@@ -469,6 +481,10 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const variables = numberDictionary(value.variables);
   const selfSwitches = booleanDictionary(value.selfSwitches);
   const inventory = value.inventory === undefined ? {} : numberDictionary(value.inventory);
+  const visitedMaps = value.visitedMaps === undefined ? [] : Array.isArray(value.visitedMaps)
+    && value.visitedMaps.length <= 9999
+    && value.visitedMaps.every((id) => finiteInteger(id) && id >= 1 && id <= 9999)
+    ? [...new Set(value.visitedMaps as number[])].sort((a, b) => a - b) : null;
   const money = value.money === undefined ? SOURCE_INITIAL_MONEY : value.money;
   const runningShoes = value.runningShoes === undefined ? false : value.runningShoes;
   const pokedexEnabled = value.pokedexEnabled === undefined ? false : value.pokedexEnabled;
@@ -587,7 +603,7 @@ export function parseSourceEventState(value: unknown): SourceEventState {
   const caughtSpecies = parsedCaught === null ? null : addSpecies(parsedCaught, currentSpecies);
   const seenSpecies = parsedSeen === null || caughtSpecies === null ? null : addSpecies(parsedSeen,
     [...caughtSpecies, ...(pendingEncounter === null || pendingEncounter === undefined ? [] : [pendingEncounter.species])]);
-  if (switches === null || variables === null || selfSwitches === null || inventory === null || pokeVial === null
+  if (switches === null || variables === null || selfSwitches === null || inventory === null || visitedMaps === null || pokeVial === null
     || typeof runningShoes !== "boolean" || typeof pokedexEnabled !== "boolean"
     || typeof followerEnabled !== "boolean"
     || !finiteInteger(money) || money < 0 || money > SOURCE_MAX_MONEY
@@ -601,7 +617,7 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && value.nextWildBattleStages !== null
     || pendingHatches.some((id) => !hatchableIds.includes(id)) || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
-  return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, money, runningShoes, pokedexEnabled,
+  return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, visitedMaps, money, runningShoes, pokedexEnabled,
     pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
     party, ranch, dayCare, incubator, pendingHatches, pendingEncounter, nextWildBattleStages, typeAmulet,
     fieldItemEffects,

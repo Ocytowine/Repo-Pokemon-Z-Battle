@@ -1,7 +1,8 @@
-import { parsePlayerAvatarSelection, PLAYER_AVATAR_ACTIVE_STORAGE_KEY,
+import { parsePlayerAvatarSelection, PLAYER_AVATAR_ACTIVE_STORAGE_KEY, PLAYER_AVATAR_DRAFT_STORAGE_KEY,
   PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY, type PlayerAvatarSelection } from "@pokemon-z-battle/player-state";
-import { createSourceEventState, parseSourceEventState, type SourceEventState } from "./source-event-state.js";
-import { SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_STORAGE_KEY,
+import { createSourceEventState, parseSourceEventState, recordSourceVisitedMap,
+  type SourceEventState } from "./source-event-state.js";
+import { SOURCE_EVENT_STATE_STORAGE_KEY, SOURCE_NEW_GAME_STORAGE_KEY, sourceNewGameDraftKey,
   parseSourceNewGameSetup, type SourceNewGameSetup } from "./source-new-game.js";
 import { SOURCE_FIELD_SHORTCUTS_STORAGE_KEY } from "./source-field-shortcuts.js";
 import { createSourceWorldSave, parseSourceWorldSave, SOURCE_WORLD_SAVE_KEY, type SourceWorldSave } from "./source-world-save.js";
@@ -37,6 +38,10 @@ export function sourceSaveSlotKey(id: SourceSaveSlotId, kind: SourceSaveKind): s
   return `${SLOT_PREFIX}.${id}.${kind}`;
 }
 
+export function sourceAvatarDraftKey(id: SourceSaveSlotId): string {
+  return `${PLAYER_AVATAR_DRAFT_STORAGE_KEY}.slot.${id}`;
+}
+
 function importBackupKey(id: SourceSaveSlotId): string { return `${IMPORT_BACKUP_PREFIX}.${id}`; }
 export function sourceImportCloudHoldKey(id: SourceSaveSlotId): string { return `${IMPORT_CLOUD_HOLD_PREFIX}.${id}`; }
 export function sourceImportBackupExists(storage: Pick<Storage, "getItem">, id: SourceSaveSlotId): boolean {
@@ -51,7 +56,8 @@ export function importSourceSaveSlot(storage: Pick<Storage, "getItem" | "setItem
   const autoKey = sourceSaveSlotKey(id, "auto");
   const backupKey = importBackupKey(id);
   const holdKey = sourceImportCloudHoldKey(id);
-  const keys = [manualKey, autoKey, backupKey, holdKey, ignoredAutoKey(id), AUTO_RESUME_KEY];
+  const keys = [manualKey, autoKey, backupKey, holdKey, sourceAvatarDraftKey(id),
+    ignoredAutoKey(id), AUTO_RESUME_KEY];
   const before = keys.map((key) => [key, storage.getItem(key)] as const);
   try {
     if (storage.getItem(backupKey) === null && (before[0]![1] !== null || before[1]![1] !== null)) {
@@ -59,6 +65,7 @@ export function importSourceSaveSlot(storage: Pick<Storage, "getItem" | "setItem
     }
     storage.setItem(manualKey, JSON.stringify(validated));
     storage.removeItem(autoKey);
+    storage.removeItem(sourceAvatarDraftKey(id));
     storage.removeItem(ignoredAutoKey(id));
     storage.removeItem(AUTO_RESUME_KEY);
     storage.setItem(holdKey, "1");
@@ -81,12 +88,13 @@ export function restoreSourceImportBackup(storage: Pick<Storage, "getItem" | "se
   const manualKey = sourceSaveSlotKey(id, "manual");
   const autoKey = sourceSaveSlotKey(id, "auto");
   const holdKey = sourceImportCloudHoldKey(id);
-  const keys = [manualKey, autoKey, backupKey, holdKey];
+  const keys = [manualKey, autoKey, backupKey, holdKey, sourceAvatarDraftKey(id)];
   const before = keys.map((key) => [key, storage.getItem(key)] as const);
   try {
     setOrRemove(storage, manualKey, value.manual);
     setOrRemove(storage, autoKey, value.auto);
     storage.removeItem(backupKey);
+    storage.removeItem(sourceAvatarDraftKey(id));
     storage.setItem(holdKey, "1");
   } catch (error) {
     for (const [key, previous] of before) {
@@ -94,6 +102,34 @@ export function restoreSourceImportBackup(storage: Pick<Storage, "getItem" | "se
     }
     throw error;
   }
+}
+
+/** Deletes one local campaign, including its import backup, without touching the remote cloud copy. */
+export function deleteSourceSaveSlot(storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
+  session: Pick<Storage, "removeItem">, id: SourceSaveSlotId): boolean {
+  const wasActive = activeSourceSaveSlot(storage) === id;
+  const keys = [sourceSaveSlotKey(id, "manual"), sourceSaveSlotKey(id, "auto"), importBackupKey(id),
+    sourceImportCloudHoldKey(id), sourceAvatarDraftKey(id), ignoredAutoKey(id), sourceNewGameDraftKey(id)];
+  if (storage.getItem(AUTO_RESUME_KEY) === String(id)) keys.push(AUTO_RESUME_KEY);
+  if (wasActive) keys.push(SOURCE_WORLD_SAVE_KEY, SOURCE_EVENT_STATE_STORAGE_KEY,
+    PLAYER_AVATAR_ACTIVE_STORAGE_KEY, SOURCE_NEW_GAME_STORAGE_KEY, SOURCE_FIELD_SHORTCUTS_STORAGE_KEY,
+    ACTIVE_SLOT_KEY);
+  const before = keys.map((key) => [key, storage.getItem(key)] as const);
+  try {
+    for (const key of keys) storage.removeItem(key);
+    if (wasActive) storage.setItem(ACTIVE_SLOT_KEY, String(id === 1 ? 2 : 1));
+  } catch (error) {
+    for (const [key, value] of before) {
+      try { setOrRemove(storage, key, value); } catch { /* Keep the original failure. */ }
+    }
+    throw error;
+  }
+  if (wasActive) {
+    session.removeItem(PLAYER_AVATAR_SESSION_ACTIVE_STORAGE_KEY);
+    session.removeItem("pokemon-z-battle.overworld-session.v9");
+    session.removeItem("pokemon-z-battle.active-coop-battle.v1");
+  }
+  return wasActive;
 }
 
 function record(value: unknown): value is Readonly<Record<string, unknown>> {
@@ -111,10 +147,16 @@ export function parseSourceSaveSlotSnapshot(value: unknown): SourceSaveSlotSnaps
     throw new Error("Emplacement de sauvegarde invalide.");
   }
   const worldSave = value.worldSave === null ? null : parseSourceWorldSave(value.worldSave);
-  const eventState = parseSourceEventState(value.eventState);
+  const parsedState = parseSourceEventState(value.eventState);
+  // A legacy slot proves its saved position was entered, but gives no evidence for other maps.
+  const eventState = worldSave === null || record(value.eventState)
+    && value.eventState.visitedMaps !== undefined
+    ? parsedState : recordSourceVisitedMap(parsedState, worldSave.mapId);
+  const coherentWorld = worldSave === null || worldSave.eventState === null ? worldSave
+    : { ...worldSave, eventState };
   const player = value.player === null ? null : parsePlayerAvatarSelection(value.player);
   const newGame = value.newGame === null ? null : parseSourceNewGameSetup(value.newGame);
-  return { schemaVersion: 1, savedAt: value.savedAt as number, worldSave, eventState, player, newGame,
+  return { schemaVersion: 1, savedAt: value.savedAt as number, worldSave: coherentWorld, eventState, player, newGame,
     fieldShortcuts: value.fieldShortcuts as string | null };
 }
 

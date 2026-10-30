@@ -129,7 +129,7 @@ describe("guest source event policy", () => {
   });
 
   it("uses the host story even while the guest is on another map", () => {
-    const local = { ...createSourceEventState(), switches: { "10": false },
+    const local = { ...createSourceEventState(), visitedMaps: [3, 7], switches: { "10": false },
       variables: { "2": 1, "238": 1, "239": 3 }, pokeVial: { current: 1, maximum: 3 } };
     const synchronized = sourceStateWithHostStory(local,
       { switches: { "10": true }, variables: { "2": 7 }, selfSwitches: { "4:2:A": true } }, true);
@@ -137,16 +137,18 @@ describe("guest source event policy", () => {
       selfSwitches: { "4:2:A": true } });
     expect(synchronized.party).toBe(local.party);
     expect(synchronized.ranch).toBe(local.ranch);
+    expect(synchronized.visitedMaps).toEqual([3, 7]);
   });
 
   it("keeps personal effects without copying the projected host story into the guest save", () => {
-    const local = { ...createSourceEventState(), switches: { "10": false }, variables: { "2": 1 },
+    const local = { ...createSourceEventState(), visitedMaps: [3], switches: { "10": false }, variables: { "2": 1 },
       selfSwitches: { "3:4:A": false }, money: 500 };
-    const applied = { ...local, switches: { "10": true }, variables: { "2": 7, "238": 3, "239": 3 },
+    const applied = { ...local, visitedMaps: [3, 7], switches: { "10": true }, variables: { "2": 7, "238": 3, "239": 3 },
       pokeVial: { current: 3, maximum: 3 }, selfSwitches: { "3:4:A": true }, money: 750 };
     expect(sourceStateWithLocalStory(local, applied)).toMatchObject({
       switches: { "10": false }, variables: { "2": 1, "238": 3, "239": 3 },
       pokeVial: { current: 3, maximum: 3 }, selfSwitches: { "3:4:A": false }, money: 750,
+      visitedMaps: [3, 7],
     });
   });
 });

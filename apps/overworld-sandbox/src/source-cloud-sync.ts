@@ -1,4 +1,5 @@
-import { loadSourceSaveSlot, parseSourceSaveSlotSnapshot, persistSourceSaveSlot, sourceImportCloudHoldKey,
+import { loadSourceSaveSlot, parseSourceSaveSlotSnapshot, persistSourceSaveSlot, sourceAvatarDraftKey,
+  sourceImportCloudHoldKey,
   type SourceSaveKind, type SourceSaveSlotId, type SourceSaveSlotSnapshot } from "./source-save-slots.js";
 
 export interface CloudSaveHead {
@@ -177,6 +178,7 @@ export async function recoverCloudSave(storage: Pick<Storage, "getItem" | "setIt
   const copy = await api.get(slot, kind);
   const snapshot = parseSourceSaveSlotSnapshot(copy.snapshot);
   persistSourceSaveSlot(storage, slot, kind, snapshot);
+  storage.removeItem?.(sourceAvatarDraftKey(slot));
   remember(storage, email, slot, kind, copy.head, await digest(snapshot));
 }
 

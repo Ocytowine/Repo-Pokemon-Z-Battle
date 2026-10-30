@@ -5,6 +5,7 @@ import { createSourcePokemonCollection, filterSourcePokemonCollection, sourcePok
   sourcePokemonTypes, SOURCE_POKEMON_POWER_TIERS, type SourcePokemonFilters, type SourcePokemonPowerTier,
   type SourcePokemonQualityTier, type SourcePokemonSort } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml } from "./source-pokemon-card-view.js";
+import { sourceGridPageLayout, type SourceGridPageLayout } from "./source-grid-pagination.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
 import type { PlayerInventory } from "@pokemon-z-battle/player-state";
 import type { SourceShopItem } from "./source-economy.js";
@@ -45,6 +46,9 @@ export class SourceRanchView {
   private toolsPanel: "filters" | "sort" | null = null;
   private wasOpen = false;
   private ranchPage = 0;
+  private ranchLayout: SourceGridPageLayout = { columns: 3, rows: 3, pageSize: 9 };
+  private resizeObserver: ResizeObserver | null = null;
+  private currentModel: SourceRanchViewModel | null = null;
 
   public constructor(private readonly onClose: () => void,
     private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void,
@@ -57,7 +61,15 @@ export class SourceRanchView {
     const root = document.querySelector<HTMLElement>("#source-ranch");
     if (root === null) return;
     root.hidden = !model.open;
-    if (!model.open) { this.wasOpen = false; return; }
+    if (!model.open) { this.wasOpen = false; this.currentModel = null;
+      this.resizeObserver?.disconnect(); this.resizeObserver = null; return; }
+    this.currentModel = model;
+    if (typeof ResizeObserver !== "undefined" && this.resizeObserver === null) {
+      this.resizeObserver = new ResizeObserver(() => {
+        if (this.currentModel !== null && root.isConnected && !root.hidden) this.render(this.currentModel);
+      });
+      this.resizeObserver.observe(root);
+    }
     if (!this.wasOpen) {
       this.toolsPanel = null;
       this.teamExpanded = true;
@@ -74,7 +86,7 @@ export class SourceRanchView {
     const teamEntries = collection.filter((entry) => entry.location === "team");
     const ranchEntries = collection.filter((entry) => entry.location === "ranch");
     const filtered = filterSourcePokemonCollection(ranchEntries, this.filters);
-    const pageSize = sourceRanchPageSize(this.teamExpanded);
+    const pageSize = Math.min(sourceRanchPageSize(this.teamExpanded), this.ranchLayout.pageSize);
     const pageCount = sourceRanchPageCount(filtered.length, pageSize);
     this.ranchPage = Math.min(this.ranchPage, pageCount - 1);
     const visibleRanchEntries = filtered.slice(this.ranchPage * pageSize, (this.ranchPage + 1) * pageSize);
@@ -124,7 +136,7 @@ export class SourceRanchView {
         <div class="source-ranch-content">
           <aside class="source-ranch-team" aria-label="Équipe Pokémon"${this.teamExpanded ? "" : " hidden"}><div class="source-ranch-team-list">${teamEntries.map((entry) => card(entry, { compact: true, selected: entry.pokemon.id === this.selectedPokemonId,
             active: entry.teamIndex === model.party.activeIndex })).join("")}${emptyTeamSlots}</div></aside>
-          <section class="source-ranch-storage" aria-label="Pokémon du Ranch"><div class="source-pokemon-grid">${filtered.length === 0
+           <section class="source-ranch-storage" aria-label="Pokémon du Ranch"><div class="source-pokemon-grid" style="--source-ranch-columns:${this.ranchLayout.columns};--source-ranch-rows:${this.ranchLayout.rows}">${filtered.length === 0
               ? `<div class="source-ranch-empty"><strong>${ranchEntries.length === 0 ? "Ranch vide" : "Aucun Pokémon correspondant"}</strong><small>${ranchEntries.length === 0 ? "Déposez un Pokémon depuis l'équipe." : "Élargissez un ou plusieurs filtres."}</small></div>`
               : visibleRanchEntries.map((entry) => card(entry, { compact: true,
                 selected: entry.pokemon.id === this.selectedPokemonId,
@@ -132,13 +144,27 @@ export class SourceRanchView {
                 highlightTraining: this.filters.minimumIvStars !== "all" || this.filters.minimumEvStars !== "all" })).join("")}</div>
             <nav class="source-ranch-pages" aria-label="Pages du Ranch"${pageCount <= 1 ? " hidden" : ""}><button type="button" data-source-ranch-page="previous"${this.ranchPage === 0 ? " disabled" : ""}>‹ Précédente</button><span>Page ${this.ranchPage + 1}/${pageCount}</span><button type="button" data-source-ranch-page="next"${this.ranchPage >= pageCount - 1 ? " disabled" : ""}>Suivante ›</button></nav></section>
         </div>
-      </div>${wheel}${heldItemPanel}${releasePanel}`;
+       </div>${wheel}${heldItemPanel}${releasePanel}`;
+    const grid = root.querySelector<HTMLElement>(".source-ranch-storage .source-pokemon-grid");
+    if (grid !== null && grid.clientWidth > 0 && grid.clientHeight > 0) {
+      const minHeight = this.filters.potentialTier !== "all" || this.filters.minimumIvStars !== "all"
+        || this.filters.minimumEvStars !== "all" ? 76 : 62;
+      const layout = sourceGridPageLayout(grid.clientWidth, grid.clientHeight, 140, minHeight,
+        this.teamExpanded ? 3 : 4, this.teamExpanded ? 3 : 4, 6);
+      if (layout.pageSize !== this.ranchLayout.pageSize || layout.columns !== this.ranchLayout.columns) {
+        this.ranchPage = Math.floor(this.ranchPage * pageSize / layout.pageSize);
+        this.ranchLayout = layout;
+        this.render(model);
+        return;
+      }
+    }
     bindSourceHeldItemIconFallback(root);
     root.querySelector<HTMLButtonElement>("#close-source-ranch")?.addEventListener("click", this.onClose);
     root.querySelector<HTMLButtonElement>("[data-source-ranch-team-toggle]")?.addEventListener("click", () => {
-      const firstVisibleIndex = this.ranchPage * sourceRanchPageSize(this.teamExpanded);
+      const firstVisibleIndex = this.ranchPage * pageSize;
       this.teamExpanded = !this.teamExpanded;
-      this.ranchPage = Math.floor(firstVisibleIndex / sourceRanchPageSize(this.teamExpanded));
+      this.ranchPage = Math.floor(firstVisibleIndex / Math.min(sourceRanchPageSize(this.teamExpanded),
+        this.ranchLayout.pageSize));
       this.render(model);
     });
     root.querySelectorAll<HTMLButtonElement>("[data-source-ranch-tools]").forEach((button) =>

@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { createPersistentPokemonMetadata } from "@pokemon-z-battle/player-state";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
 import { applySafeStateCommands, completePendingEncounter, createSourceEventState, parseSourceEventState,
-  recordSourcePokedexEvolution, recordSourcePokedexRelease, selectActiveEventPage } from "../src/source-event-state.js";
+  recordSourcePokedexEvolution, recordSourcePokedexRelease, recordSourceVisitedMap,
+  sourceFlyDestinationVisited, selectActiveEventPage } from "../src/source-event-state.js";
 
 function page(condition: ImportedEventPage["condition"], commands: ImportedEventPage["commands"] = []): ImportedEventPage {
   return { condition, graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
@@ -18,6 +19,17 @@ const emptyDayCare = { schemaVersion: 2 as const, slots: [null, null] as const, 
 const emptyIncubator = { schemaVersion: 1 as const, slots: [null, null, null, null, null, null] as const };
 
 describe("persistent source event state", () => {
+  it("tracks only entered maps and restores a personal flight history", () => {
+    const initial = createSourceEventState();
+    expect(sourceFlyDestinationVisited(initial, 24)).toBe(false);
+    expect(sourceFlyDestinationVisited(initial, 24, true)).toBe(true);
+    const entered = recordSourceVisitedMap(recordSourceVisitedMap(initial, 24), 3);
+    expect(entered.visitedMaps).toEqual([3, 24]);
+    expect(recordSourceVisitedMap(entered, 24)).toBe(entered);
+    expect(parseSourceEventState(JSON.parse(JSON.stringify(entered))).visitedMaps).toEqual([3, 24]);
+    expect(parseSourceEventState({ ...initial, visitedMaps: undefined }).visitedMaps).toEqual([]);
+    expect(() => parseSourceEventState({ ...initial, visitedMaps: [0] })).toThrow();
+  });
   it("selects the last page whose switch, variable and scoped self-switch conditions are met", () => {
     const event: ImportedMapEvent = { id: 7, name: "NPC", x: 0, y: 0, pages: [page(unconditional),
       page({ ...unconditional, switch1Id: 4 }), page({ ...unconditional, variable: { id: 9, minimum: 3 } }),
@@ -65,11 +77,11 @@ describe("persistent source event state", () => {
     const initial = createSourceEventState();
     const result = applySafeStateCommands(initial, page(unconditional, commands), 3, 8);
     expect(result).toMatchObject({ safe: true, appliedCommands: 7 });
-    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+    expect(result.state).toEqual({ switches: { 10: true, 11: true }, variables: { 5: 9 }, selfSwitches: { "3:8:A": true }, inventory: {}, visitedMaps: [], money: 3000, pokedexEnabled: true, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: true, runningShoes: true, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
       typeAmulet: null, fieldItemEffects: { repelSteps: 0, flute: null, shinyNextWildEncounter: false,
         escapePoint: null }, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
       appliedBattleSettlementIds: [] });
-    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+    expect(initial).toEqual({ switches: {}, variables: {}, selfSwitches: {}, inventory: {}, visitedMaps: [], money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
       typeAmulet: null, fieldItemEffects: { repelSteps: 0, flute: null, shinyNextWildEncounter: false,
         escapePoint: null }, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
       appliedBattleSettlementIds: [] });
@@ -86,7 +98,7 @@ describe("persistent source event state", () => {
 
   it("validates persisted state before restoring it", () => {
     expect(parseSourceEventState({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false } }))
-      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+      .toEqual({ switches: { 2: true }, variables: { 3: 4 }, selfSwitches: { "3:1:A": false }, inventory: {}, visitedMaps: [], money: 3000, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, runningShoes: false, checkpoint: null, party: emptyParty, ranch: emptyRanch, dayCare: emptyDayCare, incubator: emptyIncubator, pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
         typeAmulet: null, fieldItemEffects: { repelSteps: 0, flute: null, shinyNextWildEncounter: false,
           escapePoint: null }, happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
         appliedBattleSettlementIds: [] });

@@ -6,6 +6,10 @@ export interface OriginalSaveCandidate {
   readonly uri: string;
   readonly size: number;
 }
+export interface OriginalSaveSearchResult {
+  readonly candidates: readonly OriginalSaveCandidate[];
+  readonly limited: boolean;
+}
 interface SourceSaveLocatorNative {
   searchFolder(): Promise<{ readonly candidates: readonly OriginalSaveCandidate[]; readonly limited: boolean }>;
   readSave(options: { readonly uri: string }): Promise<{ readonly base64: string }>;
@@ -17,13 +21,14 @@ export function originalSaveFolderSearchAvailable(): boolean {
 }
 
 /** Android grants read access only to the folder the player selects. */
-export async function searchOriginalSaveFolder(): Promise<readonly OriginalSaveCandidate[]> {
+export async function searchOriginalSaveFolder(): Promise<OriginalSaveSearchResult> {
   if (!originalSaveFolderSearchAvailable()) throw new Error("Recherche par dossier disponible dans l'APK Android.");
   const result = await native.searchFolder();
   if (!Array.isArray(result.candidates)) throw new Error("Résultat de recherche invalide.");
-  return result.candidates.filter((entry) => typeof entry.name === "string" && typeof entry.path === "string"
+  const candidates = result.candidates.filter((entry) => typeof entry.name === "string" && typeof entry.path === "string"
     && typeof entry.uri === "string" && entry.uri.startsWith("content://")
     && Number.isFinite(entry.size));
+  return { candidates, limited: result.limited === true };
 }
 
 export async function readOriginalSaveCandidate(candidate: OriginalSaveCandidate): Promise<File> {

@@ -12,6 +12,7 @@ import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualSta
   type SourceFieldMark } from "./source-field-effects.js";
 import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-region-map.js";
 import { sourceTruthEventOpacity } from "./source-truth-lens.js";
+import { parseSourceTrainerLocalizations, type SourceTrainerLocalizations } from "./source-trainer-localization.js";
 import { expandSourceCommonEvents, type SourceCommonEvent, type SourceEventCommand } from "./source-common-events.js";
 import { parseSourceMegaEvolutionCatalog, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
 import { parseSourceEncounterModifierCatalog,
@@ -121,6 +122,7 @@ export interface ImportedMapAssets {
     readonly waterRipple: HTMLImageElement;
   };
   readonly mapTranslations: ReadonlyMap<string, string>;
+  readonly trainerLocalizations: SourceTrainerLocalizations;
   readonly itemNames: ReadonlyMap<string, string>;
   readonly items: ReadonlyMap<string, SourceShopItem>;
   readonly alchemy: SourceAlchemyCatalog;
@@ -827,6 +829,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
   const commonEvents = parseSourceCommonEvents(commonEventsValue);
   const events = parseMapEvents(eventValue, commonEvents);
   const mapTranslations = parseMapTranslations(localizationValue, map.id);
+  const trainerLocalizations = parseSourceTrainerLocalizations(localizationValue);
   const items = parseImportedItems(itemsValue, localizationValue);
   const alchemy = parseSourceAlchemyCatalog(alchemyValue);
   const megaEvolutions = parseSourceMegaEvolutionCatalog(megaEvolutionsValue);
@@ -867,7 +870,7 @@ export async function loadImportedMap(mapId: number): Promise<ImportedMapAssets>
     characterImages: new Map(characterNames.map((name, index) => [name, characters[index]!])), playerImage, playerPickupImage,
     fieldEffectImages: { footprint: footprintImage, mountedFootprint: mountedFootprintImage,
       waterRipple: waterRippleImage },
-    mapTranslations, itemNames, items, alchemy, megaEvolutions, encounterModifiers, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
+    mapTranslations, trainerLocalizations, itemNames, items, alchemy, megaEvolutions, encounterModifiers, machineCompatibility, pokemonOverworldPaths, battleCatalog, pokemonAssets,
     summaryAssets, availableItemIconIds,
     trainers, trainerTypes, regionMap,
     encounter: parseImportedEncounter(encountersValue, mapId), ...battlePresentation };

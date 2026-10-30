@@ -7,6 +7,7 @@ import { applySafeStateCommands, type SourceEventState } from "./source-event-st
 import { sourceItemGains, type SourceItemGain } from "./source-item-presentation.js";
 import { localizedDialogueText, type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets,
   type ImportedTransfer } from "./imported-map.js";
+import { sourceTrainerDisplayName } from "./source-trainer-localization.js";
 import type { SourceSequenceCommandResult, SourceSequenceSession } from "./source-sequence-controller.js";
 import type { SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceEncounterMethod } from "./source-wild-encounter.js";
@@ -167,6 +168,7 @@ export class SourceSequenceEffects {
       victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
       baseMoney: trainerType.baseMoney,
       trainerTypeId: trainerType.id,
+      displayName: sourceTrainerDisplayName({ id: trainerType.id, name: trainer.name }, assets.trainerLocalizations),
       defeatText: localizedDialogueText(command.data.defeatText, session.translations),
       format: command.data.format === "double" ? "double" : "single",
     }, (won) => {
