@@ -10,6 +10,7 @@ describe("multiplayer worker routing", () => {
   it("normalizes room codes from API paths", () => {
     expect(roomCodeFromPath("/api/rooms/abc234/join", "join")).toBe("ABC234");
     expect(roomCodeFromPath("/api/rooms/abc234/socket", "socket")).toBe("ABC234");
+    expect(roomCodeFromPath("/api/rooms/abc234/preview", "preview")).toBe("ABC234");
     expect(roomCodeFromPath("/api/rooms/invalid/join", "join")).toBeNull();
   });
 });

@@ -249,7 +249,7 @@ describe("source battle controller", () => {
 
   it("starts a non-escapable trainer battle and reports its result", async () => {
     const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
-    let eventState: SourceEventState = { ...createSourceEventState(), party };
+    let eventState: SourceEventState = { ...createSourceEventState(), party, wildEncounterSteps: 8 };
     const visuals = presentation();
     const callbacks: SourceBattleCallbacks = {
       getEventState: () => eventState,
@@ -275,6 +275,7 @@ describe("source battle controller", () => {
     expect(completed).toHaveBeenCalledWith(true);
     expect(eventState.money).toBe(3120);
     expect(eventState.pendingEncounter).toBeNull();
+    expect(eventState.wildEncounterSteps).toBe(0);
     expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({ money: 120,
       trainerDefeatText: "J'ai encore beaucoup à apprendre !",
       experiences: [expect.objectContaining({ pokemonName: "Marisson", amount: 16,
@@ -367,5 +368,24 @@ describe("source battle controller", () => {
     expect(eventState).toMatchObject({ pendingEncounter: null, wildEncounterSteps: 0 });
     expect(completed).toHaveBeenCalledOnce();
     expect(completed).toHaveBeenCalledWith(false);
+  });
+
+  it("resets encounter steps after a shared Trainer battle", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("starter", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party, wildEncounterSteps: 8 };
+    const completed = vi.fn();
+    const controller = new SourceBattleController(presentation(), {
+      getEventState: () => eventState, updateEventState: (nextState) => { eventState = nextState; },
+      getResources: () => ({ catalog, mapId: 7, battleback: "forest", battleMusic: null, victoryMusic: null }),
+      setNotice: vi.fn(), render: vi.fn(), openSharedBattle: () => true,
+    });
+    expect(controller.startTrainerBattle({ trainerType: "CRISANTO1", name: "Crisanto", version: 1,
+      pokemon: [{ species: "BIDOOF", level: 2, moves: [null, null, null, null] }] },
+    { battleMusic: null, victoryMusic: null, baseMoney: 60, trainerTypeId: 6, defeatText: "Perdu" },
+    completed)).toBe(true);
+    controller.acknowledgeSharedBattleOpened();
+    expect(controller.completeSharedBattle("won", "trainer-sequence")).toBe(true);
+    expect(eventState.wildEncounterSteps).toBe(0);
+    expect(completed).toHaveBeenCalledWith(true);
   });
 });

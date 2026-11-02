@@ -22,9 +22,15 @@ function battle(format: "single" | "double" = "single"): SharedBattleParticipati
 describe("shared battle participation", () => {
   it("keeps capture on an unowned wild target and routes forced replacement by ownership", () => {
     const source = battle();
-    const tactical = createTeamBattleState({ player: [pokemon("starter")], opponent: [pokemon("wild")] });
+    const tactical = createTeamBattleState({ player: [pokemon("starter")],
+      opponent: [{ ...pokemon("wild"), capture: { rate: 45, baseSpeed: 31, weight: 20 } }] });
     expect(canCaptureSharedBattleTarget(source, tactical, "source-wild")).toBe(true);
     expect(canCaptureSharedBattleTarget(source, tactical, "source-trainer")).toBe(false);
+    const uncapturable = { ...tactical, teams: { ...tactical.teams, opponent: {
+      ...tactical.teams.opponent,
+      members: tactical.teams.opponent.members.map((member) => ({ ...member, capture: undefined })),
+    } } };
+    expect(canCaptureSharedBattleTarget(source, uncapturable, "source-wild")).toBe(false);
 
     const guestWild = { ...source, camps: { ...source.camps, opponent: {
       trainerIds: ["guest"], members: [{ ownerId: "guest", battler: pokemon("wild") }], activeMemberId: "wild",

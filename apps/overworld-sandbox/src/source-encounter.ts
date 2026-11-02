@@ -65,7 +65,13 @@ export function createSourceEncounterBattle(party: PlayerPartyState, encounter: 
       { player: player.activeIndex, opponent: opponent.activeIndex });
   const environment: BattleEnvironment = encounter.method === "cave" || encounter.method === "rock-smash" ? "cave"
     : encounter.method === "fishing" ? "moving-water" : encounter.method === "land" ? "grass" : "none";
-  const contextualState = withEnvironment({ ...state, moveCatalog: battleMoveCatalog(catalog) }, environment);
+  const environmentState = withEnvironment({ ...state, moveCatalog: battleMoveCatalog(catalog) }, environment);
+  // Source boss encounters use the wild battle flow, but do not permit capture.
+  // The same public battler fact is consumed by the local UI and the room.
+  const contextualState = encounter.boss === true ? { ...environmentState, teams: {
+    ...environmentState.teams, opponent: { ...environmentState.teams.opponent,
+      members: environmentState.teams.opponent.members.map((member) => ({ ...member, capture: undefined })) },
+  } } : environmentState;
   if (encounter.initialStages === undefined) return contextualState;
   const opponentTeam = contextualState.teams.opponent;
   const withInitialStages = (member: (typeof opponentTeam.members)[number]) => {

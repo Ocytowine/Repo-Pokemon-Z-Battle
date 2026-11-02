@@ -17,6 +17,8 @@ export interface SourceSequenceSession {
   cursor: number;
   advancing: boolean;
   autorunBaseline?: SourceEventState;
+  /** One-shot presentation override from the current source event. */
+  nextBattleMusic?: string | null;
   readonly runner: SourceSequenceRunner;
   readonly onComplete?: () => void;
   /** Cible canonique ayant declenche l'evenement (par exemple un invite vu par un Dresseur). */

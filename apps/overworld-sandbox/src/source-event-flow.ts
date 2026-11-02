@@ -1,11 +1,13 @@
 import type { ImportedEventPage } from "./imported-map.js";
-import type { SourceEventState } from "./source-event-state.js";
+import { applySafeStateCommands, type SourceEventState } from "./source-event-state.js";
 import { parseSourceAblePokemonCountCondition, parseSourceInventoryQuantityCondition, portSourceRubyCommand,
-  portSourceRubyCondition, isSourceDayCareEggServicePage, isSourceDayCareServicePage } from "./source-script-ports.js";
+  portSourceRubyCondition, isSourceDayCareEggServicePage, isSourceDayCareServicePage,
+  parseSourceAchievementCondition, parseSourcePokedexOwnedCondition } from "./source-script-ports.js";
 import { parseSourceMoveRoute } from "./source-move-route.js";
 import { isKnownSourceCommand } from "./source-command-registry.js";
 import { portSourcePokeVialCommand } from "./source-poke-vial.js";
 import { sourcePartySpellsUnownEterno } from "./source-unown-puzzle.js";
+import { sourceAchievementStatus, sourcePokedexOwned } from "./source-achievements.js";
 
 type EventCommand = ImportedEventPage["commands"][number];
 
@@ -25,6 +27,8 @@ export interface EventFlowResult {
 export interface EventFlowContext {
   readonly playerDirection: number;
   readonly movementTestUnlocks?: boolean;
+  /** Personal source milestones must ignore another player's completion switches. */
+  readonly personalAchievementGates?: boolean;
 }
 
 function integer(value: unknown): value is number {
@@ -63,6 +67,11 @@ function evaluateCondition(command: EventCommand, state: SourceEventState, mapId
       const count = state.party.members.filter((pokemon) => pokemon.hp > 0 && pokemon.metadata.eggSteps <= 0).length;
       return compareInventoryQuantity(count, ablePokemon.comparator, ablePokemon.quantity);
     }
+    const achievement = parseSourceAchievementCondition(command.data.script);
+    if (achievement !== null) return sourceAchievementStatus(state.achievements, achievement.id) === achievement.status;
+    const pokedex = parseSourcePokedexOwnedCondition(command.data.script);
+    if (pokedex !== null) return compareInventoryQuantity(sourcePokedexOwned(state.pokedex.caughtSpecies),
+      pokedex.comparator, pokedex.quantity);
     return null;
   }
   if (!Array.isArray(operands)) return null;
@@ -135,12 +144,33 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
   let blockedReason: string | null = null;
   const commands = page.commands;
   const projectedInventory: Record<string, number> = { ...state.inventory };
+  let projectedState = state;
+  let jumpTarget: number | null = null;
+  let jumpCount = 0;
 
   const walk = (start: number, end: number): boolean => {
     let index = start;
     while (index < end) {
       const command = commands[index];
       if (command === undefined) break;
+      if (jumpTarget !== null) {
+        if (jumpTarget < start || jumpTarget >= end) return true;
+        index = jumpTarget + 1;
+        jumpTarget = null;
+        continue;
+      }
+      if (command.kind === "label") { index += 1; continue; }
+      if (command.kind === "jump-label") {
+        const name = Array.isArray(command.data.parameters) ? command.data.parameters[0] : null;
+        const matches = commands.flatMap((candidate, position) => candidate.kind === "label"
+          && Array.isArray(candidate.data.parameters) && candidate.data.parameters[0] === name ? [position] : []);
+        if (typeof name !== "string" || matches.length !== 1 || ++jumpCount > 64) {
+          blockedReason = "saut d'étiquette invalide";
+          return false;
+        }
+        jumpTarget = matches[0]!;
+        continue;
+      }
       if (command.kind === "show-choices") {
         const choiceEnd = matchingIndex(commands, index + 1, end, command.indent, new Set(["choice-end"]));
         const choices = command.data.choices;
@@ -172,6 +202,7 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         const branchEnd = matchingIndex(commands, branch + 1, choiceEnd + 1, command.indent,
           new Set(["choice-branch", "choice-cancel", "choice-end"]));
         if (!walk(branch + 1, branchEnd < 0 ? choiceEnd : branchEnd)) return false;
+        if (jumpTarget !== null) continue;
         index = choiceEnd + 1;
         continue;
       }
@@ -182,7 +213,17 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
           return false;
         }
         const otherwise = matchingIndex(commands, index + 1, conditionEnd, command.indent, new Set(["else"]));
-        const result = evaluateCondition(command, { ...state, inventory: projectedInventory }, mapId, eventId, context);
+        let result = evaluateCondition(command, { ...projectedState, inventory: projectedInventory }, mapId, eventId, context);
+        if (context?.personalAchievementGates === true && command.data.kind === "switch"
+          && Array.isArray(command.data.operands) && command.data.operands[1] === 1) {
+          const guarded = commands.slice(index + 1, otherwise < 0 ? conditionEnd : otherwise)
+            .map((candidate) => portSourceRubyCommand(candidate))
+            .filter((candidate) => candidate?.kind === "set-achievement");
+          if (guarded.length === 1 && Number.isSafeInteger(guarded[0]?.data.achievementId)) {
+            result = sourceAchievementStatus(projectedState.achievements,
+              guarded[0]!.data.achievementId as number) !== 3;
+          }
+        }
         if (result === null) {
           const deferred = portSourceRubyCondition(command);
           if (deferred === null) {
@@ -191,12 +232,14 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
           }
           output.push(deferred);
           if (!walk(index + 1, otherwise < 0 ? conditionEnd : otherwise)) return false;
+          if (jumpTarget !== null) continue;
           index = conditionEnd + 1;
           continue;
         }
         const branchStart = result ? index + 1 : otherwise < 0 ? conditionEnd : otherwise + 1;
         const branchEnd = result && otherwise >= 0 ? otherwise : conditionEnd;
         if (!walk(branchStart, branchEnd)) return false;
+        if (jumpTarget !== null) continue;
         index = conditionEnd + 1;
         continue;
       }
@@ -228,7 +271,15 @@ export function resolveEventFlow(page: ImportedEventPage, selections: readonly n
         blockedReason = "route de mouvement invalide";
         return false;
       }
-      output.push(executable);
+      const presented = executable.kind === "show-text" || executable.kind === "text-continuation"
+        ? { ...executable, data: { ...executable.data, dialogueVariables: { ...projectedState.variables } } }
+        : executable;
+      output.push(presented);
+      if (["change-variables", "set-variable-from-statistic", "set-achievement", "set-switches", "set-self-switch"].includes(executable.kind)) {
+        const projected = applySafeStateCommands(projectedState, { ...page, commands: [executable] }, mapId, eventId);
+        if (!projected.safe) { blockedReason = projected.reason; return false; }
+        projectedState = projected.state;
+      }
       if ((executable.kind === "grant-item" || executable.kind === "remove-item")
         && typeof executable.data.itemId === "string" && Number.isSafeInteger(executable.data.quantity)) {
         const itemId = executable.data.itemId;

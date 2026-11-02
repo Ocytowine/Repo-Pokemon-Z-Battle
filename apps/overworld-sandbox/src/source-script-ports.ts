@@ -49,6 +49,16 @@ export function parseSourceAblePokemonCountCondition(ruby: string): SourceAblePo
   return { comparator: match[1] as SourceInventoryComparator, quantity };
 }
 
+export function parseSourceAchievementCondition(ruby: string): { id: number; status: number } | null {
+  const match = /^getLogro\(\s*(\d+)\s*\)\s*==\s*([123])$/u.exec(ruby.trim());
+  return match === null ? null : { id: Number(match[1]), status: Number(match[2]) };
+}
+
+export function parseSourcePokedexOwnedCondition(ruby: string): SourceAblePokemonCountCondition | null {
+  const match = /^\$Trainer\.pokedexOwned\(\s*\)\s*(<=|>=|==|!=|<|>)\s*(\d+)$/u.exec(ruby.trim());
+  return match === null ? null : { comparator: match[1] as SourceInventoryComparator, quantity: Number(match[2]) };
+}
+
 export function isSourceStarterSelectionPage(page: ImportedEventPage): boolean {
   const scripts = page.commands.map(rubySource).filter((source): source is string => source !== null);
   const addsPokemon = scripts.some((source) => /^pbAddPokemon\(:[A-Z][A-Z0-9_]*,\s*\d+\)$/u.test(source));
@@ -62,6 +72,12 @@ export function isSourceStarterSelectionPage(page: ImportedEventPage): boolean {
 export function portSourceRubyCommand(source: EventCommand): EventCommand | null {
   if (source.kind !== "ruby-script" || typeof source.data.source !== "string") return null;
   const ruby = source.data.source.trim();
+  let match = /^\$game_variables\[\s*(\d+)\s*\]\s*=\s*\$Trainer\.pokedexOwned\(\s*\)$/u.exec(ruby);
+  if (match !== null) return command(source, "set-variable-from-statistic",
+    { variableId: Number(match[1]), statistic: "pokedex-owned", policy: "PERSONAL" });
+  match = /^setLogro\(\s*(\d+)\s*,\s*([123])\s*\)$/u.exec(ruby);
+  if (match !== null) return command(source, "set-achievement",
+    { achievementId: Number(match[1]), status: Number(match[2]), policy: "PERSONAL" });
   const mart = /^pbPokemonMart\(\s*\[([\s\S]*?)\]\s*\)$/u.exec(ruby);
   if (mart !== null) {
     const stock = [...mart[1]!.matchAll(/:([A-Za-z][A-Za-z0-9_]*)/gu)].map((match) => match[1]!.toUpperCase());
@@ -77,7 +93,10 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^\$PokemonGlobal\.nuzlocke\s*=\s*(?:true|false)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "UNSUPPORTED_GAME_MODE" });
   }
-  if (/^\$PokemonGlobal\.nextBattle(?:BGM|ME|Back)\s*=\s*(?:"[^"]*"|nil)$/u.test(ruby)) {
+  match = /^\$PokemonGlobal\.nextBattleBGM\s*=\s*(?:"([^"]+)"|(nil))$/u.exec(ruby);
+  if (match !== null) return command(source, "set-next-battle-music",
+    { music: match[2] === "nil" ? null : match[1], policy: "BATTLE_PRESENTATION_OVERRIDE" });
+  if (/^\$PokemonGlobal\.nextBattle(?:ME|Back)\s*=\s*(?:"[^"]*"|nil)$/u.test(ruby)) {
     return command(source, "runtime-noop", { policy: "BATTLE_PRESENTATION_OVERRIDE" });
   }
   const bossStats = /^\$game_variables\[300\]\s*=\s*\[((?::[A-Z]+\s*,\s*-?\d+\s*,?\s*)+)\]$/u.exec(ruby);
@@ -126,7 +145,7 @@ export function portSourceRubyCommand(source: EventCommand): EventCommand | null
   if (/^(?:Kernel\.)?pbSetPokemonCenter$/u.test(ruby)) return command(source, "set-checkpoint", { policy: "PERSONAL" });
   if (/^(?:Kernel\.)?pbPokeCenterPC$/u.test(ruby)) return command(source, "open-ranch", { policy: "PERSONAL" });
   if (/^(?:Kernel\.)?pbMiningGame$/u.test(ruby)) return command(source, "open-mining", { policy: "PERSONAL" });
-  let match = /^pbAddPokemon\(:([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
+  match = /^pbAddPokemon\(:([A-Z][A-Z0-9_]*),\s*(\d+)\)$/u.exec(ruby);
   if (match !== null) return command(source, "add-pokemon", { species: match[1], level: Number(match[2]), policy: "PERSONAL" });
   match = /^pbWildBattle\((?:PBSpecies::|:)([A-Z][A-Z0-9_]*),\s*(\d+)(?:,\s*[^)]*)?\)$/u.exec(ruby);
   if (match !== null) return command(source, "request-encounter", { species: match[1], level: Number(match[2]), policy: "HOST_ONLY" });

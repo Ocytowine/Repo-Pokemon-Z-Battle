@@ -354,3 +354,42 @@ objets du pack BGM restent inchangés ; l'APK embarque encore leurs pistes.
 - [ ] Réaliser le pilote `BosqueZ` avec fond large, socles et effets alignés.
 - [ ] Livrer tous les assets source en packs sans exclusion, puis vérifier hors ligne et mise à jour d'un seul pack.
 - [ ] Auditer progressivement narration, cartes et combats avant toute première exclusion prouvée.
+
+### APK 0.1.7 (8) — 2026-10-30
+
+Cette diffusion de code réutilise la décision de la 0.1.6 : 49 fonds larges
+déjà présents dans le pack privé restent omis de l'APK, tandis que le repli
+et les autres ressources sont conservés. `android:release:slim` a vérifié les
+51 entrées du manifeste local avant la copie ; les packs R2 de fonds et BGM
+n'ont pas changé. Aucune ressource nouvelle n'est exclue ou bannie. Seuls
+l'APK signée `0.1.7 (8)` et son manifeste de mise à jour ont été publiés.
+
+### Contrôle de la scène Molino — travail local du 2026-11-02
+
+La carte source 286 demande le décor `Molino` et son événement de boss demande
+`CombateNido`. Le fond large `battlebgMolinoZ.png`, le repli 4:3 et
+`playerbaseMolino.png` gardent leur décision de livraison actuelle ; aucun
+fichier n'est copié, exclu, remplacé ou republié. L'absence d'un
+`enemybaseMolino.png` homonyme ne doit plus déclencher le décor de secours
+par-dessus le fond existant. Le plan adverse reste sans ce socle tant qu'une
+preuve source ne définit pas son remplacement. Recette visuelle et audio sur
+Android, puis comparaison avec d'autres scènes incomplètes, encore ouvertes.
+
+### Socle adverse Molino — ajout local du 2026-11-02
+
+À la demande du porteur, une variante visuelle du socle joueur a été créée
+pour le plan adverse : `Graphics/Battlebacks/enemybaseMolino.png` (PNG transparent,
+1 868 × 842, 588 751 octets, SHA-256
+`ed15faf6d5ae47c7bd9ecd40249d5d32c944ad602bbd128b9b5b590204e91070`).
+Elle est placée uniquement dans les ressources du jeu source local, hors Git ;
+`prepare:local` l'a détectée et la copie Android locale l'inclut dans l'APK de
+recette. Le fond large `MolinoZ` garde sa distribution par pack et son repli.
+Aucun pack ni manifeste distant n'est modifié pour cet essai. La décision
+précédente d'afficher le décor sans socle manquant reste valable pour les
+autres scènes incomplètes. Le rendu sur téléphone doit être confirmé.
+
+L'APK locale `0.1.7 (8)` du 2026-11-02 a été reconstruite avec
+`android:release:slim` puis installée par USB pour cette recette. Elle reprend
+la même répartition que l'APK déjà diffusée : 49 fonds larges fournis par le
+pack privé et repli 4:3 conservé. Aucun objet de pack ni manifeste R2 n'a été
+modifié ; seule la logique de rendu et de combat de la copie locale a changé.

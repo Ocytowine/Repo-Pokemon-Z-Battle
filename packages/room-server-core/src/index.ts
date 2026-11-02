@@ -95,6 +95,8 @@ export interface PersistedRoomState {
   readonly battleInventories?: readonly (readonly [string, SourceBattleInventory])[];
   readonly battleConsumedItems?: readonly (readonly [string, SourceBattleInventory])[];
   readonly battleJoinInventory?: readonly [string, SourceBattleInventory] | null;
+  readonly coopLevelReference?: number | null;
+  readonly coopGuestEnabled?: boolean;
 }
 
 interface PendingReactiveSwitchTurn {
@@ -122,6 +124,7 @@ export interface RoomWorldDefinition {
   readonly catalog: OverworldCatalog;
   readonly initialState: OverworldState;
   readonly sourceWorld?: SourceWorldHostState | null;
+  readonly coopLevelReference?: number | null;
 }
 
 const SOURCE_OPPOSITE = { down: "up", left: "right", right: "left", up: "down" } as const;
@@ -177,6 +180,8 @@ export class AuthoritativeBattleRoom {
   readonly #battleInventories = new Map<string, SourceBattleInventory>();
   readonly #battleConsumedItems = new Map<string, SourceBattleInventory>();
   readonly #sourceTruthLensUntil = new Map<BattleSide, number>();
+  #coopLevelReference: number | null;
+  #coopGuestEnabled = false;
   #battleJoinInventory: readonly [string, SourceBattleInventory] | null = null;
   readonly #now: () => number;
 
@@ -187,11 +192,14 @@ export class AuthoritativeBattleRoom {
     this.#createBattle = createBattle;
     this.#rng = rng;
     this.#worldCatalog = world.catalog;
+    this.#coopLevelReference = world.coopLevelReference ?? null;
     this.#now = now;
     this.#worldState = world.initialState;
     this.#sourceWorldState = world.sourceWorld === null || world.sourceWorld === undefined
       ? null : sourceWorldSnapshot(world.sourceWorld);
     if (persisted !== undefined) {
+      this.#coopLevelReference = persisted.coopLevelReference ?? null;
+      this.#coopGuestEnabled = persisted.coopGuestEnabled ?? false;
       this.#revision = persisted.revision;
       this.#battleSequence = persisted.battleSequence;
       this.#battleId = persisted.battleId;
@@ -257,7 +265,8 @@ export class AuthoritativeBattleRoom {
     }
   }
 
-  public reserve(playerId: string, profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile()): RoomConnection {
+  public reserve(playerId: string, profile: NetworkPlayerProfile = createDefaultNetworkPlayerProfile(),
+    coopLevelSync = false): RoomConnection {
     const existing = this.#players.get(playerId);
     if (existing !== undefined) return { side: existing.side, snapshot: this.snapshot(), reconnected: true,
       settlement: this.pendingBattleSettlement(existing.playerId),
@@ -275,6 +284,7 @@ export class AuthoritativeBattleRoom {
     if (side === undefined) throw new Error("ROOM_FULL");
     this.#players.set(playerId, { playerId, side, ready: false, connected: false,
       disconnectedAt: null, departed: false, profile, acknowledged: new Map() });
+    if (side === "opponent") this.#coopGuestEnabled = coopLevelSync && this.#coopLevelReference !== null;
     if (side === "opponent" && this.#sourceWorldState !== null) {
       const current = this.#sourceWorldState;
       const hostState: SourceWorldHostState = { mapId: current.mapId, width: current.width, height: current.height,
@@ -374,6 +384,7 @@ export class AuthoritativeBattleRoom {
         player: this.#movementSequences.get("player") ?? 0,
         opponent: this.#movementSequences.get("opponent") ?? 0,
       },
+      coopLeveling: { referenceLevel: this.#coopLevelReference, guestEnabled: this.#coopGuestEnabled },
     };
   }
 
@@ -453,6 +464,8 @@ export class AuthoritativeBattleRoom {
       battleInventories: [...this.#battleInventories.entries()],
       battleConsumedItems: [...this.#battleConsumedItems.entries()],
       battleJoinInventory: this.#battleJoinInventory,
+      coopLevelReference: this.#coopLevelReference,
+      coopGuestEnabled: this.#coopGuestEnabled,
       worldState: this.#worldState,
       sourceWorldState: this.#sourceWorldState,
       sourceSceneState: this.#sourceSceneState,
@@ -1426,6 +1439,11 @@ export class AuthoritativeBattleRoom {
     }
     if (player.playerId === this.#battleParticipation.battleOwnerId) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Le meneur participe déjà à ce combat.")];
+    }
+    if (player.side === "opponent" && this.#coopGuestEnabled && this.#coopLevelReference !== null
+      && message.team.members.some((member) => member.level !== this.#coopLevelReference)) {
+      return [this.error(player.playerId, message.requestId, "INVALID_MESSAGE",
+        "Le niveau de l'équipe invitee ne correspond pas au niveau Coop de la room.")];
     }
     if (this.#battleObserverIds.includes(player.playerId)) {
       return [this.error(player.playerId, message.requestId, "INVALID_PHASE", "Ce joueur a choisi d'observer ce combat.")];

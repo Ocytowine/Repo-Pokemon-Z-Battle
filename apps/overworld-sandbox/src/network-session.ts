@@ -137,6 +137,11 @@ export class OverworldNetworkSession {
     return this.activeSession !== null;
   }
 
+  public get hasPendingBattleSettlement(): boolean {
+    return this.activeSession?.pendingSettlement !== null
+      && this.activeSession?.pendingSettlement !== undefined;
+  }
+
   public get current(): NetworkSessionView | null {
     return this.activeSession;
   }
@@ -148,7 +153,8 @@ export class OverworldNetworkSession {
   }
 
   public async createOrJoin(kind: "create" | "join", rawServerUrl: string, rawRoomCode: string,
-    profile: NetworkPlayerProfile, sourceWorld: SourceWorldHostState | null = null): Promise<void> {
+    profile: NetworkPlayerProfile, sourceWorld: SourceWorldHostState | null = null,
+    coopLevelReference: number | null = null, coopLevelSync = false): Promise<void> {
     if (this.connectionPending) {
       this.setStatus("Connexion…", "Une demande de connexion est déjà en cours.");
       return;
@@ -159,7 +165,9 @@ export class OverworldNetworkSession {
       const path = kind === "create" ? "/api/rooms" : `/api/rooms/${normalizeRoomCode(rawRoomCode)}/join`;
       const validatedSourceWorld = sourceWorld === null ? null : parseSourceWorldHostState(sourceWorld);
       const response = await fetch(`${serverUrl}${path}`, { method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify(kind === "create" ? { profile, sourceWorld: validatedSourceWorld } : { profile }) });
+        body: JSON.stringify(kind === "create"
+          ? { profile, sourceWorld: validatedSourceWorld, coopLevelReference }
+          : { profile, coopLevelSync }) });
       const value: unknown = await response.json();
       if (!response.ok) {
         const code = isRecord(value) && typeof value.error === "string" ? value.error : `HTTP ${response.status}`;
@@ -172,6 +180,22 @@ export class OverworldNetworkSession {
     } finally {
       this.connectionPending = false;
     }
+  }
+
+  public async previewCoopLevelReference(rawServerUrl: string, rawRoomCode: string): Promise<number | null> {
+    const serverUrl = normalizeServerUrl(rawServerUrl);
+    const roomCode = normalizeRoomCode(rawRoomCode);
+    const response = await fetch(`${serverUrl}/api/rooms/${roomCode}/preview`);
+    if (!response.ok) throw new Error(response.status === 404
+      ? "Cette room n'existe pas ou le Worker doit être mis à jour." : `Prévisualisation impossible (HTTP ${response.status}).`);
+    const value: unknown = await response.json();
+    if (!isRecord(value)) throw new Error("Référence Coop invalide.");
+    const level = value.coopLevelReference;
+    if (level === null) return null;
+    if (!Number.isSafeInteger(level) || Number(level) < 1 || Number(level) > 100) {
+      throw new Error("Référence Coop invalide.");
+    }
+    return Number(level);
   }
 
   public restore(profile: NetworkPlayerProfile): void {

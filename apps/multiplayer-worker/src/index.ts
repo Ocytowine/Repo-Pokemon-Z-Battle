@@ -83,6 +83,10 @@ export class BattleRoom extends DurableObject<Env> {
       const url = new URL(request.url);
       if (request.method === "POST" && url.pathname === "/create") return this.createRoom(await request.json());
       if (request.method === "POST" && url.pathname === "/join") return this.joinRoom(await request.json());
+      if (request.method === "GET" && url.pathname === "/preview") {
+        return this.#room === null ? json({ error: "ROOM_NOT_FOUND" }, 404)
+          : json({ coopLevelReference: this.#room.snapshot().coopLeveling?.referenceLevel ?? null });
+      }
       if (request.method === "GET" && url.pathname === "/socket") return this.openSocket(request, url);
       return json({ error: "Route Durable Object inconnue." }, 404);
     } catch (error) {
@@ -147,8 +151,14 @@ export class BattleRoom extends DurableObject<Env> {
       try { sourceWorld = parseSourceWorldHostState(body.sourceWorld); }
       catch { return json({ error: "INVALID_SOURCE_WORLD" }, 400); }
     }
+    const coopLevelReference = "coopLevelReference" in body ? body.coopLevelReference : null;
+    if (coopLevelReference !== null && (!Number.isSafeInteger(coopLevelReference)
+      || Number(coopLevelReference) < 1 || Number(coopLevelReference) > 100)) {
+      return json({ error: "INVALID_COOP_LEVEL" }, 400);
+    }
     this.#room = new AuthoritativeBattleRoom(body.roomCode, createDemoBattle, new SeededRandom(seed),
-      { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState(), sourceWorld });
+      { catalog: DEMO_WORLD_CATALOG, initialState: createDemoWorldState(), sourceWorld,
+        coopLevelReference: coopLevelReference as number | null });
     const ticket = await this.issueTicket(profile);
     await this.persistImmediately();
     return json(ticket, 201);
@@ -160,8 +170,10 @@ export class BattleRoom extends DurableObject<Env> {
     let profile: NetworkPlayerProfile;
     try { profile = parseNetworkPlayerProfile(body.profile); }
     catch { return json({ error: "INVALID_PROFILE" }, 400); }
+    const coopLevelSync = "coopLevelSync" in body ? body.coopLevelSync : false;
+    if (typeof coopLevelSync !== "boolean") return json({ error: "INVALID_COOP_LEVEL" }, 400);
     try {
-      const ticket = await this.issueTicket(profile);
+      const ticket = await this.issueTicket(profile, coopLevelSync);
       await this.persistImmediately();
       return json(ticket, 201);
     } catch (error) {
@@ -170,11 +182,11 @@ export class BattleRoom extends DurableObject<Env> {
     }
   }
 
-  private async issueTicket(profile: NetworkPlayerProfile): Promise<object> {
+  private async issueTicket(profile: NetworkPlayerProfile, coopLevelSync = false): Promise<object> {
     if (this.#room === null || this.#roomCode === null) throw new Error("ROOM_NOT_FOUND");
     const playerId = crypto.randomUUID();
     const reconnectToken = randomToken();
-    const connection = this.#room.reserve(playerId, profile);
+    const connection = this.#room.reserve(playerId, profile, coopLevelSync);
     if (connection.replacedPlayerId !== undefined) this.#identities.delete(connection.replacedPlayerId);
     this.#identities.set(playerId, await sha256(reconnectToken));
     return {
@@ -297,11 +309,13 @@ export class BattleRoom extends DurableObject<Env> {
 }
 
 async function proxyTicket(stub: DurableObjectStub<BattleRoom>, operation: "create" | "join", profile: unknown,
-  roomCode?: string, sourceWorld?: unknown): Promise<Response> {
+  roomCode?: string, sourceWorld?: unknown, coopLevelReference?: unknown, coopLevelSync?: unknown): Promise<Response> {
   return stub.fetch(`https://room.internal/${operation}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify(operation === "create" ? { roomCode, profile, sourceWorld: sourceWorld ?? null } : { profile }),
+    body: JSON.stringify(operation === "create"
+      ? { roomCode, profile, sourceWorld: sourceWorld ?? null, coopLevelReference: coopLevelReference ?? null }
+      : { profile, coopLevelSync: coopLevelSync ?? false }),
   });
 }
 
@@ -326,9 +340,12 @@ export default {
       try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
       const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
       const sourceWorld = typeof body === "object" && body !== null && "sourceWorld" in body ? body.sourceWorld : null;
+      const coopLevelReference = typeof body === "object" && body !== null && "coopLevelReference" in body
+        ? body.coopLevelReference : null;
       for (let attempt = 0; attempt < 8; attempt += 1) {
         const roomCode = generateRoomCode(crypto.getRandomValues(new Uint8Array(6)));
-        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", profile, roomCode, sourceWorld);
+        const response = await proxyTicket(env.BATTLE_ROOMS.getByName(roomCode), "create", profile, roomCode,
+          sourceWorld, coopLevelReference);
         if (response.status !== 409) return withCors(response, origin);
       }
       return withCors(json({ error: "ROOM_CODE_EXHAUSTED" }, 503), origin);
@@ -339,7 +356,16 @@ export default {
       let body: unknown;
       try { body = await request.json(); } catch { return withCors(json({ error: "INVALID_PROFILE" }, 400), origin); }
       const profile = typeof body === "object" && body !== null && "profile" in body ? body.profile : null;
-      return withCors(await proxyTicket(env.BATTLE_ROOMS.getByName(joinCode), "join", profile), origin);
+      const coopLevelSync = typeof body === "object" && body !== null && "coopLevelSync" in body
+        ? body.coopLevelSync : false;
+      return withCors(await proxyTicket(env.BATTLE_ROOMS.getByName(joinCode), "join", profile,
+        undefined, undefined, undefined, coopLevelSync), origin);
+      }
+
+      const previewCode = roomCodeFromPath(url.pathname, "preview");
+      if (request.method === "GET" && previewCode !== null) {
+        return withCors(await env.BATTLE_ROOMS.getByName(previewCode).fetch(
+          new Request("https://room.internal/preview")), origin);
       }
 
       const socketCode = roomCodeFromPath(url.pathname, "socket");

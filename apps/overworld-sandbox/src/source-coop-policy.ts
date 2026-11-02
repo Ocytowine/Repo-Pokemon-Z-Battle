@@ -3,6 +3,7 @@ import type { SourceEventState } from "./source-event-state.js";
 import type { SourceStorySnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { isSourceDayCareEggServicePage, isSourceDayCareServicePage, portSourceRubyCommand } from "./source-script-ports.js";
+import type { ImportedMapEvent } from "./imported-map.js";
 import { sourceVariablesWithPersonalPokeVial } from "./source-poke-vial.js";
 
 export type GuestSourceEventAccess = "blocked" | "personal" | "transfer";
@@ -78,6 +79,7 @@ export function sourceStateWithLocalStory(local: SourceEventState, applied: Sour
  */
 export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEventAccess {
   if (isSourceDayCareServicePage(page) || isSourceDayCareEggServicePage(page)) return "personal";
+  if (personalAchievementPageIds(page).length > 0 || personalAchievementStatisticPage(page)) return "personal";
   const commands = page.commands.map((command) => portSourceRubyCommand(command) ?? command);
   const forbiddenPersonalEffects = new Set([
     "add-pokemon", "request-encounter", "request-trainer-battle", "set-pokedex-enabled", "set-follower",
@@ -92,8 +94,51 @@ export function guestSourceEventAccess(page: ImportedEventPage): GuestSourceEven
 
 /** State effects retained from a personal service while the host owns the story. */
 export function guestSourceStateCommandAllowed(page: ImportedEventPage, kind: string): boolean {
+  if (personalAchievementPageIds(page).length > 0 || personalAchievementStatisticPage(page)) {
+    return kind === "set-achievement" || kind === "set-variable-from-statistic" || kind === "change-variables";
+  }
   return guestSourceEventAccess(page) === "personal"
     && (kind === "heal-party" || kind === "set-checkpoint" || kind === "refill-poke-vial");
+}
+
+const ACHIEVEMENT_SERVICE_KINDS = new Set([
+  "show-text", "text-continuation", "text-options", "condition", "else", "condition-end", "end",
+  "change-variables", "set-switches", "set-self-switch", "label", "jump-label",
+]);
+const achievementServiceCache = new WeakMap<ImportedEventPage,
+  { readonly ids: readonly number[]; readonly statistic: boolean } | null>();
+
+function achievementService(page: ImportedEventPage):
+{ readonly ids: readonly number[]; readonly statistic: boolean } | null {
+  if (achievementServiceCache.has(page)) return achievementServiceCache.get(page) ?? null;
+  const commands = page.commands.map((command) => portSourceRubyCommand(command) ?? command);
+  const result = commands.every((command) => ACHIEVEMENT_SERVICE_KINDS.has(command.kind)
+    || command.kind === "set-achievement" || command.kind === "set-variable-from-statistic")
+    ? { ids: commands.flatMap((command) => command.kind === "set-achievement"
+      && Number.isSafeInteger(command.data.achievementId) ? [command.data.achievementId as number] : []),
+      statistic: commands.some((command) => command.kind === "set-variable-from-statistic") } : null;
+  achievementServiceCache.set(page, result);
+  return result;
+}
+
+function personalAchievementPageIds(page: ImportedEventPage): number[] {
+  return [...(achievementService(page)?.ids ?? [])];
+}
+
+function personalAchievementStatisticPage(page: ImportedEventPage): boolean {
+  return achievementService(page)?.statistic === true;
+}
+
+/** Reopen the personal milestone page even when the host has activated its completed page. */
+export function guestPersonalAchievementPage(event: ImportedMapEvent):
+{ readonly page: ImportedEventPage; readonly pageIndex: number } | null {
+  for (let pageIndex = 0; pageIndex < event.pages.length; pageIndex += 1) {
+    const page = event.pages[pageIndex];
+    if (page === undefined || page.settings.trigger !== 0) continue;
+    const ids = personalAchievementPageIds(page);
+    if (ids.length > 0) return { page, pageIndex };
+  }
+  return null;
 }
 
 /**

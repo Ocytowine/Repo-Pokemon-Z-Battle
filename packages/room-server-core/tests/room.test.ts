@@ -377,6 +377,19 @@ function sourceTrainerBattleContext(ownerId: string) {
 }
 
 describe("authoritative battle room", () => {
+  it("keeps the guest level choice authoritative across reconnection and room restoration", () => {
+    const world = { ...worldWithSource, coopLevelReference: 24 };
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);
+    room.reserve("host");
+    room.reserve("guest", undefined, true);
+    expect(room.snapshot().coopLeveling).toEqual({ referenceLevel: 24, guestEnabled: true });
+    expect(room.reserve("guest", undefined, false).snapshot.coopLeveling)
+      .toEqual({ referenceLevel: 24, guestEnabled: true });
+    const restored = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world,
+      room.exportState());
+    expect(restored.snapshot().coopLeveling).toEqual({ referenceLevel: 24, guestEnabled: true });
+  });
+
   it("starts a player duel only when facing the other avatar and resolves both players' actions", () => {
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource);
     room.connect("alice");

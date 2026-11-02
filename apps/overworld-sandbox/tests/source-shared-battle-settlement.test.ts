@@ -3,7 +3,8 @@ import { createPersistentPokemon, playerPartyToBattleTeam, type PlayerCreationCa
   from "@pokemon-z-battle/player-state";
 import { createTeamBattleState, type SharedBattleParticipation } from "@pokemon-z-battle/battle-engine";
 import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
-import { createSourceEventState } from "../src/source-event-state.js";
+import { createSourceEventState, parseSourceEventState } from "../src/source-event-state.js";
+import { replaySourceDeferredCoopExperience } from "../src/source-coop-experience.js";
 import { applySourceBattleSettlement } from "../src/source-shared-battle-settlement.js";
 
 const catalog: PlayerCreationCatalog = {
@@ -50,6 +51,21 @@ describe("shared source battle settlement", () => {
     expect(applied.state.party.members[0]?.heldItem).toBe("HONEY");
     expect(applySourceBattleSettlement(applied.state, settlement, "host", catalog))
       .toEqual({ state: applied.state, applied: false, gains: [], moneyDelta: 0, capturedPokemonId: null });
+    const deferred = applySourceBattleSettlement(initial, settlement, "host", catalog, undefined, undefined, true);
+    expect(deferred.state.party.members[0]!.experience).toBe(pokemon.experience);
+    expect(deferred.state.deferredCoopExperience).toHaveLength(1);
+    const restored = parseSourceEventState(JSON.parse(JSON.stringify(deferred.state)));
+    const replayed = replaySourceDeferredCoopExperience(restored, catalog);
+    expect(replayed.state.party.members[0]!.experience).toBe(applied.state.party.members[0]!.experience);
+    expect(replayed.state.deferredCoopExperience).toEqual([]);
+    expect(replaySourceDeferredCoopExperience(replayed.state, catalog).gains).toEqual([]);
+    const storedBeforeReturn = { ...restored, party: { ...restored.party, members: [], activeIndex: null },
+      ranch: { ...restored.ranch, members: [...restored.party.members] } };
+    const replayedFromRanch = replaySourceDeferredCoopExperience(storedBeforeReturn, catalog);
+    expect(replayedFromRanch.state.ranch.members[0]!.experience).toBe(applied.state.party.members[0]!.experience);
+    expect(replayedFromRanch.state.deferredCoopExperience).toEqual([]);
+    expect(applySourceBattleSettlement(deferred.state, settlement, "host", catalog, undefined, undefined, true).applied)
+      .toBe(false);
   });
 
   it("adds a captured Pokemon only to its owner and consumes the Ball idempotently", () => {

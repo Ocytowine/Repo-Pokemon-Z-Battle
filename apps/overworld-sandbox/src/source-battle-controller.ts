@@ -21,7 +21,8 @@ import {
   type ScaledWildExperienceCalculation,
   type SourceTrainerDefinition,
 } from "./source-encounter.js";
-import { completePendingEncounter, type SourceEventState } from "./source-event-state.js";
+import { completePendingEncounter, finishPendingEncounterAfterBattle, resetWildEncounterStepsAfterBattle,
+  type SourceEventState } from "./source-event-state.js";
 import { finishSourceWildBattleFieldEffects } from "./source-field-item.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 import type { SourceBattleReportStore } from "./source-battle-report.js";
@@ -217,7 +218,8 @@ export class SourceBattleController {
     return this.startFailure;
   }
 
-  public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null): boolean {
+  public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null,
+    battleMusicOverride?: string): boolean {
     let eventState = this.callbacks.getEventState();
     let encounter = eventState.pendingEncounter;
     const resources = this.callbacks.getResources();
@@ -243,7 +245,7 @@ export class SourceBattleController {
         }), ...(eventState.fieldItemEffects.shinyNextWildEncounter ? { shiny: true as const } : {}) });
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
-        opponentTrainer: null });
+        opponentTrainer: null, battleMusic: battleMusicOverride });
       this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent, moveCatalog: battle.moveCatalog }) === true) {
@@ -263,7 +265,7 @@ export class SourceBattleController {
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
       void this.presentation.startBattle(this.battle,
-        { battleMusic: resources.battleMusic, victoryMusic: resources.victoryMusic, battleback: resources.battleback,
+        { battleMusic: battleMusicOverride ?? resources.battleMusic, victoryMusic: resources.victoryMusic, battleback: resources.battleback,
           ...(encounter.initialStages !== undefined && Object.values(encounter.initialStages).some((stage) => stage > 0)
             ? { initialOpponentStatBoost: true } : {}) });
       this.callbacks.setNotice(`Combat lancé contre ${encounter.species} niveau ${encounter.level}.`);
@@ -446,11 +448,9 @@ export class SourceBattleController {
     const trainerCompletion = this.trainerCompletion;
     if (continuation === "pending-encounter") {
       const current = finishSourceWildBattleFieldEffects(this.callbacks.getEventState());
-      if (outcome === "escaped") {
-        this.callbacks.updateEventState({ ...current, pendingEncounter: null, wildEncounterSteps: 0 });
-      } else if (won) {
-        this.callbacks.updateEventState(completePendingEncounter(current));
-      } else this.callbacks.updateEventState(current);
+      this.callbacks.updateEventState(finishPendingEncounterAfterBattle(current, won));
+    } else if (continuation === "trainer-sequence") {
+      this.callbacks.updateEventState(resetWildEncounterStepsAfterBattle(this.callbacks.getEventState()));
     }
     this.clear();
     this.callbacks.setNotice(outcome === "escaped"
@@ -529,6 +529,12 @@ export class SourceBattleController {
   private async submitTurnAction(action: TeamBattleAction, activeSlot = 0,
     resume: NonNullable<SourceBattleController["pendingReactive"]> | null = null): Promise<void> {
     if (this.battle === null || this.rng === null || this.resolving) return;
+    if (action.kind === "capture" && this.battle.teams.opponent.members[
+      this.battle.teams.opponent.activeIndex]?.capture === undefined) {
+      this.callbacks.setNotice("Ce Pokémon ne peut pas être capturé.");
+      this.callbacks.render();
+      return;
+    }
     const initialEventState = this.callbacks.getEventState();
     const consumedItemId = action.kind === "item" ? action.itemId : action.kind === "capture" ? action.ballId : null;
     if (consumedItemId !== null && (initialEventState.inventory[consumedItemId] ?? 0) <= 0) {
@@ -784,8 +790,9 @@ export class SourceBattleController {
         await this.presentation.endBattle(winner, outcome);
         if (trainerCompletion === null) {
           nextState = finishSourceWildBattleFieldEffects(nextState);
-          if (wildSettlement?.completed === true) nextState = completePendingEncounter(nextState);
+          nextState = finishPendingEncounterAfterBattle(nextState, wildSettlement?.completed === true);
         }
+        nextState = resetWildEncounterStepsAfterBattle(nextState);
         this.callbacks.updateEventState(nextState);
         if (battleId !== undefined) {
           this.callbacks.battleReports?.recordSettlement({ battleId, outcome,

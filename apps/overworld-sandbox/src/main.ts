@@ -10,7 +10,7 @@ import { applySafeStateCommands, createSourceEventState, parseSourceEventState, 
   recordSourcePokedexEvolution, recordSourcePokedexRelease, recordSourcePokedexSeen,
   recordSourceVisitedMap, sourceFlyDestinationVisited,
   type SourceEventState, type SourceFishingRod } from "./source-event-state.js";
-import { addPokemonToParty, addPokemonToStorage, createPersistentPokemon,
+import { addPokemonToParty, addPokemonToStorage, coopReferenceLevel, projectCoopPartyAtLevel, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
   movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
   changePokemonCollectionHeldItem, declinePendingPokemonMove, discardInventoryItem, isPokemonItemUsableInBattle,
@@ -48,6 +48,7 @@ import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventCo
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
   findSourceMapEntryAutorun, type ActiveSourceAutorun } from "./source-autorun.js";
 import { resolveEventFlow, type PendingEventChoice } from "./source-event-flow.js";
+import { sourceNewAchievementNames } from "./source-achievements.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
 import { compileSourceScene, formatSourceSceneAudit, type SourceScenePlan } from "./source-scene-plan.js";
 import { SourceSequenceController, type SourceSequenceCommandResult, type SourceSequenceSession }
@@ -133,10 +134,11 @@ import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMove
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
+import { replaySourceDeferredCoopExperience } from "./source-coop-experience.js";
 import { configureSourceItemIconAvailability, grantSourceTestItems, resetSourceTestItemPocket, SOURCE_BAG_POCKETS,
   sourceBagEntries, sourceItemIconFallbackUrl, sourceItemIconUrl } from "./source-bag.js";
 import { isSourceItemDiscardable } from "./source-item-actions.js";
-import { guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
+import { guestPersonalAchievementPage, guestSourceEventAccess, guestSourceStateCommandAllowed, shouldApplyDeferredSourceWorld,
   shouldRejoinSharedSourceMap,
   sourceBattleAllowsAttachment, sourceInteractionTarget, sourcePlayersAdjacent, sourcePlayersFaceForDuel,
   sourceEventUsesTransientErase, sourceStateWithHostStory, sourceStateWithLocalStory,
@@ -515,6 +517,7 @@ let networkStateText = "Local";
 let networkNotice = "Lancez le serveur multijoueur, puis créez ou rejoignez une partie.";
 let networkServerUrl = "https://pokemon-z-battle.mimidu33-eb.workers.dev";
 let networkRoomCode = "";
+let sourceCoopLevelSyncSelected = false;
 let networkPresentedBattle: { readonly id: string; readonly state: TeamBattleState } | null = null;
 const networkBattleOutcomes = new Map<string, SourceBattleOutcome>();
 const networkBattleContexts = new Map<string, SourceBattleContext>();
@@ -747,7 +750,7 @@ function checkSourceWildEncounter(): boolean {
 }
 
 function startSourceRandomTableEncounter(method: SourceEncounterMethod,
-  onComplete: (won: boolean) => void, chancePercent = 100): boolean {
+  onComplete: (won: boolean) => void, chancePercent = 100, battleMusic?: string): boolean {
   if (importedAssets === null || sourceEventState.pendingEncounter !== null
     || sourceEventState.party.members.length === 0) return false;
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
@@ -766,7 +769,7 @@ function startSourceRandomTableEncounter(method: SourceEncounterMethod,
         : method.endsWith("Rod") ? "fishing" : "land",
       victorySwitches: {}, escapable: true } };
   persistSourceEventState();
-  return encounter !== null && sourceBattles.startPendingEncounter(onComplete);
+  return encounter !== null && sourceBattles.startPendingEncounter(onComplete, battleMusic);
 }
 
 function appendSourceFieldMarks(motion: SourceGridMotion, mode: SourceMovementMode, now: number): void {
@@ -1009,7 +1012,8 @@ async function runSourceParallelCycle(task: SourceParallelTask): Promise<"repeat
 function beginSourceSequence(active: ActiveSourceAutorun, label: string, interactionTarget?: GridPoint): boolean {
   if (importedAssets === null || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
   const flow = resolveEventFlow(active.page, [], sourceInteractionState(), importedAssets.map.id, active.event.id,
-    { playerDirection: sourceDirectionNumber(importedAvatar.direction), movementTestUnlocks: sourceMovementTestOverride });
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction), movementTestUnlocks: sourceMovementTestOverride,
+      personalAchievementGates: isNetworkGuest() });
   if (!flow.complete && flow.pendingChoice === null) {
     importedNotice = `${label} bloqué : ${flow.blockedReason ?? "séquence incomplète"}.`;
     return false;
@@ -1161,7 +1165,8 @@ function continueSourceSequenceChoice(sequence: SourceSequenceSession, selected:
   if (sequence.sourcePage === undefined) return false;
   const selections = [...sequence.selections, selected];
   const flow = resolveEventFlow(sequence.sourcePage, selections, sourceInteractionState(), sequence.mapId, sequence.eventId,
-    { playerDirection: sourceDirectionNumber(importedAvatar.direction), movementTestUnlocks: sourceMovementTestOverride });
+    { playerDirection: sourceDirectionNumber(importedAvatar.direction), movementTestUnlocks: sourceMovementTestOverride,
+      personalAchievementGates: isNetworkGuest() });
   if (!flow.complete && flow.pendingChoice === null) {
     importedNotice = `Séquence interrompue : ${flow.blockedReason ?? "branche incomplète"}.`;
     sourceSequences.clear(sequence);
@@ -1194,7 +1199,10 @@ async function executeSourceSequenceCommand(sequence: SourceSequenceSession,
 function completeSourceSequence(sequence: SourceSequenceSession): void {
       const autorunBaseline = sequence.autorunBaseline;
       if (sourceSequenceChoicePrompt === sequence) sourceSequenceChoicePrompt = null;
-      importedNotice = "Séquence automatique terminée.";
+      const unlocked = autorunBaseline === undefined ? []
+        : sourceNewAchievementNames(autorunBaseline.achievements, sourceEventState.achievements);
+      importedNotice = unlocked.length > 0 ? `Succès obtenu : ${unlocked.join(", ")}.`
+        : "Séquence automatique terminée.";
       renderImportedView();
       sequence.onComplete?.();
       if (importedAssets?.map.id === sequence.mapId) refreshSourceParallelPresentation(importedAssets);
@@ -1612,6 +1620,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   },
   onCreateRoom: (serverUrl) => { void createOrJoin("create", serverUrl, ""); },
   onJoinRoom: (serverUrl, roomCode) => { void createOrJoin("join", serverUrl, roomCode); },
+  onCoopLevelSync: (selected) => { sourceCoopLevelSyncSelected = selected; renderSourceMenu(); },
   onDisconnectRoom: disconnectMultiplayer,
   onEditProfile: openPlayerCustomization,
   onMovementMode: selectSourceMovementMode,
@@ -1817,7 +1826,7 @@ sourceSequenceEffects = new SourceSequenceEffects({
     renderImportedView();
   },
   beginItemPresentation: beginSequenceItemPresentation,
-  startPendingEncounter: (onComplete) => sourceBattles.startPendingEncounter(onComplete),
+  startPendingEncounter: (onComplete, battleMusic) => sourceBattles.startPendingEncounter(onComplete, battleMusic),
   startRandomEncounter: startSourceRandomTableEncounter,
   startTrainerBattle: (trainer, audio, onComplete) => sourceBattles.startTrainerBattle(trainer, audio, onComplete),
   getTrainerBattleFailure: () => sourceBattles.lastStartFailure,
@@ -2010,14 +2019,17 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
     networkBattleSettlements.set(settlement.battleId, settlement);
     const previousParty = sourceEventState.party;
     const moneyBefore = sourceEventState.money;
+    const deferCoopExperience = multiplayer.current?.ticket.side === "opponent"
+      && multiplayer.current.snapshot?.coopLeveling?.guestEnabled === true;
     const result = applySourceBattleSettlement(sourceEventState, settlement, playerId, assets.battleCatalog,
       settlement.capturedPokemon === undefined ? undefined
         : activePokemonCreationContext(networkBattleContexts.get(settlement.battleId)?.mapId
-          ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId), new Date().getHours());
+          ?? importedAssets?.map.id ?? 3, settlement.capturedPokemon.ballId), new Date().getHours(),
+      deferCoopExperience);
     sourceEventState = result.state;
     persistSourceEventState();
     if (result.applied && result.capturedPokemonId !== null) void queueSourceCaptureResolution(result.capturedPokemonId);
-    if (result.applied) enqueueAllSourceProgressions();
+    if (result.applied && !deferCoopExperience) enqueueAllSourceProgressions();
     const reportExperiences = sharedBattleExperiencePresentations(previousParty, result.state.party,
       result.gains, assets.battleCatalog);
     const reportOutcome: SourceBattleOutcome = {
@@ -2989,6 +3001,11 @@ function renderSourceMenu(): void {
       effectiveLevelCap: sourceDevLevelCap(pokemonZLevelCap(sourceEventState.switches), sourceDevSettings),
       levelCapOverride: sourceDevSettings.levelCapOverride },
     coop: { active: multiplayer.active, state: networkStateText, notice: networkNotice,
+      levelSyncSelected: sourceCoopLevelSyncSelected,
+      levelReference: network?.snapshot?.coopLeveling?.referenceLevel ?? null,
+      levelSyncActive: network?.ticket.side === "opponent"
+        && network.snapshot?.coopLeveling?.guestEnabled === true,
+      hostLevelReference: coopReferenceLevel(sourceEventState.party),
       serverUrl: networkServerUrl, roomCode: networkRoomCode,
       profileName: activePlayerSelection.profile.displayName,
       players: (network?.snapshot?.players ?? []).map((player) => ({ side: player.side,
@@ -4167,6 +4184,7 @@ function beginSequenceItemPresentation(sequence: SourceSequenceSession, gains: r
 
 function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
   const previousInventory = sourceEventState.inventory;
+  const previousAchievements = sourceEventState.achievements;
   const guest = isNetworkGuest();
   const statePage = guest ? { ...completed.flow.page,
     commands: completed.flow.page.commands.filter((command) => !isSourceStateCommand(command.kind)
@@ -4188,6 +4206,8 @@ function applyCompletedSourceEvent(completed: SourceDialogueSession): void {
     persistSourceEventState();
     importedNotice = `Dialogue terminé ; ${result.appliedCommands} commande(s) d'état appliquée(s) et mémorisée(s).`;
   } else importedNotice = "Dialogue terminé.";
+  const unlocked = sourceNewAchievementNames(previousAchievements, sourceEventState.achievements);
+  if (unlocked.length > 0) importedNotice = `Succès obtenu : ${unlocked.join(", ")}.`;
   const itemGains = importedAssets === null ? []
     : sourceItemGains(previousInventory, result.state.inventory, importedAssets.itemNames);
   if (itemGains.length > 0) {
@@ -4639,6 +4659,7 @@ function renderEncounter(): void {
     escapeConfirmationCount: localSourceBattle ? 0 : networkBattle?.escapeConfirmations?.length ?? 0,
     escapeConfirmationRequired: localSourceBattle ? 1 : Math.max(1, escapeParticipants.length),
     capturable: localSourceBattle ? sourceEventState.pendingEncounter !== null
+      && battleState?.teams.opponent.members[battleState.teams.opponent.activeIndex]?.capture !== undefined
       : networkBattle?.participation !== null && networkBattle?.participation !== undefined
         && networkBattle.sourceContext !== null
         && canCaptureSharedBattleTarget(networkBattle.participation, networkBattle.state,
@@ -4687,7 +4708,12 @@ function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourcePl
   if (importedAssets === null) return { team: null,
     unavailableReason: "Les données de combat ne sont pas encore chargées.",
     requiresHealing: false, notice: null };
-  return prepareSourcePlayerBattleTeam(sourceEventState.party, importedAssets.battleCatalog,
+  const level = multiplayer.current?.ticket.side === "opponent"
+    && multiplayer.current.snapshot?.coopLeveling?.guestEnabled === true
+    ? multiplayer.current.snapshot.coopLeveling.referenceLevel : null;
+  const party = level === null || level === undefined ? sourceEventState.party
+    : projectCoopPartyAtLevel(sourceEventState.party, level, importedAssets.battleCatalog);
+  return prepareSourcePlayerBattleTeam(party, importedAssets.battleCatalog,
     importedAssets.megaEvolutions, sourceMegaActivationAvailable(importedAssets.megaEvolutions,
       sourceEventState.inventory, sourceEventState.switches));
 }
@@ -4810,8 +4836,11 @@ function interact(playerId: AvatarId): void {
     }
     if (!sourceScenes.allows("world-input", activity)) return;
     if (importedAssets === null || playerId !== "player") return;
-    const target = eventInInteractionRange(sourceInteractiveMapEvents(), importedAvatar, importedAssets.map,
+    const selectedTarget = eventInInteractionRange(sourceInteractiveMapEvents(), importedAvatar, importedAssets.map,
       importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
+    const personalPage = isNetworkGuest() && selectedTarget !== null
+      ? guestPersonalAchievementPage(selectedTarget.event) : null;
+    const target = selectedTarget === null || personalPage === null ? selectedTarget : { ...selectedTarget, ...personalPage };
     if (target === null && trySourceTraversalInteraction()) return;
     const joinableBattle = multiplayer.current?.joinableBattle;
     const remoteAhead = multiplayer.active && !guestSourceExcursion && remotePlayerAhead();
@@ -4921,13 +4950,31 @@ function setNetworkText(stateText: string, notice: string, _active: boolean): vo
 }
 
 async function createOrJoin(kind: "create" | "join", serverUrl: string, roomCode: string): Promise<void> {
+  if (kind === "join" && sourceCoopLevelSyncSelected) {
+    try {
+      const level = await multiplayer.previewCoopLevelReference(serverUrl, roomCode);
+      if (level === null) {
+        networkNotice = "L'hôte n'a pas de Pokémon éclos : nivellement Coop indisponible.";
+        renderSourceMenu();
+        return;
+      }
+      if (!window.confirm(`Tes Pokémon combattront temporairement au niveau ${level}. `
+        + "Leur EXP sera calculée au retour en solo. Rejoindre cette partie ?")) return;
+    } catch (error) {
+      networkNotice = error instanceof Error ? error.message : "Référence Coop indisponible.";
+      renderSourceMenu();
+      return;
+    }
+  }
   deferredNetworkSourceWorld = null;
   if (sourceBattles.active) return;
   lastPublishedSourceScene = "";
   networkServerUrl = serverUrl;
   networkRoomCode = roomCode.trim().toUpperCase();
   await multiplayer.createOrJoin(kind, networkServerUrl, networkRoomCode, activeNetworkPlayerProfile(),
-    kind === "create" ? sourceWorldHostState() : null);
+    kind === "create" ? sourceWorldHostState() : null,
+    kind === "create" ? coopReferenceLevel(sourceEventState.party) : null,
+    kind === "join" && sourceCoopLevelSyncSelected);
 }
 
 function openPlayerCustomization(): void {
@@ -4958,7 +5005,15 @@ function closePlayerCustomization(): void {
 }
 
 function disconnectMultiplayer(): void {
+  if (sourceBattles.active || multiplayer.current?.roomBattleActive === true
+    || multiplayer.hasPendingBattleSettlement) {
+    importedNotice = "Terminez le combat et son règlement avant de quitter la Coop.";
+    renderImportedView();
+    return;
+  }
   multiplayer.disconnect();
+  replayPersonalCoopExperience();
+  sourceCoopLevelSyncSelected = false;
   networkRoomCode = "";
   networkPlayerConnections = {};
   networkAvatarImages = {};
@@ -4979,6 +5034,20 @@ function disconnectMultiplayer(): void {
   viewedMapId = SOURCE_MAP_ID;
   sourceScenes.closeMenu();
   render();
+}
+
+function replayPersonalCoopExperience(): void {
+  if (importedAssets === null || sourceEventState.deferredCoopExperience.length === 0) return;
+  try {
+    const replay = replaySourceDeferredCoopExperience(sourceEventState, importedAssets.battleCatalog,
+      new Date().getHours());
+    sourceEventState = replay.state;
+    persistSourceEventState();
+    enqueueAllSourceProgressions();
+    importedNotice = `EXP Coop appliquée au retour en solo (${replay.gains.reduce((sum, gain) => sum + gain.gained, 0)} EXP).`;
+  } catch (error) {
+    importedNotice = `EXP Coop conservée en attente : ${error instanceof Error ? error.message : "erreur inconnue"}`;
+  }
 }
 
 const keys: Readonly<Record<string, readonly ["player", Direction]>> = {
@@ -5160,6 +5229,7 @@ async function initializeSourceWorld(): Promise<void> {
     } else if (world.saveStatus === "default") {
       importedNotice = "Bourg Canvas chargée avec ses personnages source. Appuyez sur Espace pour parler au personnage juste devant vous.";
     }
+    if (!multiplayer.active) replayPersonalCoopExperience();
     if (!multiplayer.active) {
       viewedMapId = SOURCE_MAP_ID;
       render();

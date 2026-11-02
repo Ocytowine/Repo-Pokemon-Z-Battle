@@ -7,7 +7,7 @@ export function generateRoomCode(randomValues: Uint8Array): string {
   return [...randomValues.slice(0, 6)].map((value) => ROOM_ALPHABET[value % ROOM_ALPHABET.length]).join("");
 }
 
-export function roomCodeFromPath(pathname: string, suffix: "join" | "socket"): string | null {
+export function roomCodeFromPath(pathname: string, suffix: "join" | "socket" | "preview"): string | null {
   const match = new RegExp(`^/api/rooms/([^/]+)/${suffix}$`, "u").exec(pathname);
   if (match?.[1] === undefined) return null;
   try {

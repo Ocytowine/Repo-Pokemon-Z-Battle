@@ -119,6 +119,10 @@ export interface SourceMenuCoopModel {
   readonly serverUrl: string;
   readonly roomCode: string;
   readonly profileName: string;
+  readonly levelSyncSelected: boolean;
+  readonly levelReference: number | null;
+  readonly levelSyncActive: boolean;
+  readonly hostLevelReference: number | null;
   readonly players: readonly { readonly side: "player" | "opponent"; readonly name: string;
     readonly connected: boolean; readonly connectionState: PlayerConnectionState;
     readonly bodyModel: string; readonly mapId: number | null }[];
@@ -143,6 +147,7 @@ export interface SourceMenuViewCallbacks {
   readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
   readonly onCreateRoom: (serverUrl: string) => void;
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
+  readonly onCoopLevelSync: (selected: boolean) => void;
   readonly onDisconnectRoom: () => void;
   readonly onEditProfile: () => void;
   readonly onMovementMode: (mode: "walk" | "mount") => void;
@@ -1454,13 +1459,16 @@ export class SourceMenuView {
     content.innerHTML = `<div class="source-menu-title"><div><small>AVENTURE PARTAGÉE</small><h3>Coopération</h3></div><span>${escapeSourceHtml(coop.state)}</span></div>
       <div class="source-coop-profile"><div><small>PROFIL PUBLIÉ</small><strong>${escapeSourceHtml(coop.profileName)}</strong></div><button type="button" id="source-coop-profile">Personnaliser</button></div>
       ${coop.active
-        ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
-        : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie</button><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
+        ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p><p>${coop.levelReference === null ? "Niveau Coop indisponible" : `Niveau Coop ${coop.levelReference}${coop.levelSyncActive ? " · actif pour l'invité" : " · option désactivée"}`}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
+        : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie${coop.hostLevelReference === null ? "" : ` · niveau ${coop.hostLevelReference}`}</button><label class="source-movement-test"><span><strong>Niveau de l'hôte pendant la Coop</strong><small>Si tu rejoins une partie, tes Pokémon prendront temporairement la moyenne des trois niveaux les plus élevés de l'hôte. Leur EXP sera calculée au retour en solo.</small></span><input id="source-coop-level-sync" type="checkbox"${coop.levelSyncSelected ? " checked" : ""}></label><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
     content.querySelector<HTMLButtonElement>("#source-coop-profile")?.addEventListener("click", this.callbacks.onEditProfile);
     content.querySelector<HTMLButtonElement>("#source-coop-disconnect")?.addEventListener("click", this.callbacks.onDisconnectRoom);
     const server = content.querySelector<HTMLInputElement>("#source-coop-server");
     const code = content.querySelector<HTMLInputElement>("#source-coop-code");
     code?.addEventListener("input", () => { code.value = code.value.toUpperCase().replace(/[^A-Z0-9]/gu, ""); });
+    content.querySelector<HTMLInputElement>("#source-coop-level-sync")?.addEventListener("change", (event) => {
+      this.callbacks.onCoopLevelSync((event.currentTarget as HTMLInputElement).checked);
+    });
     content.querySelector<HTMLButtonElement>("#source-coop-create")?.addEventListener("click", () => {
       if (server !== null) this.callbacks.onCreateRoom(server.value);
     });

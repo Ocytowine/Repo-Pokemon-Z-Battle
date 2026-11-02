@@ -217,6 +217,8 @@ export function convertRxdataSave(bytes: Uint8Array, catalog: RxdataImportCatalo
     trainerIdentity: { schemaVersion: 1, trainerId, publicId: trainerId & 0xffff } };
   const seen = sourceArray(trainer["@seen"], "Pokédex vu");
   const owned = sourceArray(trainer["@owned"], "Pokédex capturé");
+  const achievements = globalMetadata["@logros"] === undefined || globalMetadata["@logros"] === null
+    ? createSourceEventState().achievements : sourceArray(globalMetadata["@logros"], "Succès");
   const speciesNames = (values: RubyMarshalValue[]) => values.flatMap((entry, id) => entry === true
     ? [speciesById.get(id)?.internalName].filter((name): name is string => name !== undefined) : []);
   const eventState = parseSourceEventState({ ...createSourceEventState(), switches: switchState,
@@ -226,6 +228,7 @@ export function convertRxdataSave(bytes: Uint8Array, catalog: RxdataImportCatalo
     runningShoes: globalMetadata["@runningShoes"] === true, pokedexEnabled: trainer["@pokedex"] === true,
     pokedex: { seenSpecies: speciesNames(seen), caughtSpecies: speciesNames(owned),
       evolvedSpecies: [], releasedSpecies: [] },
+    achievements,
     party: { schemaVersion: 1, activeIndex: party.length === 0 ? null : 0, members: party },
     ranch: { schemaVersion: 1, members: boxed }, followerEnabled: party.length > 0,
     happinessSteps: sourceInteger(globalMetadata["@happinessSteps"] ?? 0, "Pas de bonheur") % 128,

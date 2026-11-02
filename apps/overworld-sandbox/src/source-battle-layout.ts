@@ -50,6 +50,18 @@ export function sourceBattleSpriteScale(side: BattleSide): number {
   return BATTLER_SCALES[side];
 }
 
+/** Keep unusually tall opponent frames visible without special-casing a species or event. */
+export function sourceBattleSpriteScaleForViewport(side: BattleSide, frameWidth: number, frameHeight: number,
+  visibleBottom: number, format: "single" | "double" = "single", activeSlot = 0): number {
+  const sourceScale = sourceBattleSpriteScale(side);
+  if (side !== "opponent") return sourceScale;
+  const initial = sourceBattleSpritePlacement(side, frameWidth * sourceScale, frameHeight * sourceScale,
+    sourceBattleScaledVisibleBottom(visibleBottom, sourceScale), format, activeSlot);
+  if (initial.top >= -SOURCE_BATTLE_VIEWPORT.height * 0.12) return sourceScale;
+  const groundY = initial.top + initial.originY;
+  return Math.min(sourceScale, Math.max(1, groundY / Math.max(1, visibleBottom + 1)));
+}
+
 /** Dernier pixel opaque apres l'agrandissement nearest-neighbour de BitmapWrapperEX. */
 export function sourceBattleScaledVisibleBottom(visibleBottom: number, scale: number): number {
   const safeScale = Math.max(1, scale);

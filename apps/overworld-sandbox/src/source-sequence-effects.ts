@@ -41,9 +41,9 @@ export interface SourceSequenceEffectDependencies {
   readonly getPokemonCreationContext: (mapId: number) => PokemonCreationContext;
   readonly abort: (session: SourceSequenceSession, notice: string) => void;
   readonly beginItemPresentation: (session: SourceSequenceSession, gains: readonly SourceItemGain[]) => void;
-  readonly startPendingEncounter: (onComplete: (won: boolean) => void) => boolean;
+  readonly startPendingEncounter: (onComplete: (won: boolean) => void, battleMusic?: string) => boolean;
   readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (won: boolean) => void,
-    chancePercent?: number) => boolean;
+    chancePercent?: number, battleMusic?: string) => boolean;
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
   readonly getTrainerBattleFailure?: () => string | null;
@@ -83,6 +83,13 @@ export class SourceSequenceEffects {
   public constructor(private readonly dependencies: SourceSequenceEffectDependencies) {}
 
   public async execute(session: SourceSequenceSession, command: SourceCommand): Promise<SourceSequenceCommandResult> {
+    if (command.kind === "set-next-battle-music") {
+      if (command.data.music !== null && (typeof command.data.music !== "string" || command.data.music.length === 0)) {
+        return this.abort(session, "Séquence interrompue : musique de combat invalide.");
+      }
+      session.nextBattleMusic = command.data.music as string | null;
+      return "continue";
+    }
     switch (sourceSequenceCommandFamily(command)) {
       case "state": return this.applyState(session, command);
       case "random-encounter": return this.startRandomEncounter(session, command);
@@ -112,7 +119,8 @@ export class SourceSequenceEffects {
       if (!this.dependencies.isActive(session)) return;
       if (!won) session.cursor = session.plan.steps.length;
       this.dependencies.resume();
-    }, chancePercent as number);
+    }, chancePercent as number, session.nextBattleMusic ?? undefined);
+    if (started) session.nextBattleMusic = null;
     if (!started && command.data.optional === true) return "continue";
     return started ? "pause"
       : this.abort(session, "Séquence interrompue : aucune rencontre n’est disponible ici.");
@@ -122,7 +130,14 @@ export class SourceSequenceEffects {
     const state = this.dependencies.getEventState();
     const assets = this.dependencies.getAssets();
     const avatar = this.dependencies.getAvatar();
-    const result = applySafeStateCommands(state, { ...session.plan.page, commands: [command] }, session.mapId,
+    const commands: SourceCommand[] = [command];
+    if (command.kind === "change-variables") {
+      while (session.plan.steps[session.cursor]?.command.kind === "change-variables") {
+        commands.push(session.plan.steps[session.cursor]!.command);
+        session.cursor += 1;
+      }
+    }
+    const result = applySafeStateCommands(state, { ...session.plan.page, commands }, session.mapId,
       session.eventId, { checkpoint: { mapId: session.mapId, x: avatar.x, y: avatar.y, direction: avatar.direction },
         createPokemon: (species, level) => {
           if (assets === null) throw new Error("Catalogue Pokémon indisponible.");
@@ -143,7 +158,8 @@ export class SourceSequenceEffects {
         if (!this.dependencies.isActive(session)) return;
         if (!won) session.cursor = session.plan.steps.length;
         this.dependencies.resume();
-      });
+      }, session.nextBattleMusic ?? undefined);
+      if (started) session.nextBattleMusic = null;
       return started ? "pause"
         : this.abort(session, "Séquence interrompue : le combat sauvage n'a pas pu démarrer.");
     }
@@ -164,7 +180,7 @@ export class SourceSequenceEffects {
       return this.abort(session, "Séquence interrompue : équipe ou classe de Dresseur introuvable.");
     }
     const started = this.dependencies.startTrainerBattle(trainer, {
-      battleMusic: trainerType.battleBgm ?? assets.wildBattleBgm,
+      battleMusic: session.nextBattleMusic ?? trainerType.battleBgm ?? assets.wildBattleBgm,
       victoryMusic: trainerType.victoryMe ?? "VictoriaEntrenador.ogg",
       baseMoney: trainerType.baseMoney,
       trainerTypeId: trainerType.id,
@@ -176,6 +192,7 @@ export class SourceSequenceEffects {
       if (!won && command.data.canLose !== true) session.cursor = session.plan.steps.length;
       this.dependencies.resume();
     });
+    if (started) session.nextBattleMusic = null;
     return started ? "pause"
       : this.abort(session, this.dependencies.getTrainerBattleFailure?.()
         ?? "Séquence interrompue : le combat de Dresseur n'a pas pu démarrer.");

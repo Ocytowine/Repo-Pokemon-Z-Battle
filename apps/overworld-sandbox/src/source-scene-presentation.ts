@@ -292,7 +292,23 @@ export class SourceScenePresentation {
       if (values === null) return false;
       const duration = Math.max(0, finite(command.data.duration) * 25);
       this.flash(values, duration);
-      await delay(duration);
+      // RPG Maker starts the effect and immediately advances the event. An
+      // explicit Wait command, when present, controls the following pause.
+      return true;
+    }
+    if (command.kind === "screen-shake") {
+      const power = finite(command.data.power);
+      const duration = Math.max(0, finite(command.data.duration) * 25);
+      if (power < 0 || duration > 10_000) return false;
+      const container = this.elements.flash.parentElement;
+      if (container !== null && typeof container.animate === "function") {
+        container.animate([
+          { transform: "translate(0, 0)" },
+          { transform: `translate(${Math.min(power, 12)}px, 0)` },
+          { transform: `translate(-${Math.min(power, 12)}px, 0)` },
+          { transform: "translate(0, 0)" },
+        ], { duration, iterations: 1 });
+      }
       return true;
     }
     if (command.kind === "weather") return this.weather(command.data, delay);
@@ -496,15 +512,16 @@ export class SourceScenePresentation {
     return true;
   }
 
-  private playSound(data: Readonly<Record<string, unknown>>, kind: SourceAudioKind = "effects"): boolean {
+  private async playSound(data: Readonly<Record<string, unknown>>, kind: SourceAudioKind = "effects"): Promise<boolean> {
     const state = parseSourceAudio(data);
     if (state === null) return false;
     if (state.name === "") return true;
     const managed = this.createAudio(state, false, kind);
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
-    void this.playCandidates(managed.audio, "SE", state.name, this.audioSession)
-      .then((played) => { if (!played) this.oneShots.delete(managed); });
+    if (!await this.playCandidates(managed.audio, "SE", state.name, this.audioSession)) {
+      this.oneShots.delete(managed);
+    }
     return true;
   }
 
@@ -533,17 +550,17 @@ export class SourceScenePresentation {
     return true;
   }
 
-  private playCry(data: Readonly<Record<string, unknown>>): boolean {
+  private async playCry(data: Readonly<Record<string, unknown>>): Promise<boolean> {
     if (typeof data.speciesId !== "string" || data.speciesId === "") return false;
-    void this.loadPokemonAssets().then(async (manifest) => {
-      const path = manifest === null ? null : selectSourceCryPath(manifest, data.speciesId as string);
-      if (path === null) return;
-      const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false, "effects");
-      this.oneShots.add(managed);
-      managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
-      managed.audio.src = sourceUrl(path);
-      try { await managed.audio.play(); } catch { this.oneShots.delete(managed); }
-    });
+    const manifest = await this.loadPokemonAssets();
+    const path = manifest === null ? null : selectSourceCryPath(manifest, data.speciesId);
+    if (path === null) return true;
+    const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false, "effects");
+    this.oneShots.add(managed);
+    managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+    managed.audio.src = sourceUrl(path);
+    // The following source wait begins only once the cry has actually started.
+    try { await managed.audio.play(); } catch { this.oneShots.delete(managed); }
     return true;
   }
 

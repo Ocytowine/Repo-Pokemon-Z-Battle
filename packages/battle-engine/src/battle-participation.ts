@@ -291,6 +291,7 @@ export function canCaptureSharedBattleTarget(state: SharedBattleParticipation, b
   if (origin !== "source-wild" || battle.status !== "active") return false;
   const opponent = battle.teams.opponent.members[battle.teams.opponent.activeIndex];
   return opponent !== undefined
+    && opponent.capture !== undefined
     && state.camps.opponent.members.find((member) => member.battler.id === opponent.id)?.ownerId === null;
 }
 

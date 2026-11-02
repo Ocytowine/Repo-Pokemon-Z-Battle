@@ -8,6 +8,9 @@ import { reconcileSourcePokeVial, refillSourcePokeVial, type SourcePokeVialState
 import { createEmptySourceDayCare, parseSourceDayCare, type SourceDayCareState } from "./source-day-care.js";
 import { createEmptySourceIncubator, parseSourceIncubator, type SourceIncubatorState } from "./source-incubator.js";
 import type { BattleStat } from "@pokemon-z-battle/battle-engine";
+import { createSourceAchievements, parseSourceAchievements, sourcePokedexOwned,
+  type SourceAchievementStatus } from "./source-achievements.js";
+import { parseSourceDeferredCoopExperience, type SourceDeferredCoopExperience } from "./source-coop-experience.js";
 
 export interface SourceEventState {
   readonly switches: Readonly<Record<string, boolean>>;
@@ -20,6 +23,8 @@ export interface SourceEventState {
   readonly runningShoes: boolean;
   readonly pokedexEnabled: boolean;
   readonly pokedex: SourcePokedexHistory;
+  /** Personal achievement statuses (hidden, active, complete), restored with the save. */
+  readonly achievements: readonly SourceAchievementStatus[];
   readonly pokeVial: SourcePokeVialState;
   readonly followerEnabled: boolean;
   readonly checkpoint: SourceCheckpoint | null;
@@ -45,6 +50,8 @@ export interface SourceEventState {
   readonly wildEncounterSteps: number;
   readonly wildEncounterRngState: number;
   readonly appliedBattleSettlementIds: readonly string[];
+  /** Owner-only credits awaiting replay at permanent levels after Coop. */
+  readonly deferredCoopExperience: readonly SourceDeferredCoopExperience[];
 }
 
 export interface SourceTypeAmuletState {
@@ -119,6 +126,7 @@ export interface StateCommandResult {
 
 export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   switches: Object.freeze({}), variables: Object.freeze({}), selfSwitches: Object.freeze({}), inventory: Object.freeze({}), visitedMaps: Object.freeze([]), money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: EMPTY_SOURCE_POKEDEX, pokeVial: Object.freeze({ current: 0, maximum: 0 }), followerEnabled: false, checkpoint: null,
+  achievements: Object.freeze(createSourceAchievements()),
   party: Object.freeze(createEmptyPlayerParty()),
   ranch: Object.freeze(createEmptyPlayerPokemonStorage()),
   dayCare: Object.freeze(createEmptySourceDayCare()),
@@ -132,13 +140,14 @@ export const EMPTY_SOURCE_EVENT_STATE: SourceEventState = Object.freeze({
   wildEncounterSteps: 0,
   wildEncounterRngState: 0x9e37_79b9,
   appliedBattleSettlementIds: Object.freeze([]),
+  deferredCoopExperience: Object.freeze([]),
 });
 
 export function createSourceEventState(): SourceEventState {
-  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, visitedMaps: [], money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
+  return { switches: {}, variables: {}, selfSwitches: {}, inventory: {}, visitedMaps: [], money: SOURCE_INITIAL_MONEY, runningShoes: false, pokedexEnabled: false, pokedex: { seenSpecies: [], caughtSpecies: [], evolvedSpecies: [], releasedSpecies: [] }, achievements: createSourceAchievements(), pokeVial: { current: 0, maximum: 0 }, followerEnabled: false, checkpoint: null, party: createEmptyPlayerParty(), ranch: createEmptyPlayerPokemonStorage(), dayCare: createEmptySourceDayCare(), incubator: createEmptySourceIncubator(), pendingHatches: [], pendingEncounter: null, nextWildBattleStages: null,
     typeAmulet: null, fieldItemEffects: EMPTY_SOURCE_FIELD_ITEM_EFFECTS,
     happinessSteps: 0, wildEncounterSteps: 0, wildEncounterRngState: 0x9e37_79b9,
-    appliedBattleSettlementIds: [] };
+    appliedBattleSettlementIds: [], deferredCoopExperience: [] };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -213,6 +222,7 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
   }
   let switches = { ...state.switches };
   let variables = { ...state.variables };
+  let achievements = [...state.achievements];
   let selfSwitches = { ...state.selfSwitches };
   let inventory = { ...state.inventory };
   let money = state.money;
@@ -281,11 +291,12 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
       const randomOperand = finiteInteger(randomMinimum) && finiteInteger(randomMaximum)
         && randomMaximum >= randomMinimum
         ? randomMinimum + wildEncounterRngState % (randomMaximum - randomMinimum + 1) : null;
-      const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, visitedMaps: state.visitedMaps, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
+      const operand = randomOperand ?? variableOperand(command.data, { switches, variables, selfSwitches, inventory, visitedMaps: state.visitedMaps, money, runningShoes, pokedexEnabled, pokedex: state.pokedex, achievements, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
         typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
         happinessSteps: state.happinessSteps,
         wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState: state.wildEncounterRngState,
-        appliedBattleSettlementIds: state.appliedBattleSettlementIds });
+        appliedBattleSettlementIds: state.appliedBattleSettlementIds,
+        deferredCoopExperience: state.deferredCoopExperience });
       if (ids === null || operand === null) return { state, appliedCommands: 0, safe: false, reason: "opérande de variable non prise en charge" };
       if (randomOperand !== null) {
         wildEncounterRngState = (Math.imul(wildEncounterRngState, 1_664_525) + 1_013_904_223) >>> 0;
@@ -306,6 +317,20 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
         return { state, appliedCommands: 0, safe: false, reason: "parametres d'argent invalides" };
       }
       money = Math.max(0, Math.min(SOURCE_MAX_MONEY, operation === 0 ? money + operand : money - operand));
+    } else if (command.kind === "set-variable-from-statistic") {
+      const id = command.data.variableId;
+      if (!finiteInteger(id) || id < 1 || command.data.statistic !== "pokedex-owned") {
+        return { state, appliedCommands: 0, safe: false, reason: "statistique source invalide" };
+      }
+      variables[String(id)] = sourcePokedexOwned(state.pokedex.caughtSpecies);
+    } else if (command.kind === "set-achievement") {
+      const id = command.data.achievementId;
+      const status = command.data.status;
+      if (!finiteInteger(id) || id < 0 || id >= achievements.length
+        || (status !== 1 && status !== 2 && status !== 3)) {
+        return { state, appliedCommands: 0, safe: false, reason: "succès source invalide" };
+      }
+      if (achievements[id] !== 3) achievements[id] = status;
     } else if (command.kind === "grant-item" || command.kind === "grant-random-item" || command.kind === "remove-item") {
       const choices = command.data.itemChoices;
       const randomItem = command.kind === "grant-random-item"
@@ -390,12 +415,13 @@ export function applySafeStateCommands(state: SourceEventState, page: ImportedEv
     appliedCommands += 1;
   }
   const nextState: SourceEventState = { switches, variables, selfSwitches, inventory, visitedMaps: state.visitedMaps, money, runningShoes,
-    pokedexEnabled, pokedex: state.pokedex, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
+    pokedexEnabled, pokedex: state.pokedex, achievements, pokeVial: state.pokeVial, followerEnabled, checkpoint, party, ranch, dayCare: state.dayCare, incubator: state.incubator, pendingHatches: state.pendingHatches, pendingEncounter, nextWildBattleStages,
     typeAmulet: state.typeAmulet, fieldItemEffects: state.fieldItemEffects,
     ...(state.preferredFishingRod === undefined ? {} : { preferredFishingRod: state.preferredFishingRod }),
     happinessSteps: state.happinessSteps,
     wildEncounterSteps: state.wildEncounterSteps, wildEncounterRngState,
-    appliedBattleSettlementIds: state.appliedBattleSettlementIds };
+    appliedBattleSettlementIds: state.appliedBattleSettlementIds,
+    deferredCoopExperience: state.deferredCoopExperience };
   return { state: reconcileSourcePokedex(reconcileSourcePokeVial(nextState)), appliedCommands, safe: true, reason: null };
 }
 
@@ -406,7 +432,18 @@ export function completePendingEncounter(state: SourceEventState): SourceEventSt
     inventory[itemId] = Math.min(999_999, (inventory[itemId] ?? 0) + quantity);
   }
   return { ...state, switches: { ...state.switches, ...state.pendingEncounter.victorySwitches }, inventory,
-    pendingEncounter: null };
+    pendingEncounter: null, wildEncounterSteps: 0 };
+}
+
+/** The source battle transition clears the step counter after every battle. */
+export function resetWildEncounterStepsAfterBattle(state: SourceEventState): SourceEventState {
+  return state.wildEncounterSteps === 0 ? state : { ...state, wildEncounterSteps: 0 };
+}
+
+/** Every resolved wild battle consumes its encounter; only victory grants rewards. */
+export function finishPendingEncounterAfterBattle(state: SourceEventState, won: boolean): SourceEventState {
+  return won ? resetWildEncounterStepsAfterBattle(completePendingEncounter(state))
+    : { ...state, pendingEncounter: null, wildEncounterSteps: 0 };
 }
 
 function booleanDictionary(value: unknown): Record<string, boolean> | null {
@@ -588,6 +625,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && value.appliedBattleSettlementIds.every((id) => typeof id === "string" && id.length > 0 && id.length <= 128)
       && new Set(value.appliedBattleSettlementIds).size === value.appliedBattleSettlementIds.length
       ? [...value.appliedBattleSettlementIds] as string[] : null;
+  const deferredCoopExperience = parseSourceDeferredCoopExperience(value.deferredCoopExperience);
+  const achievements = parseSourceAchievements(value.achievements);
   const pokedexValue = value.pokedex;
   const currentSpecies = [...party.members, ...ranch.members,
     ...dayCare.slots.flatMap((slot) => slot === null ? [] : [slot.pokemon])]
@@ -611,17 +650,17 @@ export function parseSourceEventState(value: unknown): SourceEventState {
     || !finiteInteger(happinessSteps) || happinessSteps < 0 || happinessSteps >= 128
     || !finiteInteger(wildEncounterSteps) || wildEncounterSteps < 0 || !finiteInteger(wildEncounterRngState)
     || wildEncounterRngState < 0 || wildEncounterRngState > 0xffff_ffff
-    || appliedBattleSettlementIds === null || pendingHatches === null || preferredFishingRod === null
+    || appliedBattleSettlementIds === null || achievements === null || pendingHatches === null || preferredFishingRod === null
     || typeAmulet === undefined || fieldItemEffects === undefined
     || nextWildBattleStages === null && value.nextWildBattleStages !== undefined
       && value.nextWildBattleStages !== null
     || pendingHatches.some((id) => !hatchableIds.includes(id)) || seenSpecies === null || caughtSpecies === null
     || evolvedSpecies === null || releasedSpecies === null) throw new Error("État source invalide.");
   return reconcileSourcePokeVial({ switches, variables, selfSwitches, inventory, visitedMaps, money, runningShoes, pokedexEnabled,
-    pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, pokeVial, followerEnabled, checkpoint,
+    pokedex: { seenSpecies, caughtSpecies, evolvedSpecies, releasedSpecies }, achievements, pokeVial, followerEnabled, checkpoint,
     party, ranch, dayCare, incubator, pendingHatches, pendingEncounter, nextWildBattleStages, typeAmulet,
     fieldItemEffects,
     ...(preferredFishingRod === undefined ? {} : { preferredFishingRod }),
     happinessSteps, wildEncounterSteps, wildEncounterRngState,
-    appliedBattleSettlementIds });
+    appliedBattleSettlementIds, deferredCoopExperience });
 }

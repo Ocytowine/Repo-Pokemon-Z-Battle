@@ -315,6 +315,16 @@ export interface SharedBattleExperienceSettlement {
   readonly gains: readonly SharedBattleExperienceGain[];
 }
 
+/** Minimal immutable credit that can be saved until a guest returns to solo play. */
+export interface PokemonZExperienceCredit {
+  readonly turn: number;
+  readonly defeatedMemberId: string;
+  readonly defeatedSpecies: string;
+  readonly defeatedLevel: number;
+  readonly participantCount: number;
+  readonly recipientMemberIds: readonly string[];
+}
+
 function stableUint32(value: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < value.length; index += 1) {
@@ -695,6 +705,28 @@ export function calculatePokemonStats(definition: Pick<PokemonDefinition, "baseS
     specialDefense: calculatedStat(base.specialDefense, level, metadata.ivs.specialDefense, metadata.evs.specialDefense,
       naturePercent(metadata.nature, "specialDefense")),
   };
+}
+
+/** Session reference for Coop: the strongest three hatched members of the host's party. */
+export function coopReferenceLevel(party: PlayerPartyState): number | null {
+  const levels = party.members.filter((member) => member.metadata.eggSteps <= 0)
+    .map((member) => member.level).sort((left, right) => right - left).slice(0, 3);
+  return levels.length === 0 ? null : Math.floor(levels.reduce((sum, level) => sum + level, 0) / levels.length);
+}
+
+/** Battle-only projection. Never persist this party in place of the owner's party. */
+export function projectCoopPartyAtLevel(party: PlayerPartyState, level: number,
+  catalog: PlayerCreationCatalog): PlayerPartyState {
+  if (!integer(level, 1, 100)) throw new Error("Niveau Coop invalide.");
+  return { ...party, members: party.members.map((pokemon) => {
+    if (pokemon.metadata.eggSteps > 0) return pokemon;
+    const definition = catalog.pokemon.find((candidate) => candidate.internalName === pokemon.species);
+    if (definition === undefined) throw new Error(`Espèce absente du catalogue : ${pokemon.species}.`);
+    const stats = calculatePokemonStats(definition, level, pokemon.metadata);
+    const hp = pokemon.hp === 0 ? 0 : Math.min(stats.maxHp,
+      Math.max(1, Math.round(pokemon.hp / Math.max(1, pokemon.stats.maxHp) * stats.maxHp)));
+    return { ...pokemon, level, experience: experienceAtLevel(level, definition.growthRate), stats, hp };
+  }) };
 }
 
 function sameStats(left: BattleStats, right: BattleStats): boolean {
@@ -1246,41 +1278,59 @@ export function pokemonZParticipantExperienceCalculation(input: {
     levelCapOverride, result };
 }
 
-/** Applies only one owner's immutable K.O. credits; callers persist the returned party atomically. */
-export function applySharedBattleExperience(party: PlayerPartyState, settlement: SharedBattleOwnerSettlement,
+export function compactSharedBattleExperienceCredits(settlement: SharedBattleOwnerSettlement): readonly PokemonZExperienceCredit[] {
+  return settlement.defeatCredits.map((credit) => ({ turn: credit.turn,
+    defeatedMemberId: credit.defeatedBattler.id, defeatedSpecies: credit.defeatedBattler.species,
+    defeatedLevel: credit.defeatedBattler.level, participantCount: credit.participantCount,
+    recipientMemberIds: [...credit.recipientMemberIds] }));
+}
+
+/** The same Pokemon Z calculation serves immediate Coop rewards and deferred solo replay. */
+export function applyPokemonZExperienceCredits(party: PlayerPartyState, credits: readonly PokemonZExperienceCredit[],
   catalog: PlayerCreationCatalog, policy: PokemonZExperiencePolicy,
-  evolutionContext: Omit<PokemonEvolutionContext, "trigger" | "party"> = {}): SharedBattleExperienceSettlement {
+  evolutionContext: Omit<PokemonEvolutionContext, "trigger" | "party"> = {},
+  evolutionPartyMemberIds?: ReadonlySet<string>): SharedBattleExperienceSettlement {
   let members = [...party.members];
   const gains: SharedBattleExperienceGain[] = [];
-  for (const credit of settlement.defeatCredits) {
+  for (const credit of credits) {
     if (!integer(credit.participantCount, 1) || credit.recipientMemberIds.length > credit.participantCount) {
       throw new Error("Crédit d'expérience partagé invalide.");
     }
-    const defeated = catalog.pokemon.find((candidate) => candidate.internalName === credit.defeatedBattler.species);
-    if (defeated === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${credit.defeatedBattler.species}.`);
+    const defeated = catalog.pokemon.find((candidate) => candidate.internalName === credit.defeatedSpecies);
+    if (defeated === undefined) throw new Error(`Espèce vaincue absente du catalogue : ${credit.defeatedSpecies}.`);
     for (const recipientId of credit.recipientMemberIds) {
       const memberIndex = members.findIndex((pokemon) => pokemon.id === recipientId);
       if (memberIndex < 0) throw new Error(`Pokémon bénéficiaire absent de l'équipe : ${recipientId}.`);
       const pokemon = members[memberIndex]!;
-      const calculation = pokemonZParticipantExperienceCalculation({ defeatedLevel: credit.defeatedBattler.level,
+      const calculation = pokemonZParticipantExperienceCalculation({ defeatedLevel: credit.defeatedLevel,
         defeatedBaseExperience: defeated.baseExperience, recipientLevel: pokemon.level,
         participantCount: credit.participantCount, luckyEgg: pokemon.heldItem === "LUCKYEGG" }, policy);
       const calculated = calculation.result;
       const result = grantPokemonExperience(pokemon, calculated, catalog);
       members[memberIndex] = result.pokemon;
       if (result.levelsGained > 0 && (result.pokemon.pendingMoves?.length ?? 0) === 0) {
-        const currentParty = { ...party, members };
+        const currentParty = { ...party, members: evolutionPartyMemberIds === undefined ? members
+          : members.filter((candidate) => evolutionPartyMemberIds.has(candidate.id)
+            || candidate.id === recipientId) };
         const evolution = pokemonLevelEvolutionCandidates(result.pokemon, catalog,
           { ...evolutionContext, party: currentParty })[0];
         if (evolution !== undefined) members[memberIndex] = { ...result.pokemon, pendingEvolution: evolution };
       }
-      gains.push({ turn: credit.turn, defeatedMemberId: credit.defeatedBattler.id,
+      gains.push({ turn: credit.turn, defeatedMemberId: credit.defeatedMemberId,
         recipientMemberId: recipientId, calculated, gained: result.gained,
         previousLevel: pokemon.level, nextLevel: result.pokemon.level,
         learnedMoves: result.learnedMoves, skippedMoves: result.skippedMoves, calculation });
     }
   }
   return { party: { ...party, members }, gains };
+}
+
+/** Applies only one owner's immutable K.O. credits; callers persist the returned party atomically. */
+export function applySharedBattleExperience(party: PlayerPartyState, settlement: SharedBattleOwnerSettlement,
+  catalog: PlayerCreationCatalog, policy: PokemonZExperiencePolicy,
+  evolutionContext: Omit<PokemonEvolutionContext, "trigger" | "party"> = {}): SharedBattleExperienceSettlement {
+  return applyPokemonZExperienceCredits(party, compactSharedBattleExperienceCredits(settlement), catalog, policy,
+    evolutionContext);
 }
 
 export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: PlayerBattleCatalog): BattleTeam {

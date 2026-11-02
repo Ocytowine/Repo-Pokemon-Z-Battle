@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, calculatePokemonStats, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
+import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, calculatePokemonStats, coopReferenceLevel,
+  projectCoopPartyAtLevel, createDefaultPlayerAvatarSelection, createDefaultPlayerProfile, createEmptyPlayerParty,
   createEmptyPlayerPokemonStorage,
   createPersistentPokemon, createPersistentPokemonMetadata, createPlayerTrainerIdentity, declinePendingPokemonMove,
   experienceAtLevel, grantPokemonExperience,
@@ -333,6 +334,30 @@ describe("persistent player party", () => {
       ability: "STATIC", moves: [{ internalName: "TACKLE", pp: 35, maxPp: 35 }] });
     expect(pokemon.experience).toBe(125);
     expect(addPokemonToParty(createEmptyPlayerParty(), pokemon)).toMatchObject({ activeIndex: 0, members: [{ species: "PIKACHU" }] });
+  });
+
+  it("uses the host's three strongest hatched members and projects temporary stats without changing the save", () => {
+    const levels = [12, 48, 31, 27, 54, 44];
+    const members = levels.map((level, index) => ({ ...party.members[0]!, id: `member-${index}`, level,
+      metadata: { ...party.members[0]!.metadata, eggSteps: index === 4 ? 10 : 0 } }));
+    const host = { ...party, members };
+    expect(coopReferenceLevel(host)).toBe(41); // (48 + 44 + 31) / 3
+    expect(coopReferenceLevel({ ...party, members: members.slice(0, 2) })).toBe(30);
+    expect(coopReferenceLevel({ ...party, members: [members[4]!] })).toBeNull();
+    const creationCatalog: PlayerCreationCatalog = { ...catalog, pokemon: [{ ...catalog.pokemon[0]!,
+      baseStats: { hp: 35, attack: 55, defense: 40, specialAttack: 50, specialDefense: 50, speed: 90 },
+      abilities: ["STATIC"], growthRate: "Medium", baseExperience: 112, genderRate: "Female50Percent",
+      happiness: 70, eggGroups: ["Field"], levelUpMoves: [{ level: 1, move: "TACKLE" }] }] };
+    const projected = projectCoopPartyAtLevel(host, 35, creationCatalog);
+    expect(projected.members[0]).toMatchObject({ level: 35, hp: 9,
+      moves: party.members[0]!.moves });
+    expect(projected.members[4]).toBe(host.members[4]);
+    expect(projected.members[1]!.level).toBe(35);
+    expect(projected.members[0]!.stats.maxHp).toBeGreaterThan(host.members[0]!.stats.maxHp);
+    expect(host.members[0]!.level).toBe(12);
+    expect(host.members[0]!.hp).toBe(4);
+    const fainted = { ...host, members: [{ ...host.members[0]!, hp: 0 }] };
+    expect(projectCoopPartyAtLevel(fainted, 35, creationCatalog).members[0]!.hp).toBe(0);
   });
 
   it("selects an unforced normal ability from persistent identity without using hidden abilities", () => {

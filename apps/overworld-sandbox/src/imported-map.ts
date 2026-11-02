@@ -447,9 +447,11 @@ export interface SourceDialogueVariables {
 
 const DEFAULT_DIALOGUE_VARIABLES: SourceDialogueVariables = { playerName: "Joueur" };
 
-function readableDialogueText(text: string, variables: SourceDialogueVariables): string {
+function readableDialogueText(text: string, variables: SourceDialogueVariables,
+  eventVariables: Readonly<Record<string, number>> = {}): string {
   return text.replaceAll(/\\c\[\d+\]/gu, "").replaceAll(/<br\s*\/?>/giu, "\n")
-    .replaceAll(/<[^>]+>/gu, "").replaceAll(/\\PN/giu, () => variables.playerName).trim();
+    .replaceAll(/<[^>]+>/gu, "").replaceAll(/\\PN/giu, () => variables.playerName)
+    .replaceAll(/\\v\[(\d+)\]/giu, (_, id: string) => String(eventVariables[id] ?? 0)).trim();
 }
 
 function dialogueKey(text: string): string {
@@ -485,7 +487,10 @@ export function dialogueLines(page: ImportedEventPage, translations: ReadonlyMap
       const translated = translations.get(combined);
       if (translated !== undefined) { value = translated; consumed = length; break; }
     }
-    const readable = readableDialogueText(value, variables);
+    const eventVariables = command.data.dialogueVariables;
+    const readable = readableDialogueText(value, variables,
+      eventVariables !== null && typeof eventVariables === "object" && !Array.isArray(eventVariables)
+        ? eventVariables as Readonly<Record<string, number>> : {});
     if (readable !== "") lines.push(readable);
     index += consumed;
   }

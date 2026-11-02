@@ -9997,3 +9997,266 @@ l'APK, en solo, hôte et invité, avec inventaire et Ranch réels. La suite de
 l'audit de la roadmap concerne les fiches détaillées du Pokédex, de l'Équipe
 et les sous-menus de combat ; ne pas déclarer la règle sans scroll pleinement
 terminée avant ce contrôle.
+
+## Succès et points de données de Map024 — port local du 2026-10-30
+
+`source-achievements.ts` porte 27 statuts personnels (1 caché, 2 actif,
+3 terminé), persistés dans `SourceEventState` et donc dans les deux slots et
+le cloud. L'import `Game.rxdata` lit `PokemonGlobalMetadata.@logros` ; les
+anciens slots prennent 27 états actifs. Le noyau d'événements reconnaît
+`$Trainer.pokedexOwned()`, l'affectation à une variable, `getLogro` et
+`setLogro` sans exécuter Ruby. Le nombre Pokédex compte les espèces déjà
+possédées, y compris celles qui ont quitté l'équipe. Un succès terminé ne
+déclenche pas un deuxième octroi.
+
+Les six points de Map024 sont audités sur les commandes extraites locales
+par `tests/source-achievements.test.ts` : EV032 habitants 15, EV047 recettes
+46 (texte source incohérent : 50), EV048 Nids Alfa exactement 18, EV049
+100 MT distinctes parmi 108, EV050 Pokédex 250/500/750, EV055 statue
+vérifiant les succès 0..25. Le flux projette maintenant les mutations de
+variables avant les conditions suivantes, affiche les valeurs `\\v[n]` et
+résout le saut d'étiquette de EV050. `screen-shake` est déclaré et rendu
+pour la seconde page de la statue. Le retour de scène annonce le nom d'un
+nouveau succès. Les mutations consécutives de variables sont exécutées en un
+lot : le contrôle des 108 MT ne provoque pas 109 écritures de sauvegarde et
+109 rendus. Aucun fichier source du jeu n'a été versionné.
+
+Autorité : le Sac, le Pokédex et les succès sont personnels ; les compteurs
+narratifs et les interrupteurs de la statue appartiennent à l'hôte. Les
+snapshots de sauvegarde/restauration conservent les succès personnels ; les
+projections du monde hôte ne les écrasent pas. Le parcours invité des
+piédestaux personnels est ouvert même si la page de fin de l'hôte est active ;
+le calcul de ses MT et de son Pokédex lit son état local et ses propres succès
+remplacent les interrupteurs 692–694 de l'hôte pour ces seuls jalons. Les
+mutations de la statue et des interrupteurs narratifs restent sous l'autorité
+de l'hôte. Comme les autres services personnels, l'intention d'interaction
+est exécutée par le client concerné ; les 27 statuts ne sont pas publiés dans
+la room. Le noyau de calcul/état est identique en solo, hôte et invité.
+Dette de validation : contrôler ce comportement sur deux appareils Coop,
+dont une reconnexion, ainsi que les six interactions sur téléphone, l'import
+réel et la synchronisation cloud. Aucun APK n'a été préparé ni diffusé pour
+ce lot.
+
+`corepack pnpm test` (dont l'audit Map024 extrait), `corepack pnpm build`
+et `git diff --check` passent. Le `typecheck` isolé de l'application reste en
+échec sur des erreurs préexistantes dans `source-battle-presentation-sequence.ts`
+et `source-mega-evolution.ts`, hors de ce lot ; les fichiers modifiés ici ne
+figurent pas dans ces diagnostics.
+
+## APK 0.1.7 publiée — 2026-10-30
+
+À la demande du porteur, les changements locaux depuis 0.1.6 ont été réunis
+dans `0.1.7` (`versionCode 8`) : historique des lieux visités et Vol, grilles
+adaptatives, calculs et succès des six événements de Map024. `corepack pnpm
+test`, `corepack pnpm build` et `git diff --check` passent. Le build
+`android:release:slim` a conservé la livraison des 49 fonds larges par le
+pack privé déjà publié, sans modifier les packs BGM ou de fonds. La signature
+correspond au certificat de 0.1.6 :
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`.
+
+L'APK signée fait **872 463 931 octets**, SHA-256
+`45822a38324a6d20af6278dcea1ea709cc28bb2425cb76a489e44f177df5e074`.
+Son package et sa version ont été validés par `aapt`, et Map024 ainsi que le
+manifeste de ressources figurent dans l'archive. L'objet privé
+`updates/android/pokemon-z-battle-8.apk` a été publié sur R2 et relu à la
+taille attendue avec le MIME `application/vnd.android.package-archive`.
+`updates/android/latest.json` a été publié en dernier ; sa relecture R2
+confirme version, code, notes, taille et SHA-256, avec MIME `application/json`.
+La mise à jour est donc annoncée à l'application. Aucun commit Git n'a été
+créé ; les ressources du jeu et les secrets restent hors du dépôt.
+
+À vérifier par le porteur sur téléphone : installation par-dessus 0.1.6 sans
+perte des deux slots ni des packs, les six interactions de Map024 avec une
+partie déjà avancée, l'import `Game.rxdata`, la reprise/cloud, puis un essai
+hôte/invité Coop et une reconnexion. Ne pas cocher la validation manuelle
+avant ce retour. Le catalogue complet et sa grille visuelle des 27 succès
+restent à concevoir ; ce patch annonce l'octroi dans le retour de scène.
+
+## Début du registre BZ-001 / BZ-016 — 2026-11-02
+
+Le rapport `docs/Débug/Bug/Bug_261101_102725.pdf` a été ventilé en 17 sujets
+`BZ-001` à `BZ-017` dans la roadmap. Le porteur a précisé que la tête du
+Pokémon du moulin déborde déjà dans le jeu original : ne pas la réduire par
+simple souci de cadrage. Map286/EV005 demande un cri de Tyranocif, attend 40
+images, fixe `nextBattleBGM` à `CombateNido` puis lance `pbBossFight` ; ce
+contrat sert aux autres boss et n'est pas codé par numéro de carte.
+
+Premier lot local : `source-battle-visuals.ts` n'affiche plus le décor de
+secours quand un fond est présent mais qu'un socle manque. La commande Ruby
+`nextBattleBGM` est portée comme `set-next-battle-music`, déclarée dans le
+registre et vérifiée par l'audit de scène ; le choix d'un événement est
+transmis à la présentation solo et au contexte de room Coop. Le cri d'un
+événement attend que la lecture audio ait commencé avant d'exécuter le délai
+suivant. `pbBossFight` crée un combattant sans propriété de capture ; l'UI
+locale, le contrôleur et la room rejettent la capture sur ce même état public.
+La règle de rencontre termine aussi un combat perdu en consommant la rencontre
+en attente, sans accorder les récompenses de victoire ; le même noyau est
+utilisé au règlement solo et Coop. Les tests de combat, de portage de commande
+et de fin de rencontre passent ; `corepack pnpm build` passe. À ce stade du
+travail, aucun APK ni pack n'avait été construit ou publié pour ce lot.
+
+**Dette de recette :** confirmer Map286 sur appareil (fond Molino, plans
+d'animation, musique, cri, capture refusée) et au moins un autre nid de boss,
+en solo puis hôte/invité et après reconnexion. `BZ-001` n'est pas clos : la
+défaite était une cause démontrable de reprise indésirable, mais le rapport
+mentionne aussi une nouvelle rencontre après combat et des déclenchements
+inopinés. Il faut tracer les pas, les tirages et la rencontre en attente sur
+une caverne réelle, notamment après victoire, avant de changer la probabilité
+ou le rythme général des rencontres.
+
+Recette USB du 2026-11-02 : à la demande du porteur, l'APK locale signée
+`0.1.7 (8)` a été reconstruite avec `android:release:slim` et installée sur
+le Samsung SM-S911U1 par `adb install -r` (`Success`), sans désinstaller l'app.
+Le certificat reste celui de la diffusion précédente, SHA-256
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`.
+L'APK mesure 872 464 183 octets et a pour SHA-256
+`bdfbbe501e0dc783300e0e754ecdfb2be25b9933dc1065ad64c8e9c03c7a9d4b`.
+Android indique encore `versionCode 8`, `versionName 0.1.7` et la même date
+de première installation (2026-10-28 14:43:40). L'application a été lancée
+par ADB. Les deux slots et les packs ne sont pas encore revérifiés dans l'UI ;
+le porteur effectue maintenant la recette visuelle et des rencontres. Rien
+n'a été publié sur R2 ; le manifeste distant reste celui de la 0.1.7
+précédente, avec les octets du patch Map024.
+
+## Reprise de BZ-016 après recette téléphone — 2026-11-02
+
+Le porteur confirme que le combat se lance, mais que sa musique reste muette,
+que le son de l'animation précédant le combat est légèrement décalé, que le
+Pokémon adverse est trop grand et que le socle adverse manque. Cause audio
+confirmée : Map286/EV005 transmet le nom `CombateNido` sans extension ; le
+fichier extrait est `Audio/BGM/CombateNido.ogg`. Le lecteur de combat ajoute
+l'extension avant la première lecture et résout ensuite le chemin exact du
+manifeste. Le portage de `screen-flash` et `screen-shake` attendait chaque
+animation avant de continuer ; l'interpréteur Ruby source les démarre et
+avance aussitôt. Leur exécution ne bloque plus la commande suivante, ce qui
+replace le son avant la commande `wait` explicite. Le démarrage du son est
+attendu pour éviter qu'une résolution asynchrone décale cette attente.
+
+Le placement des sprites adverses réduit désormais uniquement les frames
+anormalement hautes selon leur hauteur visible ; la ligne de sol est conservée.
+Ce contrat de rendu est partagé entre solo et Coop. Une variante visuelle du
+socle joueur `playerbaseMolino.png` a été créée sous le nom
+`enemybaseMolino.png` dans `Graphics/Battlebacks` du jeu source local. Elle est
+hors Git, découverte par `prepare:local` et prévue dans l'APK locale de
+recette. Voir `ASSET_DISTRIBUTION.md` pour sa taille, son empreinte et sa
+décision de distribution. `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim` et `git diff --check` passent. L'APK locale signée
+`0.1.7 (8)` de 873 053 378 octets (SHA-256
+`00ea53153c7cfea4467b310f824977df38c89d3ac486986e46d8f5c88efa83d0`)
+a été installée par ADB avec `Success` sur le Samsung SM-S911U1, puis lancée.
+Le certificat est inchangé et Android conserve la date de première
+installation du 2026-10-28 14:43:40. La copie Android du socle a l'empreinte
+attendue. Aucune diffusion R2 n'a été faite. La validation visuelle et audio
+par le porteur reste nécessaire ; ne pas cocher `BZ-016` avant cette recette.
+
+Retour du porteur : musique, synchronisation, décor et socle sont validés sur
+téléphone. Il demande seulement une très légère augmentation du Pokémon
+adverse. La limite de taille des frames exceptionnellement hautes passe d'une
+marge haute de 12 pixels à la ligne supérieure du viewport ; pour une frame
+de 150 × 150 avec 149 pixels visibles, l'échelle passe de 1,04 à 1,12. Les
+autres sprites conservent leur échelle habituelle et l'ancrage au sol reste
+identique. Cette retouche de rendu est commune aux combats solo et Coop.
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim` et
+`git diff --check` passent. L'APK locale signée (SHA-256
+`5e0c07fdb44fd309d4404d7b86a7f3b8d959213ec177ec0441d182424c24b4c2`)
+a été installée par ADB avec `Success`, puis l'app a été relancée. Le porteur
+doit encore confirmer la nouvelle taille sur téléphone ; aucune publication
+R2 n'a été effectuée.
+
+## Reprise de BZ-001 — compteur des rencontres — 2026-11-02
+
+Le porteur valide visuellement la dernière retouche du Moulin et demande de
+passer au point suivant. L'audit de `BZ-001` confirme que le moteur source
+appelle `clearStepCount` après **tout** combat, et que les trois premiers pas
+suivants ne peuvent produire de rencontre aléatoire. Le portage remettait le
+compteur à zéro après fuite et défaite, et par effet du tirage pour une
+rencontre aléatoire gagnée, mais conservait un compteur élevé après une
+victoire scénarisée et après un Dresseur. Une rencontre de caverne pouvait
+alors être tirée au premier pas suivant : cause déterministe du comportement
+signalé, sans nécessité de modifier les taux de rencontre.
+
+`completePendingEncounter` remet maintenant le compteur à zéro après victoire
+ou capture ; `finishPendingEncounterAfterBattle` le garantit aussi pour tous
+les règlements sauvages. `resetWildEncounterStepsAfterBattle` applique la même
+règle après Dresseur, en solo et dans la continuation Coop. L'état est
+personnel, persiste via `updateEventState`, et ne modifie pas la narration
+partagée ni les intentions réseau. Les tests couvrent victoire sauvage avec
+compteur élevé, Dresseur local et Dresseur partagé. La recette appareil doit
+encore confirmer victoire, capture, fuite et défaite dans une vraie caverne,
+puis la surface et un combat de service. Les déclenchements sans pas effectif
+restent à isoler s'ils se reproduisent après cette correction.
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim` et
+`git diff --check` passent. L'APK locale signée (SHA-256
+`6c9c85fcafaac7b4304a9e3ca0737de6db73962a74311a58e83ecaec87b5565f`)
+a été installée par ADB avec `Success` sur le Samsung du porteur, puis lancée.
+Aucune publication R2 ni modification des packs n'a été faite.
+
+Retour de recette du porteur : `BZ-001` ne se reproduit plus sur le téléphone
+avec cette APK locale. Le sujet est marqué résolu dans la roadmap. Les
+vérifications de surface et de services sont conservées comme régressions des
+prochains lots, sans rouvrir ce défaut confirmé corrigé.
+
+## Décision préalable pour BZ-003 — 2026-11-02
+
+Après clôture de `BZ-001`, le porteur accepte un nivellement fondé sur la
+moyenne des deux ou trois Pokémon les plus forts de l'hôte. Le contrat retenu
+dans la roadmap est la moyenne entière inférieure des **trois** plus forts,
+ou de tous les membres si l'équipe en compte moins de trois, KO inclus. Le
+niveau est figé à la jonction ; l'option est une case Coop de session,
+désactivée par défaut. L'audit du code montre que
+`applySourceBattleSettlement` applique actuellement l'EXP immédiatement à la
+partie permanente, avec un journal idempotent des règlements de taille bornée.
+`BZ-003` doit donc ajouter un journal personnel durable des crédits à
+recalculer au retour solo avant de toucher au niveau temporaire du combat.
+La room doit faire autorité sur le niveau de session ; le client invité garde
+la propriété de sa partie et de ce journal. Aucune modification du protocole,
+de l'APK ni de l'état de jeu n'est faite à ce stade de décision.
+
+Début d'implémentation : `packages/player-state/src/index.ts` expose
+`coopReferenceLevel` (trois niveaux les plus élevés parmi les Pokémon éclos,
+KO inclus) et `projectCoopPartyAtLevel` (niveau exact demandé, statistiques
+recalculées, PV proportionnels et KO conservés). La projection garde les
+capacités et l'identité, et ne modifie pas la partie source. Un test couvre
+équipe complète, équipe courte, Œuf, hausse/baisse de niveau et KO. Ce noyau
+n'est pas encore relié à la room ou à l'interface : ne pas afficher la case
+avant que le journal personnel des crédits d'EXP et son rejeu idempotent en
+solo soient fonctionnels. Étapes restantes : snapshot autoritaire du niveau
+au moment de la jonction, intention de l'invité, projection de son équipe en
+combat, règlement et journal persisté dans le slot/cloud, restauration après
+reconnexion, rejeu solo, puis recette sur deux appareils.
+`corepack pnpm test`, `corepack pnpm build` et `git diff --check` passent pour
+ce premier noyau. Aucun APK ni Worker n'a été déployé pour `BZ-003` ; la
+fonction n'est pas encore accessible dans l'application.
+
+### BZ-003 — raccord local du nivellement Coop (2026-11-02)
+
+La case du menu Coop est désormais désactivée par défaut et ne vaut que pour
+la prochaine jonction. Avant de rejoindre avec elle, le client interroge le
+Worker (`GET /api/rooms/:code/preview`) et affiche le niveau exact à confirmer.
+La référence est calculée sur les trois niveaux les plus élevés de l'équipe
+de l'hôte à la création de la room, puis conservée dans l'état persistant de
+la room ; une reconnexion garde l'option de l'invité. La room refuse une
+équipe invitée proposée en combat qui n'a pas le niveau annoncé. Le snapshot
+réplique uniquement référence et activation, jamais le journal d'EXP.
+
+Le combat de l'invité utilise une projection temporaire des niveaux et stats,
+sans modifier niveaux et EXP personnels. Le règlement Coop conserve les PV
+proportionnels et journalise les crédits tactiques dans l'état de sauvegarde
+personnel, avec l'identifiant de règlement idempotent. L'EXP est recalculée
+par le même noyau que le règlement immédiat lors du retour solo explicite ou
+au redémarrage sans session Coop restaurable. Les progressions de capacités et
+évolutions reprennent ensuite. Le rejeu retrouve les destinataires dans
+l'équipe, le Ranch, la Pension et l'Incubateur ; si un destinataire manque,
+le journal reste entier et l'erreur est visible, sans règlement partiel.
+La sortie manuelle est bloquée tant qu'un combat ou son règlement est actif.
+
+La version 15 du protocole est conservée : un ancien Worker ignore les nouveaux
+champs de jonction et ne déclenche pas le nivellement ; la prévisualisation
+retourne alors 404 et empêche de confirmer la case. Pour rendre la fonction
+accessible sur téléphone, il faudra déployer le Worker modifié et installer
+l'APK issu de ce code, puis recetter les deux appareils avant de cocher BZ-003.
+Validation locale : `corepack pnpm test`, `corepack pnpm build`, typecheck du
+Worker et `git diff --check` passent. Le typecheck global de l'application
+signale encore des erreurs préexistantes dans d'autres modules ; les fichiers
+BZ-003 ne figurent plus dans son diagnostic. Aucun Worker ni APK publié pour
+ce jalon.

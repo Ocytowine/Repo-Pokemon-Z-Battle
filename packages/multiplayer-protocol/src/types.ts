@@ -50,6 +50,8 @@ export interface RoomSnapshot {
   readonly sourceWorld: SourceWorldSnapshot | null;
   readonly sourceScene: SourceSceneSnapshot | null;
   readonly movementSequences: Readonly<Record<BattleSide, number>>;
+  /** Session authority: host reference frozen at room creation and guest's join choice. */
+  readonly coopLeveling?: { readonly referenceLevel: number | null; readonly guestEnabled: boolean };
 }
 
 interface VersionedMessage {

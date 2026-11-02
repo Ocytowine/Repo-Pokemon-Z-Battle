@@ -1,9 +1,11 @@
-import { addPokemonToStorage, applyHoneyGatherResult, applySharedBattleExperience, createPersistentPokemon,
+import { addPokemonToStorage, applyHoneyGatherResult, applySharedBattleExperience,
+  compactSharedBattleExperienceCredits, createPersistentPokemon,
   healPlayerParty, storeOwnedBattleResults, type PlayerCreationCatalog, type PokemonCreationContext,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import type { SourceBattleSettlement } from "@pokemon-z-battle/multiplayer-protocol";
 import { SOURCE_BAG_SLOT_LIMIT, addSourceMoney, sourceDefeatLoss } from "./source-economy.js";
 import type { SourceEventState } from "./source-event-state.js";
+import { queueSourceDeferredCoopExperience } from "./source-coop-experience.js";
 
 export interface AppliedSourceBattleSettlement {
   readonly state: SourceEventState;
@@ -19,7 +21,7 @@ const SETTLEMENT_JOURNAL_LIMIT = 128;
 /** Applies one owner-scoped settlement atomically and at most once to the personal save. */
 export function applySourceBattleSettlement(state: SourceEventState, settlement: SourceBattleSettlement,
   playerId: string, catalog: PlayerCreationCatalog, captureContext?: PokemonCreationContext,
-  evolutionHour?: number): AppliedSourceBattleSettlement {
+  evolutionHour?: number, deferExperience = false): AppliedSourceBattleSettlement {
   if (settlement.ownerId !== playerId || settlement.tactical.ownerId !== playerId) {
     throw new Error("Le règlement de combat appartient à un autre joueur.");
   }
@@ -28,8 +30,20 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   }
   let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId,
     { retainTransferredHeldItems: !settlement.experience.trainerBattle });
-  const experience = applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
-    evolutionHour === undefined ? {} : { hour: evolutionHour });
+  if (deferExperience) {
+    const battleMembers = new Map((["player", "opponent"] as const)
+      .flatMap((side) => settlement.state.teams[side].members.map((member) => [member.id, member] as const)));
+    party = { ...party, members: party.members.map((member) => {
+      const result = battleMembers.get(member.id);
+      if (result === undefined) return member;
+      const hp = result.hp === 0 ? 0 : Math.min(member.stats.maxHp,
+        Math.max(1, Math.round(result.hp / Math.max(1, result.stats.maxHp) * member.stats.maxHp)));
+      return { ...member, hp };
+    }) };
+  }
+  const experience = deferExperience ? { party, gains: [] }
+    : applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
+      evolutionHour === undefined ? {} : { hour: evolutionHour });
   party = settlement.healParty ? healPlayerParty(experience.party) : experience.party;
   if (settlement.outcome === "won" && (settlement.honeyGatherPokemonIds?.length ?? 0) > 0) {
     party = applyHoneyGatherResult(party, settlement.honeyGatherPokemonIds!);
@@ -79,6 +93,10 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   const appliedBattleSettlementIds = [...next.appliedBattleSettlementIds, settlement.settlementId]
     .slice(-SETTLEMENT_JOURNAL_LIMIT);
   next = { ...next, inventory, appliedBattleSettlementIds };
+  if (deferExperience && settlement.tactical.defeatCredits.length > 0) {
+    next = queueSourceDeferredCoopExperience(next, { settlementId: settlement.settlementId,
+      credits: compactSharedBattleExperienceCredits(settlement.tactical), policy: settlement.experience });
+  }
   return { state: next, applied: true, gains: experience.gains,
     moneyDelta: next.money - previousMoney, capturedPokemonId };
 }

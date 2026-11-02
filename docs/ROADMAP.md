@@ -3756,6 +3756,53 @@ captures ; les succès constituent une étape distincte de cette statistique.
   Coop ; vérifier hôte, invité et reconnexion. Ne pas simuler un succès tant que
   son effet source n'est pas établi.
 
+Audit local Map024 du 2026-10-30 : les **six événements de données** sont
+`EV032` (15 habitants, variable 111, succès 22), `EV047` (46 recettes,
+variable 926, succès 19), `EV048` (exactement 18 Nids Alfa, variable 70,
+succès 20), `EV049` (100 MT distinctes sur les 108 testées dans le Sac,
+variable 218, succès 18), `EV050` (250/500/750 espèces possédées dans le
+Pokédex, variable 226, succès 23/24/25) et `EV055` (statue : succès 0 à 25
+terminés, puis interrupteurs 820/821 ; le succès 26 n'est pas testé). Le texte
+de `EV047` et le catalogue des succès annoncent 50 recettes, mais le test Ruby
+source valide à 46 ; conserver 46 tant que la règle du fangame n'est pas
+corrigée explicitement. Le Nids Alfa utilise une égalité, non un minimum.
+Les variables 111, 70 et 926 sont bien écrites par d'autres événements source
+(respectivement 19, 18 et 51 occurrences de `change-variables` dans
+l'extraction), elles ne sont pas des compteurs à inventer dans Map024.
+
+Port local : lecture générique de `pokedexOwned()`, de `getLogro` et de
+`setLogro`, projection des variables pendant un événement (nécessaire aux
+108 vérifications MT), interpolation de `\\v[n]`, saut vers étiquette de
+`EV050`, secousse de la statue, persistance des 27 états de succès et reprise
+de `@logros` lors de l'import `Game.rxdata`. Un octroi déjà terminé reste
+idempotent ; le nom du nouveau succès apparaît dans le retour de scène.
+L'audit automatisé exécute les vraies commandes extraites des six événements
+quand le jeu source local est disponible, plus des scénarios synthétiques
+indépendants de ces fichiers. La source ne définit pas ici de récompense
+d'objet supplémentaire à inventer.
+
+**À valider avant de cocher ce lot :** interaction réelle sur téléphone pour
+les six points, sauvegarde/cloud et réimport ; présentation dédiée des succès
+si souhaitée. En Coop, un piédestal de succès personnel peut être relu par
+l'invité, même si l'hôte a déjà activé sa page de fin. Les seuils du Sac et
+du Pokédex utilisent l'état personnel de l'invité ; les interrupteurs
+692–694 de l'hôte ne bloquent pas son propre octroi. Le contrat reste
+personnel pour les statuts de succès, espèces possédées et Sac ; seuls les
+compteurs narratifs et les interrupteurs de la statue appartiennent à l'hôte.
+La règle métier passe par `resolveEventFlow` et `applySafeStateCommands` en
+solo, hôte et invité. L'intention d'interaction avec un service personnel est
+traitée par le client concerné comme les autres services personnels ; seul
+le monde narratif de l'hôte est répliqué par la room. Après reconnexion, les
+succès personnels sont restaurés depuis le snapshot et ne sont pas remplacés
+par la projection de l'hôte. L'invité ne publie pas son tableau de succès.
+Contrôler ces parcours en Coop réel sur deux appareils avant validation.
+
+Diffusion du 2026-10-30 : le port local ci-dessus, les corrections de Vol et
+les grilles adaptatives sont intégrés à l'APK privée `0.1.7 (8)`. L'objet APK
+et son manifeste ont été publiés sur R2, avec signature, taille et SHA-256
+contrôlés. Les cases de validation réelle restent ouvertes jusqu'au test du
+porteur sur téléphone et en Coop.
+
 Le jeu source affiche un `LocationWindow` à l'entrée d'une carte dont la
 métadonnée `MetadataShowArea` est active. Il le supprime notamment si le nom du
 lieu est identique à celui de la carte quittée ou pour certaines transitions
@@ -3936,3 +3983,213 @@ de partie ; cette finition précède le retrait des BGM de l'APK.
 
 Cet écran est local et transitoire en solo, hôte et invité : il ne modifie ni
 la sauvegarde, ni l'état narratif de la room, ni la reconnexion Coop.
+
+### Registre des anomalies APK 0.1.7 (8) — rapport du 2026-11-01
+
+Source : `Débug/Bug/Bug_261101_102725.pdf`, quatre pages. Identifiants `BZ-001`
+à `BZ-017` stables pour les échanges et les recettes ; tous les sujets restent
+ouverts. Les observations du porteur et les hypothèses techniques sont séparées
+ci-dessous. Ne pas déclarer un point corrigé sur la seule base d'un test Chrome :
+contrôler l'APK en paysage, puis solo/hôte/invité et reconnexion selon le domaine
+d'état concerné. Cette section complète les chantiers existants de l'incrément
+9.7, des grilles Android, du pack de fonds larges et de l'accueil ; elle ne les
+remplace pas.
+
+#### Priorité 1 — combats et règles de progression
+
+- [x] **BZ-001 — Rencontres sauvages en caverne.** Un autre combat démarre parfois
+  juste après la fin d'un combat, ou sans pas attendu. Reproduire avec la case,
+  le compteur de pas, la rencontre en attente et l'état de la room avant/après
+  victoire, fuite, capture et défaite ; établir si l'on reprend une rencontre
+  ancienne ou si un nouveau tirage est effectué. Corriger le cycle générique de
+  rencontre, puis contrôler les rencontres de surface et les services qui
+  lancent un combat.
+- [ ] **BZ-002 — Bouton B / Retour.** Une pression d'annulation ne doit pas ouvrir
+  le menu. Recetter clavier, touche Retour Android et bouton tactile selon la
+  scène active (monde, dialogue, menu et combat) ; conserver des intentions
+  distinctes pour annuler et ouvrir le menu.
+- [ ] **BZ-003 — Nivellement Coop temporaire de l'invité.** Avant la jonction,
+  ajouter dans le menu Coop une case à cocher accompagnée d'une explication :
+  pendant la session, l'équipe de l'invité prend le niveau de référence de
+  l'équipe de l'hôte. Définir et afficher cette règle de référence avant de coder
+  (niveau le plus élevé, moyenne ou autre règle choisie avec le porteur) et
+  préciser si la case vaut pour la session ou persiste comme préférence.
+  Conserver intacts les niveaux/EXP permanents de l'invité pendant la session ;
+  consigner l'EXP réellement gagnée par ses Pokémon dans un journal personnel
+  durable et idempotent. Au retour en solo, appliquer ce journal une fois aux
+  niveaux permanents, puis ouvrir les évolutions et choix de capacités dans
+  l'ordre normal. Ne pas perdre ni doubler l'EXP lors d'une déconnexion, d'une
+  reconnexion, d'un combat interrompu ou d'une fermeture de l'application.
+  Contrat à implémenter dans le noyau partagé : la room/hôte fait autorité sur
+  le niveau temporaire utilisé en combat ; l'équipe permanente et le journal
+  d'EXP appartiennent à l'invité et se sauvegardent dans son slot/cloud ;
+  l'intention de jonction transmet l'option choisie et l'état répliqué expose
+  seulement les niveaux de combat utiles. L'hôte et les participants voient le
+  niveau temporaire, tandis que le détail de l'EXP différée et les choix
+  d'évolution/capacité restent personnels. Prévoir la restauration de la
+  session et la reprise du règlement solo. Recetter hôte, invité, rendu distant,
+  sortie normale, reconnexion et sauvegarde.
+  **Règle choisie avec le porteur le 2026-11-02 :** moyenne entière inférieure
+  des niveaux des trois Pokémon les plus forts de l'équipe de l'hôte ; si
+  l'équipe compte un ou deux membres, moyenner ces membres présents. Les KO
+  comptent dans l'équipe, les Œufs n'y comptent pas. Le niveau de référence est figé à la jonction pour
+  la session ; la case est désactivée par défaut et vaut pour cette session
+  seulement. La présentation doit afficher le niveau calculé avant de
+  confirmer la jonction. Les statistiques de combat sont recalculées
+  temporairement, sans modifier les capacités, niveaux ou EXP de la sauvegarde
+  personnelle. Conserver dans le journal les crédits de combat nécessaires au
+  recalcul d'EXP avec les niveaux permanents au retour en solo, avec un
+  identifiant de règlement pour éviter toute double application.
+  Implémentation locale du 2026-11-02 : le noyau calcule la référence et la
+  projection sans modifier la partie ; la case Coop de session est reliée à la
+  jonction et une prévisualisation de la room demande confirmation au niveau
+  exact. Le Worker et la room conservent l'option et la référence à la
+  reconnexion. Les règlements personnels consignent les crédits d'EXP dans
+  le slot, puis le retour solo les recalcule une fois avec les niveaux
+  permanents et reprend les progressions. Le rejeu cherche également les
+  Pokémon déplacés au Ranch, à la Pension ou à l'Incubateur. **Reste à
+  valider** sur deux appareils après déploiement du Worker et installation
+  d'un APK correspondant : hôte, invité, affichage distant, fermeture et
+  reconnexion pendant/après combat, retour solo, apprentissage et évolution.
+  Le Worker déjà en ligne ne connaît pas encore la prévisualisation : la
+  case ne doit être utilisée qu'après sa mise à jour. Aucune publication
+  n'est incluse dans ce jalon local.
+- [ ] **BZ-004 — Animation de l'attaque « lamasscre ».** Identifier la capacité
+  exacte et sa correspondance source `move2anim.dat`, vérifier les ressources
+  présentes puis la lecture joueur/adversaire, simple/Duo et Coop. Conserver le
+  fallback explicite si la source n'a pas d'animation ; ne pas en inventer une.
+- [ ] **BZ-016 — Combat du moulin et contrat générique des boss.** Sur Map286,
+  le Pokémon dépasse de l'écran, le fond est recouvert et les effets semblent
+  derrière ; la musique diffère de l'original, le Pokémon devrait être non
+  capturable et le son de la scène avant combat est désynchronisé. **Conserver**
+  le débordement de tête déjà présent dans le jeu source ; ne corriger que les
+  écarts du portage. Sous-recettes `BZ-016-D` : identifier le décor de secours
+  superposé, les socles et l'ordre des plans sans masquer les animations ;
+  `BZ-016-M` : reprendre la musique demandée par l'événement source ;
+  `BZ-016-C` : vérifier et porter la règle de capture des combats de boss ;
+  `BZ-016-S` : synchroniser cri, attente, effet et départ du combat. L'extraction
+  de Map286/EV005 donne `pbPlayCry(PBSpecies::TYRANITAR)`, puis 40 frames
+  d'attente, `$PokemonGlobal.nextBattleBGM="CombateNido"` et `pbBossFight(...)`.
+  La commande de BGM y est actuellement `reference-only`. Map286 utilise
+  `MolinoZ` avec un `playerbaseMolino` et sans `enemybaseMolino` homonyme :
+  vérifier les plans/fallbacks avant toute décision de ressource, selon
+  `ASSET_DISTRIBUTION.md`. Comparer aussi les autres événements `pbBossFight`
+  (dont les nids) : règle générique dans le noyau combat, pas de correctif
+  limité à Map286, à un interrupteur ou à une espèce. Recetter solo, hôte,
+  invité et reprise du combat.
+
+#### Priorité 2 — interfaces et commandes Android
+
+- [ ] **BZ-007 — Raccourcis d'objets.** Retirer leur configuration d'Options ;
+  proposer « mettre en raccourci » depuis l'objet concerné dans le Sac, avec
+  retrait au même endroit. Distinguer les objets des capacités de terrain et
+  préserver les raccourcis déjà sauvegardés lors de la migration.
+- [ ] **BZ-008 — Filtre et Tri du Ranch.** Les deux panneaux ne s'ouvrent plus
+  correctement sur l'APK. Déporter leur contenu dans une fenêtre dédiée bornée
+  à l'écran Android, avec fermeture/retour, clavier de recherche et pagination
+  sans défilement vertical ; garder filtres et page cohérents après retour.
+- [ ] **BZ-009 — Équipe dans la Pension.** Agrandir les cartes et les cibles
+  tactiles sans rogner les six membres ; revoir la grille en pages si nécessaire.
+- [ ] **BZ-010 — Équipe dans le Ranch.** Même exigence de lisibilité que pour la
+  Pension, avec accès aux actions et aux informations utiles sans cartes
+  microscopiques ni défilement vertical.
+- [ ] **BZ-015 — Bouton A contextuel.** Dans le monde, proposer l'interaction
+  devant un PNJ/objet/élément lisible ; sans cible, permettre le sprint selon
+  les droits de mouvement. Définir le retour visuel et l'arbitrage avec le
+  bouton Sprint actuel, puis tester les mêmes intentions en solo et en room.
+- [ ] **BZ-017 — Icône du jeu.** Retrouver l'illustration déjà préparée par le
+  porteur et l'intégrer aux icônes Android de densités requises ; vérifier le
+  rendu sur le téléphone avant publication. Contrôler la provenance de l'asset
+  avant toute copie conformément à `ASSET_DISTRIBUTION.md`.
+
+#### Priorité 3 — audio, scène et déplacements
+
+- [ ] **BZ-005 — Audio en arrière-plan.** Suspendre musique et effets lorsque
+  l'APK est réduite, puis reprendre proprement selon les préférences et la
+  scène courante. Tester titre, carte, scène et combat, y compris reprise Coop.
+- [ ] **BZ-006 — Musique du titre.** La lancer par défaut et supprimer son bouton
+  dédié ; intégrer le démarrage au premier geste autorisé par Android/WebView
+  si nécessaire. Garder une piste hors ligne dans l'APK et respecter le volume
+  général. Raccorder ce point au chantier « Écran d'accueil » avant l'APK BGM
+  allégé.
+- [ ] **BZ-011 — Orientation des PNJ.** À l'interaction, tourner vers le joueur
+  les PNJ dont la page source le demande, sans casser les routes forcées ou les
+  scènes ; rendre l'orientation distante cohérente en Coop.
+- [ ] **BZ-012 — Ombres de la forêt.** Reproduire l'effet observé en Map046,
+  identifier la règle et l'asset source, puis corriger le rendu générique des
+  ombres de carte et vérifier d'autres forêts.
+- [ ] **BZ-013 — Transition entre cartes.** Porter les transitions visuelles
+  source et leurs sons éventuels selon les métadonnées de la carte/commande ;
+  couvrir marche, transfert, Vol et Coop. Articuler avec le bandeau de lieu déjà
+  prévu sans rejouer des effets à chaque reconnexion.
+- [ ] **BZ-014 — Marche maintenue au changement de carte.** Après transfert,
+  poursuivre le mouvement si le joystick/la direction est toujours tenue et
+  que la nouvelle carte l'autorise, sans pas fantôme ni double événement ;
+  contrôler hôte, invité, collision, chargement lent et relâchement pendant la
+  transition.
+
+**Ordre de reprise proposé :** reproduire `BZ-016` et `BZ-001` sur l'APK avec
+une trace courte ; fixer le contrat des boss (capture, BGM, audio et plans) et
+le cycle des rencontres dans le noyau commun ; arrêter la règle de niveau de
+référence de `BZ-003` puis coder son journal d'EXP et sa case Coop ; traiter
+`BZ-002`, `BZ-008` à `BZ-010`, puis les autres commandes et présentations.
+Pour chaque lot, garder un identifiant dans les tests/notes de validation et
+vérifier l'état de la sauvegarde avant toute publication.
+
+Premier travail local du 2026-11-02 : `BZ-016-D/M/C/S` et la branche défaite
+de `BZ-001` sont codés, sans publication R2. Le décor de secours n'est plus
+peint sur un fond présent quand seul un socle manque ; `MolinoZ` et ses socles
+ne changent pas. L'override source `nextBattleBGM` devient une commande auditée
+et se transmet au combat local ou partagé ; `pbPlayCry` attend le début effectif
+du son avant la commande d'attente suivante. Les boss produits par
+`pbBossFight` n'ont plus de propriété de capture ; interface, contrôleur local
+et room respectent la même interdiction. Une rencontre sauvage perdue est
+consommée sans récompense en solo comme après règlement Coop, ce qui retire
+une cause avérée de redéclenchement. La réapparition rapportée après une
+**victoire** et les déclenchements inopinés restent à reproduire sur l'APK ;
+ne pas cocher `BZ-001` ni `BZ-016` avant ces recettes. Vérifier aussi la
+musique, le cri, les plans d'animation, l'absence de capture et le comportement
+historique de la taille du Pokémon au moulin, puis au moins un autre nid de boss.
+
+Essai USB du 2026-11-02 : l'APK locale signée `0.1.7 (8)` a été reconstruite
+avec le profil de fonds allégé et installée par-dessus l'app existante sur le
+Samsung du porteur. Certificat et date de première installation inchangés ;
+app lancée. Le porteur teste maintenant `BZ-016` et `BZ-001`. Cette installation
+locale n'est pas une diffusion du patch : aucun objet ni manifeste R2 modifié.
+
+Reprise locale de `BZ-016` après le retour du porteur : la musique restait
+muette parce que l'événement transmet `CombateNido` sans extension alors que
+le fichier réel est `CombateNido.ogg` ; le lecteur et la sélection du manifeste
+résolvent désormais ce nom. Les commandes source de flash et de secousse
+démarrent sans bloquer l'interpréteur, comme dans RPG Maker ; l'attente explicite
+de la scène conserve son rôle. Les sprites adverses anormalement hauts sont
+réduits selon leur hauteur visible et restent ancrés au sol, sans exception
+par espèce. Un `enemybaseMolino.png` dérivé du socle joueur a été ajouté dans
+les ressources locales et détecté par `prepare:local` ; sa provenance et sa
+décision de distribution figurent dans `ASSET_DISTRIBUTION.md`. Recette audio,
+synchro et rendu sur téléphone encore requise avant de clore `BZ-016`.
+
+L'APK locale corrigée `0.1.7 (8)` a été reconstruite, signée et installée sur
+le Samsung du porteur sans effacer les données (`adb install -r` : `Success`).
+Tests et build complets passent. La scène du Moulin doit maintenant être
+rejouée sur appareil ; aucune publication en ligne n'a été effectuée.
+
+Retour téléphone : musique, synchronisation et décor du Moulin validés par le
+porteur. Une dernière retouche augmente légèrement la limite de taille des
+sprites adverses exceptionnellement hauts (échelle 1,04 → 1,12 pour une frame
+150 × 150) ; revalidation visuelle demandée avant clôture de `BZ-016`.
+
+`BZ-001` — reprise du 2026-11-02 : le code source remet le compteur des
+rencontres à zéro après tout combat. Le portage le conservait après une
+victoire scénarisée ou un Dresseur, permettant un tirage au premier pas
+suivant dans une caverne. Le compteur est désormais réinitialisé après ces
+issues, y compris dans la continuation Coop ; les trois pas de protection
+existants redeviennent effectifs. Tests de victoire sauvage, Dresseur solo et
+Dresseur partagé ajoutés. Recette sur caverne réelle et surface encore ouverte
+pour vérifier les autres signalements « sans pas attendu » avant de cocher
+`BZ-001`.
+L'APK locale corrigée a été installée sur le Samsung du porteur sans effacer
+les données ; tests et build complets passent. Aucune diffusion en ligne.
+Validation du porteur après essai sur téléphone : le problème ne se reproduit
+plus. `BZ-001` est considéré résolu. Les contrôles supplémentaires de surface
+et de services restent des vérifications de régression lors des prochains lots.

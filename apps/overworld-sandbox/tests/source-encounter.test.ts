@@ -6,8 +6,9 @@ import { attemptSourceEncounterEscape, createSourceEncounterBattle, createSource
   scaledWildExperience, settleSourceEncounter, storeSourceEncounterParty } from "../src/source-encounter.js";
 import { SOURCE_PLAYER_BALL_PATH, SOURCE_TRAINER_Y_OFFSET, joinedBattlePositions,
   selectSourceBattleAnimation, selectSourceBattleAudio,
+  sourceBattleMusicStartPath,
   sourcePlayerBallKeyframes, transformBattleAnimationPoint } from "../src/source-battle-visuals.js";
-import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
+import { sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale, sourceBattleSpriteScaleForViewport,
   sourceEnemyBaseCenter, sourceTrainerSpritePlacement } from "../src/source-battle-layout.js";
 
 const tackle = { id: 1, internalName: "TACKLE", name: "Charge", functionCode: "000", power: 40, type: "NORMAL",
@@ -40,6 +41,7 @@ describe("source encounter bridge", () => {
     expect(battle.teams.player.activeIndices).toEqual([0, 1]);
     expect(battle.teams.opponent.activeIndices).toEqual([0]);
     expect(battle.teams.opponent.members[0]?.stages).toMatchObject({ speed: 1, defense: 2 });
+    expect(battle.teams.opponent.members[0]?.capture).toBeUndefined();
     expect(battle.teams.player.members[0]?.stages).toMatchObject({ speed: 0, defense: 0 });
   });
 
@@ -58,6 +60,11 @@ describe("source encounter bridge", () => {
       playerCry: "Audio/SE/Cries/650Cry.ogg", opponentCry: "Audio/SE/Cries/399Cry.ogg",
       sendOut: "Audio/SE/recall.mp3",
     });
+    expect(sourceBattleMusicStartPath("CombateNido")).toBe("Audio/BGM/CombateNido.ogg");
+    expect(sourceBattleMusicStartPath("Salvaje.ogg")).toBe("Audio/BGM/Salvaje.ogg");
+    expect(selectSourceBattleAudio({ ...assets, records: [...assets.records,
+      asset("Audio/BGM/CombateNido.ogg")] }, pokemon, "CHESPIN", "BIDOOF", "CombateNido").battleMusic)
+      .toBe("Audio/BGM/CombateNido.ogg");
   });
 
   it("selects explicit opponent animations and mirrors player-only animations", () => {
@@ -74,6 +81,9 @@ describe("source encounter bridge", () => {
   });
 
   it("aligns battlers on the exact source-game ground lines", () => {
+    expect(sourceBattleSpriteScaleForViewport("opponent", 96, 96, 95)).toBe(2);
+    expect(sourceBattleSpriteScaleForViewport("opponent", 150, 150, 149)).toBeCloseTo(1.12);
+    expect(sourceBattleSpriteScaleForViewport("player", 150, 150, 149)).toBe(3);
     expect(sourceBattleSpritePlacement("player", 96, 96, 93)).toEqual({
       left: 80, top: 227, width: 96, height: 96, originX: 48, originY: 93,
     });

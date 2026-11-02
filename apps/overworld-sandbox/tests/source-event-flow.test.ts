@@ -4,6 +4,7 @@ import { resolveEventFlow } from "../src/source-event-flow.js";
 import { applySafeStateCommands, createSourceEventState } from "../src/source-event-state.js";
 import { sourceMovementUnlocks } from "../src/source-player-movement.js";
 import { expandSourceCommonEvents, type SourceCommonEvent } from "../src/source-common-events.js";
+import { compileSourceScene } from "../src/source-scene-plan.js";
 
 type Command = ImportedEventPage["commands"][number];
 const condition = { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null } as const;
@@ -168,6 +169,11 @@ describe("source event choice and condition flow", () => {
     expect(fixed).toMatchObject({ complete: true, blockedReason: null });
     expect(fixed.page.commands[0]).toMatchObject({ kind: "set-next-wild-battle-stages",
       data: { stages: { speed: 1, defense: 1 }, policy: "HOST_NARRATIVE" } });
+    expect(fixed.page.commands[1]).toMatchObject({ kind: "set-next-battle-music",
+      data: { music: "CombateNido", policy: "BATTLE_PRESENTATION_OVERRIDE" } });
+    const audit = compileSourceScene(fixed.page);
+    expect(audit.audit.unknownCommands).toEqual([]);
+    expect(audit.steps[1]?.capability).toMatchObject({ family: "audiovisual", support: "executed" });
     expect(fixed.page.commands).toContainEqual(expect.objectContaining({ kind: "request-encounter",
       data: expect.objectContaining({ species: "FURFROU", level: 11, boss: true, policy: "HOST_ONLY" }) }));
 

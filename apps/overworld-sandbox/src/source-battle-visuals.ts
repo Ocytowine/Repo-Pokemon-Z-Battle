@@ -3,7 +3,7 @@ import { buildBattleScenes, loadLocalManifestsFromUrls, resolvePokemonAsset, sel
   type LocalManifests, type PokemonAssetReference, type PokemonAssetsManifest } from "@pokemon-z-battle/local-assets";
 import type { BattleMove, BattleSide, BattlerState, DoubleBattleEvent, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
-import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScale,
+import { sourceBattlePercent, sourceBattleScaledVisibleBottom, sourceBattleSpritePlacement, sourceBattleSpriteScaleForViewport,
   sourceEnemyBaseCenter, sourceTrainerSpritePlacement } from "./source-battle-layout.js";
 import { experienceAtLevel } from "@pokemon-z-battle/player-state";
 import type { SourceBattleExperiencePresentation, SourceBattleOutcome } from "./source-battle-controller.js";
@@ -261,12 +261,18 @@ export function selectSourceBattleAudio(assets: AssetManifest, pokemon: PokemonA
       shiny: visual?.shiny ?? false, female: visual?.gender === "female" }).asset?.path ?? selectCry(record)?.path ?? null;
   };
   return {
-    battleMusic: availableAudio(assets, `Audio/BGM/${battleMusic}`),
+    battleMusic: availableAudio(assets, `Audio/BGM/${battleMusic}`)
+      ?? availableAudioStem(assets, `Audio/BGM/${battleMusic.replace(/\.[a-z0-9]+$/iu, "")}`),
     victoryMusic: availableAudio(assets, `Audio/ME/${victoryMusic}`),
     playerCry: cry(playerSpecies, appearance?.player),
     opponentCry: cry(opponentSpecies, appearance?.opponent),
     sendOut: availableAudioStem(assets, "Audio/SE/recall"),
   };
+}
+
+/** RPG Maker event overrides name a BGM stem; the WebView needs a real file URL. */
+export function sourceBattleMusicStartPath(name: string): string {
+  return `Audio/BGM/${/\.[a-z0-9]+$/iu.test(name) ? name : `${name}.ogg`}`;
 }
 
 export class SourceBattleVisuals {
@@ -369,7 +375,8 @@ export class SourceBattleVisuals {
     const battleMusic = audio.battleMusic ?? "Salvaje.ogg";
     const victoryMusic = audio.victoryMusic ?? "VictoriaSalvaje.ogg";
     this.#victoryMusicPath = `Audio/ME/${victoryMusic}`;
-    this.#battleMusic = this.playAudio(`Audio/BGM/${battleMusic}`, { loop: true, volume: 0.8 });
+    const firstMusicPath = sourceBattleMusicStartPath(battleMusic);
+    this.#battleMusic = this.playAudio(firstMusicPath, { loop: true, volume: 0.8 });
     try {
       const manifests = await this.manifests();
       if (session !== this.#audioSession) return;
@@ -378,6 +385,10 @@ export class SourceBattleVisuals {
       if (player === undefined || opponent === undefined) return;
       const selectedAudio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species,
         battleMusic, victoryMusic, { player: player.appearance, opponent: opponent.appearance });
+      if (selectedAudio.battleMusic !== null && selectedAudio.battleMusic !== firstMusicPath) {
+        this.#battleMusic?.pause();
+        this.#battleMusic = this.playAudio(selectedAudio.battleMusic, { loop: true, volume: 0.8 });
+      }
       this.#victoryMusicPath = selectedAudio.victoryMusic;
       await this.render(state, this.#battleback);
       if (session !== this.#audioSession) return;
@@ -558,7 +569,9 @@ export class SourceBattleVisuals {
         this.setImage("source-battle-background", background?.path ?? null);
         this.setImage("source-player-base", scene?.playerBase?.path ?? null);
         this.setImage("source-enemy-base", scene?.enemyBase?.path ?? null);
-        document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", scene?.complete !== true);
+        // A missing base does not mean the selected background is missing. The
+        // fallback stage would otherwise paint over a valid wide background.
+        document.getElementById("source-battle-stage")?.classList.toggle("incomplete-scene", background === null);
         const active = { player: playerIndices, opponent: opponentIndices } as const;
         await Promise.all((["player", "opponent"] as const).flatMap((side) => {
           // Un combat 2 contre 1 n'utilise le placement double que du côté qui
@@ -1297,7 +1310,8 @@ export class SourceBattleVisuals {
       this.#animations.push(animation);
       slot.replaceChildren(animation.element);
       slot.classList.remove("sprite-fallback");
-      const scale = sourceBattleSpriteScale(side);
+      const scale = sourceBattleSpriteScaleForViewport(side, animation.frameWidth, animation.frameHeight,
+        animation.visibleBottom, format, activeSlot);
       const placement = sourceBattleSpritePlacement(side, animation.frameWidth * scale, animation.frameHeight * scale,
         sourceBattleScaledVisibleBottom(animation.visibleBottom, scale), format, activeSlot);
       slot.style.left = sourceBattlePercent(placement.left, "x");
