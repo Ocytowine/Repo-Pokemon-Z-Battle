@@ -1,5 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
+import type { SourcePokemonFilters } from "../src/source-pokemon-collection.js";
+import { SourceRanchView } from "../src/source-ranch-view.js";
 
 describe("Ranch and shared inventory panel layout", () => {
   it("centers the shared action wheel inside its game panel", async () => {
@@ -29,13 +31,39 @@ describe("Ranch and shared inventory panel layout", () => {
     expect(css).toMatch(/@media \(max-width:\s*430px\)[\s\S]*\.source-menu-content-bag \.source-inventory-copy > small\s*\{[^}]*line-clamp:\s*8/s);
   });
 
-  it("pins the content to the fill row even when the tools drawer is empty", async () => {
+  it("opens filters and sorting in a bounded dialog without shrinking the Ranch grid", async () => {
     const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+    const view = await readFile(new URL("../src/source-ranch-view.ts", import.meta.url), "utf8");
 
-    expect(css).toMatch(/\.source-ranch-workspace\s*\{[^}]*grid-template-areas:\s*"toolbar"\s*"tools"\s*"content"[^}]*grid-template-rows:\s*auto auto minmax\(0, 1fr\)/s);
-    expect(css).toMatch(/\.source-ranch-toolbar\s*\{[^}]*grid-area:\s*toolbar/s);
-    expect(css).toMatch(/\.source-ranch-tools-slot\s*\{[^}]*grid-area:\s*tools/s);
-    expect(css).toMatch(/\.source-ranch-content\s*\{[^}]*grid-area:\s*content/s);
+    expect(css).toMatch(/\.source-ranch-workspace\s*\{[^}]*grid-template-areas:\s*"toolbar"\s*"content"[^}]*grid-template-rows:\s*auto minmax\(0, 1fr\)/s);
+    expect(css).toMatch(/\.source-ranch-tools-backdrop\s*\{[^}]*position:\s*absolute[^}]*inset:\s*0/s);
+    expect(css).toMatch(/\.source-ranch-tools-dialog\s*\{[^}]*max-height:\s*100%[^}]*overflow:\s*hidden/s);
+    expect(view).toContain('role="dialog" aria-modal="true"');
+    expect(view).toContain("data-source-ranch-tools-close");
+    expect(view).toContain("data-source-ranch-tools-apply");
+    expect(view).toContain("data-source-ranch-tools-dismiss");
+  });
+
+  it("cancels pending changes and applies only confirmed filters", () => {
+    const view = new SourceRanchView(() => {}, () => {}, () => {}, () => {}, () => {}, () => {});
+    const state = view as unknown as { filters: SourcePokemonFilters; draftFilters: SourcePokemonFilters | null;
+      toolsPanel: "filters" | "sort" | null; ranchPage: number; applyTools(): void };
+    const original = state.filters;
+    state.ranchPage = 2;
+    state.toolsPanel = "filters";
+    state.draftFilters = { ...original, query: "Pikachu" };
+    expect(view.cancel()).toBe(true);
+    expect(state.filters).toEqual(original);
+    expect(state.ranchPage).toBe(2);
+    expect(state.draftFilters).toBeNull();
+
+    state.toolsPanel = "filters";
+    state.draftFilters = { ...original, query: "Pikachu" };
+    state.applyTools();
+    expect(state.filters.query).toBe("Pikachu");
+    expect(state.ranchPage).toBe(0);
+    expect(state.draftFilters).toBeNull();
+    expect(state.toolsPanel).toBeNull();
   });
 
   it("keeps storage in its own grid area when the Team panel is hidden", async () => {

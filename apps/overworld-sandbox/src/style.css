@@ -353,7 +353,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-ranch { position: absolute; z-index: 10; isolation: isolate; inset: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; color: #f2f8ee; border: 2px solid #a9d5aa; border-radius: 14px; background: #0c211b; box-shadow: inset 0 0 55px #85c98f22, 0 16px 55px #000d; }.source-ranch[hidden] { display: none; }
 .source-ranch::before { position: absolute; z-index: 0; inset: -10px; content: ""; pointer-events: none; background: url("../../../Graphics/Ranch.png") center / cover no-repeat; filter: blur(1.4px) saturate(.92); transform: scale(1.055); animation: source-ranch-background-drift 18s ease-in-out infinite alternate; }
 .source-ranch-header { position: relative; z-index: 1; display: flex; max-width: none; height: auto; margin: 0; padding: 10px 14px; align-items: center; justify-content: space-between; border-bottom: 1px solid #b8d8ad55; background: linear-gradient(110deg, #173f32f5, #24553df2); }.source-ranch-header div { display: flex; gap: 10px; align-items: baseline; }.source-ranch-header strong { font-size: 17px; }.source-ranch-header span { color: #bed3ba; font-size: 8px; }.source-ranch-header button { display: grid; width: 32px; height: 32px; padding: 0; place-items: center; color: #fff; border: 1px solid #d8ead077; border-radius: 50%; background: #0b271f; cursor: pointer; font-size: 20px; }
-.source-ranch-workspace { position: relative; z-index: 1; isolation: isolate; display: grid; min-height: 0; grid-template-areas: "toolbar" "tools" "content"; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden; }
+.source-ranch-workspace { position: relative; z-index: 1; isolation: isolate; display: grid; min-height: 0; grid-template-areas: "toolbar" "content"; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
 .source-ranch-workspace::after { position: absolute; z-index: -1; inset: 0; content: ""; pointer-events: none; background: #071b1430; }
 @keyframes source-ranch-background-drift { from { transform: scale(1.055) translate3d(-.6%, -.35%, 0); } to { transform: scale(1.085) translate3d(.7%, .45%, 0); } }
 @media (prefers-reduced-motion: reduce) { .source-ranch::before { animation: none; } }
@@ -373,8 +373,6 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-ranch-storage-heading nav button { min-width: 66px; height: 30px; padding: 0 12px; color: #d5e9d0; border: 1px solid #9bc89b; border-radius: 7px 12px; background: #133a2ce8; cursor: pointer; font-size: 8px; }
 .source-ranch-storage-heading nav button:hover, .source-ranch-storage-heading nav button:focus-visible, .source-ranch-storage-heading nav button.active { color: #173324; outline: none; background: #b8dda9; }
 .source-ranch-storage-heading > span { display: grid; min-width: 25px; height: 20px; padding: 0 5px; place-items: center; color: #173324; border-radius: 99px; background: #b8dda9; font-size: 8px; font-weight: 950; }
-.source-ranch-tools-slot { grid-area: tools; min-height: 0; }
-.source-ranch-tools-slot:empty { display: none; }
 .source-ranch-content { grid-area: content; display: grid; min-height: 0; grid-template-areas: "storage"; grid-template-columns: minmax(0, 1fr); }
 .source-ranch-workspace[data-team-expanded="true"] .source-ranch-content { grid-template-areas: "team storage"; grid-template-columns: 25% minmax(0, 1fr); }
 .source-ranch-team, .source-ranch-storage { display: grid; min-width: 0; min-height: 0; overflow: hidden; }
@@ -2657,16 +2655,6 @@ body:has(.source-new-game:not([hidden])) { height: 100dvh; min-height: 0; overfl
 }
 .source-ranch-team-list .source-pokemon-held-item,
 .source-ranch-team-list .source-pokemon-card-status { display: none; }
-.source-ranch-tools-slot:not(:empty) {
-  position: absolute;
-  z-index: 6;
-  top: 48px;
-  right: 0;
-  left: 0;
-  max-height: calc(100% - 48px);
-  overflow: hidden;
-  box-shadow: 0 12px 24px #00150eb8;
-}
 .source-ranch-storage .source-pokemon-grid {
   min-height: 0;
   grid-template-columns: repeat(var(--source-ranch-columns, 3), minmax(0, 1fr));
@@ -2694,6 +2682,67 @@ body:has(.source-new-game:not([hidden])) { height: 100dvh; min-height: 0; overfl
   white-space: nowrap;
 }
 html.source-android .source-ranch-storage .source-pokemon-grid { overflow-y: hidden; }
+.source-ranch-tools-backdrop {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(6px, 2vw, 18px);
+  place-items: center;
+  background: #061810dc;
+  backdrop-filter: blur(3px);
+}
+.source-ranch-tools-dialog {
+  display: grid;
+  width: min(760px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  color: #eef8e9;
+  border: 1px solid #a9d5aa;
+  border-radius: 12px;
+  background: linear-gradient(145deg, #173b2e, #0b261e);
+  box-shadow: 0 18px 45px #00120ed9;
+}
+.source-ranch-tools-dialog > header,
+.source-ranch-tools-dialog > footer { display: flex; gap: 12px; padding: 8px 12px; align-items: center; justify-content: space-between; }
+.source-ranch-tools-dialog > header { border-bottom: 1px solid #a9d5aa55; background: #24523c; }
+.source-ranch-tools-dialog > header > div { display: grid; gap: 1px; }
+.source-ranch-tools-dialog > header small { color: #b7dda9; font-size: 8px; font-weight: 800; letter-spacing: .1em; }
+.source-ranch-tools-dialog > header strong { font-size: 16px; }
+.source-ranch-tools-dialog > footer { border-top: 1px solid #a9d5aa55; }
+.source-ranch-tools-dialog > footer span { color: #b7d1b3; font-size: 9px; }
+.source-ranch-tools-dialog [data-source-ranch-tools-close],
+.source-ranch-tools-dialog [data-source-ranch-tools-apply] {
+  min-height: 40px;
+  padding: 6px 14px;
+  color: #f1f9eb;
+  border: 1px solid #b7dca8;
+  border-radius: 8px;
+  background: #28583c;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+.source-ranch-tools-dialog [data-source-ranch-tools-apply] { color: #153822; border-color: #e8f5be; background: #c7e49f; }
+.source-ranch-tools-dialog .source-ranch-filters,
+.source-ranch-tools-dialog .source-ranch-sort { min-height: 0; overflow: hidden; border: 0; background: transparent; box-shadow: none; }
+.source-ranch-tools-dialog .source-ranch-filters { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 9px; padding: 12px; align-content: center; }
+.source-ranch-tools-dialog .source-ranch-filters label { gap: 5px; font-size: 10px; }
+.source-ranch-tools-dialog .source-ranch-filters input,
+.source-ranch-tools-dialog .source-ranch-filters select,
+.source-ranch-tools-dialog .source-ranch-filters button { height: 40px; min-height: 40px; padding: 6px 8px; font-size: 11px; }
+.source-ranch-tools-dialog .source-ranch-sort { display: grid; padding: 12px; }
+.source-ranch-tools-dialog .source-ranch-sort > div { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.source-ranch-tools-dialog .source-ranch-sort button { min-height: 44px; padding: 6px; font-size: 10px; }
+@media (max-width: 620px) {
+  .source-ranch-tools-dialog .source-ranch-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px 8px; padding: 8px; }
+  .source-ranch-tools-dialog .source-ranch-filters .source-ranch-search { grid-column: auto; }
+  .source-ranch-tools-dialog .source-ranch-sort > div { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+}
 .source-menu-content.source-menu-content-options {
   display: grid;
   min-height: 0;

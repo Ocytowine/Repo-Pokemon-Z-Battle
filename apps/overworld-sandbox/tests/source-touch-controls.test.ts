@@ -44,7 +44,8 @@ describe("source Android touch controls", () => {
     vi.stubGlobal("document", { querySelector: (selector: string) => elements.get(selector) ?? null });
     try {
       const onMenu = vi.fn();
-      new SourceTouchControls({ onDirection: vi.fn(), onInteract: vi.fn(), onCancel: vi.fn(),
+      const onCancel = vi.fn();
+      new SourceTouchControls({ onDirection: vi.fn(), onInteract: vi.fn(), onCancel,
         onMenu, onSprint: vi.fn() });
       const pointer = (type: string, pointerId: number) =>
         Object.assign(new Event(type, { cancelable: true }), { pointerId });
@@ -54,6 +55,10 @@ describe("source Android touch controls", () => {
       menu.dispatchEvent(pointer("pointerup", 7));
       expect(onMenu).not.toHaveBeenCalled();
       menu.dispatchEvent(new Event("click"));
+      expect(onMenu).toHaveBeenCalledTimes(1);
+      expect(onCancel).not.toHaveBeenCalled();
+      elements.get("#source-touch-cancel")?.dispatchEvent(pointer("pointerdown", 8));
+      expect(onCancel).toHaveBeenCalledTimes(1);
       expect(onMenu).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();

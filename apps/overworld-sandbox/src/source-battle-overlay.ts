@@ -120,6 +120,15 @@ export class SourceBattleOverlay {
     });
   }
 
+  /** Same back action as the visible combat button, for keyboard and Android Back. */
+  public cancel(): boolean {
+    const panel = document.querySelector<HTMLElement>("#encounter-panel");
+    if (panel === null || panel.hidden) return false;
+    const back = panel.querySelector<HTMLButtonElement>("#encounter-actions [data-battle-back]");
+    if (back !== null && !back.disabled) back.click();
+    return true;
+  }
+
   public render(model: SourceBattleOverlayModel): void {
     const panel = document.querySelector<HTMLElement>("#encounter-panel");
     if (panel === null) return;

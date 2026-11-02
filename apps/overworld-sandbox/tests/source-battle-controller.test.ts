@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { addPokemonToParty, createEmptyPlayerParty, createPersistentPokemon,
-  pokemonZParticipantExperienceCalculation, type PlayerCreationCatalog,
+  pokemonZParticipantExperienceCalculation, projectCoopPartyAtLevel, type PlayerCreationCatalog,
   type SharedBattleExperienceGain } from "@pokemon-z-battle/player-state";
 import {
   SourceBattleController, sharedBattleExperiencePresentations,
@@ -58,6 +58,46 @@ function presentation(): SourceBattlePresentation {
 }
 
 describe("source battle controller", () => {
+  it("opens a guest wild encounter with projected Coop stats and retains the personal party", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("guest", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "BIDOOF", level: 4, victorySwitches: {}, escapable: true } };
+    const opened = vi.fn(() => true);
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (next) => { eventState = next; },
+      getCombatParty: (state) => projectCoopPartyAtLevel(state.party, 24, catalog),
+      getResources: () => ({ catalog, mapId: 7, battleback: "grass", battleMusic: null, victoryMusic: null }),
+      openSharedBattle: opened, setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(presentation(), callbacks);
+    expect(controller.startPendingEncounter()).toBe(true);
+    expect(opened).toHaveBeenCalledOnce();
+    expect(opened.mock.calls[0]?.[0].playerTeam.members[0]).toMatchObject({ level: 24 });
+    expect(opened.mock.calls[0]?.[0].playerTeam.members[0].stats.maxHp).toBeGreaterThan(party.members[0]!.stats.maxHp);
+    expect(eventState.party.members[0]!.level).toBe(5);
+    expect(eventState.party.members[0]!.hp).toBe(party.members[0]!.hp);
+  });
+
+  it("starts a personal wild battle at permanent level if the room cannot host it", () => {
+    const party = addPokemonToParty(createEmptyPlayerParty(), createPersistentPokemon("guest", "CHESPIN", 5, catalog));
+    let eventState: SourceEventState = { ...createSourceEventState(), party,
+      pendingEncounter: { species: "BIDOOF", level: 4, victorySwitches: {}, escapable: true } };
+    const callbacks: SourceBattleCallbacks = {
+      getEventState: () => eventState,
+      updateEventState: (next) => { eventState = next; },
+      getCombatParty: (state) => projectCoopPartyAtLevel(state.party, 24, catalog),
+      getPersonalCombatParty: (state) => state.party,
+      getResources: () => ({ catalog, mapId: 7, battleback: "grass", battleMusic: null, victoryMusic: null }),
+      openSharedBattle: () => false, setNotice: vi.fn(), render: vi.fn(),
+    };
+    const controller = new SourceBattleController(presentation(), callbacks);
+    expect(controller.startPendingEncounter()).toBe(true);
+    expect(controller.current?.teams.player.members[0]).toMatchObject({ level: 5,
+      hp: party.members[0]!.hp, stats: { maxHp: party.members[0]!.stats.maxHp } });
+    expect(eventState.party.members[0]!.experience).toBe(party.members[0]!.experience);
+  });
+
   it("pauses a local Eject Button turn until the player chooses a reserve", async () => {
     const weak = { ...tackle, internalName: "WEAK", name: "Test", power: 1, accuracy: 0 };
     const localCatalog: PlayerCreationCatalog = { ...catalog, moves: [...catalog.moves, weak] };
@@ -162,7 +202,7 @@ describe("source battle controller", () => {
     expect(callbacks.updateEventState).toHaveBeenCalledOnce();
     expect(visuals.endBattle).toHaveBeenCalledWith(null, { escaped: true });
     expect(notices.at(-1)).toContain("Fuite réussie");
-    expect(completed).toHaveBeenCalledWith(false);
+    expect(completed).toHaveBeenCalledWith("escaped");
   });
 
   it("does nothing when no encounter or battle resources are available", () => {
@@ -240,7 +280,7 @@ describe("source battle controller", () => {
 
     expect(controller.active).toBe(false);
     expect(eventState.pendingEncounter).toBeNull();
-    expect(completed).toHaveBeenCalledWith(true);
+    expect(completed).toHaveBeenCalledWith("won");
     expect(visuals.endBattle).toHaveBeenCalledWith("player", expect.objectContaining({
       experience: expect.objectContaining({ pokemonName: "Marisson", amount: expect.any(Number),
         calculation: expect.objectContaining({ formula: "legacy-wild", result: expect.any(Number) }) }),
@@ -348,7 +388,7 @@ describe("source battle controller", () => {
     expect(eventState).toMatchObject({ pendingEncounter: null, switches: { "65": true } });
     expect(eventState.fieldItemEffects.shinyNextWildEncounter).toBe(false);
     expect(completed).toHaveBeenCalledTimes(1);
-    expect(completed).toHaveBeenCalledWith(true);
+    expect(completed).toHaveBeenCalledWith("won");
     expect(controller.completeSharedBattle("won", "pending-encounter")).toBe(false);
   });
 
@@ -367,7 +407,7 @@ describe("source battle controller", () => {
     expect(controller.completeSharedBattle("escaped", "pending-encounter")).toBe(true);
     expect(eventState).toMatchObject({ pendingEncounter: null, wildEncounterSteps: 0 });
     expect(completed).toHaveBeenCalledOnce();
-    expect(completed).toHaveBeenCalledWith(false);
+    expect(completed).toHaveBeenCalledWith("escaped");
   });
 
   it("resets encounter steps after a shared Trainer battle", () => {

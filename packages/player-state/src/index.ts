@@ -1399,12 +1399,14 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
     if (result === undefined) return member;
     const preserveHeldItem = member.heldItem !== null && !isHeldItemSupported(member.heldItem);
     const persistentForm = result.moveFormPersistent === true ? result.appearance?.form : undefined;
-    return { ...member, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+    const stats = persistentForm === undefined ? member.stats
+      : result.moveFormStats?.[persistentForm as 0 | 1] ?? member.stats;
+    return { ...member, hp: persistentBattleHp(result.hp, result.stats.maxHp, stats.maxHp),
+      majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: { ...member.metadata,
         ...(result.happiness === undefined ? {} : { happiness: result.happiness }),
         ...(persistentForm === undefined ? {} : { form: persistentForm }) },
-      stats: persistentForm === undefined ? member.stats
-        : result.moveFormStats?.[persistentForm as 0 | 1] ?? member.stats,
+      stats,
       heldItem: preserveHeldItem ? member.heldItem
         : settledHeldItem(result, options.retainTransferredHeldItems === true),
       moves: settledMoveSlots(member, result) };
@@ -1413,6 +1415,13 @@ export function storeProjectedBattleTeam(party: PlayerPartyState, team: BattleTe
   const projectedActiveIndex = members.findIndex((member) => member.id === activeId);
   return { ...party, members,
     activeIndex: projectedActiveIndex < 0 ? party.activeIndex : projectedActiveIndex };
+}
+
+/** Converts combat HP to permanent HP when a temporary level changes maximum HP. */
+function persistentBattleHp(hp: number, battleMaxHp: number, permanentMaxHp: number): number {
+  if (hp <= 0) return 0;
+  if (battleMaxHp === permanentMaxHp) return Math.min(hp, permanentMaxHp);
+  return Math.min(permanentMaxHp, Math.max(1, Math.round(hp / Math.max(1, battleMaxHp) * permanentMaxHp)));
 }
 
 /** Restores only the Pokémon owned by one participant from a shared camp battle. */
@@ -1442,12 +1451,14 @@ export function storeOwnedBattleResults(party: PlayerPartyState, participation: 
     if (result === undefined) return pokemon;
     const preserveSourceHeldItem = pokemon.heldItem !== null && !isHeldItemSupported(pokemon.heldItem);
     const persistentForm = result.moveFormPersistent === true ? result.appearance?.form : undefined;
-    return { ...pokemon, hp: result.hp, majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
+    const stats = persistentForm === undefined ? pokemon.stats
+      : result.moveFormStats?.[persistentForm as 0 | 1] ?? pokemon.stats;
+    return { ...pokemon, hp: persistentBattleHp(result.hp, result.stats.maxHp, stats.maxHp),
+      majorStatus: result.majorStatus === null ? null : { ...result.majorStatus },
       metadata: { ...pokemon.metadata,
         ...(result.happiness === undefined ? {} : { happiness: result.happiness }),
         ...(persistentForm === undefined ? {} : { form: persistentForm }) },
-      stats: persistentForm === undefined ? pokemon.stats
-        : result.moveFormStats?.[persistentForm as 0 | 1] ?? pokemon.stats,
+      stats,
       heldItem: transferredMemberIds.has(pokemon.id) || preserveSourceHeldItem ? pokemon.heldItem
         : settledHeldItem(result, retainTransferredHeldItems),
       moves: settledMoveSlots(pokemon, result) };

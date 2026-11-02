@@ -4004,11 +4004,27 @@ remplace pas.
   ancienne ou si un nouveau tirage est effectué. Corriger le cycle générique de
   rencontre, puis contrôler les rencontres de surface et les services qui
   lancent un combat.
-- [ ] **BZ-002 — Bouton B / Retour.** Une pression d'annulation ne doit pas ouvrir
+  Repris après retour téléphone : la fuite purgeait la rencontre, mais la
+  séquence de l'événement mobile sautait son `erase-event`, laissant le sprite
+  et la collision dans l'overworld. Le résultat du combat distingue maintenant
+  fuite et défaite. Le porteur confirme sur téléphone la disparition après fuite
+  et l'absence de bug en fin de combat. Contrôle Coop conservé dans la matrice
+  de régression des prochains lots.
+- [x] **BZ-002 — Bouton B / Retour.** Une pression d'annulation ne doit pas ouvrir
   le menu. Recetter clavier, touche Retour Android et bouton tactile selon la
   scène active (monde, dialogue, menu et combat) ; conserver des intentions
   distinctes pour annuler et ouvrir le menu.
-- [ ] **BZ-003 — Nivellement Coop temporaire de l'invité.** Avant la jonction,
+  Correctif local du 2026-11-02 : annuler n'ouvre plus le menu depuis
+  l'overworld ; Échap et Retour Android suivent la même sortie contextuelle,
+  y compris le bouton Retour des sous-menus de combat. Le bouton Menu garde
+  sa commande distincte. Le plugin natif `@capacitor/app` reçoit le Retour
+  Android ; au niveau racine, cette touche réduit l'application. Tests ciblés
+  et compilation passés. APK locale signée installée le 2026-11-02 sur le
+  téléphone : B laisse l'overworld ouvert, Menu ouvre le menu, Retour Android
+  referme le menu puis minimise l'app depuis l'overworld. Dialogue et retour
+  de sous-menu de combat sont couverts par les contrôleurs/tests, avec un
+  contrôle manuel supplémentaire possible lors de la prochaine session.
+- [x] **BZ-003 — Nivellement Coop temporaire de l'invité.** Avant la jonction,
   ajouter dans le menu Coop une case à cocher accompagnée d'une explication :
   pendant la session, l'équipe de l'invité prend le niveau de référence de
   l'équipe de l'hôte. Définir et afficher cette règle de référence avant de coder
@@ -4047,13 +4063,26 @@ remplace pas.
   reconnexion. Les règlements personnels consignent les crédits d'EXP dans
   le slot, puis le retour solo les recalcule une fois avec les niveaux
   permanents et reprend les progressions. Le rejeu cherche également les
-  Pokémon déplacés au Ranch, à la Pension ou à l'Incubateur. **Reste à
-  valider** sur deux appareils après déploiement du Worker et installation
-  d'un APK correspondant : hôte, invité, affichage distant, fermeture et
-  reconnexion pendant/après combat, retour solo, apprentissage et évolution.
-  Le Worker déjà en ligne ne connaît pas encore la prévisualisation : la
-  case ne doit être utilisée qu'après sa mise à jour. Aucune publication
-  n'est incluse dans ce jalon local.
+  Pokémon déplacés au Ranch, à la Pension ou à l'Incubateur. La validation
+  fonctionnelle Chrome a été acceptée par le porteur le 2026-11-02. La recette
+  de diffusion reste à effectuer avec **un téléphone Android et Chrome sur le
+  PC**, chacun dans la même room avec un profil distinct et un APK correspondant :
+  hôte, invité, affichage distant, fermeture et reconnexion pendant/après
+  combat, retour solo, apprentissage et évolution. Un second téléphone n'est
+  pas nécessaire.
+  Le Worker public `pokemon-z-battle` a été mis à jour le 2026-11-02 avec la
+  prévisualisation. Pour tester, créer une nouvelle room ; les anciennes
+  n'ont pas de référence Coop. L'essai Chrome invité a révélé une rencontre
+  sauvage sans projection et des PV de combat copiés au-dessus du maximum
+  permanent ; ces deux chemins sont corrigés localement, avec affichage des
+  stats temporaires dans l'équipe et le résumé. L'APK n'a pas été republié
+  dans ce jalon.
+  Second retour Chrome : quand la room refuse l'ouverture d'une rencontre
+  personnelle de l'invité, le client retombe maintenant sur un combat local
+  aux niveaux permanents, avec EXP immédiate ; les combats réellement partagés
+  continuent d'utiliser la projection et l'EXP différée. Le porteur confirme
+  que tout fonctionne lors du nouvel essai Chrome et autorise la clôture du
+  point BZ-003 ; l'essai APK reste une vérification de diffusion.
 - [ ] **BZ-004 — Animation de l'attaque « lamasscre ».** Identifier la capacité
   exacte et sa correspondance source `move2anim.dat`, vérifier les ressources
   présentes puis la lecture joueur/adversaire, simple/Duo et Coop. Conserver le
@@ -4088,6 +4117,8 @@ remplace pas.
   correctement sur l'APK. Déporter leur contenu dans une fenêtre dédiée bornée
   à l'écran Android, avec fermeture/retour, clavier de recherche et pagination
   sans défilement vertical ; garder filtres et page cohérents après retour.
+  Fenêtre et retour contextuel implémentés localement le 2026-11-02 ; recette
+  tactile sur Samsung à confirmer avant clôture.
 - [ ] **BZ-009 — Équipe dans la Pension.** Agrandir les cartes et les cibles
   tactiles sans rogner les six membres ; revoir la grille en pages si nécessaire.
 - [ ] **BZ-010 — Équipe dans le Ranch.** Même exigence de lisibilité que pour la

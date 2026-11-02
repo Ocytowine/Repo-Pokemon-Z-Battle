@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { sourceBattleReplacementMenuShouldClose,
+import { SourceBattleOverlay, sourceBattleReplacementMenuShouldClose,
   sourceBattleReplacementSubmitted } from "../src/source-battle-overlay.js";
 
 function battler(id: string): BattlerState {
@@ -12,6 +12,21 @@ function battler(id: string): BattlerState {
 }
 
 describe("source battle overlay", () => {
+  it("uses the visible submenu back action for cancel and ignores a closed battle", () => {
+    const back = { disabled: false, click: vi.fn() };
+    const panel = { hidden: false, querySelector: () => back };
+    vi.stubGlobal("document", { querySelector: (selector: string) => selector === "#encounter-panel" ? panel : null });
+    try {
+      const overlay = new SourceBattleOverlay({} as ConstructorParameters<typeof SourceBattleOverlay>[0]);
+      expect(overlay.cancel()).toBe(true);
+      expect(back.click).toHaveBeenCalledOnce();
+      panel.hidden = true;
+      expect(overlay.cancel()).toBe(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("hides a replacement picker as soon as that slot was submitted for the current turn", () => {
     const state = createTeamBattleState({ player: [battler("active"), battler("reserve")],
       opponent: [battler("opponent")] });

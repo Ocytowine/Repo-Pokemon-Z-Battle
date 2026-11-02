@@ -1,7 +1,8 @@
 import { pokemonTypeIconUrl } from "@pokemon-z-battle/game-assets";
 import { hiddenPowerTypeFromIvs } from "@pokemon-z-battle/battle-engine";
 import { experienceAtLevel, POKEMON_NATURES, type PlayerDetailsCatalog, type PokemonNature,
-  type PokemonTrainingValues, type PublicPokemonIdentity } from "@pokemon-z-battle/player-state";
+  type PokemonTrainingValues, type PublicPokemonIdentity, type PlayerPartyState,
+  type PersistentPokemon } from "@pokemon-z-battle/player-state";
 import { resolvePokemonAsset, type PokemonAssetsManifest, type PokemonSummaryAssets }
   from "@pokemon-z-battle/local-assets";
 import type { SourcePokemonCollectionEntry } from "./source-pokemon-collection.js";
@@ -55,6 +56,7 @@ export interface SourcePokemonSummaryViewModel {
   readonly context: SourcePokemonSummaryContext;
   readonly pokemonId: string | null;
   readonly entries: readonly SourcePokemonCollectionEntry[];
+  readonly combatParty?: PlayerPartyState | null;
   readonly catalog: PlayerDetailsCatalog;
   readonly pokemonAssets: PokemonAssetsManifest;
   readonly summaryAssets: PokemonSummaryAssets;
@@ -260,8 +262,9 @@ function historyPage(model: SourcePokemonSummaryModel): string {
 
 function ivRank(iv: number): string { return iv > 25 ? "★★★★" : iv > 16 ? "★★★☆" : iv > 6 ? "★★☆☆" : "★☆☆☆"; }
 
-function statsPage(model: SourcePokemonSummaryModel, advanced: boolean): string {
-  const pokemon = model.entry.pokemon;
+function statsPage(model: SourcePokemonSummaryModel, advanced: boolean,
+  combatPokemon?: PersistentPokemon): string {
+  const pokemon = combatPokemon ?? model.entry.pokemon;
   if (advanced) {
     const values = STAT_ORDER.map((stat) => `<tr><th>${STAT_LABELS[stat]}</th><td>${pokemon.metadata.evs[stat]}</td><td>${pokemon.metadata.ivs[stat]}</td></tr>`).join("");
     return `<div class="source-summary-advanced"><div class="source-summary-ability"><small>Talent</small><strong>${escapeHtml(model.ability?.name ?? pokemon.ability ?? "Inconnu")}</strong><p>${escapeHtml(model.ability?.description ?? "Description indisponible.")}</p></div>
@@ -273,7 +276,7 @@ function statsPage(model: SourcePokemonSummaryModel, advanced: boolean): string 
     ["defense", "Défense", pokemon.stats.defense], ["specialAttack", "Atq. Spé.", pokemon.stats.specialAttack],
     ["specialDefense", "Déf. Spé.", pokemon.stats.specialDefense], ["speed", "Vitesse", pokemon.stats.speed],
   ] as const;
-  return `<div class="source-summary-stats">${stats.map(([stat, label, value]) => {
+  return `<div class="source-summary-stats">${combatPokemon === undefined ? "" : `<p class="source-summary-note">Statistiques temporaires en Coop · niveau ${combatPokemon.level}. L'EXP affichée dans Identité reste personnelle.</p>`}${stats.map(([stat, label, value]) => {
     const effect = stat === "hp" ? "neutral" : natureEffect(pokemon.metadata.nature, stat);
     const iv = pokemon.metadata.ivs[stat];
     return `<article class="${effect}"><small>${label}</small><strong>${value}</strong><span title="Appréciation IV de Z">${ivRank(iv)}</span></article>`;
@@ -322,10 +325,11 @@ function ribbonsPage(model: SourcePokemonSummaryModel, summaryAssets: PokemonSum
 
 function pageHtml(page: SourcePokemonSummaryPage, model: SourcePokemonSummaryModel,
   summaryAssets: PokemonSummaryAssets, advanced: boolean, selectedMoveIndex: number,
-  movingMoveIndex: number | null, movesEditable: boolean): string {
+  movingMoveIndex: number | null, movesEditable: boolean,
+  combatPokemon?: PersistentPokemon): string {
   if (page === "identity") return identityPage(model);
   if (page === "history") return historyPage(model);
-  if (page === "stats") return statsPage(model, advanced);
+  if (page === "stats") return statsPage(model, advanced, combatPokemon);
   if (page === "moves") return movesPage(model, summaryAssets, selectedMoveIndex, movingMoveIndex, movesEditable);
   return ribbonsPage(model, summaryAssets);
 }
@@ -372,7 +376,7 @@ export class SourcePokemonSummaryView {
     const happiness = sourcePokemonHappinessPresentation(pokemon.metadata.happiness);
     root.innerHTML = `<header><div><small>${view.context === "team" ? "ÉQUIPE" : view.context === "ranch" ? "RANCH" : "COMBAT · LECTURE SEULE"}</small><strong>Résumé Pokémon</strong></div><span>${index + 1}/${view.entries.length}</span><button type="button" data-summary-close aria-label="Fermer">×</button></header>
       <nav class="source-summary-tabs" aria-label="Pages du résumé">${tabs}</nav>
-      <div class="source-summary-layout"><aside><div class="source-summary-name"><strong>${escapeHtml(entry.displayName)}</strong><span>N.${pokemon.level} <b class="${pokemon.metadata.gender ?? "unknown"}">${genderSymbol(pokemon.metadata.gender)}</b></span></div>
+      <div class="source-summary-layout"><aside><div class="source-summary-name"><strong>${escapeHtml(entry.displayName)}</strong><span>N.${pokemon.level}${view.combatParty === null || view.combatParty === undefined ? "" : ` · Coop N.${view.combatParty.members.find((member) => member.id === pokemon.id)?.level ?? pokemon.level}`} <b class="${pokemon.metadata.gender ?? "unknown"}">${genderSymbol(pokemon.metadata.gender)}</b></span></div>
         <div class="source-summary-sprite">${spriteMarkup}</div>
         <div class="source-summary-flags">${flags}</div><div class="source-summary-form">${escapeHtml(model.formName ?? "Forme normale")}</div>
         <div class="source-summary-happiness" aria-label="Bonheur : ${escapeHtml(happiness.valueLabel)}, ${escapeHtml(happiness.mood)}">
@@ -382,7 +386,8 @@ export class SourcePokemonSummaryView {
         <div class="source-summary-object">${model.ballUrl === null ? "" : `<img src="${model.ballUrl}" alt="">`}<span><small>${escapeHtml(model.ballName)}</small><strong>${escapeHtml(model.heldItemName)}</strong></span></div>
         <div class="source-summary-marks" aria-label="Marques">${marks}</div></aside>
         <section class="source-summary-page">${pageHtml(this.page, model, view.summaryAssets, this.advancedStats,
-          this.selectedMoveIndex, this.movingMoveIndex, view.context !== "battle")}</section></div>
+          this.selectedMoveIndex, this.movingMoveIndex, view.context !== "battle",
+          view.combatParty?.members.find((member) => member.id === pokemon.id))}</section></div>
       <footer><button type="button" data-summary-pokemon="previous"${view.entries.length < 2 ? " disabled" : ""}>↑ Pokémon précédent</button>
         ${this.page === "stats" ? `<button type="button" data-summary-advanced>${this.advancedStats ? "Stats générales" : "IV / EV détaillés"}</button>` : ""}
         <span>← → pages · ↑ ↓ Pokémon</span><button type="button" data-summary-pokemon="next"${view.entries.length < 2 ? " disabled" : ""}>Pokémon suivant ↓</button></footer>`;

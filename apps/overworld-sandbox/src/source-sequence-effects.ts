@@ -1,6 +1,6 @@
 import { createPersistentPokemon, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { finalDirectSourceTransfer } from "./source-autorun.js";
-import type { SourceTrainerBattleAudio } from "./source-battle-controller.js";
+import type { SourceTrainerBattleAudio, SourceWildEncounterOutcome } from "./source-battle-controller.js";
 import { isSourceStateCommand } from "./source-command-registry.js";
 import type { SourceShopItem } from "./source-economy.js";
 import { applySafeStateCommands, type SourceEventState } from "./source-event-state.js";
@@ -41,8 +41,8 @@ export interface SourceSequenceEffectDependencies {
   readonly getPokemonCreationContext: (mapId: number) => PokemonCreationContext;
   readonly abort: (session: SourceSequenceSession, notice: string) => void;
   readonly beginItemPresentation: (session: SourceSequenceSession, gains: readonly SourceItemGain[]) => void;
-  readonly startPendingEncounter: (onComplete: (won: boolean) => void, battleMusic?: string) => boolean;
-  readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (won: boolean) => void,
+  readonly startPendingEncounter: (onComplete: (outcome: SourceWildEncounterOutcome) => void, battleMusic?: string) => boolean;
+  readonly startRandomEncounter: (method: SourceEncounterMethod, onComplete: (outcome: SourceWildEncounterOutcome) => void,
     chancePercent?: number, battleMusic?: string) => boolean;
   readonly startTrainerBattle: (trainer: ImportedMapAssets["trainers"][number],
     audio: SourceTrainerBattleAudio, onComplete: (won: boolean) => void) => boolean;
@@ -115,9 +115,9 @@ export class SourceSequenceEffects {
     if (!Number.isInteger(chancePercent) || (chancePercent as number) < 0 || (chancePercent as number) > 100) {
       return this.abort(session, "Séquence interrompue : probabilité de rencontre invalide.");
     }
-    const started = this.dependencies.startRandomEncounter(method as SourceEncounterMethod, (won) => {
+    const started = this.dependencies.startRandomEncounter(method as SourceEncounterMethod, (outcome) => {
       if (!this.dependencies.isActive(session)) return;
-      if (!won) session.cursor = session.plan.steps.length;
+      if (outcome === "lost") session.cursor = session.plan.steps.length;
       this.dependencies.resume();
     }, chancePercent as number, session.nextBattleMusic ?? undefined);
     if (started) session.nextBattleMusic = null;
@@ -154,9 +154,9 @@ export class SourceSequenceEffects {
       return "pause";
     }
     if (result.state.pendingEncounter !== null) {
-      const started = this.dependencies.startPendingEncounter((won) => {
+      const started = this.dependencies.startPendingEncounter((outcome) => {
         if (!this.dependencies.isActive(session)) return;
-        if (!won) session.cursor = session.plan.steps.length;
+        if (outcome === "lost") session.cursor = session.plan.steps.length;
         this.dependencies.resume();
       }, session.nextBattleMusic ?? undefined);
       if (started) session.nextBattleMusic = null;

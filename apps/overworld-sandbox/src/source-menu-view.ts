@@ -17,7 +17,8 @@ import type { SourceFieldShortcutId } from "./source-field-shortcuts.js";
 import { createSourcePokemonCollection, sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
-import { isPokemonPartyItemUsableInField, pokemonItemTargetMode } from "@pokemon-z-battle/player-state";
+import { isPokemonPartyItemUsableInField, pokemonItemTargetMode, projectCoopPartyAtLevel }
+  from "@pokemon-z-battle/player-state";
 import { bindSourceHeldItemIconFallback, canManageSourceHeldItem, sourceHeldItemManagerHtml }
   from "./source-held-item-view.js";
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
@@ -506,6 +507,10 @@ export class SourceMenuView {
     const members = model.eventState.party.members;
     const entries = createSourcePokemonCollection(model.eventState.party, model.eventState.ranch,
       model.assets.battleCatalog, model.assets.pokemonAssets).filter((entry) => entry.location === "team");
+    const coopLevel = model.coop.levelSyncActive ? model.coop.levelReference : null;
+    const displayedParty = coopLevel === null ? model.eventState.party
+      : projectCoopPartyAtLevel(model.eventState.party, coopLevel, model.assets.battleCatalog);
+    const displayedMembers = new Map(displayedParty.members.map((pokemon) => [pokemon.id, pokemon]));
     if (this.selectedTeamPokemonId !== null && !entries.some((entry) => entry.pokemon.id === this.selectedTeamPokemonId)) {
       this.selectedTeamPokemonId = null;
     }
@@ -521,7 +526,8 @@ export class SourceMenuView {
     const heldItemPanel = heldItemTarget === null ? "" : sourceHeldItemManagerHtml(heldItemTarget.displayName,
       heldItemTarget.pokemon.heldItem, model.eventState.inventory, model.assets.items,
       { pocket: this.heldItemPocket, familyId: this.heldItemFamilyId, page: this.heldItemPage });
-    const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml(entry, {
+    const occupiedSlots = entries.map((entry) => sourcePokemonCardHtml({ ...entry,
+      pokemon: displayedMembers.get(entry.pokemon.id) ?? entry.pokemon }, {
       active: entry.teamIndex === model.eventState.party.activeIndex,
       selected: entry.pokemon.id === this.selectedTeamPokemonId,
       teamLayout: true,
@@ -531,7 +537,7 @@ export class SourceMenuView {
     const emptySlots = Array.from({ length: Math.max(0, 6 - entries.length) }, (_, index) =>
       `<article class="source-team-empty-slot" aria-label="Emplacement ${entries.length + index + 1} libre"><span>${entries.length + index + 1}</span><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Emplacement libre</strong></article>`).join("");
     const pokeVialConfirm = !this.pokeVialConfirming ? "" : `<section class="source-poke-vial-confirm" role="dialog" aria-modal="true" aria-label="Utiliser le Pokévial"><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/vial.png" alt=""><div><small>SOIGNER L'ÉQUIPE</small><strong>Utiliser le Pokévial ?</strong><p>Les PV, statuts et PP de toute l'équipe seront restaurés. Il restera ${pokeVial.current - 1}/${pokeVial.maximum} soin${pokeVial.maximum > 1 ? "s" : ""}.</p><nav><button type="button" data-source-poke-vial-cancel>Annuler</button><button type="button" data-source-poke-vial-confirm>Soigner</button></nav></div></section>`;
-    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div><div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${pokeVialConfirm}${wheel}${heldItemPanel}`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div>${coopLevel === null ? "" : `<p class="source-bag-notice">Stats affichées pour les combats partagés : niveau ${coopLevel}. Les rencontres personnelles gardent les niveaux et l'EXP de ta sauvegarde.</p>`}<div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${pokeVialConfirm}${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
       button.addEventListener("click", () => {
@@ -1460,7 +1466,7 @@ export class SourceMenuView {
       <div class="source-coop-profile"><div><small>PROFIL PUBLIÉ</small><strong>${escapeSourceHtml(coop.profileName)}</strong></div><button type="button" id="source-coop-profile">Personnaliser</button></div>
       ${coop.active
         ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p><p>${coop.levelReference === null ? "Niveau Coop indisponible" : `Niveau Coop ${coop.levelReference}${coop.levelSyncActive ? " · actif pour l'invité" : " · option désactivée"}`}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
-        : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie${coop.hostLevelReference === null ? "" : ` · niveau ${coop.hostLevelReference}`}</button><label class="source-movement-test"><span><strong>Niveau de l'hôte pendant la Coop</strong><small>Si tu rejoins une partie, tes Pokémon prendront temporairement la moyenne des trois niveaux les plus élevés de l'hôte. Leur EXP sera calculée au retour en solo.</small></span><input id="source-coop-level-sync" type="checkbox"${coop.levelSyncSelected ? " checked" : ""}></label><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
+        : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie${coop.hostLevelReference === null ? "" : ` · niveau ${coop.hostLevelReference}`}</button><label class="source-movement-test"><span><strong>Niveau de l'hôte pour les combats partagés</strong><small>Si tu rejoins une partie, tes Pokémon prendront temporairement la moyenne des trois niveaux les plus élevés de l'hôte dans les combats partagés. Leur EXP sera calculée au retour en solo. Tes rencontres personnelles gardent tes niveaux et ton EXP habituels.</small></span><input id="source-coop-level-sync" type="checkbox"${coop.levelSyncSelected ? " checked" : ""}></label><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
     content.querySelector<HTMLButtonElement>("#source-coop-profile")?.addEventListener("click", this.callbacks.onEditProfile);
     content.querySelector<HTMLButtonElement>("#source-coop-disconnect")?.addEventListener("click", this.callbacks.onDisconnectRoom);
     const server = content.querySelector<HTMLInputElement>("#source-coop-server");

@@ -10253,10 +10253,159 @@ La sortie manuelle est bloquée tant qu'un combat ou son règlement est actif.
 La version 15 du protocole est conservée : un ancien Worker ignore les nouveaux
 champs de jonction et ne déclenche pas le nivellement ; la prévisualisation
 retourne alors 404 et empêche de confirmer la case. Pour rendre la fonction
-accessible sur téléphone, il faudra déployer le Worker modifié et installer
-l'APK issu de ce code, puis recetter les deux appareils avant de cocher BZ-003.
+accessible sur téléphone, le Worker et l'APK doivent porter ce code. La
+recette de diffusion utilisera le téléphone Android et Chrome sur le PC.
 Validation locale : `corepack pnpm test`, `corepack pnpm build`, typecheck du
 Worker et `git diff --check` passent. Le typecheck global de l'application
 signale encore des erreurs préexistantes dans d'autres modules ; les fichiers
 BZ-003 ne figurent plus dans son diagnostic. Aucun Worker ni APK publié pour
 ce jalon.
+
+### BZ-003 — Worker public mis à jour (2026-11-02)
+
+Après le test Chrome du porteur, la route `/api/rooms/:code/preview` était
+absente du Worker public. Le script local porte le nom
+`pokemon-z-battle-multiplayer`, tandis que l'application utilise
+`pokemon-z-battle.mimidu33-eb.workers.dev`. Déploiement ciblé avec
+`wrangler deploy --name pokemon-z-battle`, version Cloudflare
+`25b201df-43fe-4969-9108-69ed99764c89`. `/health` répond 200 et la
+prévisualisation d'une room fictive répond `ROOM_NOT_FOUND`, ce qui confirme
+que la route existe. Créer une **nouvelle** room pour tester BZ-003 : les
+rooms créées avant cette mise à jour n'ont pas de niveau de référence.
+Le nom de `apps/multiplayer-worker/wrangler.jsonc` a été aligné sur
+`pokemon-z-battle` pour les futurs `pnpm deploy`.
+L'APK n'a pas été republié dans ce jalon ; la recette hôte/invité reste à faire.
+
+### BZ-003 — correction après essai Chrome invité (2026-11-02)
+
+Le porteur a confirmé que la prévisualisation de room fonctionnait après
+déploiement, puis a signalé des stats invitées inchangées et `Invalid HP` en
+cherchant une rencontre sauvage. Cause : la projection de niveau ne servait
+que la jonction d'un combat existant, tandis que le démarrage d'une rencontre
+de l'invité utilisait l'équipe permanente. En outre, la restauration d'un
+combat Duel pouvait recopier les PV du niveau de combat dans le maximum de PV
+permanent. Le contrôleur de combat reçoit désormais une équipe de combat
+projetée pour chaque ouverture ; la room reste obligatoire quand le niveau
+temporaire est actif. Le noyau `player-state` convertit les PV de combat vers
+les PV permanents à la restauration des combats partagés ou projetés. Une
+réconciliation de l'équipe avant combat répare aussi les PV déjà hors bornes
+dans le slot. Cartes d'équipe et page Stats du résumé affichent les valeurs
+temporaires avec une mention Coop, tandis que la page Identité conserve l'EXP
+personnelle. Tests ciblés : projection d'une rencontre sauvage invitée et
+restauration des PV de Duel/Coop ; nouvelle recette Chrome puis APK requise.
+Après correction, `corepack pnpm test` et `corepack pnpm build` passent ; le
+typecheck de l'application ne signale aucune erreur dans les fichiers de ce
+lot, mais conserve les erreurs antérieures dans d'autres modules. Le correctif
+est seulement local au client : le Worker déjà déployé n'a pas changé.
+
+### BZ-003 — rencontre personnelle de l'invité (2026-11-02)
+
+Nouvel essai Chrome : l'invité rencontrait « Combat Coop en attente de la
+connexion à la room » en cherchant un sauvage pour sa propre partie. Le garde
+ajouté au correctif précédent bloquait le repli local dès que le nivellement
+Coop était actif, même si la room n'était pas disponible pour cette rencontre.
+Le contrôleur tente toujours l'ouverture partagée avec l'équipe temporaire ;
+si elle n'est pas acceptée, il crée un combat personnel avec l'équipe et les
+niveaux permanents. L'EXP de ce combat personnel est appliquée immédiatement
+par le noyau solo, tandis que les crédits d'un combat effectivement partagé
+restent différés. La rencontre et ses effets initiaux sont conservés dans le
+repli, sans nouveau tirage. Test ciblé ajouté pour ces deux branches. Client
+local seulement ; le Worker déjà en ligne ne change pas.
+Validation finale locale de ce repli : `corepack pnpm test`, `corepack pnpm
+build` et `git diff --check` passent. La recette manuelle invitée en Chrome
+reste à refaire après rechargement du client.
+
+Le porteur confirme ensuite « tout va bien » sur son nouvel essai Chrome et
+demande explicitement de considérer le point comme bon. BZ-003 est donc clos
+fonctionnellement dans la roadmap. Le Worker public contient déjà la route de
+prévisualisation ; l'APK n'a toujours pas reçu ce correctif client. Une
+recette de diffusion avec le téléphone Android et Chrome sur le PC, tous deux
+connectés à la même room avec des profils distincts, reste à faire avant de
+publier le prochain lot APK. Aucun second téléphone n'est requis. Dans les
+notes BZ-003 précédentes, « deux appareils » désigne ces deux clients.
+
+## BZ-002 — intention Annuler / Menu (2026-11-02)
+
+L'overworld ouvrait le menu lorsque `handleSourceCancelInput` n'avait aucune
+fenêtre à fermer : la commande B tactile et Échap partageaient ce chemin. Le
+repli vers `toggleSourceMenu` est supprimé ; seul le bouton Menu ou la touche M
+ouvre le menu. Une fenêtre/dialogue se ferme selon son propre contrôleur et
+les sous-menus de combat utilisent désormais leur bouton Retour existant.
+`@capacitor/app` est ajouté pour écouter le Retour matériel Android et appeler
+le même traitement contextuel. Au niveau racine, Retour minimise l'application
+au lieu d'ouvrir le menu. Le titre/sélecteur de sauvegarde revient au titre.
+Les intentions restent locales et visuelles : aucun état de room ni de
+sauvegarde ne change. Tests ciblés clavier/tactile/combat passés ; le téléphone
+n'est pas visible dans ADB à ce stade, donc la recette APK réelle reste à
+faire avant de cocher BZ-002.
+`corepack pnpm test`, `corepack pnpm build` et `android:sync` passent ;
+Capacitor détecte `@capacitor/app@8.1.2`. `assembleDebug` passe et produit
+une APK debug locale. Aucun APK public n'a été publié et le téléphone n'était
+pas branché lors de cette compilation.
+
+Suite de recette : le téléphone a été rebranché. `assembleRelease` a produit
+une APK locale de même version 0.1.7 (8), avec le certificat attendu ;
+`adb install -r` a réussi et la partie 1 est toujours présente. Capture
+Android réelle : B dans l'overworld ne change pas d'écran ; Menu ouvre le menu
+Équipe ; la touche Retour matérielle ferme ce menu ; Retour au niveau racine
+minimise l'application et son relancement reprend l'écran en cours. BZ-002
+est coché. Le dialogue et le retour des sous-menus de combat sont également
+couverts dans les contrôleurs/tests, mais un passage manuel dans ces écrans
+reste utile lors d'une prochaine session. Aucune publication en ligne.
+
+## BZ-008 — Filtre et Tri du Ranch (2026-11-02)
+
+Le tiroir Filtre/Tri était rendu dans la grille du Ranch, dont le débordement
+est masqué sur Android : son contenu était coupé et les commandes devenaient
+inaccessibles. Les deux vues s'ouvrent maintenant dans une fenêtre dédiée,
+bornée au cadre du Ranch, avec fermeture explicite et retour contextuel par
+Échap, B ou Retour Android. La fenêtre garde la grille de stockage à sa taille
+normale ; les filtres et le tri restent personnels, transitoires, sans intention
+réseau ni persistance. Les mêmes données de Pokémon servent en solo, hôte et
+invité, et la room ne reçoit rien. La recherche conserve le focus et la
+position du curseur pendant la saisie. Les commandes de la fenêtre et les pages du Ranch
+restent sans défilement vertical. Tests du paquet Ranch et `corepack pnpm test`
+et `corepack pnpm build` passent. L'APK locale signée 0.1.7 (8), avec le même
+certificat de diffusion, a été reconstruite puis installée par `adb install -r`
+(`Success`) et lancée sur le Samsung. Recette tactile de Filtre, Tri, recherche,
+pages et Retour encore à confirmer par le porteur avant de cocher BZ-008 ;
+aucune publication en ligne.
+
+Retour du porteur après installation : « Voir le Ranch » et « Retour » avaient
+la même fonction. Le panneau utilise désormais un état de saisie temporaire :
+Retour (y compris B, Échap et Retour Android) annule les modifications en cours,
+tandis qu'Appliquer valide le filtre ou le tri et revient au Ranch. La touche
+de validation du clavier de recherche applique également la saisie. Une
+modification validée repart de la première page ; une annulation conserve les
+critères et la page précédents. Un test vérifie explicitement annulation et
+application ; `corepack pnpm test` et `corepack pnpm build` passent. L'APK
+locale signée 0.1.7 (8), avec le certificat attendu, a été reconstruite,
+installée par `adb install -r` (`Success`) et lancée sur le Samsung. La recette
+tactile de cette dernière correction reste à faire ; BZ-008 demeure ouvert.
+
+## BZ-001 — disparition des rencontres mobiles après fuite (2026-11-02)
+
+Le porteur a reproduit un défaut encore présent après la fermeture précédente
+de BZ-001 : fuir un Pokémon visible dans une grotte laisse son sprite dans
+l'overworld. L'audit du source local confirme que les événements `nubehumo`
+en question enchaînent `pbEncounter(EncounterTypes::Land)` et `erase-event`.
+Le contrôleur de combat purgeait bien `pendingEncounter` et réinitialisait le
+compteur de pas ; il remontait toutefois `false` à la séquence aussi bien pour
+une fuite que pour une défaite. Le conducteur plaçait alors le curseur en fin
+de séquence, sautant `erase-event`. Le résultat de rencontre est désormais
+explicite (`won`, `escaped`, `lost`) en solo et à la clôture autoritaire Coop.
+Victoire et fuite reprennent les commandes source suivantes, donc l'effacement
+temporaire de l'acteur est publié à la room et restauré selon le cycle de carte
+existant ; la défaite garde l'arrêt de séquence. Le règlement, les récompenses
+et la persistance personnelle restent inchangés. Tests ciblés du conducteur
+et du contrôleur, `corepack pnpm test`, `corepack pnpm build` et
+`git diff --check` passés. L'APK locale signée 0.1.7 (8), avec le même
+certificat, a été reconstruite, installée par `adb install -r` (`Success`)
+et lancée sur le Samsung. Aucun Worker ni APK public n'a été déployé.
+La recette réelle après fuite en grotte et la matrice hôte/invité/reconnexion
+étaient alors en attente.
+
+Retour du porteur : la fuite d'un Pokémon visible dans une grotte le fait bien
+disparaître de l'overworld sur téléphone. Il n'a constaté aucun nouveau bug à
+la fin du combat et valide BZ-001. La recette hôte/invité et reconnexion reste
+dans la matrice de régression Coop, sans bloquer cette clôture demandée.

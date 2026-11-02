@@ -1,5 +1,6 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { Capacitor, SystemBars } from "@capacitor/core";
+import { App } from "@capacitor/app";
 import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, eventFootprint,
   clearImportedMapCaches, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage,
   localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent,
@@ -21,7 +22,7 @@ import { addPokemonToParty, addPokemonToStorage, coopReferenceLevel, projectCoop
   releaseStoredPokemon, reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
   usePokemonEvolutionItem, useRareCandy,
   teachPokemonMachineMove,
-  type PlayerAvatarSelection, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
+  type PlayerAvatarSelection, type PlayerCreationCatalog, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
 import { createNetworkPlayerProfile, resolveSourceMovement, type NetworkPlayerProfile, type RoomPlayerSnapshot }
   from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceFollowerSnapshot, SourceMovementAction, SourceMovementMode, SourceWorldHostState, SourceWorldSnapshot }
@@ -35,7 +36,7 @@ import { SeededRandom, canCaptureSharedBattleTarget, isPokemonBallSupported,
   type TeamBattleState } from "@pokemon-z-battle/battle-engine";
 import { resolvePokemonAsset } from "@pokemon-z-battle/local-assets";
 import { SourceBattleController, sharedBattleExperiencePresentations,
-  type SourceBattleOutcome } from "./source-battle-controller.js";
+  type SourceBattleOutcome, type SourceWildEncounterOutcome } from "./source-battle-controller.js";
 import { SourceBattleVisuals } from "./source-battle-visuals.js";
 import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, rollStepEncounter,
   isGrassTerrain, sourceFishingEncounterMethod, sourceFishingMethod, sourceFishingMethodAvailable, terrainTagAt,
@@ -750,7 +751,7 @@ function checkSourceWildEncounter(): boolean {
 }
 
 function startSourceRandomTableEncounter(method: SourceEncounterMethod,
-  onComplete: (won: boolean) => void, chancePercent = 100, battleMusic?: string): boolean {
+  onComplete: (outcome: SourceWildEncounterOutcome) => void, chancePercent = 100, battleMusic?: string): boolean {
   if (importedAssets === null || sourceEventState.pendingEncounter !== null
     || sourceEventState.party.members.length === 0) return false;
   const rng = new SeededRandom(sourceEventState.wildEncounterRngState);
@@ -1772,6 +1773,8 @@ void applyActivePlayerProfile(activePlayerSelection).catch((error: unknown) => {
 });
 const sourceBattles = new SourceBattleController(sourceBattleVisuals, {
   getEventState: () => sourceEventState,
+  getCombatParty: (state, resources) => sourceCombatParty(state, resources.catalog),
+  getPersonalCombatParty: (state, resources) => sourceCombatParty(state, resources.catalog, false),
   updateEventState: (nextState) => {
     const previousState = sourceEventState;
     sourceEventState = nextState;
@@ -3377,11 +3380,13 @@ function renderSourcePokemonSummary(): void {
   const assets = importedAssets;
   const session = sourcePokemonSummarySession;
   if (assets === null) return;
+  const level = session?.context === "ranch" ? null : currentGuestCoopLevel();
   const collection = createSourcePokemonCollection(sourceEventState.party, sourceEventState.ranch,
     assets.battleCatalog, assets.pokemonAssets);
   const entries = session?.context === "ranch" ? collection : collection.filter((entry) => entry.location === "team");
   sourcePokemonSummaryView.render({ open: session !== null, context: session?.context ?? "team",
     pokemonId: session?.pokemonId ?? null, entries, catalog: assets.battleCatalog,
+    combatParty: level === null ? null : projectCoopPartyAtLevel(sourceEventState.party, level, assets.battleCatalog),
     pokemonAssets: assets.pokemonAssets, summaryAssets: assets.summaryAssets, itemNames: assets.itemNames });
 }
 
@@ -4708,14 +4713,27 @@ function currentPlayerBattleJoinPreparation(): ReturnType<typeof prepareSourcePl
   if (importedAssets === null) return { team: null,
     unavailableReason: "Les données de combat ne sont pas encore chargées.",
     requiresHealing: false, notice: null };
-  const level = multiplayer.current?.ticket.side === "opponent"
-    && multiplayer.current.snapshot?.coopLeveling?.guestEnabled === true
-    ? multiplayer.current.snapshot.coopLeveling.referenceLevel : null;
-  const party = level === null || level === undefined ? sourceEventState.party
-    : projectCoopPartyAtLevel(sourceEventState.party, level, importedAssets.battleCatalog);
+  const party = sourceCombatParty(sourceEventState, importedAssets.battleCatalog);
   return prepareSourcePlayerBattleTeam(party, importedAssets.battleCatalog,
     importedAssets.megaEvolutions, sourceMegaActivationAvailable(importedAssets.megaEvolutions,
       sourceEventState.inventory, sourceEventState.switches));
+}
+
+function currentGuestCoopLevel(): number | null {
+  const snapshot = multiplayer.current?.snapshot;
+  return multiplayer.current?.ticket.side === "opponent" && snapshot?.coopLeveling?.guestEnabled === true
+    ? snapshot.coopLeveling.referenceLevel : null;
+}
+
+function sourceCombatParty(state: SourceEventState, catalog: PlayerCreationCatalog,
+  temporaryLevel = true): SourceEventState["party"] {
+  const reconciled = recalculatePlayerPokemonCollection(state.party, state.ranch, catalog);
+  if (state === sourceEventState && (reconciled.party !== state.party || reconciled.storage !== state.ranch)) {
+    sourceEventState = { ...sourceEventState, party: reconciled.party, ranch: reconciled.storage };
+    persistSourceEventState();
+  }
+  const level = temporaryLevel ? currentGuestCoopLevel() : null;
+  return level === null ? reconciled.party : projectCoopPartyAtLevel(reconciled.party, level, catalog);
 }
 
 function sourceBattleJoinTeamDiagnostic(): string {
@@ -5072,20 +5090,28 @@ function handleSourceCancelInput(): boolean {
   if (sourceIncubatorOpen) { closeSourceIncubator(); return true; }
   if (sourceDayCareEggSequence !== null) { closeSourceDayCareEggs(); return true; }
   if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { closeSourceDayCare(); return true; }
-  if (sourceRanchSequence !== null) { closeSourceRanch(); return true; }
-  if (sourceShop !== null) { closeSourceShop(); return true; }
-  if (sourceScenes.menuOpen) { toggleSourceMenu(); return true; }
-  if (sourceSequences.current !== null && sourceDialogues.current !== null) return true;
-  if (sourceDialogues.cancel()) {
-    sourcePresentation.playDialogueSound("cancel");
-    renderImportedView();
+  if (sourceRanchSequence !== null) {
+    if (!sourceRanchView.cancel()) closeSourceRanch();
     return true;
   }
-  if (viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) {
-    toggleSourceMenu();
+  if (sourceShop !== null) { closeSourceShop(); return true; }
+  if (sourceScenes.menuOpen) { toggleSourceMenu(); return true; }
+  if (sourceBattleOverlay.cancel()) return true;
+  if (sourceDialogues.current !== null) {
+    if (sourceSequences.current === null && sourceDialogues.cancel()) {
+      sourcePresentation.playDialogueSound("cancel");
+      renderImportedView();
+    }
     return true;
   }
   return false;
+}
+
+if (Capacitor.isNativePlatform()) {
+  void App.addListener("backButton", () => {
+    if (sourceLaunchScreen.open) { sourceLaunchScreen.hide(); sourceTitleScreen.show(); return; }
+    if (!handleSourceCancelInput()) void App.minimizeApp();
+  });
 }
 
 window.addEventListener("keydown", (event) => {

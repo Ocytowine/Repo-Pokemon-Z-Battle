@@ -358,6 +358,21 @@ describe("persistent player party", () => {
     expect(host.members[0]!.hp).toBe(4);
     const fainted = { ...host, members: [{ ...host.members[0]!, hp: 0 }] };
     expect(projectCoopPartyAtLevel(fainted, 35, creationCatalog).members[0]!.hp).toBe(0);
+    const battleTeam = playerPartyToBattleTeam({ ...projected, members: [projected.members[0]!] }, catalog);
+    const finishedTeam = { ...battleTeam, members: battleTeam.members.map((member) => ({ ...member,
+      hp: member.stats.maxHp })) };
+    const restored = storeProjectedBattleTeam({ ...host, members: [host.members[0]!] }, finishedTeam);
+    expect(restored.members[0]!.hp).toBe(host.members[0]!.stats.maxHp);
+    expect(restored.members[0]!.level).toBe(host.members[0]!.level);
+    const participant: SharedBattleParticipation = { battleOwnerId: "host", format: "single", camps: {
+      player: { trainerIds: ["guest"], members: [{ ownerId: "guest", battler: finishedTeam.members[0]! }],
+        activeMemberId: finishedTeam.members[0]!.id },
+      opponent: { trainerIds: [], members: [], activeMemberId: null },
+    } };
+    const state = createTeamBattleState({ player: finishedTeam.members, opponent: [{ ...finishedTeam.members[0]!,
+      id: "wild" }] });
+    expect(storeOwnedBattleResults({ ...host, members: [host.members[0]!] }, participant, state, "guest")
+      .members[0]!.hp).toBe(host.members[0]!.stats.maxHp);
   });
 
   it("selects an unforced normal ability from persistent identity without using hidden abilities", () => {

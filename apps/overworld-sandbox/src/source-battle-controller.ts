@@ -79,6 +79,9 @@ export interface SourceBattleOutcome {
   readonly experienceNotAwardedReason?: "capture" | "escaped" | "defeat" | "no-eligible-recipient";
 }
 
+/** Result returned to the source event after a wild battle, independently of rewards. */
+export type SourceWildEncounterOutcome = "won" | "escaped" | "lost";
+
 export function sharedBattleExperiencePresentations(before: PlayerPartyState, after: PlayerPartyState,
   gains: readonly SharedBattleExperienceGain[], catalog: PlayerCreationCatalog,
 ): readonly SourceBattleExperiencePresentation[] {
@@ -133,6 +136,10 @@ function battleExperiencePresentation(before: PlayerPartyState, after: PlayerPar
 
 export interface SourceBattleCallbacks {
   readonly getEventState: () => SourceEventState;
+  /** Battle-only party; the personal save remains the source of truth for rewards. */
+  readonly getCombatParty?: (state: SourceEventState, resources: SourceBattleResources) => PlayerPartyState;
+  /** Personal fallback when a guest encounter cannot be opened in the room. */
+  readonly getPersonalCombatParty?: (state: SourceEventState, resources: SourceBattleResources) => PlayerPartyState;
   readonly updateEventState: (state: SourceEventState) => void;
   readonly getResources: () => SourceBattleResources | null;
   readonly getEvolutionHour?: () => number;
@@ -172,7 +179,7 @@ export class SourceBattleController {
   private rng: SeededRandom | null = null;
   private escapeAttempts = 0;
   private resolving = false;
-  private encounterCompletion: ((won: boolean) => void) | null = null;
+  private encounterCompletion: ((outcome: SourceWildEncounterOutcome) => void) | null = null;
   private trainerCompletion: ((won: boolean) => void) | null = null;
   private trainerAudio: SourceTrainerBattleAudio | null = null;
   private sharedOpening = false;
@@ -218,7 +225,7 @@ export class SourceBattleController {
     return this.startFailure;
   }
 
-  public startPendingEncounter(onComplete: ((won: boolean) => void) | null = null,
+  public startPendingEncounter(onComplete: ((outcome: SourceWildEncounterOutcome) => void) | null = null,
     battleMusicOverride?: string): boolean {
     let eventState = this.callbacks.getEventState();
     let encounter = eventState.pendingEncounter;
@@ -230,22 +237,25 @@ export class SourceBattleController {
         && hasSourceEncounterDynamicLevel(resources.encounterModifiers ?? { records: [] }, levelContext)) {
         const levelRng = new SeededRandom(eventState.wildEncounterRngState);
         const level = resolveSourceEncounterLevel(resources.encounterModifiers ?? { records: [] }, levelContext,
-          eventState.party.members.map((pokemon) => pokemon.level), encounter.level,
+          (this.callbacks.getCombatParty?.(eventState, resources) ?? eventState.party).members.map((pokemon) => pokemon.level), encounter.level,
         (maximum) => levelRng.nextInt(maximum));
         encounter = { ...encounter, level, levelPolicyResolved: true };
         eventState = { ...eventState, pendingEncounter: encounter, wildEncounterRngState: levelRng.snapshot() };
         this.callbacks.updateEventState(eventState);
       }
-      const battle = createSourceEncounterBattle(eventState.party, encounter, resources.catalog,
-        crypto.randomUUID(), resources.megaEvolutions,
-        resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
-          eventState.inventory, eventState.switches),
-        { ...resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
-          mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
-        }), ...(eventState.fieldItemEffects.shinyNextWildEncounter ? { shiny: true as const } : {}) });
+      const combatParty = this.callbacks.getCombatParty?.(eventState, resources) ?? eventState.party;
+      const opponentId = crypto.randomUUID();
+      const megaAvailable = resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(
+        resources.megaEvolutions, eventState.inventory, eventState.switches);
+      const initialEffects = { ...resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
+        mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
+      }), ...(eventState.fieldItemEffects.shinyNextWildEncounter ? { shiny: true as const } : {}) };
+      const battle = createSourceEncounterBattle(combatParty, encounter, resources.catalog,
+        opponentId, resources.megaEvolutions,
+        megaAvailable, initialEffects);
       const context = this.sharedContext(battle, resources, { origin: "source-wild",
         escapable: encounter.escapable, trainerBaseMoney: null, continuation: "pending-encounter",
-        opponentTrainer: null, battleMusic: battleMusicOverride });
+        opponentTrainer: null, ...(battleMusicOverride === undefined ? {} : { battleMusic: battleMusicOverride }) });
       this.callbacks.recordPokedexSeen?.(battle.teams.opponent.members.map((pokemon) => pokemon.species));
       if (this.callbacks.openSharedBattle?.({ context, playerTeam: battle.teams.player,
         opponentTeam: battle.teams.opponent, moveCatalog: battle.moveCatalog }) === true) {
@@ -256,11 +266,14 @@ export class SourceBattleController {
         this.callbacks.render();
         return true;
       }
-      this.battle = battle;
+      const personalParty = this.callbacks.getPersonalCombatParty?.(eventState, resources) ?? eventState.party;
+      this.battle = personalParty === combatParty ? battle
+        : createSourceEncounterBattle(personalParty, encounter, resources.catalog, opponentId,
+          resources.megaEvolutions, megaAvailable, initialEffects);
       this.localSession = this.createLocalSession("source-wild", resources.mapId);
-      this.startLocalTracking(battle);
+      this.startLocalTracking(this.battle);
       this.callbacks.battleReports?.start({ battleId: this.localSession.battleId, mode: "solo",
-        viewerSide: "player", state: battle, context: { ...context, narrativeOwnerId: "local" } });
+        viewerSide: "player", state: this.battle, context: { ...context, narrativeOwnerId: "local" } });
       this.rng = new SeededRandom(encounterSeed(encounter.species, encounter.level));
       this.escapeAttempts = 0;
       this.encounterCompletion = onComplete;
@@ -301,8 +314,12 @@ export class SourceBattleController {
       return false;
     }
     try {
-      const battle = createSourceTrainerBattle(eventState.party, trainer, resources.catalog, audio.format ?? "single",
-        () => crypto.randomUUID(), resources.megaEvolutions,
+      const combatParty = this.callbacks.getCombatParty?.(eventState, resources) ?? eventState.party;
+      const trainerIds = trainer.pokemon.map(() => crypto.randomUUID());
+      const trainerId = (memberIndex: number) => trainerIds[memberIndex]!;
+      const battle = createSourceTrainerBattle(combatParty,
+        trainer, resources.catalog, audio.format ?? "single", trainerId,
+        resources.megaEvolutions,
         resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
           eventState.inventory, eventState.switches), resources.environment ?? "none");
       const context = this.sharedContext(battle, resources, { origin: "source-trainer", escapable: false,
@@ -320,11 +337,16 @@ export class SourceBattleController {
         this.callbacks.render();
         return true;
       }
-      this.battle = battle;
+      const personalParty = this.callbacks.getPersonalCombatParty?.(eventState, resources) ?? eventState.party;
+      this.battle = personalParty === combatParty ? battle
+        : createSourceTrainerBattle(personalParty, trainer, resources.catalog, audio.format ?? "single",
+          trainerId, resources.megaEvolutions,
+          resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(resources.megaEvolutions,
+            eventState.inventory, eventState.switches), resources.environment ?? "none");
       this.localSession = this.createLocalSession("source-trainer", resources.mapId);
-      this.startLocalTracking(battle);
+      this.startLocalTracking(this.battle);
       this.callbacks.battleReports?.start({ battleId: this.localSession.battleId, mode: "solo",
-        viewerSide: "player", state: battle, context: { ...context, narrativeOwnerId: "local" } });
+        viewerSide: "player", state: this.battle, context: { ...context, narrativeOwnerId: "local" } });
       this.rng = new SeededRandom(encounterSeed(`${trainer.trainerType}:${trainer.name}`, trainer.version));
       this.escapeAttempts = 0;
       this.trainerCompletion = onComplete;
@@ -383,7 +405,7 @@ export class SourceBattleController {
         }
         this.clear();
         this.callbacks.setNotice("Fuite réussie : retour à l'exploration, sur la même case.");
-        encounterCompletion?.(false);
+        encounterCompletion?.("escaped");
       } else {
         await this.presentation.playTurn(before, result.turn.events);
         const replacements = resolveSourceControlledReplacements(result.turn.state);
@@ -415,7 +437,7 @@ export class SourceBattleController {
           }
           this.clear();
           this.callbacks.setNotice(`Fuite ratée et équipe vaincue : l'équipe a été restaurée, la rencontre peut être retentée.${loss > 0 ? ` · -${loss.toLocaleString("fr-FR")} ₽` : ""}`);
-          encounterCompletion?.(false);
+          encounterCompletion?.("lost");
         } else {
           this.callbacks.setNotice("Fuite ratée : le Pokémon sauvage a pu attaquer.");
         }
@@ -459,7 +481,7 @@ export class SourceBattleController {
       : won ? "Combat partagé remporté : reprise de l'aventure."
         : "Combat partagé perdu : retour à l'exploration.");
     if (continuation === "trainer-sequence") trainerCompletion?.(won);
-    else encounterCompletion?.(won);
+    else encounterCompletion?.(outcome === "escaped" ? "escaped" : won ? "won" : "lost");
     this.callbacks.render();
     return true;
   }
@@ -668,7 +690,7 @@ export class SourceBattleController {
         }
         this.clear();
         this.callbacks.setNotice("Le combat sauvage est terminé : retour à l'exploration.");
-        encounterCompletion?.(false);
+        encounterCompletion?.("escaped");
         return;
       }
       const replacements = resolveSourceControlledReplacements(result.state);
@@ -723,7 +745,7 @@ export class SourceBattleController {
           this.clear();
           this.callbacks.setNotice(`${target.name} capturé · choisissez son surnom et sa destination.`);
           await this.callbacks.onPokemonCaptured?.(pokemon.id);
-          encounterCompletion?.(true);
+          encounterCompletion?.("won");
           return;
         }
         const winner = this.battle.winner;
@@ -812,7 +834,7 @@ export class SourceBattleController {
           ? `Victoire : l'équipe a été sauvegardée${rewardAmount <= 0 ? "." : ` · +${rewardAmount} EXP${levelsGained > 0 ? ` · +${levelsGained} niveau(x)` : ""}.`}${moneyNotice}${skippedMoves.length === 0 ? "" : ` Capacité(s) en attente d'un choix : ${skippedMoves.join(", ")}.`}`
           : `Défaite : l'équipe a été restaurée et la rencontre reste disponible pour une nouvelle tentative.${moneyNotice}`);
         trainerCompletion?.(winner === "player");
-        encounterCompletion?.(winner === "player");
+        encounterCompletion?.(winner === "player" ? "won" : "lost");
       } else {
         const active = this.battle.teams.opponent.members[this.battle.teams.opponent.activeIndex];
         this.callbacks.setNotice(`Tour résolu${active === undefined ? "." : ` · ${active.name} possède encore ${active.hp} PV.`}`);

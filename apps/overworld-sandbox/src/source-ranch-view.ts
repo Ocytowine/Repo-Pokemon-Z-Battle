@@ -44,11 +44,34 @@ export class SourceRanchView {
   private releasePokemonId: string | null = null;
   private teamExpanded = true;
   private toolsPanel: "filters" | "sort" | null = null;
+  private draftFilters: SourcePokemonFilters | null = null;
   private wasOpen = false;
   private ranchPage = 0;
   private ranchLayout: SourceGridPageLayout = { columns: 3, rows: 3, pageSize: 9 };
   private resizeObserver: ResizeObserver | null = null;
   private currentModel: SourceRanchViewModel | null = null;
+
+  public cancel(): boolean {
+    if (this.toolsPanel === null) return false;
+    this.toolsPanel = null;
+    this.draftFilters = null;
+    if (this.currentModel !== null) this.render(this.currentModel);
+    return true;
+  }
+
+  private applyTools(): void {
+    if (this.toolsPanel === null || this.draftFilters === null) return;
+    const changed = Object.keys(this.filters).some((key) =>
+      this.filters[key as keyof SourcePokemonFilters] !== this.draftFilters?.[key as keyof SourcePokemonFilters]);
+    this.filters = this.draftFilters;
+    this.draftFilters = null;
+    this.toolsPanel = null;
+    if (changed) {
+      this.ranchPage = 0;
+      this.selectedPokemonId = null;
+    }
+    if (this.currentModel !== null) this.render(this.currentModel);
+  }
 
   public constructor(private readonly onClose: () => void,
     private readonly onTransfer: (pokemonId: string, destination: SourceRanchTransferDestination) => void,
@@ -72,6 +95,7 @@ export class SourceRanchView {
     }
     if (!this.wasOpen) {
       this.toolsPanel = null;
+      this.draftFilters = null;
       this.teamExpanded = true;
       this.ranchPage = 0;
       this.releasePokemonId = null;
@@ -86,6 +110,9 @@ export class SourceRanchView {
     const teamEntries = collection.filter((entry) => entry.location === "team");
     const ranchEntries = collection.filter((entry) => entry.location === "ranch");
     const filtered = filterSourcePokemonCollection(ranchEntries, this.filters);
+    const toolFilters = this.draftFilters ?? this.filters;
+    const previewCount = this.toolsPanel === "filters"
+      ? filterSourcePokemonCollection(ranchEntries, toolFilters).length : filtered.length;
     const pageSize = Math.min(sourceRanchPageSize(this.teamExpanded), this.ranchLayout.pageSize);
     const pageCount = sourceRanchPageCount(filtered.length, pageSize);
     this.ranchPage = Math.min(this.ranchPage, pageCount - 1);
@@ -119,20 +146,26 @@ export class SourceRanchView {
     const emptyTeamSlots = Array.from({ length: Math.max(0, 6 - teamEntries.length) }, (_, index) =>
       `<article class="source-ranch-team-empty"><span>${teamEntries.length + index + 1}</span><strong>Place libre</strong></article>`).join("");
     const toolsPanel = this.toolsPanel === "filters" ? `<form class="source-ranch-filters" id="source-ranch-filters">
-          <label class="source-ranch-search"><span>Nom ou numéro</span><input name="query" type="search" value="${escapeAttribute(this.filters.query)}" placeholder="Ex. Pikachu ou 25"></label>
-          <label><span>Type 1</span><select name="firstType">${typeOptions(types, this.filters.firstType, "Tous")}</select></label>
-          <label><span>Type 2</span><select name="secondType">${typeOptions(types, this.filters.secondType, "Indifférent")}</select></label>
-          <label><span>Potentiel</span><select name="potentialTier">${powerOptions(this.filters.potentialTier)}</select></label>
-          <label><span>Qualité IV</span><select name="minimumIvStars">${qualityOptions(this.filters.minimumIvStars)}</select></label>
-          <label><span>Entraînement EV</span><select name="minimumEvStars">${qualityOptions(this.filters.minimumEvStars)}</select></label>
+          <label class="source-ranch-search"><span>Nom ou numéro</span><input name="query" type="search" value="${escapeAttribute(toolFilters.query)}" placeholder="Ex. Pikachu ou 25"></label>
+          <label><span>Type 1</span><select name="firstType">${typeOptions(types, toolFilters.firstType, "Tous")}</select></label>
+          <label><span>Type 2</span><select name="secondType">${typeOptions(types, toolFilters.secondType, "Indifférent")}</select></label>
+          <label><span>Potentiel</span><select name="potentialTier">${powerOptions(toolFilters.potentialTier)}</select></label>
+          <label><span>Qualité IV</span><select name="minimumIvStars">${qualityOptions(toolFilters.minimumIvStars)}</select></label>
+          <label><span>Entraînement EV</span><select name="minimumEvStars">${qualityOptions(toolFilters.minimumEvStars)}</select></label>
           <button type="button" id="reset-source-ranch-filters">Réinitialiser les filtres</button>
-        </form>` : this.toolsPanel === "sort" ? `<section class="source-ranch-sort" aria-label="Trier les Pokémon"><small>TRIER LES POKÉMON DU RANCH</small><div>${sortButtons(this.filters.sort)}</div></section>` : "";
+        </form>` : this.toolsPanel === "sort" ? `<section class="source-ranch-sort" aria-label="Trier les Pokémon"><div>${sortButtons(toolFilters.sort)}</div></section>` : "";
+    const toolsDialog = this.toolsPanel === null ? "" : `<div class="source-ranch-tools-backdrop" data-source-ranch-tools-dismiss>
+      <section class="source-ranch-tools-dialog" role="dialog" aria-modal="true" aria-label="${this.toolsPanel === "filters" ? "Filtrer les Pokémon du Ranch" : "Trier les Pokémon du Ranch"}">
+        <header><div><small>RANCH POKÉMON</small><strong>${this.toolsPanel === "filters" ? "Filtrer" : "Trier"}</strong></div><button type="button" data-source-ranch-tools-close aria-label="Retour au Ranch">← Retour</button></header>
+        ${toolsPanel}
+        <footer><span>${previewCount} Pokémon${this.toolsPanel === "filters" ? " correspondent" : " au Ranch"}</span><button type="button" data-source-ranch-tools-apply>Appliquer</button></footer>
+      </section></div>`;
     root.innerHTML = `<header class="source-ranch-header"><div><strong>Ranch Pokémon</strong><span>${teamEntries.length} dans l'équipe · ${ranchEntries.length} au Ranch</span></div><button id="close-source-ranch" type="button" aria-label="Fermer le Ranch">×</button></header>
       <div class="source-ranch-workspace" data-team-expanded="${this.teamExpanded}">
         <div class="source-ranch-toolbar">
           <section class="source-ranch-team-heading"><div><small>ÉQUIPE</small><strong>Vos compagnons</strong></div><button type="button" data-source-ranch-team-toggle aria-expanded="${this.teamExpanded}" aria-label="${this.teamExpanded ? "Replier" : "Dérouler"} l'équipe"><i aria-hidden="true"></i><span>${teamEntries.length}/6</span></button></section>
           <section class="source-ranch-storage-heading"><div><small>STOCKAGE</small><strong>Pokémon du Ranch</strong></div><nav><button type="button" data-source-ranch-tools="filters" class="${this.toolsPanel === "filters" ? "active" : ""}" aria-expanded="${this.toolsPanel === "filters"}">Filtre</button><button type="button" data-source-ranch-tools="sort" class="${this.toolsPanel === "sort" ? "active" : ""}" aria-expanded="${this.toolsPanel === "sort"}">Tri</button></nav><span>${ranchEntries.length}</span></section>
-        </div><div class="source-ranch-tools-slot">${toolsPanel}</div>
+        </div>
         <div class="source-ranch-content">
           <aside class="source-ranch-team" aria-label="Équipe Pokémon"${this.teamExpanded ? "" : " hidden"}><div class="source-ranch-team-list">${teamEntries.map((entry) => card(entry, { compact: true, selected: entry.pokemon.id === this.selectedPokemonId,
             active: entry.teamIndex === model.party.activeIndex })).join("")}${emptyTeamSlots}</div></aside>
@@ -144,7 +177,7 @@ export class SourceRanchView {
                 highlightTraining: this.filters.minimumIvStars !== "all" || this.filters.minimumEvStars !== "all" })).join("")}</div>
             <nav class="source-ranch-pages" aria-label="Pages du Ranch"${pageCount <= 1 ? " hidden" : ""}><button type="button" data-source-ranch-page="previous"${this.ranchPage === 0 ? " disabled" : ""}>‹ Précédente</button><span>Page ${this.ranchPage + 1}/${pageCount}</span><button type="button" data-source-ranch-page="next"${this.ranchPage >= pageCount - 1 ? " disabled" : ""}>Suivante ›</button></nav></section>
         </div>
-       </div>${wheel}${heldItemPanel}${releasePanel}`;
+       </div>${toolsDialog}${wheel}${heldItemPanel}${releasePanel}`;
     const grid = root.querySelector<HTMLElement>(".source-ranch-storage .source-pokemon-grid");
     if (grid !== null && grid.clientWidth > 0 && grid.clientHeight > 0) {
       const minHeight = this.filters.potentialTier !== "all" || this.filters.minimumIvStars !== "all"
@@ -160,6 +193,12 @@ export class SourceRanchView {
     }
     bindSourceHeldItemIconFallback(root);
     root.querySelector<HTMLButtonElement>("#close-source-ranch")?.addEventListener("click", this.onClose);
+    root.querySelectorAll<HTMLButtonElement>("[data-source-ranch-tools-close]").forEach((button) =>
+      button.addEventListener("click", () => this.cancel()));
+    root.querySelector<HTMLButtonElement>("[data-source-ranch-tools-apply]")?.addEventListener("click", () => this.applyTools());
+    root.querySelector<HTMLElement>("[data-source-ranch-tools-dismiss]")?.addEventListener("click", (event) => {
+      if (event.target === event.currentTarget) this.cancel();
+    });
     root.querySelector<HTMLButtonElement>("[data-source-ranch-team-toggle]")?.addEventListener("click", () => {
       const firstVisibleIndex = this.ranchPage * pageSize;
       this.teamExpanded = !this.teamExpanded;
@@ -170,13 +209,14 @@ export class SourceRanchView {
     root.querySelectorAll<HTMLButtonElement>("[data-source-ranch-tools]").forEach((button) =>
       button.addEventListener("click", () => {
         const panel = button.dataset.sourceRanchTools === "sort" ? "sort" : "filters";
-        this.toolsPanel = this.toolsPanel === panel ? null : panel;
+        if (this.toolsPanel === panel) { this.cancel(); return; }
+        this.toolsPanel = panel;
+        this.draftFilters = { ...this.filters };
         this.render(model);
       }));
     root.querySelectorAll<HTMLButtonElement>("[data-source-ranch-sort]").forEach((button) =>
       button.addEventListener("click", () => {
-        this.filters = { ...this.filters, sort: sourceSort(button.dataset.sourceRanchSort ?? null) };
-        this.ranchPage = 0;
+        this.draftFilters = { ...(this.draftFilters ?? this.filters), sort: sourceSort(button.dataset.sourceRanchSort ?? null) };
         this.render(model);
       }));
     root.querySelectorAll<HTMLButtonElement>("[data-source-ranch-page]").forEach((button) =>
@@ -187,9 +227,8 @@ export class SourceRanchView {
         this.render(model);
       }));
     root.querySelector<HTMLButtonElement>("#reset-source-ranch-filters")?.addEventListener("click", () => {
-      this.filters = { query: "", firstType: null, secondType: null, potentialTier: "all",
-        minimumIvStars: "all", minimumEvStars: "all", sort: this.filters.sort };
-      this.ranchPage = 0;
+      this.draftFilters = { query: "", firstType: null, secondType: null, potentialTier: "all",
+        minimumIvStars: "all", minimumEvStars: "all", sort: toolFilters.sort };
       this.render(model);
     });
     const filterForm = root.querySelector<HTMLFormElement>("#source-ranch-filters");
@@ -199,11 +238,10 @@ export class SourceRanchView {
       const selection = search?.selectionStart ?? null;
       const form = filterForm;
       const data = new FormData(form);
-      this.filters = { query: String(data.get("query") ?? ""), firstType: nullableText(data.get("firstType")),
+      this.draftFilters = { query: String(data.get("query") ?? ""), firstType: nullableText(data.get("firstType")),
         secondType: nullableText(data.get("secondType")), potentialTier: sourcePowerTier(data.get("potentialTier")),
         minimumIvStars: sourceQualityTier(data.get("minimumIvStars")),
-        minimumEvStars: sourceQualityTier(data.get("minimumEvStars")), sort: this.filters.sort };
-      this.ranchPage = 0;
+        minimumEvStars: sourceQualityTier(data.get("minimumEvStars")), sort: toolFilters.sort };
       this.render(model);
       if (restoreSearchFocus) {
         const nextSearch = root.querySelector<HTMLInputElement>('input[name="query"]');
@@ -211,7 +249,11 @@ export class SourceRanchView {
         if (selection !== null) nextSearch?.setSelectionRange(selection, selection);
       }
     };
-    filterForm?.addEventListener("submit", (event) => event.preventDefault());
+    filterForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      updateFilters(false);
+      this.applyTools();
+    });
     filterForm?.addEventListener("input", (event) => {
       if (event.target instanceof HTMLInputElement && event.target.name === "query") updateFilters(true);
     });

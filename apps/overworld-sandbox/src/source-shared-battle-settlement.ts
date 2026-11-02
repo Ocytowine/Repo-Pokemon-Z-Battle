@@ -30,17 +30,6 @@ export function applySourceBattleSettlement(state: SourceEventState, settlement:
   }
   let party = storeOwnedBattleResults(state.party, settlement.participation, settlement.state, playerId,
     { retainTransferredHeldItems: !settlement.experience.trainerBattle });
-  if (deferExperience) {
-    const battleMembers = new Map((["player", "opponent"] as const)
-      .flatMap((side) => settlement.state.teams[side].members.map((member) => [member.id, member] as const)));
-    party = { ...party, members: party.members.map((member) => {
-      const result = battleMembers.get(member.id);
-      if (result === undefined) return member;
-      const hp = result.hp === 0 ? 0 : Math.min(member.stats.maxHp,
-        Math.max(1, Math.round(result.hp / Math.max(1, result.stats.maxHp) * member.stats.maxHp)));
-      return { ...member, hp };
-    }) };
-  }
   const experience = deferExperience ? { party, gains: [] }
     : applySharedBattleExperience(party, settlement.tactical, catalog, settlement.experience,
       evolutionHour === undefined ? {} : { hour: evolutionHour });
