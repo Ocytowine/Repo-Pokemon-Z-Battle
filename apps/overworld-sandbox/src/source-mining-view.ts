@@ -1,6 +1,7 @@
 import { createSourceMiningGame, hitSourceMiningWall, moveSourceMiningCursor, quitSourceMiningGame,
   selectSourceMiningCell, SOURCE_MINING_WIDTH, toggleSourceMiningTool,
   type SourceMiningPlacement, type SourceMiningState, type SourceMiningStatus } from "./source-mining.js";
+import { createSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
 
 export interface SourceMiningViewOptions {
   readonly itemName: (itemId: string) => string;
@@ -150,10 +151,10 @@ export class SourceMiningView {
 
   private play(file: string, delay = 0): void {
     window.setTimeout(() => {
-      if (this.audioVolume <= 0) return;
-      const audio = new Audio(`${SOUND_ROOT}/${file}`);
+      if (this.audioVolume <= 0 || !sourceAudioActive()) return;
+      const audio = createSourceAudio(`${SOUND_ROOT}/${file}`);
       audio.volume = this.audioVolume;
-      void audio.play().catch(() => undefined);
+      void playSourceAudio(audio).catch(() => undefined);
     }, delay);
   }
 

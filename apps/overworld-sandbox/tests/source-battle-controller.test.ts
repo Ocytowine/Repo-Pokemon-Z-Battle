@@ -199,7 +199,8 @@ describe("source battle controller", () => {
     expect(eventState.pendingEncounter).toBeNull();
     expect(eventState.wildEncounterSteps).toBe(0);
     expect(eventState.fieldItemEffects.shinyNextWildEncounter).toBe(false);
-    expect(callbacks.updateEventState).toHaveBeenCalledOnce();
+    expect(callbacks.updateEventState).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(callbacks.updateEventState).mock.calls[0]?.[0].pendingEncounter?.shinyResolved).toBe(true);
     expect(visuals.endBattle).toHaveBeenCalledWith(null, { escaped: true });
     expect(notices.at(-1)).toContain("Fuite réussie");
     expect(completed).toHaveBeenCalledWith("escaped");

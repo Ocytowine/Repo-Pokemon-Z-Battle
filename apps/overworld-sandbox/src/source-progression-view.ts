@@ -5,6 +5,7 @@ import type { SourceEventState } from "./source-event-state.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
 import { sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
+import { createSourceAudio, pauseSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
 import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
   from "./source-pokemon-sprite-animator.js";
 
@@ -173,7 +174,7 @@ export class SourceProgressionView {
   private close(): void {
     this.stopSpriteAnimations();
     if (this.evolutionTimer !== null) clearTimeout(this.evolutionTimer);
-    this.evolutionMusic?.pause();
+    pauseSourceAudio(this.evolutionMusic);
     this.evolutionTimer = null;
     this.evolutionMusic = null;
     this.evolutionPhase = null;
@@ -274,7 +275,7 @@ export class SourceProgressionView {
       ?.addEventListener("click", () => {
         if (this.evolutionTimer !== null) clearTimeout(this.evolutionTimer);
         this.evolutionTimer = null;
-        this.evolutionMusic?.pause();
+        pauseSourceAudio(this.evolutionMusic);
         this.evolutionMusic = null;
         const result = this.callbacks.onResolveEvolution(pokemonId, false);
         if (!result.ok || this.model === null) {
@@ -302,7 +303,7 @@ export class SourceProgressionView {
       presentation.nextSpecies, presentation.cancellable);
     this.evolutionTimer = setTimeout(() => {
       this.evolutionTimer = null;
-      this.evolutionMusic?.pause();
+      pauseSourceAudio(this.evolutionMusic);
       this.evolutionMusic = null;
       this.playAudio(cryUrl(presentation.nextSpecies, this.model!.assets), false, this.model!.effectsVolume);
       setTimeout(() => { this.playAudio(sourceUrl("Audio/ME/EvolutionSuccess.ogg"), false,
@@ -329,11 +330,11 @@ export class SourceProgressionView {
   }
 
   private playAudio(url: string | null, loop = false, volume = 0): HTMLAudioElement | null {
-    if (url === null || volume <= 0) return null;
-    const audio = new Audio(url);
+    if (url === null || volume <= 0 || (!loop && !sourceAudioActive())) return null;
+    const audio = createSourceAudio(url);
     audio.volume = Math.max(0, Math.min(1, volume));
     audio.loop = loop;
-    void audio.play().catch(() => undefined);
+    void playSourceAudio(audio).catch(() => undefined);
     return audio;
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { isSourceAndroidUserAgent, sourceAndroidPresentationMode, sourceJoystickDirection, SourceTouchControls }
   from "../src/source-touch-controls.js";
+import type { SourceContextAction } from "../src/source-context-action.js";
 
 describe("source Android touch controls", () => {
   it("activates the dedicated layout only for Android user agents", () => {
@@ -33,20 +34,21 @@ describe("source Android touch controls", () => {
   it("opens the menu on the final click, after the opening touch is released", () => {
     const control = () => Object.assign(new EventTarget(), {
       style: { transform: "" }, classList: { add: vi.fn(), remove: vi.fn() },
-      setPointerCapture: vi.fn(),
+      dataset: {}, disabled: false, textContent: "", setAttribute: vi.fn(), setPointerCapture: vi.fn(),
     });
     const menu = control();
     const elements = new Map([
       ["#source-touch-joystick", control()], ["#source-touch-joystick-knob", control()],
-      ["#source-touch-interact", control()], ["#source-touch-cancel", control()],
-      ["#source-touch-menu", menu], ["#source-touch-sprint", control()],
+      ["#source-touch-interact", control()],
+      ["#source-touch-menu", menu],
     ]);
     vi.stubGlobal("document", { querySelector: (selector: string) => elements.get(selector) ?? null });
     try {
       const onMenu = vi.fn();
       const onCancel = vi.fn();
       new SourceTouchControls({ onDirection: vi.fn(), onInteract: vi.fn(), onCancel,
-        onMenu, onSprint: vi.fn() });
+        onMenu, onSprint: vi.fn(), getSecondaryAction: () => "menu",
+        getAction: () => ({ kind: "interact", label: "Parler", ariaLabel: "Parler" }) });
       const pointer = (type: string, pointerId: number) =>
         Object.assign(new Event(type, { cancelable: true }), { pointerId });
       menu.dispatchEvent(pointer("pointerdown", 7));
@@ -57,9 +59,81 @@ describe("source Android touch controls", () => {
       menu.dispatchEvent(new Event("click"));
       expect(onMenu).toHaveBeenCalledTimes(1);
       expect(onCancel).not.toHaveBeenCalled();
-      elements.get("#source-touch-cancel")?.dispatchEvent(pointer("pointerdown", 8));
+      expect(elements.has("#source-touch-cancel")).toBe(false);
+      menu.dispatchEvent(pointer("pointerdown", 8));
+      menu.dispatchEvent(pointer("pointerup", 8));
+      menu.dispatchEvent(new Event("click"));
+      expect(onMenu).toHaveBeenCalledTimes(2);
+      expect(onCancel).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses the large Menu button as Retour only for a cancellable dialogue", () => {
+    const control = () => Object.assign(new EventTarget(), {
+      style: { transform: "" }, classList: { add: vi.fn(), remove: vi.fn() },
+      dataset: {}, disabled: false, textContent: "", setAttribute: vi.fn(), setPointerCapture: vi.fn(),
+    });
+    const menu = control();
+    const elements = new Map([
+      ["#source-touch-joystick", control()], ["#source-touch-joystick-knob", control()],
+      ["#source-touch-interact", control()], ["#source-touch-menu", menu],
+    ]);
+    vi.stubGlobal("document", { querySelector: (selector: string) => elements.get(selector) ?? null });
+    try {
+      const onMenu = vi.fn();
+      const onCancel = vi.fn();
+      let secondaryAction: "menu" | "back" | "unavailable" = "back";
+      const controls = new SourceTouchControls({ onDirection: vi.fn(), onInteract: vi.fn(), onCancel,
+        onMenu, onSprint: vi.fn(), getSecondaryAction: () => secondaryAction,
+        getAction: () => ({ kind: "interact", label: "Suite", ariaLabel: "Suite" }) });
+      controls.setSecondaryAction(secondaryAction);
+      expect(menu.textContent).toBe("Retour");
+      menu.dispatchEvent(new Event("click"));
       expect(onCancel).toHaveBeenCalledTimes(1);
-      expect(onMenu).toHaveBeenCalledTimes(1);
+      expect(onMenu).not.toHaveBeenCalled();
+      secondaryAction = "unavailable";
+      controls.setSecondaryAction(secondaryAction);
+      expect(menu.disabled).toBe(true);
+      menu.dispatchEvent(new Event("click"));
+      expect(onCancel).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("holds sprint on an empty tile and uses the same button for an interaction target", () => {
+    const control = () => Object.assign(new EventTarget(), {
+      style: { transform: "" }, classList: { add: vi.fn(), remove: vi.fn() },
+      dataset: {}, disabled: false, textContent: "", setAttribute: vi.fn(), setPointerCapture: vi.fn(),
+    });
+    const actionButton = control();
+    const elements = new Map([
+      ["#source-touch-joystick", control()], ["#source-touch-joystick-knob", control()],
+      ["#source-touch-interact", actionButton],
+      ["#source-touch-menu", control()],
+    ]);
+    vi.stubGlobal("document", { querySelector: (selector: string) => elements.get(selector) ?? null });
+    try {
+      const onInteract = vi.fn();
+      const onSprint = vi.fn();
+      let action: SourceContextAction = { kind: "sprint", label: "Sprint", ariaLabel: "Maintenir pour sprinter" };
+      const controls = new SourceTouchControls({ onDirection: vi.fn(), onInteract, onCancel: vi.fn(),
+        onMenu: vi.fn(), onSprint, getSecondaryAction: () => "menu", getAction: () => action });
+      const pointer = (type: string) => Object.assign(new Event(type, { cancelable: true }), { pointerId: 7 });
+      controls.setContextAction(action);
+      actionButton.dispatchEvent(pointer("pointerdown"));
+      expect(onSprint).toHaveBeenCalledWith(true);
+      expect(onInteract).not.toHaveBeenCalled();
+      controls.setContextAction({ ...action });
+      expect(onSprint).not.toHaveBeenCalledWith(false);
+      actionButton.dispatchEvent(pointer("pointerup"));
+      expect(onSprint).toHaveBeenLastCalledWith(false);
+      action = { kind: "interact", label: "Parler", ariaLabel: "Parler" };
+      controls.setContextAction(action);
+      actionButton.dispatchEvent(pointer("pointerdown"));
+      expect(onInteract).toHaveBeenCalledTimes(1);
     } finally {
       vi.unstubAllGlobals();
     }

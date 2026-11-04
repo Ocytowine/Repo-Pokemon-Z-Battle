@@ -70,8 +70,14 @@ import { parseSourceTrainerLocalizations, sourceTrainerDisplayName,
 import { sourceAudioSettings, type SourceAudioSettings } from "./source-audio-settings.js";
 import { mountOverworldApp, requiredAppElement } from "./overworld-app-shell.js";
 import { SourceTitleScreen } from "./source-title-screen.js";
+import { createSourceAudio, pauseSourceAudio, playSourceAudio, resumeSourceAudioAfterGesture, sourceAudioActive,
+  setSourceAudioActive } from "./source-audio-lifecycle.js";
 import { SourceLaunchScreen } from "./source-launch-screen.js";
 import { isSourceAndroidUserAgent, sourceAndroidPresentationMode, SourceTouchControls } from "./source-touch-controls.js";
+import { resolveSourceContextAction, type SourceContextAction } from "./source-context-action.js";
+import { SourceTransferMovementContinuation } from "./source-transfer-movement.js";
+import { sourceAreaBannerVariant, sourceShouldShowArea, sourceTransferUsesFade }
+  from "./source-map-entry-presentation.js";
 import { hideSourceAndroidSystemBars } from "./source-native-android.js";
 import { SourceOverworldHud } from "./source-overworld-hud.js";
 import { SourceCompassView } from "./source-compass.js";
@@ -120,7 +126,8 @@ import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-se
 import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
   type SourceAndroidUpdate } from "./source-android-update.js";
 import { installWideBattlebackPack, installedWideBattlebackPackVersion } from "./source-resource-packs.js";
-import { installBgmPack, installedBgmPackVersion } from "./source-bgm-pack.js";
+import { androidBgmPackAvailability, bgmPackRequiredForAndroid, installBgmPack, installedBgmPackVersion } from "./source-bgm-pack.js";
+import type { BgmInstallResult } from "./source-bgm-pack.js";
 import { cloudIdentity, sourceCloudApi } from "./source-cloud-api.js";
 import { cloudAutomaticUploadDelay, keepLocalCloudSave, linkCloudAccount, linkedCloudEmail,
   recoverCloudSave, syncCloudSaves,
@@ -131,7 +138,7 @@ import { applySourceNewGameAvatar, applySourceNewGameChoices, clearSourceNewGame
   type SourceNewGameChoices } from "./source-new-game.js";
 import { SourceNewGameView } from "./source-new-game-view.js";
 import { loadSourcePlayerVisuals, sourcePlayerImageFor, sourcePlayerImageForMovement,
-  sourcePlayerRunGroundOffset,
+  sourcePlayerMountGroundOffset, sourcePlayerRunGroundOffset,
   type SourcePlayerVisuals } from "./source-player-profile.js";
 import { purchaseSourceItem, type SourceShopItem } from "./source-economy.js";
 import { applySourceBattleSettlement } from "./source-shared-battle-settlement.js";
@@ -158,6 +165,7 @@ import { craftSourceAlchemyRecipe, sourceAlchemyUnlockLevel } from "./source-alc
 import { parseSourceTruthEventTag, SOURCE_TRUTH_LENS_DURATION_MS, SOURCE_TRUTH_LENS_ITEM,
   sourceTruthEventInteractive, sourceTruthEventSnapshots } from "./source-truth-lens.js";
 import { loadSourceFieldShortcuts, persistSourceFieldShortcuts, sourceFieldShortcutPresentation,
+  SOURCE_EXTRA_SHORTCUT_ITEMS, SOURCE_EXTRA_SHORTCUT_ORDER,
   toggleSourceFieldShortcut,
   type SourceFieldShortcutId } from "./source-field-shortcuts.js";
 import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
@@ -198,7 +206,7 @@ let sourceResourcePackStatus = sourceNativeAndroidMode
   : "Disponible dans l’APK Android.";
 let sourceBgmPackBusy = false;
 let sourceBgmPackStatus = sourceNativeAndroidMode
-  ? "Les musiques intégrées à l’APK restent disponibles hors ligne."
+  ? "Vérification du pack de musiques…"
   : "Disponible dans l’APK Android.";
 function refreshAndroidUpdateMenu(): void {
   if (sourceScenes.menuOpen && sourceScenes.menuTab === "options") renderSourceMenu();
@@ -272,24 +280,30 @@ async function installSourceResourcePack(): Promise<void> {
     refreshAndroidUpdateMenu();
   }
 }
-async function installSourceBgmPack(): Promise<void> {
-  if (sourceBgmPackBusy) return;
+async function installSourceBgmPack(report?: (status: string) => void): Promise<BgmInstallResult | "error" | "busy"> {
+  if (sourceBgmPackBusy) return "busy";
   sourceBgmPackBusy = true;
   sourceBgmPackStatus = "Vérification du pack de musiques…";
+  report?.(sourceBgmPackStatus);
   refreshAndroidUpdateMenu();
   try {
     const result = await installBgmPack((done, total) => {
       sourceBgmPackStatus = `Musiques vérifiées : ${done}/${total} fichiers.`;
+      report?.(sourceBgmPackStatus);
       refreshAndroidUpdateMenu();
     });
     sourceBgmPackStatus = result === "installed" ? "Musiques installées et disponibles hors ligne."
       : result === "current" ? "Musiques déjà à jour et disponibles hors ligne."
-        : result === "not-published" ? "Pack de musiques non encore publié. Les pistes de l’APK restent disponibles."
-          : result === "login-required" ? "Connecte-toi depuis Sauvegardes pour accéder au pack privé."
+        : result === "not-published" ? "Pack de musiques non encore publié."
+          : result === "login-required" ? "Connexion nécessaire pour accéder au pack privé."
             : "Disponible dans l’APK Android.";
+    report?.(sourceBgmPackStatus);
+    return result;
   } catch (error) {
     sourceBgmPackStatus = error instanceof Error ? `Installation interrompue : ${error.message}`
-      : "Installation interrompue. Les musiques de l’APK restent disponibles.";
+      : "Installation interrompue. Les fichiers vérifiés seront réutilisés.";
+    report?.(sourceBgmPackStatus);
+    return "error";
   } finally {
     sourceBgmPackBusy = false;
     refreshAndroidUpdateMenu();
@@ -440,9 +454,11 @@ let sourceFieldMarks: SourceFieldMark[] = [];
 let sourceTruthLensActiveUntil = Number.NEGATIVE_INFINITY;
 const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
+const sourceTransferMovement = new SourceTransferMovementContinuation();
 let touchMovementDirection: Direction | null = null;
 let keyboardSprintHeld = false;
 let touchSprintHeld = false;
+let nextSourceContextActionRefreshAt = 0;
 let sourceDocumentInputActive = !document.hidden;
 let importedNotice = "Chargement automatique de Bourg Canvas…";
 let pendingSourceFieldNotice: string | null = null;
@@ -829,7 +845,7 @@ function finishImportedStep(): void {
       importedAssets.map.id, sourceInteractionState());
     const directTransfer = sharedEvent === null ? null : guestDirectSourceTransfer(sharedEvent);
     if (directTransfer !== null) {
-      void followSourceTransfer(directTransfer);
+      void followSourceTransfer(directTransfer, true, true);
       return;
     }
     if (sharedEvent !== null && (sharedEvent.page.settings.trigger === 1 || sharedEvent.page.settings.trigger === 2)
@@ -921,6 +937,17 @@ function refreshSourceParallelPresentation(assets: ImportedMapAssets): void {
   if (isNetworkGuest()) {
     sourceParallelEvents.synchronize([]);
     sourceParallelAuditNotice = null;
+    // Ambient map graphics are derived locally on reconnect; they do not mutate
+    // the guest's story state or require replaying the host's parallel event.
+    for (const { event, page } of findActiveSourceParallelEvents(sourceMapEvents(), assets.map.id, sourceEventState)) {
+      const flow = resolveEventFlow(page, [], sourceEventState, assets.map.id, event.id);
+      if (!flow.complete || flow.pendingChoice !== null) continue;
+      for (const command of flow.page.commands) {
+        if (command.kind === "change-map-settings") {
+          void sourcePresentation.execute(command, async () => undefined);
+        }
+      }
+    }
     return;
   }
   const parallels = findActiveSourceParallelEvents(sourceMapEvents(), assets.map.id, sourceEventState);
@@ -1026,9 +1053,22 @@ function beginSourceSequence(active: ActiveSourceAutorun, label: string, interac
     return false;
   }
   importedNotice = `${label} démarré.`;
-  sourceSequences.start({ label, mapId: importedAssets.map.id, eventId: active.event.id, plan,
+  const mapId = importedAssets.map.id;
+  const eventId = active.event.id;
+  const interactionLocked = active.page.settings.trigger < 3 && sourceNpcMotions.lockForInteraction(
+    eventId, mapId, importedAssets.events, sourceInteractionState(), interactionTarget ?? importedAvatar,
+    performance.now());
+  if (interactionLocked) publishCurrentSourceActors();
+  sourceSequences.start({ label, mapId, eventId, plan,
     translations: importedAssets.mapTranslations, sourcePage: active.page, selections: [], pendingChoice: flow.pendingChoice,
     ...(interactionTarget === undefined ? {} : { interactionTarget }),
+    ...(interactionLocked ? { onEnd: () => {
+      if (importedAssets?.map.id !== mapId) return;
+      sourceNpcMotions.unlockInteraction(eventId, mapId, importedAssets.events,
+        sourceInteractionState(), performance.now());
+      publishCurrentSourceActors();
+      queueMicrotask(renderImportedView);
+    } } : {}),
   });
   return true;
 }
@@ -1227,15 +1267,61 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceMapTransitionOverlay = requiredAppElement<HTMLElement>("source-map-transition");
+const sourceLocationBanner = requiredAppElement<HTMLElement>("source-location-banner");
+let sourceLocationBannerTimeout: number | null = null;
+
+function hideSourceLocationBanner(): void {
+  if (sourceLocationBannerTimeout !== null) window.clearTimeout(sourceLocationBannerTimeout);
+  sourceLocationBannerTimeout = null;
+  sourceLocationBanner.hidden = true;
+}
+
+function showSourceLocationBanner(name: string): void {
+  hideSourceLocationBanner();
+  sourceLocationBanner.dataset.variant = String(sourceAreaBannerVariant(name));
+  const label = sourceLocationBanner.querySelector<HTMLElement>("span");
+  if (label !== null) label.textContent = name;
+  sourceLocationBanner.hidden = false;
+  sourceLocationBannerTimeout = window.setTimeout(hideSourceLocationBanner, 2400);
+}
+
+async function animateSourceMapFade(from: number, to: number, duration: number): Promise<void> {
+  const animation = sourceMapTransitionOverlay.animate([{ opacity: from }, { opacity: to }],
+    { duration, easing: to > from ? "ease-in" : "ease-out", fill: "forwards" });
+  await animation.finished.catch(() => undefined);
+  animation.cancel();
+  sourceMapTransitionOverlay.style.opacity = String(to);
+}
+let pendingLaunchAfterBgmPack = false;
+let pendingCoopRecoveryAfterBgmPack = false;
 const sourceTitleScreen = new SourceTitleScreen(requiredAppElement("source-title-screen"),
   () => {
+    if (pendingCoopRecoveryAfterBgmPack) {
+      pendingCoopRecoveryAfterBgmPack = false;
+      offerSourceAutoSaveRecovery();
+      return;
+    }
+    if (pendingLaunchAfterBgmPack) {
+      pendingLaunchAfterBgmPack = false;
+      startInitialSourceSession();
+      return;
+    }
     sourceLaunchScreen.show();
     renderSourceLaunchScreen();
     if (sourceAndroidUpdateNoticePending && sourceAndroidUpdate !== null) {
       sourceAndroidUpdateNoticePending = false;
       showAndroidUpdateNotice(sourceAndroidUpdate);
     }
-  }, sourceAudioPreferences.music);
+  }, () => sourceAudioPreferences.music, sourceNativeAndroidMode ? {
+    check: () => androidBgmPackAvailability(),
+    install: async (report) => {
+      const result = await installSourceBgmPack(report);
+      return result === "installed" || result === "current" ? "ready"
+        : result === "login-required" ? "login-required" : "failed";
+    },
+    login: async (report) => openSourceCloudLogin(report),
+  } : undefined);
 const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-launch-screen"), localStorage, {
   select: (slot, kind) => activateLaunchSelection(slot, kind),
   newGame: (slot) => activateLaunchSelection(slot, "manual"),
@@ -1420,7 +1506,9 @@ const sourceTouchControls = new SourceTouchControls({
     if (direction !== null) move("player", direction);
   },
   onInteract: () => { if (sourceDocumentInputActive && !sourceLaunchScreen.open) interact("player"); },
+  getAction: currentSourceContextAction,
   onCancel: () => { if (sourceDocumentInputActive && !sourceLaunchScreen.open) handleSourceCancelInput(); },
+  getSecondaryAction: currentSourceSecondaryAction,
   onMenu: () => {
     if (sourceDocumentInputActive && !sourceLaunchScreen.open && viewedMapId !== AVATAR_LAB_MAP_ID && importedAssets !== null) toggleSourceMenu();
   },
@@ -1664,6 +1752,11 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onUseRareCandy: useSourceRareCandy,
   onUsePokemonPartyItem: useSourcePokemonPartyItem,
   onUseFieldItem: useSourceFieldItem,
+  onOpenRegionMapFromBag: (mode) => {
+    sourceMenuView.focusRegionMap(mode);
+    sourceScenes.selectMenuTab("map");
+    renderSourceMenu();
+  },
   onCraftAlchemy: craftSourceAlchemy,
 });
 const sourceProgressionView = new SourceProgressionView({
@@ -1756,6 +1849,31 @@ document.querySelector<HTMLButtonElement>("#source-truth-lens-shortcut")
   ?.addEventListener("click", activateSourceTruthLens);
 document.querySelector<HTMLButtonElement>("#source-mount-shortcut")?.addEventListener("click", () => {
   selectSourceMovementMode(sourceMovementMode === "mount" ? "walk" : "mount");
+});
+document.querySelectorAll<HTMLButtonElement>("[data-source-extra-shortcut]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const id = button.dataset.sourceExtraShortcut as keyof typeof SOURCE_EXTRA_SHORTCUT_ITEMS;
+    const itemId = SOURCE_EXTRA_SHORTCUT_ITEMS[id];
+    if (itemId === undefined || (sourceEventState.inventory[itemId] ?? 0) < 1) return;
+    if (id === "incubator") { openSourceIncubator(); return; }
+    if (id === "shiny-charm") {
+      importedNotice = "Le Charme Chroma est actif : trois tirages pour chaque Pokémon sauvage.";
+      renderImportedView();
+      return;
+    }
+    if (id === "black-flute" || id === "white-flute") {
+      const result = useSourceFieldItem(itemId);
+      importedNotice = result.message;
+      renderImportedView();
+      return;
+    }
+    if (id === "blue-flute" || id === "poke-flute") {
+      if (importedAssets === null || !sourceScenes.openMenu(sourceSceneActivity())) return;
+      sourceScenes.selectMenuTab("bag");
+      sourceMenuView.focusBagItem(itemId, importedAssets.items.get(itemId)?.name ?? itemId);
+      renderImportedView();
+    }
+  });
 });
 const sourceBattleVisuals = new SourceBattleVisuals({
   musicVolume: sourceAudioPreferences.music / 100,
@@ -2558,6 +2676,8 @@ function animateImportedMap(now: number): void {
   const remoteMode = remoteSide === null ? "walk" : networkSourceWorld?.avatars[remoteSide].mode ?? "walk";
   const remoteVisualMode = sourceMovementVisualMode(remoteMode, remoteMotion?.action ?? "idle",
     remoteMotion !== null);
+  const remotePattern = sourceMovementVisualPattern(remoteVisualMode,
+    remotePose !== null && "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null);
   const remoteImage = remoteSide === null ? null
     : sourcePlayerImageForMovement(networkPlayerVisuals[remoteSide] ?? null, remoteVisualMode)
       ?? networkAvatarImages[remoteSide] ?? null;
@@ -2570,23 +2690,29 @@ function animateImportedMap(now: number): void {
         pattern: "pattern" in remoteFollowerPose ? remoteFollowerPose.pattern : 0 }]),
     ...(remotePose === null || remoteImage === null ? []
       : [{ image: remoteImage, pose: remotePose,
-        pattern: sourceMovementVisualPattern(remoteVisualMode,
-          "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null),
+        pattern: remotePattern,
         renderOffsetY: ("renderOffsetY" in remotePose ? remotePose.renderOffsetY : 0)
           + sourceMovementVisualOffset(remoteVisualMode, now)
           + (remoteVisualMode === "run" ? sourcePlayerRunGroundOffset(
             remoteSide === null ? null : networkPlayerVisuals[remoteSide] ?? null,
-            remotePose.direction, sourceMovementVisualPattern(remoteVisualMode,
-              "pattern" in remotePose ? remotePose.pattern : 0, now, true)) : 0),
+            remotePose.direction, remotePattern) : 0)
+          + (remoteVisualMode === "mount" ? sourcePlayerMountGroundOffset(
+            remoteSide === null ? null : networkPlayerVisuals[remoteSide] ?? null,
+            remotePose.direction, remotePattern) : 0),
         mode: remoteMode, action: remoteMotion?.action ?? "idle" }]),
   ];
   sourceFieldMarks = sourceFieldMarks.filter((mark) => sourceFieldMarkActive(mark, now));
+  const mapCamera = importedCameraPosition(canvas, importedAssets.map, pose,
+    sourcePresentation.currentCameraOffset());
+  sourcePresentation.setMapCamera(mapCamera.x, mapCamera.y, canvas.width);
   drawImportedMap(context, canvas, importedAssets, pose, playerPattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
     (sourcePickupStartedAt === null ? 0 : sourceItemPickupOffset(now - sourcePickupStartedAt))
       + ("renderOffsetY" in pose ? pose.renderOffsetY : 0) + sourceMovementVisualOffset(localVisualMode, now)
       + (localVisualMode === "run" && sourcePlayerCharacterName === "player"
-        ? sourcePlayerRunGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0),
+        ? sourcePlayerRunGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0)
+      + (localVisualMode === "mount" && sourcePlayerCharacterName === "player"
+        ? sourcePlayerMountGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0),
     sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
     remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds(),
     { active: sourceTruthVisionActive(now), player: pose });
@@ -2615,6 +2741,19 @@ function animateImportedMap(now: number): void {
   if (networkRemoteFollowerMotion !== null && sampleSourceGridMotion(networkRemoteFollowerMotion, now).complete) {
     networkRemoteFollowerMotion = null;
   }
+  if (now >= nextSourceContextActionRefreshAt) {
+    refreshSourceContextAction();
+    nextSourceContextActionRefreshAt = now + 100;
+  }
+  const destinationReadyInRoom = !multiplayer.active || guestSourceExcursion
+    || networkSourceWorld?.mapId === importedAssets.map.id
+      && (!isNetworkGuest() || networkSourceWorld.presence.opponent === "shared");
+  const resumedDirection = sourceTransferMovement.takeWhenReady(
+    !sourceLaunchScreen.open && !sourceTitleScreen.open && !sourceNewGameActive
+      && sourceScenes.allows("world-input", sourceSceneActivity()) && !multiplayer.movementPending
+      && destinationReadyInRoom,
+    heldSourceMovementDirection());
+  if (resumedDirection !== null) move("player", resumedDirection);
   importedAnimationFrame = requestAnimationFrame(animateImportedMap);
 }
 
@@ -2781,7 +2920,7 @@ function selectSourceMovementMode(mode: "walk" | "mount"): void {
   }
   const terrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
   if (mode === "mount" && !sourceMapAllowsMount()) {
-    importedNotice = "Chevroum ne peut pas être utilisé sur cette carte.";
+    importedNotice = "La monture ne peut pas être utilisée sur cette carte.";
     renderImportedView();
     return;
   }
@@ -2793,7 +2932,7 @@ function selectSourceMovementMode(mode: "walk" | "mount"): void {
   }
   sourceMovementMode = mode;
   sourceMovementAction = "idle";
-  importedNotice = mode === "mount" ? "Chevroum est prêt." : "Déplacement à pied activé.";
+  importedNotice = mode === "mount" ? "Monture prête." : "Déplacement à pied activé.";
   publishCurrentSourceWorld();
   renderImportedView();
 }
@@ -2923,7 +3062,11 @@ function setSourceFieldShortcut(id: SourceFieldShortcutId, selected: boolean): v
   sourceFieldShortcuts = persistSourceFieldShortcuts(localStorage,
     toggleSourceFieldShortcut(sourceFieldShortcuts, id, selected));
   const labels: Readonly<Record<SourceFieldShortcutId, string>> = {
-    compass: "Boussole", "truth-lens": "Miroir de la Vérité", fishing: "Pêche", mount: "Chevroum",
+    compass: "Boussole", "truth-lens": "Miroir de la Vérité", fishing: "Pêche", mount: "Monture",
+    incubator: "Incubateur", "shiny-charm": "Charme Chroma",
+    "black-flute": "Flûte Noire", "white-flute": "Flûte Blanche",
+    "blue-flute": "Flûte Bleue", "poke-flute": "Poké Flûte",
+    "red-flute": "Flûte Rouge", "yellow-flute": "Flûte Jaune",
   };
   if (!selected && id === "compass") sourceScenes.closeCompass();
   importedNotice = selected
@@ -3125,7 +3268,8 @@ function renderSourceDayCare(): void {
   if (importedAssets === null) return;
   sourceDayCareView.render({ open: sourceDayCareSequence !== null || sourceDayCareDevOpen, party: sourceEventState.party,
     dayCare: sourceEventState.dayCare, money: sourceEventState.money,
-    catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets });
+    catalog: importedAssets.battleCatalog, assets: importedAssets.pokemonAssets,
+    items: importedAssets.items });
 }
 
 function closeSourceDayCareEggs(): void {
@@ -3361,19 +3505,19 @@ function openSourcePokemonSummary(context: SourcePokemonSummaryContext, pokemonI
 function closeSourcePokemonSummary(): void {
   if (sourcePokemonSummarySession === null) return;
   sourcePokemonSummarySession = null;
-  sourcePokemonSummaryCry?.pause();
+  pauseSourceAudio(sourcePokemonSummaryCry);
   sourcePokemonSummaryCry = null;
   renderImportedView();
 }
 
 function playSourcePokemonSummaryCry(path: string | null): void {
-  sourcePokemonSummaryCry?.pause();
+  pauseSourceAudio(sourcePokemonSummaryCry);
   sourcePokemonSummaryCry = null;
-  if (path === null) return;
-  const audio = new Audio(`/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`);
+  if (path === null || !sourceAudioActive()) return;
+  const audio = createSourceAudio(`/__pokemon-z/source/${path.replaceAll("\\", "/").split("/").map(encodeURIComponent).join("/")}`);
   audio.volume = sourceAudioPreferences.effects / 100 * 0.8;
   sourcePokemonSummaryCry = audio;
-  void audio.play().catch(() => undefined);
+  void playSourceAudio(audio).catch(() => undefined);
 }
 
 function renderSourcePokemonSummary(): void {
@@ -3959,6 +4103,7 @@ function setSourcePartyLead(pokemonId: string): void {
 function toggleSourceMenu(): void {
   if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
   sourceTouchControls.release();
+  hideSourceLocationBanner();
   if (sourceScenes.compassOpen) sourceScenes.closeCompass();
   else if (sourceScenes.menuOpen) sourceScenes.closeMenu();
   else if (!sourceScenes.openMenu(sourceSceneActivity())) return;
@@ -4045,8 +4190,23 @@ function renderSourceActionShortcuts(blocked: boolean): void {
   mount.hidden = !mountPresentation.visible;
   mount.disabled = !mountPresentation.enabled || !canToggleMount;
   mount.classList.toggle("active", sourceMovementMode === "mount");
-  mount.title = sourceMovementMode === "mount" ? "Descendre de Chevroum"
-    : canToggleMount ? "Monter sur Chevroum" : "Chevroum n'est pas disponible ici";
+  mount.title = sourceMovementMode === "mount" ? "Descendre de la monture"
+    : canToggleMount ? "Monter sur la monture" : "Monture indisponible ici";
+  for (const id of SOURCE_EXTRA_SHORTCUT_ORDER) {
+    const button = requiredAppElement<HTMLButtonElement>(`source-extra-shortcut-${id}`);
+    const itemId = SOURCE_EXTRA_SHORTCUT_ITEMS[id];
+    const item = importedAssets?.items.get(itemId);
+    const isBattleOnly = id === "red-flute" || id === "yellow-flute";
+    const selected = sourceFieldShortcuts.includes(id);
+    button.hidden = !selected || (sourceEventState.inventory[itemId] ?? 0) < 1 || isBattleOnly;
+    button.disabled = blocked;
+    button.title = item?.name ?? itemId;
+    button.setAttribute("aria-label", item?.name ?? itemId);
+    const icon = button.querySelector<HTMLImageElement>("img");
+    if (icon !== null && item !== undefined) icon.src = sourceItemIconUrl(item.id);
+    const label = button.querySelector<HTMLElement>("span");
+    if (label !== null) label.textContent = item?.name ?? itemId;
+  }
 }
 
 function activateSourceTruthLens(): void {
@@ -4121,6 +4281,7 @@ function renderImportedView(): void {
     parallelAuditNotice: sourceParallelAuditNotice, sceneAuditNotice: sourceSceneAuditNotice,
     battleReport: sourceBattleReports.summary });
   renderSourceDialogue();
+  refreshSourceContextAction();
   renderEncounter();
   renderSourceMenu();
   renderSourceShop();
@@ -4137,6 +4298,7 @@ function renderImportedView(): void {
 }
 
 function renderSourceDialogue(): void {
+  if (sourceDialogues.current !== null) hideSourceLocationBanner();
   sourceDialogueView.render(sourceDialogues.current, viewedMapId === SOURCE_MAP_ID);
 }
 
@@ -4146,7 +4308,7 @@ function finishAppliedSourceEvent(completed: SourceDialogueSession, encounterQue
     return;
   }
   const transfer = finalDirectSourceTransfer(completed.flow.page.commands, completed.eventId, 0, importedAvatar);
-  if (transfer !== null) void followSourceTransfer(transfer);
+  if (transfer !== null) void followSourceTransfer(transfer, true, completed.flow.page.settings.trigger === 1);
 }
 
 function beginSourceItemPresentation(completed: SourceDialogueSession, gains: readonly SourceItemGain[],
@@ -4359,7 +4521,7 @@ function synchronizeSourceFollower(): void {
   });
 }
 
-function activateSourceWorld(world: LoadedSourceWorld): void {
+function activateSourceWorld(world: LoadedSourceWorld, retainHeldMovement = false): void {
   erasedSourceEvents.clear();
   importedAssets = world.assets;
   configureSourceItemIconAvailability(world.assets.availableItemIconIds);
@@ -4374,7 +4536,7 @@ function activateSourceWorld(world: LoadedSourceWorld): void {
   importedPlayerMotion = null;
   sourceFieldMarks = [];
   pendingSourceNpcContact = null;
-  heldMovementKeys.clear();
+  if (!retainHeldMovement) heldMovementKeys.clear();
   sourcePresentation.resetMapPresentation();
   sourcePresentation.applyMapAudio(world.assets.map.audio);
   sourceNpcMotions.reset(world.assets.map.id, world.assets.events, performance.now());
@@ -4414,9 +4576,10 @@ async function startSourceNewGame(choices: SourceNewGameChoices): Promise<void> 
   }
 }
 
-async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promise<void> {
+async function executeSourceSequenceTransfer(transfer: ImportedTransfer,
+  sequence: SourceSequenceSession): Promise<void> {
   if (importedAssets?.map.id !== transfer.targetMapId) {
-    await followSourceTransfer(transfer);
+    await followSourceTransfer(transfer, true, sequence.sourcePage?.settings.trigger === 1);
     return;
   }
   importedAvatar = { x: transfer.targetX, y: transfer.targetY,
@@ -4440,8 +4603,11 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer): Promis
   publishCurrentSourceWorld(true);
 }
 
-async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = true): Promise<void> {
+async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = true,
+  stepTriggered = false): Promise<void> {
   if (!sourceScenes.allows("source-transfer", sourceSceneActivity())) return;
+  hideSourceLocationBanner();
+  sourceTransferMovement.begin();
   const guestSession = multiplayer.current?.ticket.side === "opponent";
   const hostMapId = networkSourceWorld?.mapId;
   const leavingSharedWorld = guestSession && !guestSourceExcursion && hostMapId !== undefined
@@ -4454,7 +4620,16 @@ async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = tr
   sourceDialogues.cancel();
   importedNotice = `Chargement de Map${String(transfer.targetMapId).padStart(3, "0")}…`;
   renderImportedView();
+  const fade = sourceTransferUsesFade(transfer.fade);
+  const fadeDuration = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 1 : 170;
+  let locationName: string | null = null;
   try {
+    if (fade) {
+      sourceMapTransitionOverlay.style.opacity = "0";
+      sourceMapTransitionOverlay.hidden = false;
+      await animateSourceMapFade(0, 1, fadeDuration);
+    }
+    const previousName = importedAssets?.map.name ?? null;
     const origin = importedAssets === null ? null : { mapId: importedAssets.map.id,
       x: importedAvatar.x, y: importedAvatar.y, direction: importedAvatar.direction,
       outdoor: importedAssets.mapMetadata.outdoor === true };
@@ -4466,8 +4641,12 @@ async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = tr
     persistSourceEventState();
     const requestedTransferMode = pendingTransferMovementMode;
     pendingTransferMovementMode = null;
-    activateSourceWorld(next);
+    activateSourceWorld(next, stepTriggered);
+    sourceTransferMovement.arrive(stepTriggered && next.changedMap);
     const metadata = next.assets.mapMetadata;
+    if (sourceShouldShowArea(previousName, next.assets.map.name, next.changedMap, metadata.showArea)) {
+      locationName = next.assets.map.name;
+    }
     const mountAllowed = metadata.bicycleAlways || metadata.bicycle === true
       || metadata.bicycle === null && metadata.outdoor === true;
     sourceMovementMode = requestedTransferMode
@@ -4494,8 +4673,16 @@ async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = tr
     }
     importedNotice = error instanceof Error ? `Changement de carte impossible : ${error.message}` : "Changement de carte impossible.";
   } finally {
+    if (fade) {
+      try {
+        await animateSourceMapFade(1, 0, fadeDuration);
+      } finally {
+        sourceMapTransitionOverlay.hidden = true;
+      }
+    }
     sourceTransitionInProgress = false;
     renderImportedView();
+    if (locationName !== null && sourceDialogues.current === null) showSourceLocationBanner(locationName);
   }
   const deferredWorld = deferredNetworkSourceWorld;
   deferredNetworkSourceWorld = null;
@@ -4672,6 +4859,7 @@ function renderEncounter(): void {
     escaped: networkBattle?.escaped === true,
     megaEvolutionEnabled: sourceMegaActivationAvailable(importedAssets?.megaEvolutions,
       sourceEventState.inventory, sourceEventState.switches),
+    fieldShortcuts: sourceFieldShortcuts,
     bag: { balls: battleBagEntries(3), medicine: battleBagEntries(2), battleItems: battleBagEntries(7) } });
   const side = network?.ticket.side ?? null;
   const duel = network?.snapshot?.duelChallenge ?? null;
@@ -4765,6 +4953,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
     if (playerId !== "player") return;
     if (!sourceScenes.allows("world-input", sourceSceneActivity())) return;
+    sourceTransferMovement.begin();
     if (sourceMovementAction === "ice-slide" || sourceMovementAction === "waterfall") direction = importedAvatar.direction;
     const networkSide = multiplayer.active && !guestSourceExcursion ? multiplayer.current?.ticket.side ?? null : null;
     const events = sourceInteractiveMapEvents();
@@ -4774,7 +4963,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     const directTransfer = eventAhead === null ? null : guestDirectSourceTransfer(eventAhead);
     if (directTransfer !== null) {
       importedAvatar = facingAvatar;
-      void followSourceTransfer(directTransfer);
+      void followSourceTransfer(directTransfer, true, true);
       return;
     }
     if (eventAhead !== null && (!isNetworkGuest() || guestCanRunSourceEvent(eventAhead))) {
@@ -4925,31 +5114,87 @@ function interact(playerId: AvatarId): void {
   }
 }
 
-function trySourceTraversalInteraction(): boolean {
-  if (importedAssets === null) return false;
+function sourceTraversalAction(): "surface" | "dive" | "surf" | null {
+  if (importedAssets === null) return null;
   const unlocks = sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride);
   const terrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y);
   if (sourceMovementMode === "dive") {
     const surfaceMap = importedAssets.mapMetadata.surfaceMap;
-    if (!unlocks.dive || surfaceMap === null) return false;
+    return unlocks.dive && surfaceMap !== null ? "surface" : null;
+  }
+  if (terrain === SOURCE_TERRAIN.deepWater && sourceMovementMode === "surf") {
+    const diveMap = importedAssets.mapMetadata.diveMap;
+    return unlocks.dive && diveMap !== null ? "dive" : null;
+  }
+  const facing = sourceFacingPoint(importedAvatar.x, importedAvatar.y, importedAvatar.direction);
+  const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
+  return sourceMovementMode !== "surf" && unlocks.surf && isSourceSurfableTerrain(facingTerrain) ? "surf" : null;
+}
+
+function currentSourceContextAction(): SourceContextAction {
+  const activity = sourceSceneActivity();
+  const dialogue = sourceDialogues.current !== null && sourceScenes.allows("dialogue-input", activity)
+    ? sourceDialogues.current.choosing ? "choice" : "continue" : null;
+  const worldAvailable = sourceDocumentInputActive && !sourceLaunchScreen.open && !sourceTitleScreen.open
+    && viewedMapId === SOURCE_MAP_ID && importedAssets !== null
+    && !(document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches)
+    && sourceScenes.mode(activity) === "overworld";
+  const interactionReady = worldAvailable && !activity.movement;
+  const event = !interactionReady || importedAssets === null ? null
+    : eventInInteractionRange(sourceInteractiveMapEvents(), importedAvatar, importedAssets.map,
+      importedAssets.tileset, importedAssets.map.id, sourceInteractionState());
+  const joinableBattle = multiplayer.current?.joinableBattle;
+  const observerOnlyBattle = joinableBattle?.state.format === "double"
+    && joinableBattle.session.lifecycle === "active";
+  const battleOwnerAdjacent = joinableBattle !== null && joinableBattle !== undefined
+    && (joinableBattle.session.lifecycle === "join-window" || observerOnlyBattle)
+    && multiplayer.active && !guestSourceExcursion && remotePlayerAdjacent();
+  return resolveSourceContextAction({ dialogue, worldAvailable, event,
+    eventTransfer: event !== null && importedAssets !== null
+      && (event.page.settings.trigger === 1 || guestDirectSourceTransfer(event) !== null)
+      && transferForEvent(importedAssets.map, event) !== null,
+    remotePlayer: interactionReady && multiplayer.active && !guestSourceExcursion && remotePlayerAhead(),
+    joinableBattle: interactionReady && battleOwnerAdjacent,
+    traversal: interactionReady && event === null ? sourceTraversalAction() : null,
+    sprintAllowed: (sourceMovementMode === "walk" || sourceMovementMode === "run")
+      && sourceMovementUnlocks(sourceEventState, sourceMovementTestOverride).sprint });
+}
+
+function refreshSourceContextAction(): void {
+  if (!sourceAndroidPresentationEnabled()) return;
+  sourceTouchControls.setContextAction(currentSourceContextAction());
+  sourceTouchControls.setSecondaryAction(currentSourceSecondaryAction());
+}
+
+function currentSourceSecondaryAction(): "menu" | "back" | "unavailable" {
+  if (!sourceDocumentInputActive || sourceLaunchScreen.open || sourceTitleScreen.open) return "unavailable";
+  if (sourceScenes.compassOpen || sourceDialogues.current !== null && sourceSequences.current === null) return "back";
+  return viewedMapId === SOURCE_MAP_ID && importedAssets !== null
+    && sourceScenes.mode(sourceSceneActivity()) === "overworld" ? "menu" : "unavailable";
+}
+
+function trySourceTraversalInteraction(): boolean {
+  if (importedAssets === null) return false;
+  const action = sourceTraversalAction();
+  if (action === "surface") {
+    const surfaceMap = importedAssets.mapMetadata.surfaceMap;
+    if (surfaceMap === null) return false;
     pendingTransferMovementMode = "surf";
     void followSourceTransfer({ eventId: 0, pageIndex: 0, eventX: importedAvatar.x, eventY: importedAvatar.y,
       targetMapId: surfaceMap, targetX: importedAvatar.x, targetY: importedAvatar.y,
       direction: sourceDirectionNumber(importedAvatar.direction) });
     return true;
   }
-  if (terrain === SOURCE_TERRAIN.deepWater && sourceMovementMode === "surf") {
+  if (action === "dive") {
     const diveMap = importedAssets.mapMetadata.diveMap;
-    if (!unlocks.dive || diveMap === null) return false;
+    if (diveMap === null) return false;
     pendingTransferMovementMode = "dive";
     void followSourceTransfer({ eventId: 0, pageIndex: 0, eventX: importedAvatar.x, eventY: importedAvatar.y,
       targetMapId: diveMap, targetX: importedAvatar.x, targetY: importedAvatar.y,
       direction: sourceDirectionNumber(importedAvatar.direction) });
     return true;
   }
-  const facing = sourceFacingPoint(importedAvatar.x, importedAvatar.y, importedAvatar.direction);
-  const facingTerrain = sourceTerrainAt(importedAssets.map, importedAssets.tileset, facing.x, facing.y);
-  if (sourceMovementMode !== "surf" && unlocks.surf && isSourceSurfableTerrain(facingTerrain)) {
+  if (action === "surf") {
     move("player", importedAvatar.direction, "surf");
     return true;
   }
@@ -5073,15 +5318,17 @@ const keys: Readonly<Record<string, readonly ["player", Direction]>> = {
   KeyW: ["player", "up"], KeyZ: ["player", "up"], KeyS: ["player", "down"], KeyA: ["player", "left"], KeyQ: ["player", "left"], KeyD: ["player", "right"],
 };
 
-function continueHeldSourceMovement(): void {
-  if (!sourceDocumentInputActive) return;
-  if (touchMovementDirection !== null) {
-    move("player", touchMovementDirection);
-    return;
-  }
+function heldSourceMovementDirection(): Direction | null {
+  if (!sourceDocumentInputActive) return null;
+  if (touchMovementDirection !== null) return touchMovementDirection;
   const code = [...heldMovementKeys].at(-1);
   const command = code === undefined ? undefined : keys[code];
-  if (command?.[0] === "player") move(...command);
+  return command?.[0] === "player" ? command[1] : null;
+}
+
+function continueHeldSourceMovement(): void {
+  const direction = heldSourceMovementDirection();
+  if (direction !== null) move("player", direction);
 }
 
 function handleSourceCancelInput(): boolean {
@@ -5089,7 +5336,11 @@ function handleSourceCancelInput(): boolean {
   if (sourcePokemonSummarySession !== null) { closeSourcePokemonSummary(); return true; }
   if (sourceIncubatorOpen) { closeSourceIncubator(); return true; }
   if (sourceDayCareEggSequence !== null) { closeSourceDayCareEggs(); return true; }
-  if (sourceDayCareSequence !== null || sourceDayCareDevOpen) { closeSourceDayCare(); return true; }
+  if (sourceDayCareSequence !== null || sourceDayCareDevOpen) {
+    if (sourceDayCareView.cancel()) renderSourceDayCare();
+    else closeSourceDayCare();
+    return true;
+  }
   if (sourceRanchSequence !== null) {
     if (!sourceRanchView.cancel()) closeSourceRanch();
     return true;
@@ -5111,6 +5362,10 @@ if (Capacitor.isNativePlatform()) {
   void App.addListener("backButton", () => {
     if (sourceLaunchScreen.open) { sourceLaunchScreen.hide(); sourceTitleScreen.show(); return; }
     if (!handleSourceCancelInput()) void App.minimizeApp();
+  });
+  void App.addListener("appStateChange", ({ isActive }) => {
+    sourceNativeAudioForeground = isActive;
+    syncSourceAudioForeground();
   });
 }
 
@@ -5173,19 +5428,31 @@ function setSourceDocumentInputActive(active: boolean): void {
   keyboardSprintHeld = false;
   sourceTouchControls.setEnabled(active);
 }
+let sourceNativeAudioForeground = true;
+let sourcePageHidden = false;
+function syncSourceAudioForeground(): void {
+  setSourceAudioActive(!document.hidden && !sourcePageHidden && sourceNativeAudioForeground);
+}
 window.addEventListener("blur", () => {
   resetSourceHeldInputs();
 });
+window.addEventListener("pointerdown", resumeSourceAudioAfterGesture, { capture: true });
+window.addEventListener("keydown", resumeSourceAudioAfterGesture, { capture: true });
 document.addEventListener("visibilitychange", () => {
+  syncSourceAudioForeground();
   setSourceDocumentInputActive(!document.hidden);
   if (document.hidden) saveAutomaticSourceWorld(true);
   if (!document.hidden) hideSourceNativeSystemBars();
 });
 window.addEventListener("pagehide", () => {
+  sourcePageHidden = true;
+  syncSourceAudioForeground();
   saveAutomaticSourceWorld(true);
   setSourceDocumentInputActive(false);
 });
 window.addEventListener("pageshow", () => {
+  sourcePageHidden = false;
+  syncSourceAudioForeground();
   setSourceDocumentInputActive(!document.hidden);
   hideSourceNativeSystemBars();
 });
@@ -5326,9 +5593,22 @@ function offerSourceAutoSaveRecovery(): void {
 setInterval(() => saveAutomaticSourceWorld(), 120_000);
 const launchSelectionReady = sessionStorage.getItem(SOURCE_LAUNCH_SELECTION_KEY) === String(activeSaveSlot);
 sessionStorage.removeItem(SOURCE_LAUNCH_SELECTION_KEY);
-if (recoveringStoredCoopBattle) offerSourceAutoSaveRecovery();
-else if (launchSelectionReady) startInitialSourceSession();
-else { sourceNewGameView.hide(); sourceTitleScreen.show(); }
+void (async () => {
+  let packRequired = false;
+  try { packRequired = await bgmPackRequiredForAndroid(); }
+  catch { packRequired = sourceNativeAndroidMode; }
+  const packReady = !packRequired || (await installedBgmPackVersion()) !== null;
+  if (!packReady) {
+    sourceBgmPackStatus = "Pack de musiques requis avant d'ouvrir une partie.";
+    pendingCoopRecoveryAfterBgmPack = recoveringStoredCoopBattle;
+    pendingLaunchAfterBgmPack = launchSelectionReady;
+    sourceNewGameView.hide();
+    sourceTitleScreen.show();
+    refreshAndroidUpdateMenu();
+  } else if (recoveringStoredCoopBattle) offerSourceAutoSaveRecovery();
+  else if (launchSelectionReady) startInitialSourceSession();
+  else { sourceNewGameView.hide(); sourceTitleScreen.show(); }
+})();
 requestAnimationFrame(() => document.getElementById("source-boot-splash")?.remove());
 if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableAndroidUpdate(true); }, 8_000);
 if (sourceNativeAndroidMode) void installedWideBattlebackPackVersion().then((version) => {
@@ -5337,9 +5617,14 @@ if (sourceNativeAndroidMode) void installedWideBattlebackPackVersion().then((ver
     refreshAndroidUpdateMenu();
   }
 }).catch(() => { /* Les fonds intégrés à l'APK restent disponibles. */ });
-if (sourceNativeAndroidMode) void installedBgmPackVersion().then((version) => {
-  if (version !== null && !sourceBgmPackBusy) {
-    sourceBgmPackStatus = "Pack local vérifié lors de son activation ; musiques disponibles hors ligne.";
+if (sourceNativeAndroidMode) void Promise.all([bgmPackRequiredForAndroid(), installedBgmPackVersion()])
+  .then(([required, version]) => {
+    if (sourceBgmPackBusy) return;
+    sourceBgmPackStatus = version !== null
+      ? "Pack local vérifié lors de son activation ; musiques disponibles hors ligne."
+      : required ? "Pack de musiques requis avant d'ouvrir une partie."
+        : "Musiques intégrées à l'APK disponibles hors ligne.";
     refreshAndroidUpdateMenu();
-  }
-}).catch(() => { /* Les musiques intégrées à l'APK restent disponibles. */ });
+  }).catch(() => {
+    if (!sourceBgmPackBusy) sourceBgmPackStatus = "Vérification des musiques indisponible.";
+  });

@@ -50,7 +50,9 @@ export function finalDirectSourceTransfer(commands: ImportedEventPage["commands"
     const direction = command.data.direction;
     if (!Number.isInteger(targetMapId) || !Number.isInteger(targetX) || !Number.isInteger(targetY) || !Number.isInteger(direction)) return null;
     return { eventId, pageIndex, eventX: origin.x, eventY: origin.y,
-      targetMapId: targetMapId as number, targetX: targetX as number, targetY: targetY as number, direction: direction as number };
+      targetMapId: targetMapId as number, targetX: targetX as number, targetY: targetY as number,
+      direction: direction as number,
+      ...(typeof command.data.fade === "number" ? { fade: command.data.fade } : {}) };
   }
   return null;
 }

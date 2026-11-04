@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RandomSource } from "@pokemon-z-battle/battle-engine";
 import { isGrassTerrain, planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod,
-  rollLandEncounter, rollStepEncounter,
+  rollLandEncounter, rollSourceWildShiny, rollStepEncounter,
   sourceFishingEncounterMethod,
   terrainTagAt } from "../src/source-wild-encounter.js";
 
@@ -28,6 +28,11 @@ const encounters = { mapId: 7, rates: { land: 12, cave: 2, water: 2 }, landRate:
 ] }] } as const;
 
 describe("source wild encounters", () => {
+  it("garde le tirage chromatique source et ajoute deux essais avec le Charme Chroma", () => {
+    expect(rollSourceWildShiny(new ScriptedRandom([200, 300, 99]), false)).toBe(false);
+    expect(rollSourceWildShiny(new ScriptedRandom([200, 300, 99]), true)).toBe(true);
+    expect(rollSourceWildShiny(new ScriptedRandom([200, 300, 400]), true)).toBe(false);
+  });
   it("applies the two source flutes after rolling a wild level", () => {
     expect(rollEncounterForMethod(encounters, "Land", new ScriptedRandom([0, 1, 2]), undefined, "high"))
       .toEqual({ species: "BIDOOF", level: 7 });

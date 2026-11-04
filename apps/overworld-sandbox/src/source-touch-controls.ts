@@ -1,10 +1,13 @@
 import type { Direction } from "@pokemon-z-battle/overworld-engine";
+import type { SourceContextAction } from "./source-context-action.js";
 
 export interface SourceTouchControlCallbacks {
   readonly onDirection: (direction: Direction | null) => void;
   readonly onInteract: () => void;
+  readonly getAction: () => SourceContextAction;
   readonly onCancel: () => void;
   readonly onMenu: () => void;
+  readonly getSecondaryAction: () => "menu" | "back" | "unavailable";
   readonly onSprint: (held: boolean) => void;
 }
 
@@ -30,7 +33,12 @@ export class SourceTouchControls {
   private direction: Direction | null = null;
   private enabled = true;
   private readonly knob: HTMLElement;
-  private readonly sprint: HTMLButtonElement;
+  private readonly actionButton: HTMLButtonElement;
+  private readonly menuButton: HTMLButtonElement;
+  private secondaryAction: "menu" | "back" | "unavailable" = "menu";
+  private action: SourceContextAction = { kind: "unavailable", label: "Action", ariaLabel: "Action contextuelle" };
+  private actionPointer: number | null = null;
+  private actionSprintHeld = false;
 
   public constructor(private readonly callbacks: SourceTouchControlCallbacks) {
     const joystick = document.querySelector<HTMLElement>("#source-touch-joystick");
@@ -68,32 +76,75 @@ export class SourceTouchControls {
     joystick.addEventListener("pointercancel", release);
     joystick.addEventListener("lostpointercapture", () => release());
 
-    this.bindPress("#source-touch-interact", callbacks.onInteract);
-    this.bindPress("#source-touch-cancel", callbacks.onCancel);
-    this.bindPress("#source-touch-menu", callbacks.onMenu, "click");
-    const sprint = document.querySelector<HTMLButtonElement>("#source-touch-sprint");
-    if (sprint === null) throw new Error("Bouton tactile Sprint absent.");
-    this.sprint = sprint;
-    const stopSprint = (): void => {
-      sprint.classList.remove("active");
-      callbacks.onSprint(false);
+    const actionButton = document.querySelector<HTMLButtonElement>("#source-touch-interact");
+    if (actionButton === null) throw new Error("Bouton d'action contextuelle absent.");
+    this.actionButton = actionButton;
+    const releaseAction = (event?: PointerEvent): void => {
+      if (event !== undefined && this.actionPointer !== event.pointerId) return;
+      this.actionPointer = null;
+      this.actionButton.classList.remove("active");
+      if (this.actionSprintHeld) {
+        this.actionSprintHeld = false;
+        callbacks.onSprint(false);
+      }
     };
-    sprint.addEventListener("pointerdown", (event) => {
-      if (!this.enabled) return;
+    actionButton.addEventListener("pointerdown", (event) => {
+      if (!this.enabled || this.actionPointer !== null) return;
+      this.setContextAction(callbacks.getAction());
+      if (this.action.kind === "unavailable") return;
       event.preventDefault();
-      sprint.setPointerCapture(event.pointerId);
-      sprint.classList.add("active");
-      callbacks.onSprint(true);
+      this.actionPointer = event.pointerId;
+      actionButton.setPointerCapture(event.pointerId);
+      actionButton.classList.add("active");
+      if (this.action.kind === "sprint") {
+        this.actionSprintHeld = true;
+        callbacks.onSprint(true);
+      } else callbacks.onInteract();
     });
-    sprint.addEventListener("pointerup", stopSprint);
-    sprint.addEventListener("pointercancel", stopSprint);
-    sprint.addEventListener("lostpointercapture", stopSprint);
+    actionButton.addEventListener("pointerup", releaseAction);
+    actionButton.addEventListener("pointercancel", releaseAction);
+    actionButton.addEventListener("lostpointercapture", () => releaseAction());
+    const menuButton = document.querySelector<HTMLButtonElement>("#source-touch-menu");
+    if (menuButton === null) throw new Error("Bouton Menu tactile absent.");
+    this.menuButton = menuButton;
+    this.bindPress("#source-touch-menu", () => {
+      const secondaryAction = callbacks.getSecondaryAction();
+      this.setSecondaryAction(secondaryAction);
+      if (secondaryAction === "menu") callbacks.onMenu();
+      else if (secondaryAction === "back") callbacks.onCancel();
+    }, "click");
+  }
+
+  public setSecondaryAction(action: "menu" | "back" | "unavailable"): void {
+    if (this.secondaryAction === action) return;
+    this.secondaryAction = action;
+    this.menuButton.textContent = action === "back" ? "Retour" : "Menu";
+    this.menuButton.setAttribute("aria-label", action === "back" ? "Annuler le dialogue"
+      : action === "menu" ? "Ouvrir le menu" : "Menu indisponible");
+    this.menuButton.disabled = action === "unavailable";
+  }
+
+  public setContextAction(action: SourceContextAction): void {
+    if (this.action.kind === action.kind && this.action.label === action.label
+      && this.action.ariaLabel === action.ariaLabel) return;
+    if (this.actionSprintHeld && action.kind !== "sprint") {
+      this.actionSprintHeld = false;
+      this.callbacks.onSprint(false);
+      this.actionButton.classList.remove("active");
+    }
+    this.action = action;
+    this.actionButton.textContent = action.label;
+    this.actionButton.setAttribute("aria-label", action.ariaLabel);
+    this.actionButton.dataset.mode = action.kind;
+    this.actionButton.disabled = action.kind === "unavailable";
   }
 
   public release(): void {
     this.activePointer = null;
     this.knob.style.transform = "translate(0, 0)";
-    this.sprint.classList.remove("active");
+    this.actionPointer = null;
+    this.actionButton.classList.remove("active");
+    this.actionSprintHeld = false;
     this.setDirection(null);
     this.callbacks.onSprint(false);
   }

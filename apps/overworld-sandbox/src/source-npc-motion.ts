@@ -23,6 +23,8 @@ interface NpcRuntime {
   noticeCooldownUntil: number;
   noticeLatched: boolean;
   networkRenderOffsetY?: number;
+  preInteractionDirection?: Direction;
+  interactionPageIndex?: number;
 }
 
 export interface SourceNpcEventContact {
@@ -110,6 +112,8 @@ export class SourceNpcMotionController {
       if (runtime.pageIndex !== selection.pageIndex) {
         runtime.pageIndex = selection.pageIndex;
         runtime.direction = directionName(page.graphic.direction);
+        delete runtime.preInteractionDirection;
+        delete runtime.interactionPageIndex;
         delete runtime.characterName;
         delete runtime.opacity;
         delete runtime.pattern;
@@ -122,6 +126,7 @@ export class SourceNpcMotionController {
         }
         continue;
       }
+      if (runtime.preInteractionDirection !== undefined) continue;
       const sightRange = page.settings.trigger === 2 ? sourceTrainerSightRange(event.name) : null;
       const sightTarget = sightRange === null ? null
         : this.trainerSightTarget(runtime, event, sightRange, narrativePlayers, map, events, state);
@@ -282,6 +287,8 @@ export class SourceNpcMotionController {
     if (runtime.pageIndex !== selection.pageIndex) {
       runtime.pageIndex = selection.pageIndex;
       runtime.direction = directionName(page.graphic.direction);
+      delete runtime.preInteractionDirection;
+      delete runtime.interactionPageIndex;
       delete runtime.characterName;
       delete runtime.opacity;
       delete runtime.pattern;
@@ -295,6 +302,39 @@ export class SourceNpcMotionController {
       characterName: runtime.characterName ?? page.graphic.characterName, characterHue: 0,
       pattern: runtime.pattern ?? page.graphic.pattern,
     };
+  }
+
+  /** RPG Maker locks action/touch events facing their initiator until the interpreter ends. */
+  public lockForInteraction(eventId: number, mapId: number, events: readonly ImportedMapEvent[],
+    state: SourceEventState, target: GridPoint, now: number): boolean {
+    const actor = this.scriptedActor(eventId, mapId, events, state, now);
+    const runtime = this.runtimes.get(eventId);
+    const event = events.find((candidate) => candidate.id === eventId);
+    const selection = event === undefined ? null : selectActiveEventPage(event, mapId, state);
+    if (actor === null || runtime === undefined || selection === null || selection.page.settings.trigger >= 3) return false;
+    if (runtime.preInteractionDirection !== undefined) return true;
+    runtime.preInteractionDirection = runtime.direction;
+    runtime.interactionPageIndex = selection.pageIndex;
+    if (!actor.directionFix) {
+      runtime.direction = executeSourceMoveRouteStep(actor, { kind: "face-player", parameters: [] },
+        { player: target }).actor.direction;
+    }
+    return true;
+  }
+
+  public unlockInteraction(eventId: number, mapId: number, events: readonly ImportedMapEvent[],
+    state: SourceEventState, now: number): void {
+    if (this.mapId !== mapId) return;
+    const runtime = this.runtimes.get(eventId);
+    if (runtime?.preInteractionDirection === undefined) return;
+    const event = events.find((candidate) => candidate.id === eventId);
+    const selection = event === undefined ? null : selectActiveEventPage(event, mapId, state);
+    if (selection !== null && selection.pageIndex === runtime.interactionPageIndex) {
+      if (!selection.page.settings.directionFix) runtime.direction = runtime.preInteractionDirection;
+      runtime.nextMoveAt = now + sourceNpcMoveDelay(selection.page.settings.moveFrequency);
+    }
+    delete runtime.preInteractionDirection;
+    delete runtime.interactionPageIndex;
   }
 
   public applyScriptedActor(eventId: number, actor: SourceRouteActor, destination: GridPoint | null, now: number,
@@ -336,7 +376,7 @@ export class SourceNpcMotionController {
       const moved = runtime.x !== actor.x || runtime.y !== actor.y;
       runtime.x = actor.x;
       runtime.y = actor.y;
-      runtime.direction = actor.direction;
+      if (runtime.preInteractionDirection === undefined) runtime.direction = actor.direction;
       if (actor.characterName === undefined) delete runtime.characterName;
       else runtime.characterName = actor.characterName;
       if (actor.opacity === undefined) delete runtime.opacity;
@@ -361,7 +401,7 @@ export class SourceNpcMotionController {
       const moved = runtime.x !== actor.x || runtime.y !== actor.y;
       runtime.x = actor.x;
       runtime.y = actor.y;
-      runtime.direction = actor.direction;
+      if (runtime.preInteractionDirection === undefined) runtime.direction = actor.direction;
       const currentMotion = runtime.motion;
       runtime.motion = moved && actor.action === "step"
         ? createSourceGridMotion(before, actor, actor.direction, now,

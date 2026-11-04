@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseSourceAnimation, parseSourceAudio, parseSourceMapVisual, parseSourcePicture, parseSourceScroll,
   parseSourceTextOptions, parseSourceTone, parseSourceWeather, selectSourceCryPath,
-  sourceAudioCandidates } from "../src/source-scene-presentation.js";
+  sourceAudioCandidates, sourceFogBackgroundWidthPercent } from "../src/source-scene-presentation.js";
 
 describe("source scene presentation parameters", () => {
   it("normalizes RPG Maker tones and frame durations", () => {
@@ -54,6 +54,7 @@ describe("source scene presentation parameters", () => {
     });
     expect(parseSourceWeather({ parameters: [0, 5, 10] })).toEqual({ kind: "none", power: 5, durationMs: 250 });
     expect(parseSourceWeather({ parameters: [3, 9, 20] })).toEqual({ kind: "snow", power: 9, durationMs: 500 });
+    expect(sourceFogBackgroundWidthPercent(256, 2, 576)).toBeCloseTo(88.8889, 3);
   });
 
   it("decodes concurrent camera scrolls using RPG Maker speeds", () => {

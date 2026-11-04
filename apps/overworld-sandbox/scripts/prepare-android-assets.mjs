@@ -9,7 +9,8 @@ const workspaceDirectory = path.resolve(appDirectory, "../..");
 const localConfigurationPath = path.join(workspaceDirectory, ".pokemon-z", "local-test.json");
 const androidAssetsDirectory = path.join(appDirectory, "dist", "__pokemon-z");
 const slimBattlebacks = process.argv.includes("--slim-battlebacks");
-if (process.argv.slice(2).some((argument) => argument !== "--slim-battlebacks")) {
+const slimBgm = process.argv.includes("--slim-bgm");
+if (process.argv.slice(2).some((argument) => !["--slim-battlebacks", "--slim-bgm"].includes(argument))) {
   throw new Error("Option de préparation Android inconnue.");
 }
 
@@ -58,6 +59,7 @@ if (configuration?.schemaVersion !== "2.0.0"
 
 await requireDirectory(configuration.sourceDirectory, "Dossier source Pokémon Z");
 await requireDirectory(configuration.dataDirectory, "Données Pokémon Z extraites");
+if (slimBgm) await access(path.join(configuration.sourceDirectory, "Audio", "BGM", "Titulo2.ogg"));
 
 const omittedBattlebacks = new Set();
 const bundledWideBattlebacks = [];
@@ -106,11 +108,16 @@ for (const directory of ["maps", "events"]) {
 for (const directory of ["Graphics", "Audio"]) {
   const source = path.join(configuration.sourceDirectory, directory);
   await cp(source, path.join(sourceTarget, directory), { recursive: true,
-    filter: (candidate) => !omittedBattlebacks.has(path.relative(configuration.sourceDirectory, candidate).replaceAll("\\", "/")) });
+    filter: (candidate) => {
+      const relative = path.relative(configuration.sourceDirectory, candidate).replaceAll("\\", "/");
+      if (omittedBattlebacks.has(relative)) return false;
+      if (slimBgm && relative.startsWith("Audio/BGM/") && relative !== "Audio/BGM/Titulo2.ogg") return false;
+      return true;
+    } });
 }
 
 await writeFile(path.join(dataTarget, "android-resource-layout.json"),
   JSON.stringify({ schemaVersion: "1.0.0", wideBattlebacksBundled: !slimBattlebacks,
-    wideBattlebacksPackVersion, bundledWideBattlebacks }));
+    wideBattlebacksPackVersion, bundledWideBattlebacks, bgmBundled: !slimBgm }));
 
-process.stdout.write(`Données, images et sons locaux préparés dans dist/__pokemon-z ; ${omittedBattlebacks.size} fonds larges livrés par pack.\n`);
+process.stdout.write(`Données, images et sons locaux préparés dans dist/__pokemon-z ; ${omittedBattlebacks.size} fonds larges${slimBgm ? " et les BGM hors titre" : ""} livrés par pack.\n`);

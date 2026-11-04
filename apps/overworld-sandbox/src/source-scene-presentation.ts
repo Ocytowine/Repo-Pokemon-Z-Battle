@@ -1,3 +1,5 @@
+import { createSourceAudio, pauseSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
+
 export interface SourcePresentationCommand {
   readonly kind: string;
   readonly data: Readonly<Record<string, unknown>>;
@@ -142,6 +144,11 @@ export function parseSourceMapVisual(data: Readonly<Record<string, unknown>>): S
   };
 }
 
+/** Fog zoom is a percentage of the bitmap's native size in RPG Maker. */
+export function sourceFogBackgroundWidthPercent(imageWidth: number, zoom: number, viewportWidth: number): number {
+  return imageWidth > 0 && viewportWidth > 0 ? imageWidth * zoom / viewportWidth * 100 : 0;
+}
+
 export function parseSourceWeather(data: Readonly<Record<string, unknown>>): SourceWeatherState | null {
   const values = parameters(data);
   const type = finite(values[0], -1);
@@ -257,6 +264,11 @@ export class SourceScenePresentation {
   private backgroundSoundSession = 0;
   private readonly oneShots = new Set<ManagedAudio>();
   private cameraOffset = { x: 0, y: 0 };
+  private fogAssetName: string | null = null;
+  private fogImage: HTMLImageElement | null = null;
+  private fogZoom = 1;
+  private mapCamera = { x: 0, y: 0 };
+  private mapCameraScale = Number.NaN;
   private scrollQueue = Promise.resolve();
   private scrollSession = 0;
   private animationManifest: Promise<MapAnimationManifest | null> | null = null;
@@ -331,6 +343,16 @@ export class SourceScenePresentation {
 
   public currentCameraOffset(): Readonly<{ x: number; y: number }> { return this.cameraOffset; }
 
+  public setMapCamera(x: number, y: number, viewportWidth: number): void {
+    const scale = this.elements.fog.clientWidth / viewportWidth;
+    if (scale <= 0) return;
+    if (this.mapCamera.x === x && this.mapCamera.y === y && this.mapCameraScale === scale) return;
+    this.mapCamera = { x, y };
+    this.mapCameraScale = scale;
+    this.elements.fog.style.setProperty("--source-fog-base-x", `${-x * this.fogZoom * scale}px`);
+    this.elements.fog.style.setProperty("--source-fog-base-y", `${-y * this.fogZoom * scale}px`);
+  }
+
   public resetMapPresentation(): void {
     this.scrollSession += 1;
     this.scrollQueue = Promise.resolve();
@@ -343,6 +365,11 @@ export class SourceScenePresentation {
     this.elements.panorama.style.removeProperty("--source-panorama-x");
     this.elements.panorama.style.removeProperty("--source-panorama-y");
     this.elements.fog.style.backgroundImage = "none";
+    this.elements.fog.style.removeProperty("background-size");
+    this.fogAssetName = null;
+    this.fogImage = null;
+    this.fogZoom = 1;
+    this.mapCamera = { x: Number.NaN, y: Number.NaN };
     this.elements.weather.dataset.weather = "none";
     this.elements.weather.style.opacity = "0";
     this.elements.dialogue.dataset.position = "bottom";
@@ -367,14 +394,14 @@ export class SourceScenePresentation {
 
   /** Suspend la musique et l'ambiance de carte pendant une scène plein écran personnelle. */
   public pauseWorldAudio(): void {
-    this.music?.audio.pause();
-    this.backgroundSound?.audio.pause();
+    pauseSourceAudio(this.music?.audio ?? null);
+    pauseSourceAudio(this.backgroundSound?.audio ?? null);
   }
 
   /** Reprend la musique et l'ambiance de carte là où elles avaient été suspendues. */
   public resumeWorldAudio(): void {
     for (const managed of [this.music, this.backgroundSound]) {
-      if (managed !== null) void managed.audio.play().catch(() => { /* Le prochain geste utilisateur pourra reprendre l'audio. */ });
+      if (managed !== null) void playSourceAudio(managed.audio).catch(() => { /* Le prochain geste utilisateur pourra reprendre l'audio. */ });
     }
   }
 
@@ -437,11 +464,30 @@ export class SourceScenePresentation {
     if (visual.kind === "fog") {
       layer.style.opacity = String(visual.opacity);
       layer.style.mixBlendMode = visual.blendMode;
-      layer.style.backgroundSize = `${visual.zoom * 100}%`;
+      if (this.fogZoom !== visual.zoom) this.mapCamera = { x: Number.NaN, y: Number.NaN };
+      this.fogZoom = visual.zoom;
+      if (visual.name !== this.fogAssetName) {
+        this.fogAssetName = visual.name;
+        const image = visual.name === "" ? null : new Image();
+        this.fogImage = image;
+        if (image !== null) {
+          image.addEventListener("load", () => this.updateFogBackgroundSize(image), { once: true });
+          image.src = imageUrl("Fogs", visual.name);
+        }
+      }
+      if (this.fogImage?.complete) this.updateFogBackgroundSize(this.fogImage);
       layer.style.setProperty("--source-fog-x", `${visual.scrollX * 32}px`);
       layer.style.setProperty("--source-fog-y", `${visual.scrollY * 32}px`);
     }
     return true;
+  }
+
+  private updateFogBackgroundSize(image: HTMLImageElement): void {
+    if (this.fogImage !== image) return;
+    const viewport = this.elements.fog.parentElement?.querySelector("canvas");
+    const viewportWidth = viewport?.width ?? 576;
+    const width = sourceFogBackgroundWidthPercent(image.naturalWidth, this.fogZoom, viewportWidth);
+    if (width > 0) this.elements.fog.style.backgroundSize = `${width}% auto`;
   }
 
   private panoramaMotion(data: Readonly<Record<string, unknown>>): boolean {
@@ -516,9 +562,11 @@ export class SourceScenePresentation {
     const state = parseSourceAudio(data);
     if (state === null) return false;
     if (state.name === "") return true;
+    if (!sourceAudioActive()) return true;
     const managed = this.createAudio(state, false, kind);
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+    managed.audio.addEventListener("pause", () => this.oneShots.delete(managed), { once: true });
     if (!await this.playCandidates(managed.audio, "SE", state.name, this.audioSession)) {
       this.oneShots.delete(managed);
     }
@@ -542,9 +590,11 @@ export class SourceScenePresentation {
     const state = parseSourceAudio(data);
     if (state === null) return false;
     if (state.name === "") return true;
+    if (!sourceAudioActive()) return true;
     const managed = this.createAudio(state, false, "music");
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+    managed.audio.addEventListener("pause", () => this.oneShots.delete(managed), { once: true });
     void this.playCandidates(managed.audio, "ME", state.name, this.audioSession)
       .then((played) => { if (!played) this.oneShots.delete(managed); });
     return true;
@@ -552,15 +602,18 @@ export class SourceScenePresentation {
 
   private async playCry(data: Readonly<Record<string, unknown>>): Promise<boolean> {
     if (typeof data.speciesId !== "string" || data.speciesId === "") return false;
+    if (!sourceAudioActive()) return true;
     const manifest = await this.loadPokemonAssets();
+    if (!sourceAudioActive()) return true;
     const path = manifest === null ? null : selectSourceCryPath(manifest, data.speciesId);
     if (path === null) return true;
     const managed = this.createAudio({ name: path, volume: 1, pitch: 1 }, false, "effects");
     this.oneShots.add(managed);
     managed.audio.addEventListener("ended", () => this.oneShots.delete(managed), { once: true });
+    managed.audio.addEventListener("pause", () => this.oneShots.delete(managed), { once: true });
     managed.audio.src = sourceUrl(path);
     // The following source wait begins only once the cry has actually started.
-    try { await managed.audio.play(); } catch { this.oneShots.delete(managed); }
+    try { await playSourceAudio(managed.audio); } catch { this.oneShots.delete(managed); }
     return true;
   }
 
@@ -735,7 +788,7 @@ export class SourceScenePresentation {
   }
 
   private createAudio(state: SourceAudioState, loop: boolean, kind: SourceAudioKind): ManagedAudio {
-    const audio = new Audio();
+    const audio = createSourceAudio();
     audio.loop = loop;
     audio.playbackRate = state.pitch;
     const managed = { audio, sourceVolume: state.volume, kind };
@@ -748,17 +801,18 @@ export class SourceScenePresentation {
     const available = await this.loadSourceAudioPaths();
     const names = sourceAudioCandidates(folder, name, available);
     for (const candidate of names) {
+      if ((folder === "SE" || folder === "ME") && !sourceAudioActive()) return false;
       if (folder === "BGM" && session !== this.audioSession) return false;
       if (folder === "BGS" && session !== this.backgroundSoundSession) return false;
       audio.src = sourceUrl(`Audio/${folder}/${candidate}`);
-      try { await audio.play(); return true; } catch { /* Essayer l'extension source suivante. */ }
+      try { await playSourceAudio(audio); return true; } catch { /* Essayer l'extension source suivante. */ }
     }
     return false;
   }
 
   private stopManaged(managed: ManagedAudio | null): void {
     if (managed === null) return;
-    managed.audio.pause();
+    pauseSourceAudio(managed.audio);
     managed.audio.currentTime = 0;
   }
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { loadSourceFieldShortcuts, persistSourceFieldShortcuts, SOURCE_FIELD_SHORTCUTS_STORAGE_KEY,
-  sourceFieldShortcutPresentation, toggleSourceFieldShortcut } from "../src/source-field-shortcuts.js";
+  sourceFieldShortcutPresentation, sourceItemFieldShortcut, toggleSourceFieldShortcut }
+  from "../src/source-field-shortcuts.js";
 
 function storage(initial: string | null = null): Storage {
   const values = new Map<string, string>();
@@ -11,6 +12,27 @@ function storage(initial: string | null = null): Storage {
 }
 
 describe("raccourcis de terrain", () => {
+  it("associe les objets du Sac aux boutons sans transformer les autres capacités en objets", () => {
+    expect(sourceItemFieldShortcut("DEXNAV")).toBe("compass");
+    expect(sourceItemFieldShortcut("LENSOFTRUTH")).toBe("truth-lens");
+    for (const rod of ["OLDROD", "GOODROD", "SUPERROD"]) {
+      expect(sourceItemFieldShortcut(rod)).toBe("fishing");
+    }
+    for (const mount of ["BICYCLE", "BICYCLE1", "BICYCLE7"]) {
+      expect(sourceItemFieldShortcut(mount)).toBe("mount");
+    }
+    expect(sourceItemFieldShortcut("SURFMONTURA")).toBeNull();
+    expect(sourceItemFieldShortcut("POKERIDER")).toBeNull();
+    expect(sourceItemFieldShortcut("INCUBADORA")).toBe("incubator");
+    expect(sourceItemFieldShortcut("SHINYCHARM")).toBe("shiny-charm");
+    expect(sourceItemFieldShortcut("BLACKFLUTE")).toBe("black-flute");
+    expect(sourceItemFieldShortcut("WHITEFLUTE")).toBe("white-flute");
+    expect(sourceItemFieldShortcut("BLUEFLUTE")).toBe("blue-flute");
+    expect(sourceItemFieldShortcut("POKEFLUTE")).toBe("poke-flute");
+    expect(sourceItemFieldShortcut("REDFLUTE")).toBe("red-flute");
+    expect(sourceItemFieldShortcut("YELLOWFLUTE")).toBe("yellow-flute");
+  });
+
   it("préserve la boussole et migre une ancienne canne favorite", () => {
     expect(loadSourceFieldShortcuts(storage(), false)).toEqual(["compass"]);
     expect(loadSourceFieldShortcuts(storage(), true)).toEqual(["compass", "fishing"]);
@@ -21,6 +43,21 @@ describe("raccourcis de terrain", () => {
     expect(loadSourceFieldShortcuts(target)).toEqual(["truth-lens", "mount"]);
     expect(persistSourceFieldShortcuts(target, ["mount", "compass", "mount"]))
       .toEqual(["compass", "mount"]);
+  });
+
+  it("garde les quatre choix existants après la migration du menu", () => {
+    const target = storage('["compass","truth-lens","fishing","mount"]');
+    expect(loadSourceFieldShortcuts(target)).toEqual(["compass", "truth-lens", "fishing", "mount"]);
+    persistSourceFieldShortcuts(target, toggleSourceFieldShortcut(loadSourceFieldShortcuts(target),
+      "truth-lens", false));
+    expect(loadSourceFieldShortcuts(target)).toEqual(["compass", "fishing", "mount"]);
+  });
+
+  it("conserve les nouveaux raccourcis personnels avec les anciens", () => {
+    const target = storage('["mount","incubator","black-flute","shiny-charm","red-flute"]');
+    expect(loadSourceFieldShortcuts(target)).toEqual([
+      "mount", "incubator", "shiny-charm", "black-flute", "red-flute",
+    ]);
   });
 
   it("ajoute et retire un raccourci sans modifier les autres", () => {

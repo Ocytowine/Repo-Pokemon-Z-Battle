@@ -83,6 +83,7 @@ export class SourceRanchView {
   public render(model: SourceRanchViewModel): void {
     const root = document.querySelector<HTMLElement>("#source-ranch");
     if (root === null) return;
+    const teamScrollTop = this.wasOpen ? root.querySelector<HTMLElement>(".source-ranch-team-list")?.scrollTop ?? 0 : 0;
     root.hidden = !model.open;
     if (!model.open) { this.wasOpen = false; this.currentModel = null;
       this.resizeObserver?.disconnect(); this.resizeObserver = null; return; }
@@ -143,8 +144,14 @@ export class SourceRanchView {
     const card = (entry: (typeof collection)[number], options: Parameters<typeof sourcePokemonCardHtml>[1] = {}): string =>
       sourcePokemonCardHtml(entry, { ...options, heldItemName: entry.pokemon.heldItem === null ? null
         : model.items.get(entry.pokemon.heldItem)?.name ?? entry.pokemon.heldItem });
-    const emptyTeamSlots = Array.from({ length: Math.max(0, 6 - teamEntries.length) }, (_, index) =>
-      `<article class="source-ranch-team-empty"><span>${teamEntries.length + index + 1}</span><strong>Place libre</strong></article>`).join("");
+    const teamCards = Array.from({ length: 6 }, (_, index) => {
+      const member = teamEntries[index] ?? null;
+      return member === null
+      ? `<article class="source-ranch-team-empty"><span>${index + 1}</span><strong>Place libre</strong></article>`
+      : card(member, { compact: true, teamLayout: true, showGender: true,
+        selected: member.pokemon.id === this.selectedPokemonId,
+        active: member.teamIndex === model.party.activeIndex });
+    }).join("");
     const toolsPanel = this.toolsPanel === "filters" ? `<form class="source-ranch-filters" id="source-ranch-filters">
           <label class="source-ranch-search"><span>Nom ou numéro</span><input name="query" type="search" value="${escapeAttribute(toolFilters.query)}" placeholder="Ex. Pikachu ou 25"></label>
           <label><span>Type 1</span><select name="firstType">${typeOptions(types, toolFilters.firstType, "Tous")}</select></label>
@@ -167,8 +174,7 @@ export class SourceRanchView {
           <section class="source-ranch-storage-heading"><div><small>STOCKAGE</small><strong>Pokémon du Ranch</strong></div><nav><button type="button" data-source-ranch-tools="filters" class="${this.toolsPanel === "filters" ? "active" : ""}" aria-expanded="${this.toolsPanel === "filters"}">Filtre</button><button type="button" data-source-ranch-tools="sort" class="${this.toolsPanel === "sort" ? "active" : ""}" aria-expanded="${this.toolsPanel === "sort"}">Tri</button></nav><span>${ranchEntries.length}</span></section>
         </div>
         <div class="source-ranch-content">
-          <aside class="source-ranch-team" aria-label="Équipe Pokémon"${this.teamExpanded ? "" : " hidden"}><div class="source-ranch-team-list">${teamEntries.map((entry) => card(entry, { compact: true, selected: entry.pokemon.id === this.selectedPokemonId,
-            active: entry.teamIndex === model.party.activeIndex })).join("")}${emptyTeamSlots}</div></aside>
+          <aside class="source-ranch-team" aria-label="Équipe Pokémon"${this.teamExpanded ? "" : " hidden"}><div class="source-ranch-team-list">${teamCards}</div></aside>
            <section class="source-ranch-storage" aria-label="Pokémon du Ranch"><div class="source-pokemon-grid" style="--source-ranch-columns:${this.ranchLayout.columns};--source-ranch-rows:${this.ranchLayout.rows}">${filtered.length === 0
               ? `<div class="source-ranch-empty"><strong>${ranchEntries.length === 0 ? "Ranch vide" : "Aucun Pokémon correspondant"}</strong><small>${ranchEntries.length === 0 ? "Déposez un Pokémon depuis l'équipe." : "Élargissez un ou plusieurs filtres."}</small></div>`
               : visibleRanchEntries.map((entry) => card(entry, { compact: true,
@@ -178,6 +184,7 @@ export class SourceRanchView {
             <nav class="source-ranch-pages" aria-label="Pages du Ranch"${pageCount <= 1 ? " hidden" : ""}><button type="button" data-source-ranch-page="previous"${this.ranchPage === 0 ? " disabled" : ""}>‹ Précédente</button><span>Page ${this.ranchPage + 1}/${pageCount}</span><button type="button" data-source-ranch-page="next"${this.ranchPage >= pageCount - 1 ? " disabled" : ""}>Suivante ›</button></nav></section>
         </div>
        </div>${toolsDialog}${wheel}${heldItemPanel}${releasePanel}`;
+    root.querySelector<HTMLElement>(".source-ranch-team-list")!.scrollTop = teamScrollTop;
     const grid = root.querySelector<HTMLElement>(".source-ranch-storage .source-pokemon-grid");
     if (grid !== null && grid.clientWidth > 0 && grid.clientHeight > 0) {
       const minHeight = this.filters.potentialTier !== "all" || this.filters.minimumIvStars !== "all"

@@ -3,6 +3,7 @@ import type { PlayerCreationCatalog } from "@pokemon-z-battle/player-state";
 import type { SourcePendingHatch } from "./source-egg-incubation.js";
 import { sourceEvolutionBattler } from "./source-progression-view.js";
 import { sourceTransformationBackdropHtml } from "./source-transformation-stage.js";
+import { createSourceAudio, pauseSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
 import { startSourcePokemonSpriteAnimations, type SourcePokemonSpriteAnimation }
   from "./source-pokemon-sprite-animator.js";
 
@@ -78,11 +79,11 @@ export class SourceEggHatchView {
   }
 
   private play(path: string, volume: number, loop = false): HTMLAudioElement | null {
-    if (volume <= 0) return null;
-    const audio = new Audio(sourceUrl(path));
+    if (volume <= 0 || (!loop && !sourceAudioActive())) return null;
+    const audio = createSourceAudio(sourceUrl(path));
     audio.volume = Math.max(0, Math.min(1, volume));
     audio.loop = loop;
-    void audio.play().catch(() => undefined);
+    void playSourceAudio(audio).catch(() => undefined);
     return audio;
   }
 
@@ -91,7 +92,7 @@ export class SourceEggHatchView {
     this.soundTimers.forEach(clearTimeout);
     this.soundTimers = [];
     this.timer = null;
-    this.music?.pause();
+    pauseSourceAudio(this.music);
     this.music = null;
   }
 
@@ -110,7 +111,7 @@ export class SourceEggHatchView {
     this.timer = setTimeout(() => {
       if (this.model === null) return;
       this.timer = null;
-      this.music?.pause();
+      pauseSourceAudio(this.music);
       this.music = null;
       this.soundTimers = [];
       this.play("Audio/SE/recall.mp3", this.model.effectsVolume);

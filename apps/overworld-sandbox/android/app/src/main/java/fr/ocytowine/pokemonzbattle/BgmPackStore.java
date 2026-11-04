@@ -58,6 +58,15 @@ final class BgmPackStore {
 
     String activeVersion() { return activeVersion; }
 
+    boolean isReady() {
+        if (activeVersion.isEmpty() || active.isEmpty()) return false;
+        for (Entry entry : active.values()) {
+            File file = new File(directory, entry.sha256 + ".bin");
+            if (!file.isFile() || file.length() != entry.sizeBytes) return false;
+        }
+        return true;
+    }
+
     synchronized List<String> missingObjects(String json) throws IOException, JSONException {
         Map<String, Entry> entries = parseManifest(new JSONObject(json));
         List<String> missing = new ArrayList<>();

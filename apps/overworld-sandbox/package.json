@@ -9,7 +9,7 @@
     "android:apk": "vite build && node scripts/prepare-android-assets.mjs && cap sync android && node scripts/build-android-debug.mjs",
     "android:key:create": "node scripts/create-android-release-key.mjs",
     "android:release": "vite build && node scripts/prepare-android-assets.mjs && cap sync android && node scripts/build-android-release.mjs",
-    "android:release:slim": "vite build && node scripts/prepare-android-assets.mjs --slim-battlebacks && cap sync android && node scripts/build-android-release.mjs",
+    "android:release:slim": "vite build && node scripts/prepare-android-assets.mjs --slim-battlebacks --slim-bgm && cap sync android && node scripts/build-android-release.mjs",
     "android:manifest": "node scripts/prepare-android-update-manifest.mjs",
     "resources:manifest": "node scripts/prepare-resource-pack-manifest.mjs",
     "resources:publish": "node scripts/publish-resource-pack.mjs",

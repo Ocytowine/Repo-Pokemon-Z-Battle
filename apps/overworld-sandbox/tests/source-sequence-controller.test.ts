@@ -12,6 +12,20 @@ function plan(commands: ImportedEventPage["commands"]): SourceScenePlan {
 }
 
 describe("source sequence controller", () => {
+  it("releases interaction presentation on completion and cancellation once", async () => {
+    const onEnd = vi.fn();
+    const controller = new SourceSequenceController({ dialogueActive: () => false,
+      onText: vi.fn(), onChoice: vi.fn(), executeCommand: async () => "continue",
+      onComplete: vi.fn(), onError: vi.fn() });
+    controller.start({ label: "npc", mapId: 3, eventId: 4, translations: new Map(), plan: plan([]), onEnd });
+    await vi.waitFor(() => expect(onEnd).toHaveBeenCalledTimes(1));
+    const session = controller.start({ label: "npc", mapId: 3, eventId: 4, translations: new Map(),
+      plan: plan([{ kind: "show-text", text: "A", indent: 0, data: { text: "A" } }]), onEnd });
+    expect(controller.clear(session)).toBe(true);
+    expect(controller.clear(session)).toBe(false);
+    expect(onEnd).toHaveBeenCalledTimes(2);
+  });
+
   it("groups text continuations and resumes at the next command", async () => {
     const textPages: ImportedEventPage[] = [];
     const executed: string[] = [];

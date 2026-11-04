@@ -7,6 +7,7 @@ export interface SourcePokemonFacilityShell {
   readonly facilityTitle: string;
   readonly facilityMeta: string;
   readonly teamHtml: string;
+  readonly teamChoosing?: boolean;
   readonly contentHtml: string;
   readonly overlayHtml?: string;
 }
@@ -24,9 +25,9 @@ export function sourcePokemonFacilityShellHtml(model: SourcePokemonFacilityShell
       <div class="source-ranch-toolbar">
         <section class="source-ranch-team-heading"><div><small>ÉQUIPE</small><strong>Vos compagnons</strong></div><span class="source-facility-count">${model.teamCount}/6</span></section>
         <section class="source-ranch-storage-heading"><div><small>${escape(model.facilityEyebrow)}</small><strong>${escape(model.facilityTitle)}</strong></div><span>${escape(model.facilityMeta)}</span></section>
-      </div><div class="source-ranch-tools-slot"></div>
+      </div>
       <div class="source-ranch-content">
-        <aside class="source-ranch-team" aria-label="Équipe Pokémon"><div class="source-ranch-team-list">${model.teamHtml}</div></aside>
+        <aside class="source-ranch-team" aria-label="Équipe Pokémon"><div class="source-ranch-team-list${model.teamChoosing === true ? " choosing" : ""}">${model.teamHtml}</div></aside>
         <section class="source-ranch-storage source-facility-storage">${model.contentHtml}</section>
       </div>
     </div>${model.overlayHtml ?? ""}`;

@@ -19,6 +19,39 @@ const event: ImportedMapEvent = { id: 6, name: "Promeneur", x: 2, y: 2, pages: [
 }] };
 
 describe("source NPC motion", () => {
+  it("faces the interacting player, freezes autonomous movement, and restores the previous direction", () => {
+    const controller = new SourceNpcMotionController();
+    const state = createSourceEventState();
+    controller.reset(map.id, [event], 0);
+    expect(controller.lockForInteraction(event.id, map.id, [event], state, { x: 3, y: 2 }, 100)).toBe(true);
+    expect(controller.poses(100).get(event.id)).toMatchObject({ direction: 6 });
+    controller.update(2_000, map, [event], state, [{ x: 3, y: 2 }]);
+    expect(controller.logicalEvents([event])[0]).toMatchObject({ x: 2, y: 2 });
+    controller.unlockInteraction(event.id, map.id, [event], state, 2_000);
+    expect(controller.poses(2_000).get(event.id)).toMatchObject({ direction: 2 });
+  });
+
+  it("honors direction fix and sends the host-facing pose to a Coop guest", () => {
+    const state = createSourceEventState();
+    const fixed = { ...event, pages: [{ ...event.pages[0]!, settings: {
+      ...event.pages[0]!.settings, directionFix: true } }] };
+    const fixedController = new SourceNpcMotionController();
+    fixedController.reset(map.id, [fixed], 0);
+    fixedController.lockForInteraction(fixed.id, map.id, [fixed], state, { x: 3, y: 2 }, 100);
+    expect(fixedController.poses(100).get(fixed.id)).toMatchObject({ direction: 2 });
+
+    const host = new SourceNpcMotionController();
+    const guest = new SourceNpcMotionController();
+    host.reset(map.id, [event], 0);
+    guest.reset(map.id, [event], 0);
+    host.lockForInteraction(event.id, map.id, [event], state, { x: 3, y: 2 }, 100);
+    guest.applyNetworkWorldActors(host.worldActors([event], map.id, state), 100);
+    expect(guest.poses(100).get(event.id)).toMatchObject({ direction: 6 });
+    host.unlockInteraction(event.id, map.id, [event], state, 200);
+    guest.applyNetworkWorldActors(host.worldActors([event], map.id, state), 200);
+    expect(guest.poses(200).get(event.id)).toMatchObject({ direction: 2 });
+  });
+
   it("repositions a scene actor immediately for source set-event-location commands", () => {
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [event], 0);

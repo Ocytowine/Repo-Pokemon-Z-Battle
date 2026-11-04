@@ -103,7 +103,7 @@ function convertPokemon(value: RubyMarshalValue, index: number,
       receivedAt: null, hatchedMapId: sourceInteger(original["@hatchedMap"], "Carte d'éclosion") || null,
       hatchedAt: null,
       ball: itemsById.get(sourceInteger(original["@ballused"], "Ball de capture"))?.internalName ?? null },
-    markings: sourceInteger(original["@markings"], "Marquages", 255),
+    markings: sourceInteger(original["@markings"] ?? 0, "Marquages", 255),
     shiny: sourceShiny(personalId, trainerId),
   };
   const stats = calculatePokemonStats(definition, level, metadata);

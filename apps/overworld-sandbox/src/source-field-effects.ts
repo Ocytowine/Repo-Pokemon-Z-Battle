@@ -56,7 +56,9 @@ export interface SourceFieldMark extends GridPoint {
   readonly startedAt: number;
 }
 
-export const SOURCE_FIELD_MARK_DURATION = 1_500;
+// Source footset fades from opacity 62 by 1.1 per 60 Hz frame (~940 ms).
+export const SOURCE_FOOTPRINT_DURATION = 950;
+export const SOURCE_WATER_RIPPLE_DURATION = 1_500;
 
 function tileIdsAt(map: FieldMap, x: number, y: number): readonly number[] {
   if (x < 0 || y < 0 || x >= map.width || y >= map.height) return [];
@@ -123,7 +125,8 @@ export function sourceFieldMarksForStep(map: FieldMap, tileset: FieldTileset,
 }
 
 export function sourceFieldMarkActive(mark: SourceFieldMark, now: number): boolean {
-  return now >= mark.startedAt && now - mark.startedAt < SOURCE_FIELD_MARK_DURATION;
+  const duration = mark.kind === "footprint" ? SOURCE_FOOTPRINT_DURATION : SOURCE_WATER_RIPPLE_DURATION;
+  return now >= mark.startedAt && now - mark.startedAt < duration;
 }
 
 /** Règle personnelle du jeu source : tous les 128 pas, chaque Pokémon conscient a une chance sur deux. */

@@ -81,6 +81,14 @@ describe("imported RPG Maker map", () => {
       layers: { lower: [384], middle: [0, 0], upper: [0, 0] }, collision: { masks: [15, 15] }, transfers: [] })).toThrow("couches");
   });
 
+  it("preserves the source fade setting when loading a map transfer", () => {
+    const transfer = { eventId: 1, pageIndex: 0, eventX: 0, eventY: 0,
+      targetMapId: 4, targetX: 2, targetY: 3, direction: 2, fade: 1 };
+    const parsed = parseImportedMap({ id: 3, name: "Route", width: 1, height: 1, tilesetId: 1,
+      layers: { lower: [384], middle: [0], upper: [0] }, collision: { masks: [15] }, transfers: [transfer] });
+    expect(parsed.transfers[0]?.fade).toBe(1);
+  });
+
   it("selects the last unconditional event page and exposes only simple dialogue", () => {
     const basePage = { condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },

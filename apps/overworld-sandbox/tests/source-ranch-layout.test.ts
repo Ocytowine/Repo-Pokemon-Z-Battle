@@ -97,13 +97,31 @@ describe("Ranch and shared inventory panel layout", () => {
     expect(css).toMatch(/\.source-ranch-storage \.source-pokemon-grid > \.source-pokemon-card\s*\{[^}]*width:\s*100%[^}]*height:\s*100%/s);
   });
 
-  it("uses one stable card-width column for the Team and three for storage", async () => {
+  it("keeps all six team cards in a contained vertical list in both facilities", async () => {
     const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+    const ranch = await readFile(new URL("../src/source-ranch-view.ts", import.meta.url), "utf8");
+    const dayCare = await readFile(new URL("../src/source-day-care-view.ts", import.meta.url), "utf8");
 
-    expect(css).toMatch(/\.source-ranch-toolbar\s*\{[^}]*grid-template-columns:\s*25%/s);
-    expect(css).toMatch(/\[data-team-expanded="true"\] \.source-ranch-content\s*\{[^}]*grid-template-columns:\s*25%/s);
+    expect(css).toMatch(/\.source-ranch-team-list\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\)[^}]*grid-auto-rows:\s*clamp\([^}]*overflow-y:\s*auto/s);
+    expect(ranch).toContain("Array.from({ length: 6 }");
+    expect(dayCare).toContain("Array.from({ length: 6 }");
+    expect(ranch).toContain("scrollTop = teamScrollTop");
+    expect(dayCare).toContain("scrollTop = teamScrollTop");
+    expect(ranch).not.toContain("sourceTeamPagerHtml");
     expect(css).toMatch(/\.source-ranch-storage \.source-pokemon-grid\s*\{[^}]*gap:\s*6px[^}]*padding:\s*6px 3px 10px/s);
-    expect(css).toMatch(/\.source-pokemon-card\.compact \.source-pokemon-moves\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*2/s);
+  });
+
+  it("centers the team sprite across the full card and keeps the item above HP and moves", async () => {
+    const css = await readFile(new URL("../src/style.css", import.meta.url), "utf8");
+    const dayCare = await readFile(new URL("../src/source-day-care-view.ts", import.meta.url), "utf8");
+
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.compact\s*\{[^}]*--facility-team-icon:\s*clamp\([^}]*grid-template-rows:\s*minmax\(0, 1fr\) auto/s);
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.compact \.source-pokemon-icon\s*\{[^}]*grid-row:\s*1 \/ 3;[^}]*place-self:\s*center/s);
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.compact \.source-pokemon-moves\s*\{[^}]*display:\s*grid;[^}]*grid-row:\s*2;/s);
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.compact \.source-pokemon-held-item\s*\{[^}]*display:\s*inline-flex/s);
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.team-layout \.source-pokemon-level,[\s\S]*?\.source-pokemon-types\s*\{[^}]*translateY\(var\(--team-badge-shift\)\)/s);
+    expect(css).toMatch(/\.source-ranch-team-list \.source-pokemon-card\.compact \.source-pokemon-vitals\s*\{[^}]*translateY\(calc\(-1 \* var\(--team-badge-shift\)\)\)/s);
+    expect(dayCare).toContain("model.items.get(member.pokemon.heldItem)?.name");
   });
 
   it("uses the whole folded storage area as a 4x4 page without a result strip", async () => {

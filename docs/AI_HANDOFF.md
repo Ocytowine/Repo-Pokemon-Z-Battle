@@ -10383,6 +10383,10 @@ locale signée 0.1.7 (8), avec le certificat attendu, a été reconstruite,
 installée par `adb install -r` (`Success`) et lancée sur le Samsung. La recette
 tactile de cette dernière correction reste à faire ; BZ-008 demeure ouvert.
 
+Le porteur confirme ensuite que la correction Retour/Appliquer est parfaite.
+BZ-008 est clos dans la roadmap ; les critères sont personnels et le chemin
+Coop ne requiert aucune intention supplémentaire.
+
 ## BZ-001 — disparition des rencontres mobiles après fuite (2026-11-02)
 
 Le porteur a reproduit un défaut encore présent après la fermeture précédente
@@ -10409,3 +10413,576 @@ Retour du porteur : la fuite d'un Pokémon visible dans une grotte le fait bien
 disparaître de l'overworld sur téléphone. Il n'a constaté aucun nouveau bug à
 la fin du combat et valide BZ-001. La recette hôte/invité et reconnexion reste
 dans la matrice de régression Coop, sans bloquer cette clôture demandée.
+
+## BZ-009 / BZ-010 — cartes d'équipe Pension et Ranch (2026-11-02)
+
+Le porteur valide BZ-008 et choisit ensuite les cartes d'équipe comme prochain
+lot. Les deux services partageaient une grille latérale de six cases sur deux
+colonnes, avec sprites et textes réduits jusqu'à 20 et 5 pixels ; dans la
+Pension, un conteneur supplémentaire pouvait même concentrer toute l'équipe
+dans une seule case de cette grille. Un paginateur commun affiche maintenant
+trois membres par page, dans une colonne de largeur accrue. Chaque carte
+montre sprite, nom, niveau, types, PV et statut ; les capacités ne sont plus
+tassées sur cette carte compacte. Les pages 1/2 et 2/2 donnent
+accès aux six membres, les places libres sont explicites, et une réduction de
+l'équipe ramène automatiquement à une page valide. Les boutons de page font
+44 pixels et la liste reste bornée sans défilement vertical. Le Ranch conserve
+ses actions de transfert/détails et la Pension ses actions de dépôt/échange.
+
+Autorité et état : cette pagination est une présentation personnelle et
+transitoire. Elle ne modifie ni équipe ni Pension/Ranch, ne se sauvegarde pas
+et n'ajoute aucune intention réseau. Solo, hôte et invité utilisent les mêmes
+cartes à partir de leur état personnel ; après reconnexion, la page repart à
+la première ou est bornée selon l'équipe restaurée. Les tests ciblés de
+pagination et des vues, `corepack pnpm test`, `corepack pnpm build` et
+`git diff --check` passent. Le typecheck global conserve des erreurs anciennes
+dans d'autres modules, sans diagnostic dans les fichiers de ce lot. L'APK
+locale signée 0.1.7 (8) est reconstruite avec le certificat attendu ; ADB
+n'indique plus de téléphone au moment de l'installation, qui reste donc à
+faire. Recette Android réelle encore ouverte avant de cocher BZ-009 et BZ-010.
+
+Le téléphone a ensuite été rebranché et reconnu dans ADB. La même APK locale
+signée a été installée par-dessus l'application (`adb install -r` : `Success`)
+et lancée ; Android confirme toujours la version 0.1.7 (8). Les sauvegardes
+ne sont pas encore vérifiées dans l'interface. Le porteur peut maintenant
+contrôler la lisibilité, les deux pages et les actions des cartes dans la
+Pension et le Ranch ; aucune publication en ligne n'a eu lieu.
+
+Retour visuel du porteur sur la Pension : les trois cartes par page sont
+utilisables mais le sprite est trop haut, l'identité touche le bord supérieur,
+les PV débordent vers les quatre capacités, et l'objet tenu manque. La cause
+principale est la grille interne ajoutée pour ce lot : le sprite n'occupait
+que sa première rangée, tandis que le sélecteur moins spécifique destiné à
+masquer les capacités ne gagnait pas contre la règle compacte existante. La
+carte conserve donc explicitement ses capacités sur la deuxième rangée ; le
+sprite couvre les deux rangées et est centré sur toute la hauteur. Identité,
+objet/statut et PV sont alignés dans la première rangée. La taille du sprite
+utilise `clamp()` avec `vmin` pour suivre la hauteur d'écran, tandis que la
+grille distribue l'espace restant sans coordonnées absolues. Le nom français
+de l'objet tenu vient du catalogue d'objets déjà chargé ; sa pastille reprend
+la couleur des cartes de stockage du Ranch. Aucun état ni contrat Coop ne
+change. Tests ciblés, `corepack pnpm test`, `corepack pnpm build` et
+`git diff --check` passent. L'APK locale signée 0.1.7 (8), avec le certificat
+attendu, a été reconstruite, installée par `adb install -r` (`Success`) et
+lancée sur le Samsung. Recette visuelle Android de cette retouche encore
+ouverte ; aucune publication en ligne.
+
+Retour suivant du porteur : la liste des six Pokémon est plus agréable à
+parcourir verticalement que les deux pages. Cette liste seule retrouve un
+défilement vertical contenu dans sa colonne, avec sa position conservée lors
+des rendus provoqués par une sélection ou un transfert. Le reste du Ranch et
+de la Pension demeure borné à l'écran. Les six cartes et places libres sont
+rendues dans l'ordre ; le paginateur temporaire est retiré. Les hauteurs des
+cartes utilisent `clamp()` selon la plus petite dimension du viewport. Les
+badges de niveau et de type descendent légèrement, et les PV remontent pour
+libérer l'espace des capacités. Aucun état personnel persistant ni intention
+Coop supplémentaire. Tests ciblés, `corepack pnpm test`, `corepack pnpm build`
+et `git diff --check` passent ; le typecheck global ne signale aucune erreur
+dans les fichiers du lot, mais conserve des erreurs anciennes ailleurs. L'APK
+locale signée 0.1.7 (8), avec le certificat attendu, a été reconstruite,
+installée par `adb install -r` (`Success`) et lancée sur le Samsung. Recette
+visuelle Android de cet ajustement ouverte ; aucune publication en ligne.
+
+Le porteur confirme ensuite « c'est juste parfait » après essai sur téléphone
+de la liste verticale et du nouvel alignement des cartes. BZ-009 et BZ-010
+sont cochés dans la roadmap. Aucun patch public n'a été annoncé.
+
+## BZ-007 — Raccourcis depuis le Sac — 2026-11-02
+
+Le réglage des raccourcis quitte Options. La roue de chaque objet concerné
+propose l'ajout ou le retrait : `DEXNAV` pour la Boussole, `LENSOFTRUTH` pour le
+Miroir, les trois cannes pour la Pêche, et `BICYCLE` à `BICYCLE7` pour le bouton
+Chevroum. Ce dernier active un mode de déplacement déjà porté ; l'objet ne
+devient pas une commande d'utilisation du Sac. `SURFMONTURA` et `POKERIDER`
+déverrouillent leurs capacités propres et ne reçoivent pas de raccourci
+artificiel. Choisir une autre canne depuis la roue la rend favorite et garde le
+bouton Pêche actif ; retirer la canne favorite masque ce bouton.
+
+Autorité : préférence du joueur local, y compris chez l'hôte et l'invité.
+Domaine : présentation personnelle. La clé locale
+`pokemon-z-battle.field-shortcuts.v1`, ses quatre identifiants et la migration
+de la canne favorite sont conservés sans conversion destructive. La canne
+favorite demeure dans l'état personnel de la partie. Après reconnexion Coop,
+chaque participant relit sa préférence locale et son inventaire personnel ;
+aucune intention serveur ni réplication aux autres joueurs n'est requise.
+Les boutons réutilisent les intentions de terrain et les contrôles existants.
+
+Le test de correspondance d'objets et le test de conservation des quatre choix
+ont été ajoutés. `corepack pnpm test` et `corepack pnpm build` passent ;
+la recette tactile reste à confirmer. Le téléphone est
+volontairement débranché pour ce lot. Aucun APK ni pack n'a été publié.
+
+### Extension des raccourcis d'objets et Charme Chroma — 2026-11-02
+
+Le porteur demande l'Incubateur, le Charme Chroma et toutes les flûtes en
+raccourci, sans changer la consommation actuelle des flûtes bleue, Poké, rouge
+et jaune. Les nouveaux identifiants complètent la clé locale existante. Le Sac
+les active ou les retire sur l'objet concerné. L'Incubateur ouvre ses six
+emplacements ; les flûtes noire et blanche activent leur effet personnel
+persistant ; les flûtes bleue et Poké ouvrent le choix du Pokémon dans le Sac.
+Les flûtes rouge et jaune, utilisables uniquement en combat dans la source,
+apparaissent en accès rapide dans le Sac de combat. Le Charme Chroma est un
+effet passif : son bouton rappelle son état au lieu de prétendre le consommer.
+
+Le script source fixe `SHINYPOKEMONCHANCE=100` sur 65536 et ajoute deux nouveaux
+tirages lorsque le Charme Chroma est possédé. Le même tirage personnel est fait
+avant l'ouverture locale ou partagée du combat, puis conservé dans
+`pendingEncounter` avec l'état du générateur pour que l'hôte, l'invité et une
+reconnexion ne changent pas le résultat. Le Pokémon sauvage ainsi créé est
+ensuite le même pour le combat local ou la room autoritaire. La préférence des
+raccourcis reste locale et par slot ; elle ne doit pas être répliquée aux
+autres participants. L'inventaire, les effets personnels des flûtes et le
+tirage sont restaurés par la sauvegarde personnelle.
+
+Le porteur reporte les autres objets à un audit de leurs usages réels dans les
+scripts et événements source, inscrit BZ-018 dans la roadmap. Cela inclut le
+Cherch'Objet, le Poké Radar, les transformations et les montures alternatives.
+Les objets de jeu source ne sont pas copiés ni versionnés dans ce lot.
+`corepack pnpm test`, `corepack pnpm build` et `git diff --check` passent.
+Le typecheck autonome de l'application conserve des diagnostics préexistants
+dans la présentation de combat, la méga-évolution et la scène ; aucun ne vise
+les fichiers modifiés ici. La recette visuelle et tactile sur Android reste
+ouverte, ainsi que l'essai solo/hôte/invité/reconnexion des nouveaux accès.
+## BZ-018 — Carte, Pokérider et montures — 2026-11-02
+
+APK locale signée 0.1.7 (8) installée par `adb install -r` sur Samsung SM-S911U1
+et lancée, avant le lot BZ-018. Elle contient BZ-007 (Incubateur, Charme Chroma,
+flûtes), sans cette correction BZ-018 ; aucune publication en ligne.
+
+Le Sac raccorde maintenant `TOWNMAP` à la carte régionale existante en mode
+consultation et `POKERIDER` au même écran en mode Vol. Le Pokérider n'est actif
+qu'à l'extérieur ; la sélection et le transfert passent par `requestSourceFlight`,
+qui contrôle possession, destination visible et déjà visitée. Autorité : joueur
+concerné ; état personnel : inventaire et visite des cartes ; aucune nouvelle
+mutation partagée. En Coop, hôte et invité utilisent le même écran et leurs
+propres droits, et la reconnexion restaure l'inventaire et les lieux visités.
+
+Les objets `BICYCLE` à `BICYCLE7` déclenchent tous `pbMountBike` dans la source.
+Ils écrivent A à H dans la variable 200, mais `pbGetPlayerCharset` n'ajoute plus
+ce suffixe au sprite : les deux lignes sont commentées. Le raccourci commun
+est donc renommé « Monture » sans modifier la mécanique ni inventer de graphisme.
+`climb` reste lié au Chevroum source. La suite de BZ-018 est détaillée dans la
+roadmap : Cherch'Objet, Poké Radar, Monnayeur, changements de forme et Repart.
+Exp. Validation tactile du Sac/Vol sur téléphone et recette Coop à effectuer ;
+`corepack pnpm test` et `corepack pnpm build` réussis avant livraison du code.
+
+## BZ-018 — Rythme et traces de monture — 2026-11-02
+
+Le script source `walk-run.rb` fixe les vitesses RGSS à 3,8 à pied, 4,8 en
+course et 5,2 à monture. `Game_Character#update_move` avance de `2 ** speed`
+unités par image, avec 128 unités par case et 60 images/s. L'APK avait 200,
+105 et 115 ms/case : la monture était donc plus lente que la course. Les
+cadences existantes de marche/course étant déjà validées, la monture suit leur
+ratio source : 80 ms/case. La pose de monture progresse toutes les ~33 ms
+pendant le mouvement et revient à la pose de repos à l'arrêt.
+
+Les six charsets `boy_bike*`/`girl_bike*` ont tous 64 × 96 px par pose avec
+un rembourrage inférieur alterné de 0/2 px. Le chargement des sprites calcule
+maintenant l'ancrage par direction et pose, appliqué au joueur local et à
+l'avatar Coop distant. `huellas.rb` efface les traces après environ 56 images
+(62 d'opacité, moins 1,1/image) : la durée des traces de sable est donc 950 ms,
+indépendamment des ondulations d'eau à 1 500 ms. La direction et le dessin
+`footsetbike.png` source restent inchangés.
+
+Autorité : mouvement local en solo, room autoritaire en Coop. État : mode de
+déplacement et positions répliqués ; rythme de rendu et traces seulement
+visuels, sans nouvelle donnée sauvegardée. Reconnexion : le mode existant est
+restauré, la pose reprend et les traces locales expirent naturellement.
+Vérification visuelle Android, hôte et invité à effectuer après installation.
+`corepack pnpm test` et `corepack pnpm build` réussis. Le téléphone n'était
+plus présent dans ADB à la fin du lot ; aucune APK de ce correctif installée.
+Suite du 2026-11-03 : APK signée et allégée construite localement avec le même
+certificat, dans `apps/overworld-sandbox/android/app/build/outputs/apk/release/`.
+ADB ne voit toujours aucun appareil ; installation et recette visuelle restent
+ouvertes. Le `tsc --noEmit` autonome conserve ses diagnostics antérieurs dans
+les modules combat, méga-évolution et scène, sans diagnostic dans les fichiers
+du correctif monture.
+Sur Samsung, la Route 5 a révélé un défaut visuel supplémentaire : l'empreinte
+de monture issue de `footsetbike.png` occupait les 32 px de la case et formait
+une grande barre derrière l'avatar à l'échelle Android. Le rendu conserve
+le dessin et son orientation, mais le centre sur 16 px avec une opacité initiale
+plus faible (42/255). Les empreintes à pied restent à 32 px et 62/255.
+APK signée 0.1.7 (8) reconstruite puis installée avec `adb install -r` sur le
+Samsung SM-S911U1, sans désinstaller l'app. La partie automatique de la Route 5
+a été reprise ; le personnage monté s'est déplacé dans les deux sens et la
+nouvelle capture ne montre plus la barre verticale au-dessus de lui. Le jeu
+reste lancé et la sauvegarde est présente. `corepack pnpm test`,
+`corepack pnpm build` et Gradle release réussis après le dernier changement.
+La sensation de vitesse et le rendu Coop demandent encore un retour du porteur.
+
+## BZ-009 — Confirmation avant dépôt à la Pension — 2026-11-03
+
+Le rapport local `docs/Débug/Bug/Pension sans confirmation.md` décrit un dépôt
+accidentel au moindre clic, suivi de frais de retrait. Dans
+`SourceDayCareView`, les trois parcours (équipe puis place, place puis équipe,
+roue d'action) demandent maintenant la même confirmation. La fenêtre indique
+le Pokémon, la place choisie, le dépôt gratuit et le prix minimal de retrait
+(100 ₽, puis 100 ₽ par niveau gagné). Le bouton Annuler et Retour Android
+ferment cette fenêtre sans appeler la mutation de Pension.
+
+Autorité : joueur concerné en solo, hôte ou invité ; domaine : équipe et Pension
+personnelles. Le noyau partagé `depositSourceDayCarePokemon` et sa persistance
+sont appelés seulement après confirmation. Aucune nouvelle intention réseau ni
+réplication n'est nécessaire : la room continue de recevoir uniquement la
+présentation personnelle du service, et la reconnexion retrouve l'état déjà
+sauvegardé. Validation tactile Android et Coop à effectuer ; pas de publication.
+`corepack pnpm test`, `corepack pnpm build` et la construction Android release
+signée réussis. L'APK locale est prête sous
+`apps/overworld-sandbox/android/app/build/outputs/apk/release/app-release.apk`.
+Le téléphone s'est déconnecté d'ADB avant `adb install -r` : cette version
+n'est pas encore installée et la recette tactile reste ouverte.
+
+## Import d'une sauvegarde avec marquages absents — 2026-11-03
+
+Le fichier privé `game.rxdata` fourni par le porteur (305 465 octets, hors Git)
+reproduisait un échec d'import. La piste de taille du rapport local était
+écartée : le plafond actuel est de 4 Mio. Les quinze blocs Ruby Marshal se
+lisent, mais certains Pokémon des boîtes n'ont pas d'instance `@markings`.
+Le convertisseur exigeait ce champ et s'arrêtait sur « Marquages invalide ».
+Une absence ou une valeur nulle vaut maintenant zéro marquage ; une valeur
+présente reste validée dans l'intervalle 0..255. La conversion complète du
+fichier fourni réussit localement : carte 233, six Pokémon d'équipe et 284 en
+boîtes. Les deux chemins d'import (sélecteur et recherche Android) utilisent
+ce même convertisseur. Autorité et domaine : sauvegarde personnelle du joueur ;
+le snapshot et sa synchronisation Coop/cloud restent inchangés. Validation
+d'import et d'ouverture de la partie sur téléphone à faire lors du prochain
+lot installé ; aucune APK installée ni publication pour ce correctif.
+`corepack pnpm test` et `corepack pnpm build` réussis après correction.
+
+Suite du 2026-11-03 : APK signée allégée `0.1.7 (8)` reconstruite avec les
+changements locaux en attente (dont confirmation Pension et import), puis
+installée sur le Samsung SM-S911U1 via `adb install -r` : `Success`. Certificat
+SHA-256 conforme au manifeste ; `firstInstallTime` inchangé (2026-10-28).
+L'activité principale démarre et reste au premier plan, sans exception fatale
+dans le journal consulté. La recette tactile Pension et l'import réel du
+nouveau fichier restent à faire par le porteur. Aucun déploiement en ligne.
+
+Décision de distribution du 2026-11-03 : pour l'APK BGM allégée à venir,
+`Titulo2.ogg` est la seule musique conservée dans l'APK. Le premier démarrage
+hors ligne reste au menu titre tant que le pack BGM n'est pas installé ; un
+pack déjà vérifié permet de reprendre hors ligne. Le retrait des autres BGM
+est reporté au chantier de finition de l'écran titre (`BZ-006`). La décision
+et sa recette sont inscrites dans `ASSET_DISTRIBUTION.md` et la roadmap.
+
+## BZ-006 — Finition locale de l'écran titre — 2026-11-03
+
+Le rapport `docs/Débug/Bug/ecran titre incomplet.md` signalait des effets
+visuels inachevés. Le script source `179-83242313-titulo.rb` (`GenTwoStyle`)
+anime un voile d'étoiles `gen_2_effect2`, une spirale en 15 s, des rayons en
+30 s avec pulsation, puis l'arrivée lumineuse du logo. L'écran local n'utilisait
+pas le voile d'étoiles et pulsait les rayons sans leur rotation. Le rendu CSS
+reprend ces éléments et conserve le fond large choisi par le porteur,
+`armaTituloZ.jpg`. L'animation n'apparaît qu'après décodage du fond ; le repli
+PNG et le fond uni restent possibles si l'image locale manque. La mise en page
+reste à la taille du menu Android, sans dépendre du cadre overworld.
+
+`Titulo2.ogg` tente de démarrer automatiquement au volume des préférences.
+Si la politique du navigateur bloque `play()`, un seul bouton « Lancer l'écran
+titre » recueille le premier geste et lance musique et animation ; le bouton
+musical séparé est retiré. Une erreur de décodage audio n'empêche pas de
+continuer. Le titre est personnel et seulement visuel/audio : aucune sauvegarde,
+intention réseau ou donnée répliquée. Le même lancement dessert solo, hôte et
+invité ; le retour à un combat Coop interrompu garde son contournement du titre.
+
+Vérifié dans Chrome local en paysage et portrait sans défilement ; le blocage
+autoplay, le premier clic et « Commencer » ont été exercés par CDP. Recette
+visuelle et audio sur APK Android encore ouverte. La réduction des BGM
+embarqués et le garde hors ligne restent un lot distinct avant publication.
+`corepack pnpm test` et `corepack pnpm build` réussis ; le typecheck autonome
+signale toujours les erreurs préexistantes de combat, méga-évolution et scène,
+sans diagnostic dans `source-title-screen.ts`.
+APK signée allégée `0.1.7 (8)` reconstruite puis installée sur le Samsung via
+`adb install -r` (`Success`) avec le certificat attendu. `firstInstallTime`
+reste au 2026-10-28 ; l'activité principale démarre sans erreur fatale. Une
+capture du téléphone montre le logo, le fond large et le bouton « Commencer »
+dans le viewport paysage sans rognage. La musique et l'animation en mouvement
+restent à juger par le porteur sur appareil. Aucun déploiement en ligne.
+Retouche finale : le titre relit le volume courant après un retour depuis les
+options. Tests/build et APK signée repassés, puis `adb install -r` a de nouveau
+réussi ; `firstInstallTime` inchangé et activité relancée. L'APK installée
+contient cette retouche.
+
+Retour du porteur sur `BZ-006` : la spirale restait invisible sur l'APK. Le
+calque était bien au-dessus du fond et déjà en mélange normal, mais sa petite
+taille, son opacité de 68 % et sa position sur la zone blanche de
+`armaTituloZ` effaçaient ses contours. La correction garde le PNG source et
+déplace son centre
+vers la zone violette de droite en paysage ; taille et contraste sont relevés
+pour retrouver le motif tournant. En portrait, le centre reste dans la zone
+sombre à gauche du logo. Contrôle visuel local effectué aux deux orientations ;
+recette du mouvement sur la nouvelle APK Android à confirmer.
+Suite : `corepack pnpm test`, `corepack pnpm build` et `android:release:slim`
+réussis. APK locale signée réinstallée sur le Samsung avec `adb install -r`
+(`Success`) ; `firstInstallTime` inchangé. La capture de l'appareil montre
+désormais nettement l'effet doré à droite du logo. Son mouvement reste à
+confirmer par le porteur ; aucune diffusion en ligne.
+
+Retour suivant du porteur : la spirale est visible, mais trop à droite. Le
+déplacement précédent à `84 % / 53 %` ne suivait pas le script `GenTwoStyle`.
+Celui-ci place initialement `gen_2_effect` et `gen_2_effect3` à `75 %` de la
+largeur et `62,5 %` de la hauteur, puis remonte les deux effets et le logo de
+58 pixels hors mode DS. Le décalage final effet/logo est donc de 48 pixels
+(12,5 % de la hauteur source de 384 px). Comme le logo responsive est centré à
+`42 %`, les deux effets sont centrés à `75 % / 54,5 %` en paysage. Le contraste
+qui avait résolu l'invisibilité est conservé ; le portrait garde son cadrage
+distinct. Cette retouche ne change ni ressources distribuées ni sauvegardes.
+Après ce dernier ajustement, `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim` et `git diff --check` réussissent. L'APK signée
+`0.1.7 (8)` est réinstallée sur le Samsung (`adb install -r` : `Success`) ;
+`firstInstallTime` reste au 2026-10-28. La capture de l'écran titre sur
+l'appareil confirme le nouveau centre des calques sans rognage. La validation
+esthétique du mouvement reste au porteur ; aucune diffusion en ligne.
+
+Correction demandée ensuite par le porteur : la spirale doit tourner derrière
+le logo en forme d'arbre, pas à côté. Le calage antérieur reproduisait la
+position indépendante du script source, mais pas la composition voulue pour
+`armaTituloZ`. Les centres de `gen_2_effect`, `gen_2_effect3` et du logo sont
+désormais communs (`50 % / 42 %`) en paysage et en portrait ; les effets sont
+sur le calque inférieur au logo. Le changement est purement visuel et local.
+`corepack pnpm test`, `corepack pnpm build` et `android:release:slim` passent.
+APK signée réinstallée sur le Samsung (`adb install -r` : `Success`) ; capture
+sur téléphone contrôlée après relance, halo doré centré derrière le logo.
+Validation du mouvement et de l'esthétique finale par le porteur encore ouverte.
+
+Retouche visuelle suivante de l'écran titre : `gen_2_effect3` (rayons tournants)
+passe d'une largeur plafonnée à `47vw / 115dvh / 500px` à
+`90vw / 200dvh / 950px` en paysage, soit près du double sur le Samsung ;
+`gen_2_effect` (spirale) passe à `56vw / 130dvh / 580px` (environ +20 %).
+Les proportions portrait sont ajustées séparément. Les deux restent centrés
+derrière le logo arbre. Un calque commun fait apparaître progressivement les
+effets sur 1,7 s avec un léger délai, sans interrompre leur rotation ni la
+pulsation des rayons. Les effets demeurent masqués avec la préférence de
+mouvement réduit. `corepack pnpm test`, `corepack pnpm build` et
+`android:release:slim` réussis ; APK signée réinstallée sur le Samsung par
+`adb install -r` (`Success`). Capture du titre contrôlée sur l'appareil ;
+validation esthétique finale par le porteur ouverte. Aucun déploiement en ligne.
+
+## BZ-006 — BGM sortis de l'APK allégée — 2026-11-04
+
+Le profil `android:release:slim` ne copie plus que `Audio/BGM/Titulo2.ogg`
+parmi les musiques ; les 164 autres pistes restent dans le pack BGM privé
+existant. Les autres sons, images et données continuent d'être copiés.
+L'APK signée finale contient un seul BGM et pèse 374,4 Mio. Le profil complet
+conserve les BGM embarqués. La décision de distribution et sa portée sont
+décrites dans `ASSET_DISTRIBUTION.md`.
+
+L'autorité du garde est l'appareil local : `android-resource-layout.json`
+annonce le besoin du pack, et `BgmPackStore.status()` expose la version active,
+la présence de ses objets et l'état réseau validé par Android. La règle vaut
+de la même façon pour solo, hôte et invité Coop ; ni sauvegarde ni room ne
+répliquent ce stockage personnel. Avant une nouvelle partie, une reprise de
+slot ou la restauration d'un combat Coop, l'app vérifie le pack. Sans pack,
+elle reste sur le titre avec `Titulo2.ogg`, interdit « Commencer » et propose
+le téléchargement dès que le réseau est disponible. Le choix de slot et la
+reprise Coop en attente sont conservés jusqu'à l'activation du pack. Un
+échec de téléchargement ne modifie pas le manifeste actif ; les objets déjà
+vérifiés sont réutilisés au prochain essai.
+
+L'authentification Cloudflare peut renvoyer une page HTML après redirection
+HTTP ; elle est maintenant reconnue comme demande de connexion et le titre
+présente le bouton « Connexion ». L'état reste affiché pendant le contrôle
+périodique du réseau. Le plein écran Android garde le menu sans défilement.
+
+Validation : `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim` et contrôle ZIP de l'APK réussis. Une installation
+fraîche isolée (`.freshprobe`) sur le Samsung confirme le blocage du titre
+sans pack, le message hors ligne avec Wi-Fi et données désactivés, le retour
+du bouton d'installation au rétablissement du réseau, puis la demande de
+connexion Cloudflare. Cette copie de test a été désinstallée. Sur l'app
+habituelle, la mise à jour `adb install -r` conserve `firstInstallTime`, les
+deux slots et le pack BGM ; « Commencer » mène au choix de partie en ligne et
+hors ligne. Le mode avion seul laissait le Wi-Fi actif sur ce Samsung : le
+test hors ligne a donc aussi coupé le Wi-Fi, puis les deux réglages ont été
+restaurés. La lecture audio a déjà été confirmée par le porteur lors du
+pilote BGM ; les essais manuels de cette APK allégée sont consignés ci-dessous.
+Aucun objet R2 ni manifeste n'a été modifié.
+
+Retour manuel du porteur le 2026-11-04 sur l'APK locale : la musique du titre
+joue sans pack BGM. Il a interrompu l'installation des musiques, reçu un
+message d'erreur, puis a pu continuer à jouer avec la musique. L'app
+habituelle possédait déjà un pack vérifié : ce test valide la conservation de
+ce pack actif après échec, sans prouver qu'une partie peut démarrer sans pack.
+Le cas sans pack a été contrôlé séparément avec `.freshprobe` et reste bloqué
+au titre comme prévu. Le porteur confirme le 2026-11-04 avoir également
+effectué avec succès le téléchargement intégral depuis une installation
+neuve. BZ-006 est validé sur l'APK locale. Aucune diffusion publique n'a été
+déclenchée.
+
+## BZ-005 — Audio en arrière-plan, raccord local — 2026-11-04
+
+L'autorité est l'appareil du joueur : le son est une présentation personnelle,
+sans donnée sauvegardée ni intention envoyée à la room. Les sons d'un autre
+joueur présents dans le monde Coop passent par le même lecteur local et la
+même règle de visibilité ; après reconnexion, seule la scène courante décide
+des pistes à jouer. `source-audio-lifecycle.ts` centralise la mise en pause
+à `visibilitychange`, `pagehide` et `App.appStateChange`. Au retour, seules les
+musique et ambiance en boucle encore actives reprennent à leur position ;
+un arrêt explicite de scène les retire de la file de reprise. Les effets
+ponctuels, cris et jingles commencés en arrière-plan sont abandonnés. Si
+WebView refuse la reprise automatique, un geste tactile ou clavier la relance.
+Le volume reste piloté par les préférences existantes de chaque lecteur.
+
+Le titre, la carte, le combat, les écrans d'évolution et d'éclosion, le cri du
+résumé Pokémon et les sons de fouille utilisent ce contrat. Les lectures
+déclenchées pendant l'arrière-plan n'émettent pas de son ; une nouvelle BGM
+de scène sera lue au retour si la scène l'a demandée. Les tests couvrent la
+reprise d'une boucle, l'abandon d'un effet bref et le remplacement de la
+piste pendant la pause. `corepack pnpm test` et `corepack pnpm build` ont
+réussi après les derniers ajustements. Le profil
+`android:release:slim` a produit une APK signée dont le certificat est vérifié.
+Elle a été installée sur le Samsung par `adb install -r` (`Success`) ; version
+`0.1.7 (8)`, `firstInstallTime` inchangé depuis le 2026-10-28, activité
+relancée. Un aller-retour Android Accueil → app par ADB garde le processus
+actif. Le porteur confirme ensuite sur téléphone la coupure immédiate en
+arrière-plan et la reprise sonore sur le titre, l'overworld et le combat ; il
+demande de considérer BZ-005 terminé. La recette manuelle hôte/invité Coop et
+reconnexion, ainsi qu'appel et verrouillage, est reportée aux contrôles de
+régression Android : ces chemins passent par le même état audio local, mais
+n'ont pas été écoutés séparément. Aucune diffusion en ligne.
+
+## BZ-011 / BZ-014 — PNJ et mouvement continu entre cartes — 2026-11-04
+
+Lecture de la source locale : `Game_Character#lock` mémorise la direction du
+PNJ et le tourne vers le joueur ; `#unlock` rétablit la direction antérieure
+sauf si `direction_fix` est actif. `Interpreter#setup_starting_event` verrouille
+les événements dont le déclencheur est inférieur à 3, puis `#command_end`
+les déverrouille. Le contrôleur de mouvement PNJ applique cette règle aux
+interactions et contacts : il gèle leur route autonome pendant la scène,
+respecte la direction fixe et restaure l'orientation en fin normale, annulation
+ou erreur. Les routes forcées restent pilotées par leurs commandes explicites.
+L'hôte publie la direction dans le `SourceWorldActorSnapshot` existant ; le
+client invité l'affiche puis reçoit la restauration. Un service personnel
+déclenché par l'invité reste une présentation locale. Autorité et persistance
+des acteurs partagés restent celles du monde hôte ; aucune nouvelle intention
+serveur ni donnée de sauvegarde n'a été ajoutée.
+
+Pour BZ-014, la direction tenue est une intention locale temporaire, jamais
+sauvegardée ni répliquée. Les transferts déclenchés par le pas conservent
+clavier et joystick pendant le chargement ; une continuation unique n'est
+consommée qu'après la fin de la transition et d'un éventuel autorun d'arrivée,
+et après la confirmation de la nouvelle carte par la room et l'acquittement
+d'un déplacement Coop. Elle lit la direction encore
+tenue, donc un relâchement pendant le chargement annule le pas. Les transferts
+par interaction, objet ou script ne programment pas de continuation. Le pas
+repris passe par `move()` et le noyau de mouvement existants, avec collision
+locale en solo et intention validée par la room en Coop ; la pose distante et
+la reconnexion restent dérivées de l'avatar canonique. Tests ciblés : PNJ
+orienté/restauré, direction fixe, snapshot invité, fin de séquence, attente
+du chargement et de l'acquittement, relâchement et absence de double pas.
+`corepack pnpm test` et `corepack pnpm build` réussis. Recette visuelle et
+tactile sur téléphone, solo/hôte/invité et reconnexion encore ouverte. Le profil
+`android:release:slim` a produit une APK signée, certificat vérifié, puis
+`adb install -r` a réussi sur le Samsung (`0.1.7 (8)`, date de première
+installation inchangée). L'activité Android a été relancée. Aucun déploiement
+en ligne. Le porteur confirme ensuite sur téléphone que BZ-011 et BZ-014
+fonctionnent ; la régression hôte/invité reste à inclure dans une session Coop.
+
+## BZ-015 — Bouton A contextuel — 2026-11-04
+
+Le rapport de bug demande une seule commande tactile : interaction si un PNJ,
+un objet ou un texte est devant le personnage ; maintien du sprint sinon.
+`source-context-action.ts` choisit uniquement l'étiquette et le mode du bouton
+à partir de l'état de scène, de la cible déjà détectée par le moteur, de la
+traversée possible et du droit au sprint. Le bouton Sprint séparé a été retiré.
+L'appui d'interaction passe toujours par `interact()` ; le maintien du sprint
+utilise le même état `touchSprintHeld` et le même noyau de mouvement qu'avant.
+La commande ne crée aucune règle de jeu, intention réseau ou donnée persistée :
+en solo, la collision et l'interaction restent locales ; en Coop, la room garde
+l'autorité du mouvement et les scènes conservent leurs politiques d'audience.
+Le rendu distant et la reconnexion s'appuient sur les snapshots existants.
+Tests ciblés : cible parlante, panneau lisible, traversée, dialogue, bouton
+indisponible, maintien et relâchement du sprint. Recette tactile sur téléphone
+et contrôles hôte/invité encore attendus avant de clore BZ-015.
+`corepack pnpm test` et `corepack pnpm build` passent. Le profil
+`android:release:slim` a produit une APK signée avec le même certificat ;
+`adb install -r` a réussi sur le Samsung connecté et l'activité a démarré.
+Aucune diffusion en ligne.
+
+Retour du porteur : le sprint s'éteignait dès le premier pas, car la
+présentation du bouton utilisait `allows("world-input")`, qui bloque
+volontairement l'interaction pendant une animation de marche. Le bouton
+utilise désormais le mode de scène `overworld` pour rester disponible pendant
+le déplacement ; la détection des cibles attend toujours la fin du pas.
+Le maintien du doigt n'est donc plus interrompu par le verrou temporaire
+d'interaction. Test de régression ajouté pour l'état `movement: true` ;
+`corepack pnpm test` et `corepack pnpm build` passent. Nouvelle recette tactile
+sur téléphone attendue avant validation définitive de BZ-015.
+L'APK locale signée `0.1.7 (8)` a été reconstruite puis réinstallée avec
+`adb install -r` (`Success`) sur le Samsung ; l'activité a été relancée.
+Aucune diffusion en ligne.
+
+Après validation tactile du sprint par le porteur, le bouton B est remplacé
+par un grand bouton « Menu » à la même position ; le petit bouton Menu redondant
+est retiré. Le bouton devient « Retour » uniquement lorsqu'un dialogue
+indépendant peut être annulé ou lorsque la boussole est ouverte. Pendant les
+séquences narratives non annulables, il est désactivé. Le retour Android
+matériel et `handleSourceCancelInput` conservent leurs autres usages. Cette
+modification ne change que les commandes locales : l'autorité hôte/room,
+les sauvegardes et les snapshots distants sont inchangés.
+Les tests du dépôt et le build passent ; l'APK locale signée `0.1.7 (8)` a été
+réinstallée sur le Samsung par `adb install -r` (`Success`) et l'activité a
+été relancée. L'essai visuel du nouveau bouton reste à confirmer par le porteur.
+Aucune diffusion en ligne.
+
+## BZ-013 / BZ-012 — Transferts, bandeau de lieu et ombre de forêt — 2026-11-04
+
+BZ-017 (logo tactile) est différé à la demande du porteur : l'image n'est pas
+encore prête. Le travail a continué sur BZ-013 puis BZ-012.
+
+La source `Interpreter#command_201` utilise le fondu de transfert seulement
+pour `fade=0` ; `fade=1` ne joue pas de transition. Les événements extraits
+conservent désormais cette valeur jusque dans le transfert direct. Un voile
+court couvre le changement de carte lorsque la source le demande. Le transfert
+par Vol conserve sa transition blanche propre. L'extraction des métadonnées
+inclut `ShowArea` : un changement réel vers une carte éligible, dont le nom
+diffère, affiche le bandeau `Graphics/Windowskins/Jess_Letreros/LetsGO.png`
+avec le nom français. L'écran n'affiche pas ce bandeau lors d'une reconnexion
+ou d'une simple reprise de sauvegarde. Les BGM/BGS et commandes sonores
+existantes continuent de piloter l'audio de la carte. Ces effets sont de la
+présentation locale : ils ne modifient ni les sauvegardes ni l'autorité des
+déplacements en solo/hôte/invité ; la room garde les collisions et positions.
+
+L'ombre signalée en Map046 provient de l'événement parallèle EV012 qui exécute
+`change-map-settings` avec `004-Shade02`, zoom 200 %, opacité 64/255. La
+commande était déjà au registre et à l'audit de scène, mais le CSS interprétait
+200 % comme deux fois la largeur de la fenêtre, au lieu de deux fois les 256 px
+du PNG. Le rendu utilise maintenant la largeur native de chaque fog et la
+largeur logique du canvas, puis recadre le fog sur la fenêtre de jeu. Son
+origine suit la caméra du monde quand le joueur se déplace. L'invité
+réapplique localement les commandes de réglage de carte des événements
+parallèles actifs au chargement/reconnexion, sans rejouer leurs mutations
+narratives. L'hôte continue d'exécuter le même événement source. Quatorze
+autres cartes demandent `004-Shade02`, sans règle spéciale à leur numéro.
+
+`prepare:local` a régénéré les métadonnées locales ignorées ; 157 cartes ont
+`ShowArea=true`. Tests ciblés (38) réussis, puis `corepack pnpm test` et
+`corepack pnpm build` réussis. Aucune ressource copiée ou exclue, aucune APK
+installée ni publication. Recette visuelle sur téléphone restante : Map046 et
+une autre carte à fog, transfert avec et sans fondu, bandeau, Vol, hôte/invité
+et retour après reconnexion. Les cases BZ-012 et BZ-013 restent ouvertes dans
+la roadmap jusqu'à cette validation manuelle.
+
+## APK 0.1.8 (9) publiée — 2026-11-04
+
+Le porteur indique avoir testé le lot local et autorise explicitement sa
+diffusion. `android-version.json` passe à `0.1.8` (`versionCode 9`), avec le
+certificat de diffusion inchangé. Les notes de version couvrent les correctifs
+accumulés depuis 0.1.7 : titre et audio, contrôles, PNJ/transferts, combat,
+Ranch/Pension, import et objets. `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim`, `android:manifest` et `git diff --check` passent.
+
+L'APK signée a été contrôlée avec le certificat SHA-256 attendu
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`.
+L'archive contient les métadonnées de cartes, `LetsGO.png`, `004-Shade02.png`
+et uniquement `Titulo2.ogg` parmi les BGM ; les 49 fonds larges et les autres
+BGM restent livrés par les packs déjà présents. L'APK fait **392 546 234
+octets**, SHA-256
+`0a499cf8a510a4d88a40be8b2be6a2ed9e5764f0b6cc3e31a171956684856a22`.
+Elle a été envoyée sur R2 sous
+`updates/android/pokemon-z-battle-9.apk` ; sa taille et son MIME
+`application/vnd.android.package-archive` ont été relus. Le manifeste
+`updates/android/latest.json` a été publié en dernier et relu avec le code,
+le nom, la taille, le hash et le MIME `application/json` attendus. Le Worker
+existant derrière Cloudflare Access annonce donc cette version sans nouveau
+déploiement. Aucun pack, ressource source ou secret n'a été publié dans Git ;
+aucun commit n'a été créé.

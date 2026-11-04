@@ -1001,7 +1001,10 @@ overworld 4:3. Le bouton
 Commencer reprend le démarrage existant ; la reprise d'un combat Coop interrompu
 conserve son démarrage direct. Le choix de partie et l'état de mise à jour sur
 cet écran restent les lots suivants. Validation visuelle sur APK Android encore
-ouverte.
+ouverte. Retouche demandée : centrer spirale et rayons derrière le logo arbre
+sur le fond large `armaTituloZ`. Finition locale suivante : rayons agrandis
+fortement, spirale légèrement agrandie, apparition progressive commune ;
+recette esthétique sur téléphone encore ouverte.
 
 Finition des fiches Android du 2026-10-27 : le Resume Pokemon reserve la place
 du sprite et separe ses libelles d'etat et de forme. Le Pokedex dispose d'une
@@ -3621,6 +3624,12 @@ Le fichier original reste intact et hors Git. Il faut encore préserver ou
 porter ces états, les cartes visitées et les événements déplacés, puis couvrir
 les sauvegardes de plusieurs stades avant de cocher la conversion complète.
 
+Échantillon supplémentaire du 2026-11-03 : un `game.rxdata` privé de 305 465
+octets échouait sur des Pokémon en boîte sans champ facultatif `@markings`, et
+non sur la taille. L'absence de marquages prend désormais la valeur zéro ; les
+quinze blocs se convertissent localement (carte 233, équipe 6, boîtes 284).
+Recette d'import et d'ouverture sur Android encore à effectuer avant clôture.
+
 ### Vérification de complétude du cloud — 2026-10-30
 
 L'import du fichier source sert de référence pour distinguer les données que
@@ -4087,6 +4096,9 @@ remplace pas.
   exacte et sa correspondance source `move2anim.dat`, vérifier les ressources
   présentes puis la lecture joueur/adversaire, simple/Duo et Coop. Conserver le
   fallback explicite si la source n'a pas d'animation ; ne pas en inventer une.
+  Décision du porteur le 2026-11-04 : traiter ce cas dans un audit plus large
+  des animations manquantes après d'autres essais, sans correction isolée
+  dans le lot BZ-005.
 - [ ] **BZ-016 — Combat du moulin et contrat générique des boss.** Sur Map286,
   le Pokémon dépasse de l'écran, le fond est recouvert et les effets semblent
   derrière ; la musique diffère de l'original, le Pokémon devrait être non
@@ -4113,51 +4125,204 @@ remplace pas.
   proposer « mettre en raccourci » depuis l'objet concerné dans le Sac, avec
   retrait au même endroit. Distinguer les objets des capacités de terrain et
   préserver les raccourcis déjà sauvegardés lors de la migration.
-- [ ] **BZ-008 — Filtre et Tri du Ranch.** Les deux panneaux ne s'ouvrent plus
+  Implémentation locale du 2026-11-02 : les Options ne contiennent plus de page
+  Raccourcis. La roue du Sac configure la Boussole (`DEXNAV`), le Miroir, les
+  trois cannes et le bouton de monture via les objets `BICYCLE` à `BICYCLE7`.
+  Ce dernier bouton commande une capacité de déplacement, sans « utiliser »
+  l'objet. Les préférences existantes gardent leur clé et leurs quatre valeurs ;
+  le choix de la canne favorite reste personnel. Recette tactile Android à
+  effectuer quand le téléphone sera rebranché : ajout, retrait et conservation
+  après relancement pour chaque famille ; tester aussi hôte et invité Coop.
+  Extension locale : Incubateur, Charme Chroma et flûtes noire, blanche, bleue,
+  Poké, rouge et jaune sont sélectionnables depuis leur objet. Les flûtes rouge
+  et jaune apparaissent dans le Sac de combat, conformément au jeu d'origine ;
+  le comportement de consommation des autres flûtes est laissé tel quel à la
+  demande du porteur. Le Charme Chroma apporte ses deux tirages sauvages
+  supplémentaires, fixés avant l'ouverture d'un combat partagé. Recette Android
+  et Coop encore ouverte ; vérifier aussi la hauteur de la barre de raccourcis.
+- [ ] **BZ-018 — Audit des autres objets d'exploration et objets rares.** Avant
+  tout portage, relever leur usage réel dans les scripts et événements source,
+  puis distinguer action du Sac, service, effet passif et clé narrative. Étudier
+  Cherch'Objet/Zahorí, Poké Radar, Carte, Pokérider, Monnayeur, Gracídea,
+  Pointe ADN, Miroir Révélateur et Repart. Exp ; contrôler également les objets
+  rares de scénario et les montures `BICYCLE1` à `BICYCLE7`, que le raccourci
+  actuel présente encore comme Chevroum. Ne pas déclarer un objet inutile sur
+  la seule absence d'un gestionnaire `UseFromBag`.
+  Premier raccord local : `TOWNMAP` ouvre la carte régionale en consultation et
+  `POKERIDER` l'ouvre en mode Vol depuis le Sac, avec les permissions et lieux
+  visités déjà contrôlés par le même écran en solo et Coop. Le bouton commun des
+  `BICYCLE*` est nommé « Monture » : le script source assigne bien A à H à une
+  variable, mais l'ajout de cette variable au sprite est commenté dans
+  `pbGetPlayerCharset` ; ne pas promettre huit apparences sans preuve graphique.
+  Audit restant : `ITEMFINDER`/`DOWSINGMACHINE` ont un gestionnaire de proximité,
+  mais aucun événement nommé `HiddenItem` dans l'export actuel ; vérifier les
+  cartes brutes avant de les déclarer absents. `POKERADAR` a une mécanique de
+  batterie, herbes et chaîne dédiée. `COINCASE` lit les jetons et conditionne
+  deux minijeux. `GRACIDEA`, `REVEALGLASS`, `DNASPLICERS` changent des formes et
+  exigent les contrats Pokémon correspondants. `EXPALL` agit dans le calcul des
+  gains d'EXP, et `EXPALLOFF` le réactive ; traiter avec la progression Coop.
+  Correctif monture local : `walk-run.rb` et `huellas.rb` donnent 80 ms/case
+  contre 105 ms pour la course, quatre poses à ~33 ms et un ancrage du sprite
+  malgré deux pixels de transparence alternés. Les traces de sable s'effacent
+  vers 950 ms ; les ondulations d'eau conservent 1 500 ms. Même règle visuelle
+  pour joueur local et avatar Coop distant ; recette Android et Coop ouverte.
+  Recette Samsung du 2026-11-03 : une trace `footsetbike.png` plein carreau
+  forme visuellement une grande barre verticale sur la Route 5. Le dessin
+  source est conservé mais réduit à 16 px centrés avec une opacité modérée ;
+  nouvel APK signée 0.1.7 (8) installée sur Samsung le 2026-11-03 : la grande
+  barre a disparu lors d'un aller-retour sur la Route 5. Contrôle Coop ouvert.
+- [x] **BZ-008 — Filtre et Tri du Ranch.** Les deux panneaux ne s'ouvrent plus
   correctement sur l'APK. Déporter leur contenu dans une fenêtre dédiée bornée
   à l'écran Android, avec fermeture/retour, clavier de recherche et pagination
   sans défilement vertical ; garder filtres et page cohérents après retour.
-  Fenêtre et retour contextuel implémentés localement le 2026-11-02 ; recette
-  tactile sur Samsung à confirmer avant clôture.
-- [ ] **BZ-009 — Équipe dans la Pension.** Agrandir les cartes et les cibles
-  tactiles sans rogner les six membres ; revoir la grille en pages si nécessaire.
-- [ ] **BZ-010 — Équipe dans le Ranch.** Même exigence de lisibilité que pour la
+  Fenêtre et retour contextuel implémentés localement le 2026-11-02 ; le porteur
+  valide la dernière correction Retour/Appliquer sur Samsung.
+- [x] **BZ-009 — Équipe dans la Pension.** Agrandir les cartes et les cibles
+  tactiles sans rogner les six membres. Le porteur préfère finalement une liste
+  d'équipe à défilement vertical local, exception ciblée à la règle des menus.
+  Recette visuelle et tactile validée sur téléphone. Après capture du porteur,
+  centrage du sprite, placement identité/objet/PV et conservation des quatre
+  attaques corrigés dans une APK locale réinstallée.
+  Correctif complémentaire du 2026-11-03 : le rapport `Pension sans confirmation.md`
+  signale qu'un simple toucher déposait un Pokémon et rendait son retrait payant.
+  Les trois chemins de dépôt passent désormais par une confirmation affichant
+  le Pokémon, sa place et le coût du futur retrait ; Annuler et Retour Android
+  ne changent pas l'équipe. Code local prêt, recette tactile à effectuer.
+- [x] **BZ-010 — Équipe dans le Ranch.** Même exigence de lisibilité que pour la
   Pension, avec accès aux actions et aux informations utiles sans cartes
-  microscopiques ni défilement vertical.
+  microscopiques. Même liste verticale interne et même correction de carte que
+  la Pension ; recette visuelle et tactile validée par le porteur.
 - [ ] **BZ-015 — Bouton A contextuel.** Dans le monde, proposer l'interaction
   devant un PNJ/objet/élément lisible ; sans cible, permettre le sprint selon
   les droits de mouvement. Définir le retour visuel et l'arbitrage avec le
   bouton Sprint actuel, puis tester les mêmes intentions en solo et en room.
-- [ ] **BZ-017 — Icône du jeu.** Retrouver l'illustration déjà préparée par le
-  porteur et l'intégrer aux icônes Android de densités requises ; vérifier le
+  Implémenté localement le 2026-11-04 : le bouton affiche l'action disponible
+  (parler, lire, interagir, traverser, défier ou poursuivre le dialogue) et
+  devient « Sprint » à maintenir quand aucune cible n'est devant le joueur.
+  Le bouton Sprint séparé a été retiré. Les commandes utilisent les chemins
+  de mouvement et d'interaction existants, y compris en Coop. Recette tactile
+  sur téléphone et vérification hôte/invité encore à faire.
+  Retour tactile du 2026-11-04 : le bouton se désactivait au début de chaque
+  pas. Corrigé localement en gardant le sprint disponible pendant l'animation
+  de marche, sans avancer la détection d'interaction avant la fin du pas.
+  Nouvelle vérification sur téléphone attendue.
+  Le porteur confirme ensuite le sprint et demande de remplacer B par Menu :
+  le grand bouton devient « Menu » dans l'overworld et « Retour » seulement
+  lorsqu'un dialogue ou la boussole peut être fermé. Le petit Menu est retiré.
+  Recette tactile de ce changement encore à faire.
+- [ ] **BZ-017 — Icône du jeu.** Attendre l'illustration que le porteur prépare,
+  puis l'intégrer aux icônes Android de densités requises ; vérifier le
   rendu sur le téléphone avant publication. Contrôler la provenance de l'asset
-  avant toute copie conformément à `ASSET_DISTRIBUTION.md`.
+  avant toute copie conformément à `ASSET_DISTRIBUTION.md`. Différé à la
+  demande du porteur le 2026-11-04 : le logo n'est pas encore créé.
 
 #### Priorité 3 — audio, scène et déplacements
 
-- [ ] **BZ-005 — Audio en arrière-plan.** Suspendre musique et effets lorsque
+- [x] **BZ-005 — Audio en arrière-plan.** Suspendre musique et effets lorsque
   l'APK est réduite, puis reprendre proprement selon les préférences et la
   scène courante. Tester titre, carte, scène et combat, y compris reprise Coop.
-- [ ] **BZ-006 — Musique du titre.** La lancer par défaut et supprimer son bouton
+  Raccord local du 2026-11-04 : le titre, la carte (BGM/BGS), le combat,
+  l'évolution, l'éclosion, les cris et les sons de fouille partagent désormais
+  le même état de premier plan Android/WebView. Les pistes en boucle actives
+  reprennent après retour ; un changement de scène pendant la pause écarte
+  l'ancienne piste, et les effets courts ne sont pas rejoués. Le volume courant
+  reste celui de chaque lecteur. Tests automatisés ajoutés pour la reprise et
+  l'arrêt explicite.
+  APK locale signée `0.1.7 (8)` reconstruite et installée sur le Samsung le
+  2026-11-04 sans effacer les données. Le porteur confirme sur téléphone que
+  les sons se coupent immédiatement en arrière-plan et que la reprise marche
+  sur le titre, l'overworld et le combat ; il clôt BZ-005. Contrôle manuel
+  Coop/reconnexion, appel et verrouillage à garder dans la régression Android :
+  le même gestionnaire audio local couvre ces chemins, mais ils n'ont pas été
+  testés séparément. Aucune diffusion en ligne.
+- [x] **BZ-006 — Musique du titre.** La lancer par défaut et supprimer son bouton
   dédié ; intégrer le démarrage au premier geste autorisé par Android/WebView
-  si nécessaire. Garder une piste hors ligne dans l'APK et respecter le volume
-  général. Raccorder ce point au chantier « Écran d'accueil » avant l'APK BGM
-  allégé.
-- [ ] **BZ-011 — Orientation des PNJ.** À l'interaction, tourner vers le joueur
+  si nécessaire. Garder uniquement `Titulo2.ogg` comme BGM embarquée et
+  respecter le volume général. Premier lancement sans réseau ni pack : rester
+  sur l'écran titre et attendre le pack avant d'ouvrir une partie ; pack déjà
+  installé : reprise hors ligne possible. Raccorder ce point au chantier
+  « Écran d'accueil » avant l'APK BGM allégé, puis vérifier migration et
+  téléchargement interrompu.
+  Raccord local du 2026-11-03 : voile d'étoiles, rotation et pulsation des
+  effets `GenTwoStyle`, arrivée lumineuse du logo et fond `armaTituloZ.jpg`
+  vérifiés en navigateur paysage/portrait. La musique tente de démarrer dès
+  l'affichage ; si le navigateur exige un geste, « Lancer l'écran titre »
+  démarre l'animation et la musique, puis « Commencer » ouvre le choix de
+  partie. Le bouton musical séparé a disparu. Restent la recette Android et
+  la réduction de l'APK BGM avec son garde de premier lancement hors ligne.
+  APK locale signée `0.1.7 (8)` installée le 2026-11-03 ; capture paysage du
+  titre contrôlée sans rognage. Validation perceptive de l'animation et du son
+  encore demandée au porteur, sans publication en ligne.
+  Retour visuel : la spirale se perdait dans la zone blanche du fond. Son
+  contraste, sa taille et sa position sont corrigés ; vérification
+  locale paysage/portrait faite, nouvelle recette Android requise.
+  APK locale réinstallée le 2026-11-03 : effet doré visible sur une capture
+  Samsung ; rotation à juger sur l'appareil avant validation finale.
+  Lot local du 2026-11-04 : le profil APK allégé conserve seulement
+  `Titulo2.ogg` parmi les BGM ; l'APK signée pèse 374,4 Mio. Une copie neuve
+  isolée sur le Samsung valide le garde au titre sans pack, le message hors
+  ligne, le retour du bouton d'installation au retour du réseau et le bouton
+  Connexion pour Cloudflare Access. La mise à jour de l'app habituelle garde
+  les slots et le pack ; la reprise hors ligne mène au choix de partie.
+  Retour du porteur le 2026-11-04 : musique du titre présente sans pack,
+  téléchargement des musiques interrompu avec message d'erreur, reprise du
+  jeu possible et musique en jeu audible. Ce dernier essai portait sur l'app
+  habituelle avec pack vérifié déjà actif ; il confirme que l'échec conserve
+  l'ancien pack. Le porteur confirme aussi avoir déjà effectué avec succès
+  le téléchargement intégral depuis une installation neuve. BZ-006 est validé
+  sur l'APK locale ; aucune diffusion publique n'a été déclenchée.
+- [x] **BZ-011 — Orientation des PNJ.** À l'interaction, tourner vers le joueur
   les PNJ dont la page source le demande, sans casser les routes forcées ou les
   scènes ; rendre l'orientation distante cohérente en Coop.
+  Raccord local du 2026-11-04 : l'interpréteur source verrouille les événements
+  d'interaction/contact, les tourne vers leur déclencheur sauf direction fixe,
+  puis restaure leur direction à la fin. Le contrôleur PNJ applique désormais
+  cette règle et suspend la route autonome pendant l'interaction ; l'hôte
+  publie la direction dans le snapshot d'acteur déjà répliqué aux invités.
+  Le porteur confirme le 2026-11-04 que le comportement fonctionne sur son
+  téléphone. La régression hôte/invité reste à contrôler lors d'une session Coop.
 - [ ] **BZ-012 — Ombres de la forêt.** Reproduire l'effet observé en Map046,
   identifier la règle et l'asset source, puis corriger le rendu générique des
   ombres de carte et vérifier d'autres forêts.
+  Raccord local du 2026-11-04 : l'événement parallèle EV012 de Map046 applique
+  `Graphics/Fogs/004-Shade02.png` avec un zoom source de 200 % et une opacité
+  de 64/255. Le rendu calcule désormais le zoom à partir des dimensions réelles
+  du PNG, et rétablit les réglages visuels des événements parallèles actifs
+  côté invité à l'entrée/reconnexion. Le même fichier est demandé par 14
+  autres cartes ; contrôle visuel sur téléphone et sur une autre forêt restant.
+  Le porteur confirme le 2026-11-04 que son essai du lot fonctionne et autorise
+  la diffusion en APK 0.1.8 (9). L'essai d'une autre forêt et la reconnexion
+  invitée restent à consigner séparément.
 - [ ] **BZ-013 — Transition entre cartes.** Porter les transitions visuelles
   source et leurs sons éventuels selon les métadonnées de la carte/commande ;
   couvrir marche, transfert, Vol et Coop. Articuler avec le bandeau de lieu déjà
   prévu sans rejouer des effets à chaque reconnexion.
-- [ ] **BZ-014 — Marche maintenue au changement de carte.** Après transfert,
+  Raccord local du 2026-11-04 : la valeur `fade` de la commande 201 est
+  conservée ; 0 déclenche le fondu de transfert source, 1 garde une transition
+  immédiate. `ShowArea` est extrait des métadonnées et affiche le bandeau
+  `LetsGO` au changement réel de carte et de nom, avec le nom français. Le Vol
+  garde son effet blanc spécifique et les sons/BGM des cartes restent gérés par
+  leurs commandes et métadonnées existantes. Aucun bandeau n'est joué sur
+  simple restauration réseau. Tests et build réussis ; recette visuelle sur
+  téléphone, transfert sans fondu, Vol et Coop encore à faire.
+  Le porteur confirme le 2026-11-04 que son essai du lot fonctionne et autorise
+  la diffusion en APK 0.1.8 (9). Les cas Coop et reprise restent dans la
+  matrice de régression tant que leur résultat n'est pas décrit séparément.
+- [x] **BZ-014 — Marche maintenue au changement de carte.** Après transfert,
   poursuivre le mouvement si le joystick/la direction est toujours tenue et
   que la nouvelle carte l'autorise, sans pas fantôme ni double événement ;
   contrôler hôte, invité, collision, chargement lent et relâchement pendant la
   transition.
+  Raccord local du 2026-11-04 : les touches restent suivies pendant un transfert
+  déclenché par le pas ; après chargement, scène d'arrivée, confirmation de
+  la nouvelle carte par la room et acquittement réseau, une seule continuation
+  lit la direction encore physiquement tenue.
+  Relâcher pendant le chargement ou transférer par interaction/objet ne crée
+  aucun pas. La room conserve l'autorité sur collisions et déplacements Coop.
+  L'APK locale signée `0.1.7 (8)` a été réinstallée sur le Samsung le
+  2026-11-04 sans effacer les données. Recette sur cartes réelles et téléphone
+  confirmée par le porteur le 2026-11-04 ; la régression hôte/invité reste à
+  contrôler lors d'une session Coop. Aucune diffusion en ligne.
 
 **Ordre de reprise proposé :** reproduire `BZ-016` et `BZ-001` sur l'APK avec
 une trace courte ; fixer le contrat des boss (capture, BGM, audio et plans) et

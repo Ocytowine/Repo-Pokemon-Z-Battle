@@ -6,6 +6,7 @@ import { SOURCE_BATTLE_BAG_PAGE_SIZE, sourceBagFamilyEntries, sourceBagNodes, so
 import { sourceBagGridHtml, sourceBagPaginationHtml } from "./source-bag-grid.js";
 import { escapeSourceHtml } from "./source-menu-view.js";
 import type { SourceShopItem } from "./source-economy.js";
+import type { SourceFieldShortcutId } from "./source-field-shortcuts.js";
 
 export interface SourceBattleBagEntry extends SourceShopItem {
   readonly quantity: number;
@@ -29,6 +30,7 @@ export interface SourceBattleOverlayModel {
   readonly capturable: boolean;
   readonly escaped: boolean;
   readonly megaEvolutionEnabled: boolean;
+  readonly fieldShortcuts: readonly SourceFieldShortcutId[];
   readonly bag: {
     readonly balls: readonly SourceBattleBagEntry[];
     readonly medicine: readonly SourceBattleBagEntry[];
@@ -444,12 +446,23 @@ export class SourceBattleOverlay {
   }
 
   private renderBagCategories(actions: HTMLElement, model: SourceBattleOverlayModel, blocked: boolean): void {
+    const quickFlutes = model.bag.battleItems.filter((entry) => entry.usable !== false
+      && (entry.internalName === "REDFLUTE" && model.fieldShortcuts.includes("red-flute")
+        || entry.internalName === "YELLOWFLUTE" && model.fieldShortcuts.includes("yellow-flute")));
     const categories = [
       { id: "balls", label: "Poké Balls", icon: "item267.png", hint: model.capturable ? "Pokémon sauvage" : "Cible non capturable", count: model.bag.balls.filter((entry) => entry.usable !== false).length, unavailable: !model.capturable },
       { id: "medicine", label: "Soins", icon: "item006.png", hint: "PV et statuts", count: model.bag.medicine.filter((entry) => entry.usable !== false).length, unavailable: false },
       { id: "battle-items", label: "Objets combat", icon: "item081.png", hint: "Bonus temporaires", count: model.bag.battleItems.filter((entry) => entry.usable !== false).length, unavailable: false },
     ] as const;
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>SAC</small><strong>Choisir une catégorie</strong></div></header><div class="source-battle-bag-categories">${categories.map((category) => `<button data-battle-menu="${category.id}"${disabled(blocked || category.unavailable)}><b class="source-battle-bag-category-icon"><img src="${BATTLE_ITEM_ICONS}${category.icon}" alt=""><em>${category.count}</em></b><span>${category.label}</span><small>${category.hint}</small></button>`).join("")}</div></div>`;
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>SAC</small><strong>Choisir une catégorie</strong></div></header><div class="source-battle-bag-categories">${categories.map((category) => `<button data-battle-menu="${category.id}"${disabled(blocked || category.unavailable)}><b class="source-battle-bag-category-icon"><img src="${BATTLE_ITEM_ICONS}${category.icon}" alt=""><em>${category.count}</em></b><span>${category.label}</span><small>${category.hint}</small></button>`).join("")}${quickFlutes.map((entry) => `<button type="button" data-battle-quick-flute="${entry.internalName}"${disabled(blocked)}><b class="source-battle-bag-category-icon"><img src="${BATTLE_ITEM_ICONS}item${String(entry.id).padStart(3, "0")}.png" alt=""></b><span>${escapeSourceHtml(entry.name)}</span><small>Raccourci</small></button>`).join("")}</div></div>`;
+    actions.querySelectorAll<HTMLButtonElement>("[data-battle-quick-flute]").forEach((button) =>
+      button.addEventListener("click", () => {
+        const activeIndices = model.state?.teams.player.activeIndices ?? [model.state?.teams.player.activeIndex ?? 0];
+        const target = activeIndices[this.activeSlot];
+        if (target === undefined) return;
+        this.menu = "root";
+        this.callbacks.onItem(button.dataset.battleQuickFlute!, target, model.local, this.activeSlot);
+      }));
     this.bindBack(actions, model);
     actions.querySelectorAll<HTMLButtonElement>("[data-battle-menu]").forEach((button) => button.addEventListener("click", () => {
       this.menu = button.dataset.battleMenu as BattleMenu;

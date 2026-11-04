@@ -8,25 +8,42 @@ html:has(.embedded-avatar-lab:not([hidden])) { height: 100dvh; overflow: hidden;
 .source-title-screen { position: fixed; z-index: 250; inset: 0; overflow: hidden; isolation: isolate; color: #fff8e8; background: #09172b; text-align: center; }
 .source-title-screen[hidden] { display: none; }
 .source-title-backdrop { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 30%, #254886, #09172b 75%); }
-.source-title-art { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
-.source-title-background { width: 100%; height: 100%; object-fit: cover; object-position: center; filter: brightness(.83); visibility: hidden; }
-.source-title-screen[data-background-ready] .source-title-background { visibility: visible; animation: source-title-reveal .35s ease-out both; }
-.source-title-effect, .source-title-glow, .source-title-logo { position: absolute; left: 50%; top: 42%; pointer-events: none; }
-.source-title-effect { width: min(55vw, 75vh); height: min(55vw, 75vh); object-fit: contain; opacity: .17; mix-blend-mode: screen; animation: source-title-turn 28s linear infinite; }
-.source-title-glow { width: min(46vw, 62vh); height: min(46vw, 62vh); object-fit: contain; opacity: .28; mix-blend-mode: screen; animation: source-title-pulse 3s ease-in-out infinite alternate; }
-.source-title-logo { top: 4%; width: min(65vw, 80vh, 430px); height: 64%; object-fit: contain; filter: drop-shadow(0 7px 16px #100d25cc); transform: translateX(-50%); animation: source-title-logo-arrive 1.25s cubic-bezier(.2,.8,.2,1) both; }
-.source-title-content { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; display: grid; justify-items: center; gap: 5px; padding: 24px 12px max(12px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #061024b8 25%, #061024ef); text-shadow: 0 2px 8px #000; }
+.source-title-art { position: absolute; inset: 0; overflow: hidden; }
+.source-title-background { width: 100%; height: 100%; object-fit: cover; object-position: center; filter: brightness(.86); visibility: hidden; }
+.source-title-screen[data-background-ready] .source-title-background { visibility: visible; animation: source-title-reveal .55s ease-out both; }
+.source-title-stardust { position: absolute; inset: 0; background: url("/__pokemon-z/source/Graphics/Titles/gen_2_effect2.png") repeat-x center / auto 100%; mix-blend-mode: screen; opacity: 0; pointer-events: none; }
+.source-title-effects { position: absolute; z-index: 1; inset: 0; opacity: 0; pointer-events: none; }
+.source-title-effect, .source-title-rays { position: absolute; left: 50%; top: 42%; height: auto; opacity: 0; pointer-events: none; }
+.source-title-effect { width: min(56vw, 130dvh, 580px); filter: contrast(1.5) saturate(1.25); }
+.source-title-rays { width: min(90vw, 200dvh, 950px); mix-blend-mode: screen; }
+.source-title-logo { position: absolute; z-index: 2; left: 50%; top: 42%; width: auto; max-width: min(68vw, 430px); height: min(62%, 320px); object-fit: contain; opacity: 0; filter: drop-shadow(0 8px 3px #160d2980) drop-shadow(0 14px 22px #080d2be0); pointer-events: none; }
+.source-title-flash { position: absolute; left: 50%; top: 42%; width: min(80vw, 70dvh); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle, #fffbe4c9 0%, #ffe8a052 26%, transparent 66%); opacity: 0; transform: translate(-50%, -50%); pointer-events: none; }
+.source-title-screen[data-title-active] .source-title-stardust { opacity: .7; animation: source-title-stars 16s linear infinite; }
+.source-title-screen[data-title-active] .source-title-effects { animation: source-title-effects-appear 1.7s ease-out .15s both; }
+.source-title-screen[data-title-active] .source-title-effect { opacity: .86; animation: source-title-turn 15s linear infinite; }
+.source-title-screen[data-title-active] .source-title-rays { opacity: .38; animation: source-title-turn 30s linear infinite, source-title-ray-pulse 8.5s ease-in-out infinite alternate; }
+.source-title-screen[data-title-active] .source-title-logo { animation: source-title-logo-arrive 1.65s ease-out both; }
+.source-title-screen[data-title-active] .source-title-flash { animation: source-title-flash 1.5s ease-out both; }
+.source-title-activate { position: absolute; z-index: 3; left: 50%; bottom: max(24px, 7dvh); min-width: 180px; min-height: 48px; padding: 9px 20px; border: 1px solid #fff3bf; border-radius: 13px; color: #302008; background: linear-gradient(#fff4c7, #efba54); box-shadow: 0 8px 26px #07102bcc; cursor: pointer; font-size: 13px; font-weight: 800; transform: translateX(-50%); touch-action: manipulation; }
+.source-title-activate[hidden] { display: none; }
+.source-title-activate:hover, .source-title-activate:focus-visible { outline: 2px solid #fff4cc; outline-offset: 2px; }
+.source-title-content { position: absolute; z-index: 2; right: 0; bottom: 0; left: 0; display: grid; justify-items: center; gap: 5px; padding: 24px 12px max(12px, env(safe-area-inset-bottom)); background: linear-gradient(transparent, #061024b8 25%, #061024ef); opacity: 0; pointer-events: none; text-shadow: 0 2px 8px #000; }
+.source-title-screen[data-title-active] .source-title-content { pointer-events: auto; animation: source-title-content-arrive .45s ease-out 1.3s both; }
 .source-title-content h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .source-title-eyebrow { color: #ffe6a8; font-size: 10px; font-weight: 900; letter-spacing: .22em; }
-.source-title-content p, .source-title-content small { margin: 0; color: #e2eaf7; font-size: 11px; }
-.source-title-content small { color: #b0c4da; font-size: 9px; }
+.source-title-content p { margin: 0; color: #e2eaf7; font-size: 11px; }
 .source-title-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 3px 0; }
 .source-title-actions button { min-width: 148px; min-height: 44px; padding: 8px 17px; border: 1px solid #f8dc9e99; border-radius: 10px; color: #fff8e9; background: #071a36dd; box-shadow: 0 4px 16px #0009; cursor: pointer; font-size: 13px; font-weight: 800; touch-action: manipulation; }
 .source-title-actions button:hover, .source-title-actions button:focus-visible { border-color: #fff4cc; outline: 2px solid #fff4cc; outline-offset: 2px; }
 .source-title-actions .source-title-continue { border-color: #fff3bf; color: #302008; background: linear-gradient(#fff4c7, #efba54); animation: source-title-button-glow 2s ease-in-out infinite alternate; }
+.source-title-pack { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; max-width: 100%; color: #fff2d3; font-size: 11px; }
+.source-title-pack[hidden], .source-title-pack button[hidden] { display: none; }
+.source-title-pack-message { flex: 1 1 100%; }
+.source-title-pack button { min-height: 30px; padding: 4px 10px; border: 1px solid #f8dc9e99; border-radius: 8px; color: #fff8e9; background: #071a36dd; cursor: pointer; font-size: 11px; font-weight: 700; }
 html.source-android .source-title-screen { inset: var(--source-safe-top, 0px) var(--source-safe-side, 8px) var(--source-safe-bottom, 0px) var(--source-safe-side, 8px); border-radius: 10px; }
 html.source-android .source-title-content { padding-bottom: 9px; }
 html.source-android body:has(.source-title-screen:not([hidden])) .source-touch-controls { display: none !important; }
+@media (orientation: portrait) { .source-title-effect { width: min(84vw, 70dvh, 460px); }.source-title-rays { width: min(140vw, 115dvh, 780px); } }
 .source-launch-screen { position: fixed; z-index: 250; inset: 0; overflow: hidden; color: #f6f4e7; background: linear-gradient(140deg, #07152b, #163852 60%, #07152b); }
 .source-launch-screen[hidden] { display: none; }
 .source-launch-panel { display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 7px; width: min(100%, 1000px); height: 100%; min-height: 0; margin: auto; padding: clamp(8px, 2dvh, 16px); }
@@ -69,13 +86,17 @@ html.source-android body:has(.source-title-screen:not([hidden])) .source-touch-c
 html.source-android .source-launch-screen { inset: var(--source-safe-top, 0px) var(--source-safe-side, 8px) var(--source-safe-bottom, 0px) var(--source-safe-side, 8px); border-radius: 10px; }
 html.source-android body:has(.source-launch-screen:not([hidden])) .source-touch-controls { display: none !important; }
 @media (orientation: portrait) { .source-launch-slots, .source-launch-import-slots { grid-template-columns: 1fr; } }
-@keyframes source-title-reveal { from { opacity: 0; filter: brightness(.25); } to { opacity: 1; filter: brightness(.83); } }
-@keyframes source-title-logo-arrive { from { opacity: 0; transform: translate(-50%, 36px) scale(.9); } to { opacity: 1; transform: translateX(-50%) scale(1); } }
+@keyframes source-title-reveal { from { opacity: 0; filter: brightness(.25); } to { opacity: 1; filter: brightness(.86); } }
+@keyframes source-title-effects-appear { from { opacity: 0; } to { opacity: 1; } }
+@keyframes source-title-logo-arrive { 0% { opacity: 0; transform: translate(-50%, calc(-50% + 48px)) scale(.88); filter: brightness(2) drop-shadow(0 0 24px #fff8ca); } 67% { opacity: 1; transform: translate(-50%, -50%) scale(1.04); filter: brightness(1.7) drop-shadow(0 0 26px #fff0ae); } 100% { opacity: 1; transform: translate(-50%, -50%) scale(1); filter: brightness(1) drop-shadow(0 8px 3px #160d2980) drop-shadow(0 14px 22px #080d2be0); } }
 @keyframes source-title-turn { from { transform: translate(-50%, -50%) rotate(0); } to { transform: translate(-50%, -50%) rotate(360deg); } }
-@keyframes source-title-pulse { from { transform: translate(-50%, -50%) scale(.9); opacity: .12; } to { transform: translate(-50%, -50%) scale(1.1); opacity: .36; } }
+@keyframes source-title-ray-pulse { from { opacity: .08; } to { opacity: .44; } }
+@keyframes source-title-stars { from { background-position-x: 0; } to { background-position-x: 512px; } }
+@keyframes source-title-flash { 0%, 35% { opacity: 0; transform: translate(-50%, -50%) scale(.4); } 65% { opacity: .56; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1.25); } }
+@keyframes source-title-content-arrive { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes source-title-button-glow { to { box-shadow: 0 0 18px #ffdf81a8, 0 4px 16px #0009; } }
-@media (max-height: 420px) { .source-title-content { gap: 3px; padding-top: 13px; }.source-title-content p, .source-title-content small { display: none; }.source-title-eyebrow { font-size: 8px; } }
-@media (prefers-reduced-motion: reduce) { .source-title-background, .source-title-effect, .source-title-glow, .source-title-logo, .source-title-actions .source-title-continue { animation: none; }.source-title-effect, .source-title-glow { display: none; } }
+@media (max-height: 420px) { .source-title-content { gap: 3px; padding-top: 13px; }.source-title-content p { display: none; }.source-title-eyebrow { font-size: 8px; } }
+@media (prefers-reduced-motion: reduce) { .source-title-screen .source-title-background, .source-title-screen[data-title-active] .source-title-logo, .source-title-screen[data-title-active] .source-title-content, .source-title-actions .source-title-continue { animation: none; opacity: 1; transform: none; }.source-title-screen[data-title-active] .source-title-logo { transform: translate(-50%, -50%); }.source-title-stardust, .source-title-effects, .source-title-flash { display: none; } }
 button, input { color: inherit; font: inherit; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 .eyebrow { margin: 0; color: #73cba8; font-size: 10px; font-weight: 900; letter-spacing: .15em; text-transform: uppercase; }
@@ -89,15 +110,13 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-touch-joystick::before, .source-touch-joystick::after { position: absolute; inset: 12px 53px; content: ""; border-radius: 99px; background: #dff8ea20; pointer-events: none; }
 .source-touch-joystick::after { inset: 53px 12px; }
 .source-touch-joystick i { position: absolute; top: calc(50% - 24px); left: calc(50% - 24px); width: 48px; height: 48px; border: 2px solid #effff4aa; border-radius: 50%; background: linear-gradient(145deg, #6ca989dd, #264f3be8); box-shadow: inset 0 0 0 3px #122b2088, 0 4px 10px #0009; pointer-events: none; will-change: transform; }
-.source-touch-actions { position: absolute; top: 50%; right: max(14px, env(safe-area-inset-right)); width: 154px; height: 132px; pointer-events: none; transform: translateY(-50%); }
+.source-touch-actions { position: absolute; top: 50%; right: max(14px, env(safe-area-inset-right)); width: 160px; height: 136px; pointer-events: none; transform: translateY(-50%); }
 .source-touch-actions button { position: absolute; display: grid; place-items: center; margin: 0; padding: 0; color: #f7fff9; border: 2px solid #effff499; border-radius: 50%; background: #173a2dd9; box-shadow: inset 0 0 0 3px #08171088, 0 4px 12px #0009; font-weight: 950; pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; }
 .source-touch-actions button:active, .source-touch-actions button.active { filter: brightness(1.35); transform: scale(.94); }
-.source-touch-action { width: 58px; height: 58px; font-size: 22px; }
-.source-touch-interact { right: 0; bottom: 38px; border-color: #bff4d3 !important; background: #27744edb !important; }
-.source-touch-cancel { right: 62px; bottom: 0; border-color: #f5dfaaaa !important; background: #785a22dc !important; }
-.source-touch-small { width: 47px; height: 47px; font-size: 8px; }
-.source-touch-menu { top: 0; left: 4px; }
-.source-touch-sprint { top: 0; right: 43px; }
+.source-touch-action { width: 60px; height: 60px; font-size: 22px; }
+.source-touch-interact { right: 0; bottom: 38px; width: 68px; height: 68px; padding: 5px !important; border-color: #bff4d3 !important; background: #27744edb !important; font-size: 11px; line-height: 1.05; text-align: center; }
+.source-touch-interact[data-mode="sprint"] { border-color: #b7ddfa !important; background: #285b84dc !important; }
+.source-touch-menu { right: 75px; bottom: 0; width: 68px; height: 68px; border-color: #f5dfaaaa !important; background: #785a22dc !important; font-size: 11px; }
 .source-orientation-blocker { position: fixed; z-index: 300; inset: 0; padding: max(24px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left)); place-content: center; justify-items: center; gap: 10px; color: #effff5; background: radial-gradient(circle at 50% 35%, #24543d, #07110d 68%); text-align: center; }
 .source-orientation-blocker div { font-size: 64px; line-height: 1; transform: rotate(90deg); }
 .source-orientation-blocker strong { font-size: 22px; }
@@ -137,12 +156,13 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
   html.source-android .source-orientation-blocker { display: grid; }
 }
 .source-panorama-layer, .source-fog-layer, .source-weather-layer, .source-map-animation-layer, .source-picture-layer, .source-tone-layer, .source-flash-layer { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; pointer-events: none; }.source-panorama-layer { z-index: 0; background-position: center; background-size: cover; }.source-fog-layer { z-index: 2; inset: -15%; background-repeat: repeat; animation: source-fog-drift 8s linear infinite; }.source-weather-layer { z-index: 3; opacity: 0; background-repeat: repeat; }.source-weather-layer[data-weather="rain"] { background-image: repeating-linear-gradient(105deg, transparent 0 18px, #bdeaffaa 19px 21px, transparent 22px 38px); animation: source-weather-rain .5s linear infinite; }.source-weather-layer[data-weather="storm"] { background-color: #10264240; background-image: repeating-linear-gradient(105deg, transparent 0 11px, #d8f2ffcc 12px 15px, transparent 16px 26px); animation: source-weather-rain .28s linear infinite; }.source-weather-layer[data-weather="snow"] { background-image: radial-gradient(circle, #fff 0 2px, transparent 2.5px), radial-gradient(circle, #e8f7ff 0 1.5px, transparent 2px); background-position: 0 0, 23px 31px; background-size: 48px 48px, 61px 61px; animation: source-weather-snow 2.8s linear infinite; }.source-map-animation-layer { z-index: 3; }.source-map-animation-canvas { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; }.source-map-target-flash { position: absolute; border-radius: 40%; mix-blend-mode: screen; transform: translateX(-50%); }.source-tone-layer { z-index: 4; }.source-flash-layer { z-index: 5; opacity: 0; }.source-picture-layer { z-index: 6; }.source-picture-layer img { position: absolute; max-width: none; image-rendering: pixelated; }.source-dialogue { position: absolute; z-index: 7; right: 16px; bottom: 16px; left: 16px; padding: 15px 17px; border: 2px solid #f4df94; border-radius: 12px; background: #07110df2; box-shadow: 0 8px 30px #000b; }.source-dialogue[data-position="top"] { top: 16px; bottom: auto; }.source-dialogue[data-position="middle"] { top: 50%; bottom: auto; transform: translateY(-50%); }.source-dialogue[data-position="bottom"] { top: auto; bottom: 16px; }.source-dialogue.transparent { border-color: transparent; background: transparent; box-shadow: none; text-shadow: 0 2px 3px #000, 0 0 5px #000; }.source-dialogue[hidden] { display: none; }.source-dialogue strong { display: block; color: #76e6bb; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }.source-dialogue p { min-height: 22px; margin: 8px 0; font-size: 14px; line-height: 1.5; }.source-dialogue small { color: #829b8e; font-size: 9px; }
-@keyframes source-fog-drift { from { background-position: 0 0; } to { background-position: var(--source-fog-x, 64px) var(--source-fog-y, 64px); } }
+@keyframes source-fog-drift { from { background-position: var(--source-fog-base-x, 0px) var(--source-fog-base-y, 0px); } to { background-position: calc(var(--source-fog-base-x, 0px) + var(--source-fog-x, 0px)) calc(var(--source-fog-base-y, 0px) + var(--source-fog-y, 0px)); } }
+.source-fog-layer { inset: 0; }
 @keyframes source-panorama-drift { from { background-position: 0 0; } to { background-position: var(--source-panorama-x, 128px) var(--source-panorama-y, 128px); } }
 @keyframes source-weather-rain { from { background-position: 0 0; } to { background-position: -72px 144px; } } @keyframes source-weather-snow { from { background-position: 0 0, 23px 31px; } to { background-position: 24px 96px, -12px 153px; } }
 .source-choices { display: grid; gap: 7px; margin: 10px 0; }.source-choices[hidden] { display: none; }.source-choices button, .source-readonly-choice { display: flex; gap: 9px; align-items: center; padding: 9px 11px; border: 1px solid #f4df9455; border-radius: 8px; background: #18271f; text-align: left; }.source-choices button { cursor: pointer; }.source-choices button:hover, .source-choices button:focus-visible { border-color: #f4df94; background: #26392e; outline: none; }.source-readonly-choice { opacity: .72; }.source-choices span { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 5px; color: #07110d; background: #f4df94; font-size: 9px; font-weight: 900; }
 .source-hud-notice { position: absolute; z-index: 6; top: 12px; left: 50%; width: min(520px, calc(100% - 24px)); padding: 8px 12px; color: #effff7; border: 1px solid #76e6bb88; border-radius: 9px; background: #07110de8; box-shadow: 0 5px 18px #0008; transform: translateX(-50%); font-size: 10px; font-weight: 750; line-height: 1.4; text-align: center; pointer-events: none; }.source-hud-notice[hidden] { display: none; }.source-hud-notice[data-kind="error"] { color: #ffe8e4; border-color: #ff8976aa; background: #35110fed; }
-.source-field-shortcuts { position: absolute; z-index: 7; top: 10px; right: 10px; display: flex; flex-direction: row-reverse; gap: 7px; align-items: center; }
+.source-field-shortcuts { position: absolute; z-index: 7; top: 10px; right: 10px; display: flex; flex-direction: row-reverse; flex-wrap: wrap; justify-content: flex-start; max-width: min(238px, calc(100% - 20px)); gap: 7px; align-items: center; }
 .source-field-shortcuts > button { position: relative; top: auto; right: auto; flex: 0 0 42px; }
 .source-compass-toggle {
   position: absolute;
@@ -207,6 +227,7 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-truth-lens-shortcut.active { animation: source-shortcut-truth-pulse 900ms ease-in-out infinite alternate; }
 .source-mount-shortcut { border-color: #bfe58faa; background: linear-gradient(145deg, #f3f2b9ee, #8bc66ddd 49%, #315a32ee 50%); }
 .source-mount-shortcut.active { box-shadow: inset 0 0 0 2px #f7ef9ecc, 0 0 12px #d5ee6faa; }
+.source-extra-shortcut { border-color: #d5cf9eaa; background: linear-gradient(145deg, #f5ecc2e8, #667c82dd 52%, #233646ee 53%); }
 @keyframes source-shortcut-truth-pulse { from { filter: brightness(1); } to { filter: brightness(1.3) drop-shadow(0 0 4px #d9fbff); } }
 .source-compass {
   position: absolute;
@@ -1045,6 +1066,17 @@ h2 { margin: 3px 0 0; font-size: 22px; }.canvas-shell { position: relative; over
 .source-region-presence .guest i { background: #e459cb; box-shadow: 0 0 4px #e459cb; }
 .source-fly-transition { position: absolute; z-index: 40; inset: 0; background: #fff; pointer-events: all; }
 .source-fly-transition[hidden] { display: none; }
+.source-map-transition { position: absolute; z-index: 65; inset: 0; background: #070e12; pointer-events: auto; }
+.source-map-transition[hidden], .source-location-banner[hidden] { display: none; }
+.source-location-banner { position: absolute; z-index: 32; bottom: 16px; left: 50%; display: grid; width: min(314px, calc(100% - 40px)); height: 72px; place-items: center; color: #fff; background-image: url('/__pokemon-z/source/Graphics/Windowskins/Jess_Letreros/LetsGO.png'); background-repeat: no-repeat; background-size: 122.5% 400%; background-position: left 0%; filter: drop-shadow(0 5px 10px #0009); pointer-events: none; transform: translateX(-50%); animation: source-location-arrive 260ms ease-out both; }
+.source-location-banner[data-variant="1"] { background-position: left 33.333%; }
+.source-location-banner[data-variant="2"] { background-position: left 66.666%; }
+.source-location-banner[data-variant="3"] { background-position: left 100%; }
+.source-location-banner span { max-width: 84%; margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 3px #1b1837; font-size: 14px; font-weight: 850; }
+@keyframes source-location-arrive { from { opacity: 0; transform: translate(-50%, 24px); } to { opacity: 1; transform: translate(-50%, 0); } }
+html.source-android .source-map-transition { position: fixed; z-index: 260; }
+html.source-android .source-location-banner { position: fixed; bottom: max(12px, env(safe-area-inset-bottom)); }
+@media (prefers-reduced-motion: reduce) { .source-location-banner { animation: none; } }
 .source-truth-lens-effect { position: absolute; z-index: 6; inset: 0; pointer-events: none; overflow: hidden; }
 .source-truth-lens-effect::before, .source-truth-lens-effect::after { content: ""; position: absolute; left: 50%; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); }
 .source-truth-lens-effect::before { width: 68%; aspect-ratio: 1; border: 3px solid #f7e9a8cc; background: url("/__pokemon-z/source/Graphics/Pictures/Lens/truth_circle.png") center/contain no-repeat; box-shadow: 0 0 12px #fff8c7, inset 0 0 22px #7ce8ff66, 0 0 45px #8ddcff77; animation: source-truth-lens-wave 1.35s ease-out infinite; }
@@ -2799,5 +2831,106 @@ html.source-android .source-ranch-storage .source-pokemon-grid { overflow-y: hid
   .source-day-care-slots {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     grid-template-rows: minmax(0, 1fr);
+  }
+}
+
+/* Ranch and Pension share three readable team cards per page. */
+.source-ranch-toolbar,
+.source-ranch-workspace[data-team-expanded="true"] .source-ranch-content {
+  grid-template-columns: clamp(188px, 30%, 240px) minmax(0, 1fr);
+}
+.source-ranch-team { grid-template-rows: minmax(0, 1fr); }
+.source-ranch-team-list {
+  min-height: 0;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+  grid-auto-rows: clamp(76px, 20vmin, 86px);
+  gap: 5px;
+  padding: 5px;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  scrollbar-width: thin;
+}
+.source-ranch-team-list .source-pokemon-card.compact {
+  min-height: 0;
+  --facility-team-icon: clamp(30px, 10vmin, 40px);
+  --team-badge-shift: clamp(2px, .55vmin, 3px);
+  grid-template-columns: var(--facility-team-icon) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 1px 5px;
+  padding: 2px 6px;
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-icon {
+  width: var(--facility-team-icon);
+  height: var(--facility-team-icon);
+  grid-row: 1 / 3;
+  place-self: center;
+  background-size: auto var(--facility-team-icon);
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-card-copy {
+  display: grid;
+  min-height: 0;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: auto auto auto;
+  gap: 1px;
+  align-content: center;
+  overflow: hidden;
+}
+.source-ranch-team-list .source-pokemon-card-copy > small { display: none; }
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-moves {
+  display: grid;
+  min-height: 22px;
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  align-self: end;
+}
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-card-identity > strong { font-size: 10px; }
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-level { font-size: 9px; }
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-level,
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-types {
+  transform: translateY(var(--team-badge-shift));
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-types span { width: 15px; height: 15px; }
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-types img { width: 12px; height: 12px; }
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-card-condition { min-height: 0; }
+.source-ranch-team-list .source-pokemon-card.team-layout .source-pokemon-card-condition:empty { display: none; }
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-held-item {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 1px 5px;
+  font-size: 7px;
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-vitals {
+  flex: none;
+  transform: translateY(calc(-1 * var(--team-badge-shift)));
+}
+.source-ranch-team-list .source-pokemon-card.compact .source-pokemon-vitals em { font-size: 8px; }
+.source-ranch-team-list .source-pokemon-card-status { display: inline-flex; font-size: 7px; }
+.source-ranch-team-list .source-ranch-team-empty { min-height: 0; padding: 7px 10px; }
+.source-ranch-team-list .source-ranch-team-empty strong { font-size: 10px; }
+.source-day-care .source-ranch-team-list.choosing {
+  border: 1px dashed #f4dda0;
+  border-radius: 8px 13px;
+  background: #f4dda00d;
+  box-shadow: inset 0 0 24px #f4dda012;
+}
+@media (max-width: 540px) {
+  .source-ranch-toolbar,
+  .source-ranch-workspace[data-team-expanded="true"] .source-ranch-content {
+    grid-template-columns: minmax(145px, 42%) minmax(0, 1fr);
+  }
+  .source-ranch-team-list .source-pokemon-card.compact {
+    --facility-team-icon: clamp(26px, 10vmin, 34px);
+    grid-template-columns: var(--facility-team-icon) minmax(0, 1fr);
+    padding: 3px;
+  }
+  .source-ranch-team-list .source-pokemon-card.compact .source-pokemon-icon {
+    width: var(--facility-team-icon);
+    height: var(--facility-team-icon);
+    background-size: auto var(--facility-team-icon);
   }
 }

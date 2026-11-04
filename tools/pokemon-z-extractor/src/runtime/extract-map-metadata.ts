@@ -7,6 +7,7 @@ export interface MapBattleMetadata {
   readonly wildBattleBgm: string | null;
   readonly wildVictoryMe: string | null;
   readonly outdoor: boolean | null;
+  readonly showArea: boolean;
   readonly bicycle: boolean | null;
   readonly bicycleAlways: boolean;
   readonly diveMap: number | null;
@@ -28,7 +29,8 @@ export function parseMapBattleMetadata(text: string): readonly MapBattleMetadata
       ? { region: mapPositionFields[0]!, x: mapPositionFields[1]!, y: mapPositionFields[2]! } : null;
     records.push({ mapId: current.mapId, battleback: current.values.BattleBack ?? null,
       wildBattleBgm: current.values.WildBattleBGM ?? null, wildVictoryMe: current.values.WildVictoryME ?? null,
-      outdoor: optionalBoolean(current.values.Outdoor), bicycle: optionalBoolean(current.values.Bicycle),
+      outdoor: optionalBoolean(current.values.Outdoor), showArea: optionalBoolean(current.values.ShowArea) === true,
+      bicycle: optionalBoolean(current.values.Bicycle),
       bicycleAlways: optionalBoolean(current.values.BicycleAlways) === true,
       diveMap: Number.isSafeInteger(diveMap) && diveMap > 0 ? diveMap : null, mapPosition });
   };

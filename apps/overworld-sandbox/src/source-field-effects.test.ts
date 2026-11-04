@@ -49,8 +49,10 @@ describe("source field effects", () => {
     const sandTileset = { ...tileset, terrainTags: [0, 0, SOURCE_FIELD_TERRAIN.water, SOURCE_FIELD_TERRAIN.sand] };
     const marks = sourceFieldMarksForStep(sandMap, sandTileset, { x: 0, y: 0 }, { x: 1, y: 0 }, "right", "mount", 100);
     expect(marks[0]).toMatchObject({ kind: "footprint", x: 0, y: 0, mounted: true });
-    expect(sourceFieldMarkActive(marks[0]!, 1_599)).toBe(true);
-    expect(sourceFieldMarkActive(marks[0]!, 1_600)).toBe(false);
+    expect(sourceFieldMarkActive(marks[0]!, 1_049)).toBe(true);
+    expect(sourceFieldMarkActive(marks[0]!, 1_050)).toBe(false);
+    expect(sourceFieldMarkActive(waterMarks[0]!, 1_599)).toBe(true);
+    expect(sourceFieldMarkActive(waterMarks[0]!, 1_600)).toBe(false);
   });
 
   it("applies the source walking happiness rule only to eligible Pokémon", () => {

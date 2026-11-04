@@ -44,8 +44,12 @@ describe("source player movement unlocks", () => {
     expect(sourceMovementVisualPattern("surf", 0, 750, false)).toBe(2);
     expect(sourceMovementVisualOffset("surf", 750)).toBe(18);
     expect(sourceMovementVisualPattern("walk", 3, 750, true)).toBe(3);
-    expect(sourceMovementDuration("mount", "step")).toBeGreaterThan(100);
-    expect(sourceMovementDuration("mount", "step")).toBeLessThan(sourceMovementDuration("walk", "step"));
+    expect(sourceMovementDuration("mount", "step")).toBe(80);
+    expect(sourceMovementDuration("mount", "step")).toBeLessThan(sourceMovementDuration("run", "step"));
+    expect(sourceMovementVisualPattern("mount", 0, 0, true)).toBe(0);
+    expect(sourceMovementVisualPattern("mount", 0, 34, true)).toBe(1);
+    expect(sourceMovementVisualPattern("mount", 0, 67, true)).toBe(2);
+    expect(sourceMovementVisualPattern("mount", 0, 67, false)).toBe(0);
     expect(sourceMovementDuration("walk", "step")).toBe(200);
     expect(sourceMovementDuration("run", "step")).toBe(105);
   });

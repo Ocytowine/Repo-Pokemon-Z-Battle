@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sourceCharacterAssetName, sourcePlayerImageFor, sourceRunGroundOffsets,
+import { sourceCharacterAssetName, sourceMountGroundOffsets, sourcePlayerImageFor, sourceRunGroundOffsets,
   type SourcePlayerVisuals } from "../src/source-player-profile.js";
 
 describe("applied source player profile", () => {
@@ -24,5 +24,14 @@ describe("applied source player profile", () => {
     };
     expect(sourceRunGroundOffsets(pixels(0), pixels(1))[0]).toEqual([1, 1, 1, 1]);
     expect(sourceRunGroundOffsets(pixels(0), pixels(1))[1]).toEqual([0, 0, 0, 0]);
+  });
+
+  it("keeps mounted poses anchored when their transparent lower padding alternates", () => {
+    const data = new Uint8ClampedArray(4 * 16 * 4);
+    for (let row = 0; row < 4; row += 1) for (let pattern = 0; pattern < 4; pattern += 1) {
+      const y = row * 4 + 3 - pattern % 2;
+      data[(y * 4 + pattern) * 4 + 3] = 255;
+    }
+    expect(sourceMountGroundOffsets({ width: 4, height: 16, data })[0]).toEqual([0, 1, 0, 1]);
   });
 });

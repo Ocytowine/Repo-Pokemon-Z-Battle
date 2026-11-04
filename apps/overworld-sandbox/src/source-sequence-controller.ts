@@ -21,6 +21,8 @@ export interface SourceSequenceSession {
   nextBattleMusic?: string | null;
   readonly runner: SourceSequenceRunner;
   readonly onComplete?: () => void;
+  /** Local presentation cleanup, also called for aborted sequences. */
+  readonly onEnd?: () => void;
   /** Cible canonique ayant declenche l'evenement (par exemple un invite vu par un Dresseur). */
   readonly interactionTarget?: GridPoint;
 }
@@ -35,6 +37,7 @@ export interface SourceSequenceInput {
   readonly selections?: readonly number[];
   readonly pendingChoice?: PendingEventChoice | null;
   readonly onComplete?: () => void;
+  readonly onEnd?: () => void;
   readonly runner?: SourceSequenceRunner;
   readonly interactionTarget?: GridPoint;
 }
@@ -61,6 +64,7 @@ export class SourceSequenceController {
   public isActive(session: SourceSequenceSession): boolean { return this.activeSession === session; }
 
   public start(input: SourceSequenceInput): SourceSequenceSession {
+    this.activeSession?.onEnd?.();
     const session: SourceSequenceSession = {
       label: input.label,
       mapId: input.mapId,
@@ -74,6 +78,7 @@ export class SourceSequenceController {
       advancing: false,
       runner: input.runner ?? new SourceSequenceRunner(),
       ...(input.onComplete === undefined ? {} : { onComplete: input.onComplete }),
+      ...(input.onEnd === undefined ? {} : { onEnd: input.onEnd }),
       ...(input.interactionTarget === undefined ? {} : { interactionTarget: { ...input.interactionTarget } }),
     };
     this.activeSession = session;
@@ -83,7 +88,9 @@ export class SourceSequenceController {
 
   public clear(session?: SourceSequenceSession): boolean {
     if (this.activeSession === null || (session !== undefined && this.activeSession !== session)) return false;
+    const ended = this.activeSession;
     this.activeSession = null;
+    ended.onEnd?.();
     return true;
   }
 
@@ -122,11 +129,13 @@ export class SourceSequenceController {
         await session.runner.waitForMovement();
         if (this.activeSession !== session) return;
         this.activeSession = null;
+        session.onEnd?.();
         await this.callbacks.onComplete(session);
       }
     } catch (error) {
       if (this.activeSession === session) {
         this.activeSession = null;
+        session.onEnd?.();
         this.callbacks.onError(session, currentCommand, error);
       }
     } finally {

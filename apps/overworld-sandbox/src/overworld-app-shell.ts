@@ -1,3 +1,5 @@
+import { SOURCE_EXTRA_SHORTCUT_ORDER } from "./source-field-shortcuts.js";
+
 export function requiredAppElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (element === null) throw new Error(`Élément de l'application absent : ${id}.`);
@@ -11,14 +13,12 @@ export function mountOverworldApp(): HTMLCanvasElement {
     <main>
       <section class="world-panel">
         <section id="embedded-avatar-lab" class="embedded-avatar-lab" hidden></section>
-        <div id="world-stage" class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-weather-layer" class="source-weather-layer" data-weather="none" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-fly-transition" class="source-fly-transition" aria-hidden="true" hidden></div><button id="source-fishing-shortcut" class="source-fishing-shortcut" type="button" title="Pêcher" hidden><img alt=""><span>Pêcher</span></button><button id="source-compass-toggle" class="source-compass-toggle" type="button" aria-controls="source-compass" aria-expanded="false" title="Boussole" hidden><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/radar.png" alt=""><span>Boussole</span></button><section id="source-compass" class="source-compass" aria-label="Pokémon sauvages de la zone" hidden></section><div id="source-hud-notice" class="source-hud-notice" role="status" aria-live="polite" hidden></div><section id="source-new-game" class="source-new-game" hidden aria-label="Nouvelle partie"></section><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><p></p><div class="source-choices"></div></div>
+        <div id="world-stage" class="canvas-shell"><div id="source-panorama-layer" class="source-panorama-layer" aria-hidden="true"></div><canvas id="world" width="576" height="432" aria-label="Carte de test overworld"></canvas><div id="source-fog-layer" class="source-fog-layer" aria-hidden="true"></div><div id="source-weather-layer" class="source-weather-layer" aria-hidden="true"></div><div id="source-map-animation-layer" class="source-map-animation-layer" aria-hidden="true"></div><div id="source-picture-layer" class="source-picture-layer" aria-hidden="true"></div><div id="source-tone-layer" class="source-tone-layer" aria-hidden="true"></div><div id="source-flash-layer" class="source-flash-layer" aria-hidden="true"></div><div id="source-fly-transition" class="source-fly-transition" aria-hidden="true" hidden></div><div id="source-map-transition" class="source-map-transition" aria-hidden="true" hidden></div><div id="source-location-banner" class="source-location-banner" data-variant="0" aria-live="polite" hidden><span></span></div><button id="source-fishing-shortcut" class="source-fishing-shortcut" type="button" title="Pêcher" hidden><img alt=""><span>Pêcher</span></button><button id="source-compass-toggle" class="source-compass-toggle" type="button" aria-controls="source-compass" aria-expanded="false" title="Boussole" hidden><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/radar.png" alt=""><span>Boussole</span></button><section id="source-compass" class="source-compass" aria-label="Pokémon sauvages de la zone" hidden></section><div id="source-hud-notice" class="source-hud-notice" role="status" aria-live="polite" hidden></div><section id="source-new-game" class="source-new-game" hidden aria-label="Nouvelle partie"></section><div id="source-dialogue" class="source-dialogue" data-position="bottom" hidden><p></p><div class="source-choices"></div></div>
           <nav id="source-touch-controls" class="source-touch-controls" aria-label="Commandes tactiles de l'overworld">
             <div id="source-touch-joystick" class="source-touch-joystick" role="group" aria-label="Joystick directionnel"><i id="source-touch-joystick-knob"></i></div>
             <div class="source-touch-actions">
-              <button id="source-touch-menu" class="source-touch-small source-touch-menu" type="button" aria-label="Ouvrir le menu">Menu</button>
-              <button id="source-touch-sprint" class="source-touch-small source-touch-sprint" type="button" aria-label="Maintenir pour sprinter">Sprint</button>
-              <button id="source-touch-cancel" class="source-touch-action source-touch-cancel" type="button" aria-label="Retour ou annulation">B</button>
-              <button id="source-touch-interact" class="source-touch-action source-touch-interact" type="button" aria-label="Interagir ou valider">A</button>
+              <button id="source-touch-menu" class="source-touch-action source-touch-menu" type="button" aria-label="Ouvrir le menu">Menu</button>
+              <button id="source-touch-interact" class="source-touch-action source-touch-interact" type="button" aria-label="Action contextuelle" disabled>Action</button>
             </div>
           </nav>
           <section id="source-orientation-blocker" class="source-orientation-blocker" aria-label="Orientation non prise en charge"><div aria-hidden="true">↻</div><strong>Tournez votre téléphone</strong><span>Touchez l’écran puis passez en paysage.</span></section>
@@ -107,8 +107,18 @@ export function mountOverworldApp(): HTMLCanvasElement {
   mountShortcut.className = "source-field-shortcut source-mount-shortcut";
   mountShortcut.type = "button";
   mountShortcut.hidden = true;
-  mountShortcut.innerHTML = '<img src="/__pokemon-z/source/Graphics/Icons/icon673.png" alt=""><span>Chevroum</span>';
+  mountShortcut.innerHTML = '<img src="/__pokemon-z/source/Graphics/Icons/icon673.png" alt=""><span>Monture</span>';
   shortcutBar.append(compassShortcut, truthShortcut, fishingShortcut, mountShortcut);
+  for (const id of SOURCE_EXTRA_SHORTCUT_ORDER) {
+    const button = document.createElement("button");
+    button.id = `source-extra-shortcut-${id}`;
+    button.className = "source-field-shortcut source-extra-shortcut";
+    button.type = "button";
+    button.hidden = true;
+    button.dataset.sourceExtraShortcut = id;
+    button.innerHTML = '<img alt=""><span></span>';
+    shortcutBar.append(button);
+  }
   requiredAppElement("world-stage").append(shortcutBar);
   const touchControls = requiredAppElement<HTMLElement>("source-touch-controls");
   requiredAppElement("world-stage").parentElement?.append(touchControls);

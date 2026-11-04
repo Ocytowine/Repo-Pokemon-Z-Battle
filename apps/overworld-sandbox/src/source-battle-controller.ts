@@ -24,6 +24,7 @@ import {
 import { completePendingEncounter, finishPendingEncounterAfterBattle, resetWildEncounterStepsAfterBattle,
   type SourceEventState } from "./source-event-state.js";
 import { finishSourceWildBattleFieldEffects } from "./source-field-item.js";
+import { rollSourceWildShiny } from "./source-wild-encounter.js";
 import { addSourceMoney, sourceBattleExperiencePolicy, sourceDefeatLoss, sourceTrainerReward } from "./source-economy.js";
 import type { SourceBattleReportStore } from "./source-battle-report.js";
 import { sourceMegaActivationAvailable, type SourceMegaEvolutionCatalog } from "./source-mega-evolution.js";
@@ -243,13 +244,21 @@ export class SourceBattleController {
         eventState = { ...eventState, pendingEncounter: encounter, wildEncounterRngState: levelRng.snapshot() };
         this.callbacks.updateEventState(eventState);
       }
+      if (encounter.shinyResolved !== true) {
+        const shinyRng = new SeededRandom(eventState.wildEncounterRngState);
+        encounter = { ...encounter, shinyResolved: true,
+          shiny: rollSourceWildShiny(shinyRng, (eventState.inventory.SHINYCHARM ?? 0) > 0) };
+        eventState = { ...eventState, pendingEncounter: encounter, wildEncounterRngState: shinyRng.snapshot() };
+        this.callbacks.updateEventState(eventState);
+      }
       const combatParty = this.callbacks.getCombatParty?.(eventState, resources) ?? eventState.party;
       const opponentId = crypto.randomUUID();
       const megaAvailable = resources.megaEvolutions === undefined ? false : sourceMegaActivationAvailable(
         resources.megaEvolutions, eventState.inventory, eventState.switches);
       const initialEffects = { ...resolveSourceEncounterInitialEffects(resources.encounterModifiers ?? { records: [] }, {
         mapId: resources.mapId, species: encounter.species, switches: eventState.switches,
-      }), ...(eventState.fieldItemEffects.shinyNextWildEncounter ? { shiny: true as const } : {}) };
+      }), ...(encounter.shiny === true || eventState.fieldItemEffects.shinyNextWildEncounter
+        ? { shiny: true as const } : {}) };
       const battle = createSourceEncounterBattle(combatParty, encounter, resources.catalog,
         opponentId, resources.megaEvolutions,
         megaAvailable, initialEffects);

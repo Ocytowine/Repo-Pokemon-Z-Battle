@@ -52,7 +52,7 @@ export interface SourceSequenceEffectDependencies {
   readonly openDayCare: (session: SourceSequenceSession) => void;
   readonly openDayCareEggs: (session: SourceSequenceSession) => void;
   readonly openMining: (session: SourceSequenceSession) => void;
-  readonly transferPlayer: (transfer: ImportedTransfer) => Promise<void>;
+  readonly transferPlayer: (transfer: ImportedTransfer, session: SourceSequenceSession) => Promise<void>;
   readonly startMoveRoute: (session: SourceSequenceSession, target: number, route: unknown) => void;
   readonly setEventLocation: (eventId: number, x: number, y: number, direction?: number) => boolean;
   readonly presentTrainerNotice: (session: SourceSequenceSession, animationId: number) => Promise<void>;
@@ -233,7 +233,7 @@ export class SourceSequenceEffects {
   private async transfer(session: SourceSequenceSession, command: SourceCommand): Promise<SourceSequenceCommandResult> {
     const transfer = finalDirectSourceTransfer([command], session.eventId, 0, this.dependencies.getAvatar());
     if (transfer === null) return this.abort(session, "Séquence interrompue : transfert invalide.");
-    await this.dependencies.transferPlayer(transfer);
+    await this.dependencies.transferPlayer(transfer, session);
     return "continue";
   }
 

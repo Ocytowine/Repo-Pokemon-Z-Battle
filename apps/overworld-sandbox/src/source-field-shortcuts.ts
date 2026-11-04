@@ -1,9 +1,33 @@
 export const SOURCE_FIELD_SHORTCUTS_STORAGE_KEY = "pokemon-z-battle.field-shortcuts.v1";
 
-export type SourceFieldShortcutId = "compass" | "truth-lens" | "fishing" | "mount";
+export type SourceFieldShortcutId = "compass" | "truth-lens" | "fishing" | "mount"
+  | "incubator" | "shiny-charm" | "black-flute" | "white-flute"
+  | "blue-flute" | "poke-flute" | "red-flute" | "yellow-flute";
+
+export const SOURCE_EXTRA_SHORTCUT_ITEMS = {
+  incubator: "INCUBADORA", "shiny-charm": "SHINYCHARM",
+  "black-flute": "BLACKFLUTE", "white-flute": "WHITEFLUTE",
+  "blue-flute": "BLUEFLUTE", "poke-flute": "POKEFLUTE",
+  "red-flute": "REDFLUTE", "yellow-flute": "YELLOWFLUTE",
+} as const satisfies Partial<Record<SourceFieldShortcutId, string>>;
+
+export const SOURCE_EXTRA_SHORTCUT_ORDER = ["incubator", "shiny-charm", "black-flute",
+  "white-flute", "blue-flute", "poke-flute", "red-flute", "yellow-flute"] as const;
+
+/** Source Bag entries that can configure a terrain button. Mount items unlock a movement action. */
+export function sourceItemFieldShortcut(itemId: string): SourceFieldShortcutId | null {
+  if (itemId === "DEXNAV") return "compass";
+  if (itemId === "LENSOFTRUTH") return "truth-lens";
+  if (itemId === "OLDROD" || itemId === "GOODROD" || itemId === "SUPERROD") return "fishing";
+  if (/^BICYCLE(?:[1-7])?$/u.test(itemId)) return "mount";
+  for (const id of SOURCE_EXTRA_SHORTCUT_ORDER) {
+    if (SOURCE_EXTRA_SHORTCUT_ITEMS[id] === itemId) return id;
+  }
+  return null;
+}
 
 export const SOURCE_FIELD_SHORTCUT_ORDER: readonly SourceFieldShortcutId[] = [
-  "compass", "truth-lens", "fishing", "mount",
+  "compass", "truth-lens", "fishing", "mount", ...SOURCE_EXTRA_SHORTCUT_ORDER,
 ];
 
 export interface SourceFieldShortcutPresentation {

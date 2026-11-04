@@ -20,6 +20,14 @@ export type SourceEncounterMethod = "Land" | "Cave" | "RockSmash" | "OldRod" | "
 
 export const SOURCE_FISHING_RODS: readonly SourceFishingRod[] = ["SUPERROD", "GOODROD", "OLDROD"];
 
+/** Source SHINYPOKEMONCHANCE=100/65536; Shiny Charm retries twice after a failed first roll. */
+export function rollSourceWildShiny(rng: RandomSource, hasShinyCharm: boolean): boolean {
+  for (let attempt = 0; attempt < (hasShinyCharm ? 3 : 1); attempt += 1) {
+    if (rng.nextInt(65536) < 100) return true;
+  }
+  return false;
+}
+
 export function sourceFishingMethod(rod: SourceFishingRod): Extract<SourceEncounterMethod,
 "OldRod" | "GoodRod" | "SuperRod"> {
   return ({ OLDROD: "OldRod", GOODROD: "GoodRod", SUPERROD: "SuperRod" } as const)[rod];

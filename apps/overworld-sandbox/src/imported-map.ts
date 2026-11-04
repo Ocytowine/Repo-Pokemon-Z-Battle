@@ -8,7 +8,7 @@ import { parseSourceMoveRoute, type SourceMoveRoute } from "./source-move-route.
 import { clearSourceLocalDataCache, validateSourceLocalData } from "./source-local-data.js";
 import { parseSourceAlchemyCatalog, type SourceAlchemyCatalog } from "./source-alchemy.js";
 import type { SourceMovementAction, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
-import { SOURCE_FIELD_MARK_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
+import { SOURCE_FOOTPRINT_DURATION, sourceFieldMarkActive, sourceFieldVisualState,
   type SourceFieldMark } from "./source-field-effects.js";
 import { parseSourceRegionMap, type SourceRegionMapCatalog } from "./source-region-map.js";
 import { sourceTruthEventOpacity } from "./source-truth-lens.js";
@@ -69,6 +69,7 @@ export interface ImportedTransfer {
   readonly targetX: number;
   readonly targetY: number;
   readonly direction: number;
+  readonly fade?: number;
 }
 
 export interface ImportedTileset {
@@ -146,6 +147,7 @@ export interface ImportedMapAssets {
 
 export interface ImportedMapMetadata {
   readonly outdoor: boolean | null;
+  readonly showArea: boolean;
   readonly bicycle: boolean | null;
   readonly bicycleAlways: boolean;
   readonly diveMap: number | null;
@@ -235,7 +237,8 @@ export function parseImportedMap(value: unknown): ImportedMap {
     }
     return { eventId: entry.eventId as number, pageIndex: entry.pageIndex as number,
       eventX: entry.eventX as number, eventY: entry.eventY as number, targetMapId: entry.targetMapId as number,
-      targetX: entry.targetX as number, targetY: entry.targetY as number, direction: entry.direction as number };
+      targetX: entry.targetX as number, targetY: entry.targetY as number, direction: entry.direction as number,
+      ...(typeof entry.fade === "number" ? { fade: entry.fade } : {}) };
   });
   const parseAudio = (entry: unknown): { readonly name: string; readonly volume: number; readonly pitch: number } =>
     isRecord(entry) && typeof entry.name === "string" && typeof entry.volume === "number" && typeof entry.pitch === "number"
@@ -346,6 +349,7 @@ function parseBattlePresentation(value: unknown, mapId: number): { readonly batt
     wildVictoryMe: isRecord(entry) && typeof entry.wildVictoryMe === "string" ? entry.wildVictoryMe : null,
     mapMetadata: {
       outdoor: isRecord(entry) && typeof entry.outdoor === "boolean" ? entry.outdoor : null,
+      showArea: isRecord(entry) && entry.showArea === true,
       bicycle: isRecord(entry) && typeof entry.bicycle === "boolean" ? entry.bicycle : null,
       bicycleAlways: isRecord(entry) && entry.bicycleAlways === true,
       diveMap: isRecord(entry) && Number.isSafeInteger(entry.diveMap) ? entry.diveMap as number : null,
@@ -1035,10 +1039,16 @@ function drawSourceFieldMark(context: CanvasRenderingContext2D, assets: Imported
   if (mark.kind === "footprint") {
     const image = mark.mounted ? assets.fieldEffectImages.mountedFootprint : assets.fieldEffectImages.footprint;
     const size = image.naturalHeight;
+    // The source bike footprint is a full-tile straight line. At Android's
+    // enlarged map scale it reads as a vertical pole, so keep it centered and
+    // shorter while retaining the source drawing and direction.
+    const drawnSize = mark.mounted ? 16 : 32;
+    const inset = (32 - drawnSize) / 2;
     context.save();
-    context.globalAlpha = 62 / 255 * Math.max(0, 1 - age / SOURCE_FIELD_MARK_DURATION);
+    context.globalAlpha = (mark.mounted ? 42 : 62) / 255
+      * Math.max(0, 1 - age / SOURCE_FOOTPRINT_DURATION);
     context.drawImage(image, fieldMarkDirectionFrame(mark.direction) * size, 0, size, size,
-      mark.x * 32 - cameraX, mark.y * 32 - cameraY, 32, 32);
+      mark.x * 32 + inset - cameraX, mark.y * 32 + inset - cameraY, drawnSize, drawnSize);
     context.restore();
     return;
   }

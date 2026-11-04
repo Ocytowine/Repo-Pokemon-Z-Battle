@@ -101,6 +101,9 @@ export interface SourceEncounter {
   readonly initialStages?: Readonly<Partial<Record<BattleStat, number>>>;
   /** Marks the source dynamic-level policy as already consumed for reconnect safety. */
   readonly levelPolicyResolved?: true;
+  /** Personal shiny roll is fixed before a shared battle opens and survives reconnect. */
+  readonly shinyResolved?: true;
+  readonly shiny?: boolean;
   /** pbBossFight forces a double battle when the prepared player team has more than one member. */
   readonly boss?: true;
 }
@@ -574,6 +577,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
       && (encounterValue.escapable === undefined || typeof encounterValue.escapable === "boolean")
       && (encounterValue.initialStages === undefined || battleStages(encounterValue.initialStages) !== null)
       && (encounterValue.levelPolicyResolved === undefined || encounterValue.levelPolicyResolved === true)
+      && (encounterValue.shinyResolved === undefined || encounterValue.shinyResolved === true)
+      && (encounterValue.shiny === undefined || typeof encounterValue.shiny === "boolean")
       && (encounterValue.boss === undefined || encounterValue.boss === true)
       && (encounterValue.method === undefined || ["land", "cave", "rock-smash", "fishing", "scripted"]
         .includes(String(encounterValue.method)))
@@ -589,6 +594,8 @@ export function parseSourceEventState(value: unknown): SourceEventState {
           initialStages: battleStages(encounterValue.initialStages)!,
         }),
         ...(encounterValue.levelPolicyResolved === true ? { levelPolicyResolved: true as const } : {}),
+        ...(encounterValue.shinyResolved === true ? { shinyResolved: true as const,
+          shiny: encounterValue.shiny === true } : {}),
         ...(encounterValue.boss === true ? { boss: true as const } : {}),
         escapable: encounterValue.escapable === true } : undefined;
   const wildEncounterSteps = value.wildEncounterSteps === undefined ? 0 : value.wildEncounterSteps;

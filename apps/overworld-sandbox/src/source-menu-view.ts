@@ -13,7 +13,7 @@ import { sourceSavePreview, type CloudSavePreview } from "./source-cloud-sync.js
 import type { PlayerConnectionState, SourceMovementMode } from "@pokemon-z-battle/multiplayer-protocol";
 import { sourceMovementCapabilityLabel, type SourceMovementCapability,
   type SourceMovementUnlocks } from "./source-player-movement.js";
-import type { SourceFieldShortcutId } from "./source-field-shortcuts.js";
+import { sourceItemFieldShortcut, type SourceFieldShortcutId } from "./source-field-shortcuts.js";
 import { createSourcePokemonCollection, sourcePokemonTypeLabel } from "./source-pokemon-collection.js";
 import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-card-view.js";
 import { sourcePokemonActions, sourcePokemonActionWheelHtml } from "./source-pokemon-actions.js";
@@ -213,6 +213,7 @@ export interface SourceMenuViewCallbacks {
     readonly message: string;
     readonly eventState: SourceEventState;
   };
+  readonly onOpenRegionMapFromBag: (mode: "consult" | "fly") => void;
   readonly onCraftAlchemy: (itemId: string, quantity: number) => {
     readonly ok: boolean;
     readonly message: string;
@@ -242,7 +243,7 @@ export class SourceMenuView {
   private heldItemFamilyId: string | null = null;
   private heldItemPage = 0;
   private bagNotice: string | null = null;
-  private optionsPage: "audio" | "downloads" | "shortcuts" = "audio";
+  private optionsPage: "audio" | "downloads" = "audio";
   private selectedDevPocket = 2;
   private selectedDevItemId: string | null = null;
   private devItemQuery = "";
@@ -269,6 +270,25 @@ export class SourceMenuView {
   private wasOpen = false;
 
   public constructor(private readonly storage: Storage, private readonly callbacks: SourceMenuViewCallbacks) {}
+
+  /** Reuses the regional map for key items without creating a second flight flow. */
+  public focusRegionMap(mode: "consult" | "fly"): void {
+    this.regionMapMode = mode;
+    this.selectedRegionPointKey = null;
+    this.bagAction = null;
+    this.selectedBagItemId = null;
+  }
+
+  /** Opens a personal Bag target flow from an overworld shortcut. */
+  public focusBagItem(itemId: string, itemName: string): void {
+    this.selectedPocket = 8;
+    this.selectedBagFamilyId = null;
+    this.bagQuery = itemName;
+    this.bagPage = 0;
+    this.selectedBagItemId = itemId;
+    this.selectedBagPokemonId = null;
+    this.bagAction = "use";
+  }
 
   private clearTeamSelection(): void {
     this.selectedTeamPokemonId = null;
@@ -743,16 +763,22 @@ export class SourceMenuView {
     const selectedFishingRod = selectedEntry !== null
       && ["OLDROD", "GOODROD", "SUPERROD"].includes(selectedEntry.item.internalName)
       ? selectedEntry.item.internalName as SourceFishingRod : null;
+    const selectedShortcut = selectedEntry === null ? null
+      : sourceItemFieldShortcut(selectedEntry.item.internalName);
+    const shortcutSelected = selectedShortcut !== null && model.fieldShortcuts.includes(selectedShortcut)
+      && (selectedShortcut !== "fishing" || model.eventState.preferredFishingRod === selectedFishingRod);
+    const shortcutAction = selectedShortcut === null ? [] : [{
+      id: "specific:field-shortcut" as const,
+      label: shortcutSelected ? "Retirer" : "Raccourci",
+      symbol: "★", enabled: true,
+      hint: selectedShortcut === "mount"
+        ? shortcutSelected ? "Masquer le bouton Monture" : "Afficher le bouton Monture"
+        : shortcutSelected ? "Retirer le bouton de terrain" : "Mettre cet objet en raccourci",
+    }];
     const fishingActions = selectedFishingRod === null ? [] : [
       { id: "specific:fishing" as const, label: "Pêcher", symbol: "≈", enabled: true,
         hint: "Lancer la ligne face à l’eau" },
-      { id: "specific:fishing-favorite" as const,
-        label: model.eventState.preferredFishingRod === selectedFishingRod
-          && model.fieldShortcuts.includes("fishing") ? "Retirer" : "Raccourci",
-        symbol: "★", enabled: true,
-        hint: model.eventState.preferredFishingRod === selectedFishingRod
-          && model.fieldShortcuts.includes("fishing")
-          ? "Retirer le bouton de pêche du terrain" : "Utiliser cette canne avec le bouton de terrain" },
+      ...shortcutAction,
     ];
     const characterGuideEntries = unlockedSourceCharacterGuideEntries(model.eventState.variables);
     const selectedCharacter = characterGuideEntries.find((entry) => entry.id === this.selectedCharacterGuideId)
@@ -764,25 +790,22 @@ export class SourceMenuView {
         centerHtml: `<img src="${sourceItemIconUrl(selectedEntry.item.id)}" data-source-item-icon alt=""><strong>${escapeSourceHtml(selectedItemDisplayName!)}</strong>`,
         actions: sourceItemActions(selectedEntry.item, { quantity: selectedEntry.quantity,
           machineCompatibilityAvailable: machineSpecies !== undefined,
-          fieldUsable: isSourceFieldItem(selectedEntry.item.internalName),
+          fieldUsable: isSourceFieldItem(selectedEntry.item.internalName)
+            || selectedEntry.item.internalName === "TOWNMAP"
+            || selectedEntry.item.internalName === "POKERIDER" && model.movement.canFlyHere,
           specificActions: selectedEntry.item.internalName === "INCUBADORA"
             ? [{ id: "specific:incubator", label: "Ouvrir", symbol: "◉", enabled: true,
-                hint: "Gérer les six emplacements" }]
+                hint: "Gérer les six emplacements" }, ...shortcutAction]
             : selectedEntry.item.internalName === "LENSOFTRUTH"
               ? [{ id: "specific:truth-lens", label: "Observer", symbol: "◉", enabled: true,
-                  hint: "Révéler la vérité autour de vous pendant 10 secondes" },
-                { id: "specific:truth-lens-shortcut",
-                  label: model.fieldShortcuts.includes("truth-lens") ? "Retirer" : "Raccourci",
-                  symbol: "★", enabled: true,
-                  hint: model.fieldShortcuts.includes("truth-lens")
-                    ? "Retirer le Miroir des raccourcis" : "Afficher le Miroir après la Boussole" }]
+                  hint: "Révéler la vérité autour de vous pendant 10 secondes" }, ...shortcutAction]
             : selectedEntry.item.internalName === "PERSONAJES"
               ? [{ id: "specific:character-guide", label: "Consulter", symbol: "i", enabled: true,
                   hint: "Ouvrir les fiches rencontrées" }]
             : selectedEntry.item.internalName === "POKEOBJETIVO"
               ? [{ id: "specific:adventure-objective", label: "Indisponible", symbol: "?", enabled: false,
                   hint: "Cette version source ne contient aucune table d’objectifs" }]
-            : fishingActions }) });
+            : selectedFishingRod !== null ? fishingActions : shortcutAction }) });
     const targetPanel = selectedEntry === null || (this.bagAction !== "use" && this.bagAction !== "give") ? ""
       : `<div class="source-bag-flow-backdrop"><section class="source-bag-targets source-bag-flow"><header><div><small>${this.bagAction === "give" ? "DONNER À UN POKÉMON" : selectedTarget === null ? "CHOISIR UNE CIBLE" : "CHOISIR UNE CAPACITÉ"}</small><strong>${escapeSourceHtml(selectedTarget?.nickname ?? selectedTarget?.species ?? selectedEntry.item.name)}</strong></div><button type="button" data-source-bag-cancel>Retour</button></header>${model.eventState.party.members.length === 0
         ? "<p>Aucun Pokémon dans l'équipe.</p>" : `<div class="source-bag-party-targets">${this.bagAction === "give"
@@ -956,6 +979,11 @@ export class SourceMenuView {
       button.addEventListener("click", () => {
         const action = button.dataset.sourceWheelAction;
         if (action === "use" || action === "give" || action === "discard" || action === "teach") {
+          if (action === "use" && (this.selectedBagItemId === "TOWNMAP"
+            || this.selectedBagItemId === "POKERIDER")) {
+            this.callbacks.onOpenRegionMapFromBag(this.selectedBagItemId === "POKERIDER" ? "fly" : "consult");
+            return;
+          }
           if (action === "use" && this.selectedBagItemId !== null && isSourceFieldItem(this.selectedBagItemId)) {
             const itemId = this.selectedBagItemId;
             const result = this.callbacks.onUseFieldItem(itemId);
@@ -976,17 +1004,17 @@ export class SourceMenuView {
           this.bagAction = null;
           this.renderBag(content, model);
         }
-        else if (action === "specific:truth-lens-shortcut") {
-          this.callbacks.onFieldShortcut("truth-lens", !model.fieldShortcuts.includes("truth-lens"));
+        else if (action === "specific:field-shortcut" && this.selectedBagItemId !== null) {
+          const id = sourceItemFieldShortcut(this.selectedBagItemId);
+          if (id === "fishing") {
+            if (model.eventState.preferredFishingRod === this.selectedBagItemId
+              && model.fieldShortcuts.includes("fishing")) this.callbacks.onFieldShortcut("fishing", false);
+            else this.callbacks.onPreferredFishingRod(this.selectedBagItemId as SourceFishingRod);
+          } else if (id !== null) this.callbacks.onFieldShortcut(id, !model.fieldShortcuts.includes(id));
         }
         else if (action === "specific:fishing" && this.selectedBagItemId !== null
           && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
           this.callbacks.onFish(this.selectedBagItemId as SourceFishingRod);
-        } else if (action === "specific:fishing-favorite" && this.selectedBagItemId !== null
-          && ["OLDROD", "GOODROD", "SUPERROD"].includes(this.selectedBagItemId)) {
-          if (model.eventState.preferredFishingRod === this.selectedBagItemId
-            && model.fieldShortcuts.includes("fishing")) this.callbacks.onFieldShortcut("fishing", false);
-          else this.callbacks.onPreferredFishingRod(this.selectedBagItemId as SourceFishingRod);
         }
       }));
     content.querySelector<HTMLButtonElement>("[data-source-party-item-confirm]")?.addEventListener("click", () => {
@@ -1184,42 +1212,18 @@ export class SourceMenuView {
     const settings = sourceAudioSettings(this.storage);
     const control = (channel: SourceAudioChannel, title: string, description: string, value: number): string =>
       `<label><span><strong>${title}</strong><small>${description}</small></span><output data-audio-output="${channel}">${value}%</output><input data-audio-channel="${channel}" type="range" min="0" max="100" value="${value}"></label>`;
-    const shortcut = (id: SourceFieldShortcutId, title: string, description: string, iconUrl: string,
-      available: boolean): string => {
-      const selected = model.fieldShortcuts.includes(id);
-      return `<button type="button" class="source-shortcut-option${selected ? " selected" : ""}" data-source-field-shortcut="${id}" aria-pressed="${selected}"${available || selected ? "" : " disabled"}><img src="${iconUrl}" alt=""><span><strong>${title}</strong><small>${available ? description : "Fonction non débloquée"}</small></span><b>${selected ? "ACTIF" : "AJOUTER"}</b></button>`;
-    };
-    const truthItem = model.assets.items.get("LENSOFTRUTH");
-    const rod = model.eventState.preferredFishingRod
-      ?? (["SUPERROD", "GOODROD", "OLDROD"] as const).find((id) => (model.eventState.inventory[id] ?? 0) > 0);
-    const rodItem = rod === undefined ? undefined : model.assets.items.get(rod);
-    const shortcuts = [
-      shortcut("compass", "Boussole", "Afficher les Pokémon de la zone.",
-        "/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/radar.png",
-        (model.eventState.inventory.DEXNAV ?? 0) > 0),
-      shortcut("truth-lens", "Miroir de la Vérité", "Révéler les éléments cachés pendant 10 secondes.",
-        sourceItemIconUrl(truthItem?.id ?? 0),
-        (model.eventState.inventory.LENSOFTRUTH ?? 0) > 0),
-      shortcut("fishing", "Pêche", "Utiliser la canne favorite face à l’eau.",
-        sourceItemIconUrl(rodItem?.id ?? 0), rod !== undefined),
-      shortcut("mount", "Chevroum", "Basculer rapidement entre la marche et la monture.",
-        "/__pokemon-z/source/Graphics/Icons/icon673.png", model.movement.unlocks.mount),
-    ].join("");
     const options = this.optionsPage === "audio" ? `
       ${control("music", "Musiques", "Musiques de carte, de combat et jingles.", settings.music)}
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
       ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}`
-      : this.optionsPage === "downloads" ? `
+      : `
       <article class="source-android-update-options"><strong>Mises à jour Android · ${escapeSourceHtml(model.androidVersion)}</strong><small>${escapeSourceHtml(model.androidUpdateStatus)}</small><div><button type="button" data-source-check-android-update>Vérifier</button>${model.androidUpdateAvailable ? '<button type="button" data-source-download-android-update>Télécharger l’APK</button>' : ""}</div></article>
       <article class="source-android-update-options"><strong>Ressources hors ligne</strong><small>Fonds : ${escapeSourceHtml(model.resourcePackStatus)}<br>Musiques : ${escapeSourceHtml(model.bgmPackStatus)}</small>${model.resourcePackInstallable ? `<div><button type="button" data-source-install-resource-pack${model.resourcePackBusy ? " disabled" : ""}>${model.resourcePackBusy ? "Installation…" : "Fonds de combat"}</button><button type="button" data-source-install-bgm-pack${model.bgmPackBusy ? " disabled" : ""}>${model.bgmPackBusy ? "Installation…" : "Musiques"}</button></div>` : ""}</article>
-      ` : `
-      <article class="source-shortcut-options"><strong>Raccourcis de terrain</strong><small>Les boutons choisis apparaissent en haut à droite du canvas, après la Boussole.</small><div>${shortcuts}</div></article>
-      <article><strong>Commandes</strong><small>Flèches ou ZQSD : déplacement · Espace/Entrée : interaction · Échap/M : menu</small></article>
-      <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button>`;
+      `;
     content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><nav class="source-options-pages" aria-label="Sections des options">
       <button type="button" data-source-options-page="audio"${this.optionsPage === "audio" ? ' class="active" aria-current="page"' : ""}>Audio</button>
-      <button type="button" data-source-options-page="downloads"${this.optionsPage === "downloads" ? ' class="active" aria-current="page"' : ""}>Mises à jour</button>
-      <button type="button" data-source-options-page="shortcuts"${this.optionsPage === "shortcuts" ? ' class="active" aria-current="page"' : ""}>Raccourcis</button></nav><div class="source-options-list">${options}</div>`;
+      <button type="button" data-source-options-page="downloads"${this.optionsPage === "downloads" ? ' class="active" aria-current="page"' : ""}>Mises à jour</button></nav><div class="source-options-list">${options}
+      <button type="button" class="source-options-dev-link" data-source-open-dev>Test dev <small>Outils de test et déplacements</small></button></div>`;
     content.querySelectorAll<HTMLButtonElement>("[data-source-options-page]").forEach((button) =>
       button.addEventListener("click", () => {
         this.optionsPage = button.dataset.sourceOptionsPage as typeof this.optionsPage;
@@ -1242,12 +1246,6 @@ export class SourceMenuView {
         const output = content.querySelector<HTMLOutputElement>(`[data-audio-output="${channel}"]`);
         if (output !== null) output.value = `${value}%`;
         this.callbacks.onAudioSettingsChange(sourceAudioSettings(this.storage));
-      });
-    });
-    content.querySelectorAll<HTMLButtonElement>("[data-source-field-shortcut]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const id = button.dataset.sourceFieldShortcut as SourceFieldShortcutId;
-        this.callbacks.onFieldShortcut(id, button.getAttribute("aria-pressed") !== "true");
       });
     });
   }
@@ -1331,7 +1329,7 @@ export class SourceMenuView {
     const pokemonLevels = Array.from({ length: 100 }, (_, index) => index + 1).map((level) =>
       `<option value="${level}"${level === this.devPokemonLevel ? " selected" : ""}>Niveau ${level}</option>`).join("");
     content.innerHTML = `<div class="source-menu-title"><div><small>OUTILS LOCAUX</small><h3>Test dev</h3></div><span>PERSONNEL</span></div><div class="source-dev-tools">
-      <details data-dev-section="movement"${this.openDevSection === "movement" ? " open" : ""}><summary>Déplacements <small>${escapeSourceHtml(movement.mode.toUpperCase())}</small></summary><div class="source-dev-section"><div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Chevroum<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div><ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf : interaction face à l'eau. Corniches, glace, cascades et parois restent pilotées par le terrain source.</p></div></details>
+      <details data-dev-section="movement"${this.openDevSection === "movement" ? " open" : ""}><summary>Déplacements <small>${escapeSourceHtml(movement.mode.toUpperCase())}</small></summary><div class="source-dev-section"><div class="source-movement-actions"><button type="button" data-movement-mode="walk" class="${movement.mode === "walk" || movement.mode === "run" ? "active" : ""}">À pied<small>Maintenez Maj pour sprinter</small></button><button type="button" data-movement-mode="mount" class="${movement.mode === "mount" ? "active" : ""}"${movement.unlocks.mount ? "" : " disabled"}>Monture<small>Monture terrestre rapide</small></button><button type="button" id="source-movement-dive"${movement.canDiveHere || movement.canSurfaceHere ? "" : " disabled"}>${diveLabel}<small>Depuis une zone compatible</small></button></div><ul class="source-movement-capabilities">${capabilities}</ul><p class="source-movement-help">Surf : interaction face à l'eau. Corniches, glace, cascades et parois restent pilotées par le terrain source.</p></div></details>
       <details data-dev-section="unlocks"${this.openDevSection === "unlocks" ? " open" : ""}><summary>Déblocages <small>Cap effectif ${model.dev.effectiveLevelCap}</small></summary><div class="source-dev-section"><label class="source-movement-test"><span><strong>Tous les déplacements</strong><small>Ignore localement leurs prérequis sans modifier badges, objets ou histoire.</small></span><input id="source-movement-test" type="checkbox"${movement.unlocks.testOverride ? " checked" : ""}></label><label class="source-dev-field"><span>Cap de niveau</span><select id="source-dev-level-cap"><option value=""${model.dev.levelCapOverride === null ? " selected" : ""}>Progression normale · ${model.dev.storyLevelCap}</option>${levelCaps}</select><small>Le cap simulé sert aux Bonbons Rares et aux combats ouverts par ce navigateur.</small></label></div></details>
       <details data-dev-section="bag"${this.openDevSection === "bag" ? " open" : ""}><summary>Gestion du Sac <small>Par catégorie</small></summary><div class="source-dev-section source-dev-form"><label class="source-dev-item-search"><span>Rechercher dans tous les objets</span><div><input id="source-dev-item-query" type="search" value="${escapeSourceHtml(this.devItemQuery)}" placeholder="Nom, effet, identifiant, CT/CS…" autocomplete="off" spellcheck="false"><button type="button" id="source-dev-item-query-clear"${searchingItems ? "" : " disabled"}>Effacer</button></div><small>${searchingItems ? `${visibleItems.length} résultat${visibleItems.length > 1 ? "s" : ""} dans toutes les catégories` : "Saisissez un nom pour ignorer temporairement la catégorie."}</small></label><label><span>Catégorie</span><select id="source-dev-pocket">${pockets}</select></label><label><span>Objet</span><select id="source-dev-item">${items}</select></label><label><span>Quantité à ajouter</span><select id="source-dev-item-quantity">${quantities}</select></label><div class="source-dev-buttons"><button type="button" id="source-dev-grant-items"${searchingItems && this.selectedDevItemId === null ? " disabled" : ""}>Ajouter au Sac</button><button type="button" id="source-dev-reset-pocket" class="danger">Vider cette catégorie</button></div><small>Le vidage supprime uniquement les objets de la catégorie choisie dans cette sauvegarde.</small></div></details>
       <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form source-dev-pokemon-picker"><div class="source-dev-pokemon-filters"><label class="source-dev-pokemon-search"><span>Rechercher</span><input id="source-dev-pokemon-query" type="search" value="${escapeSourceHtml(this.devPokemonQuery)}" placeholder="Nom français, numéro…" autocomplete="off"></label><label><span>Type</span><select id="source-dev-pokemon-type"><option value="">Tous les types</option>${pokemonTypes}</select></label><label><span>Classement</span><select id="source-dev-pokemon-sort"><option value="number"${this.devPokemonSort === "number" ? " selected" : ""}>Numéro du Pokédex</option><option value="name"${this.devPokemonSort === "name" ? " selected" : ""}>Nom alphabétique</option></select></label><button type="button" id="source-dev-pokemon-reset">Réinitialiser</button></div><div id="source-dev-pokemon-results" aria-live="polite"></div><div class="source-dev-pokemon-grant"><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><label><span>Genre</span><select id="source-dev-pokemon-gender" disabled><option value="auto">Choisissez une espèce</option></select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon sélectionné</button></div><small>Le genre proposé respecte l'espèce. Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch.</small></div></details>

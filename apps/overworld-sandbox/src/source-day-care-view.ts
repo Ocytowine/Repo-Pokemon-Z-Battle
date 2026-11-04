@@ -6,6 +6,7 @@ import { sourcePokemonCardHtml, sourcePokemonIconHtml } from "./source-pokemon-c
 import { sourceActionWheelHtml } from "./source-action-wheel.js";
 import { sourcePokemonFacilityShellHtml } from "./source-pokemon-facility-view.js";
 import { sourceDayCareCompatibility, sourceDayCareWithdrawalFee, type SourceDayCareState } from "./source-day-care.js";
+import type { SourceShopItem } from "./source-economy.js";
 import { startSourcePokemonSpriteAnimation, type SourcePokemonSpriteAnimation }
   from "./source-pokemon-sprite-animator.js";
 
@@ -16,11 +17,13 @@ export interface SourceDayCareViewModel {
   readonly money: number;
   readonly catalog: PlayerCreationCatalog;
   readonly assets: PokemonAssetsManifest;
+  readonly items: ReadonlyMap<string, SourceShopItem>;
 }
 
 type Selection = { readonly location: "team"; readonly pokemonId: string }
   | { readonly location: "day-care"; readonly slot: 0 | 1 };
-type Confirmation = { readonly kind: "withdraw"; readonly slot: 0 | 1 }
+type Confirmation = { readonly kind: "deposit"; readonly slot: 0 | 1; readonly pokemonId: string }
+  | { readonly kind: "withdraw"; readonly slot: 0 | 1 }
   | { readonly kind: "exchange"; readonly slot: 0 | 1; readonly pokemonId: string };
 
 function money(value: number): string { return `${new Intl.NumberFormat("fr-FR").format(value)} ₽`; }
@@ -76,9 +79,26 @@ export class SourceDayCareView {
     private readonly onWithdraw: (slot: 0 | 1) => void,
     private readonly onExchange: (slot: 0 | 1, pokemonId: string) => void) {}
 
+  public cancel(): boolean {
+    if (this.confirmation === null) return false;
+    this.confirmation = null;
+    return true;
+  }
+
+  private requestDeposit(model: SourceDayCareViewModel, pokemonId: string, slot: 0 | 1): void {
+    if (model.dayCare.slots[slot] !== null
+      || !model.party.members.some((member) => member.id === pokemonId)) return;
+    this.confirmation = { kind: "deposit", slot, pokemonId };
+    this.depositSlot = null;
+    this.exchangeSlot = null;
+    this.selected = null;
+    this.render(model);
+  }
+
   public render(model: SourceDayCareViewModel): void {
     const root = document.querySelector<HTMLElement>("#source-day-care");
     if (root === null) return;
+    const teamScrollTop = this.wasOpen ? root.querySelector<HTMLElement>(".source-ranch-team-list")?.scrollTop ?? 0 : 0;
     root.hidden = !model.open;
     if (!model.open) { this.wasOpen = false; this.stopBattlerAnimations(); return; }
     if (!this.wasOpen) {
@@ -94,12 +114,16 @@ export class SourceDayCareView {
     const byId = new Map(stored.map((entry) => [entry.pokemon.id, entry]));
     const entries = model.dayCare.slots.map((slot) => slot === null ? null : byId.get(slot.pokemon.id) ?? null) as
       [SourcePokemonCollectionEntry | null, SourcePokemonCollectionEntry | null];
-    const emptyTeamSlots = Array.from({ length: Math.max(0, 6 - team.length) }, (_, index) =>
-      `<article class="source-ranch-team-empty"><span>${team.length + index + 1}</span><strong>Place libre</strong></article>`).join("");
-    const teamHtml = `<div class="source-day-care-team${this.exchangeSlot === null && this.depositSlot === null ? "" : " choosing"}">${team.map((entry) =>
-      sourcePokemonCardHtml(entry, { compact: true, showGender: true,
-        selected: this.selected?.location === "team" && this.selected.pokemonId === entry.pokemon.id,
-        active: entry.teamIndex === model.party.activeIndex })).join("")}${emptyTeamSlots}</div>`;
+    const teamHtml = Array.from({ length: 6 }, (_, index) => {
+      const member = team[index] ?? null;
+      return member === null
+      ? `<article class="source-ranch-team-empty"><span>${index + 1}</span><strong>Place libre</strong></article>`
+      : sourcePokemonCardHtml(member, { compact: true, teamLayout: true, showGender: true,
+        heldItemName: member.pokemon.heldItem === null ? null
+          : model.items.get(member.pokemon.heldItem)?.name ?? member.pokemon.heldItem,
+        selected: this.selected?.location === "team" && this.selected.pokemonId === member.pokemon.id,
+        active: member.teamIndex === model.party.activeIndex });
+    }).join("");
     const slotHtml = model.dayCare.slots.map((slot, index) => {
       const entry = entries[index as 0 | 1];
       if (slot === null || entry === null) return `<button type="button" class="source-day-care-empty" data-day-care-empty="${index}"><span>+</span><strong>Place ${index + 1}</strong><small>Choisir un Pokémon de l’équipe</small></button>`;
@@ -146,35 +170,50 @@ export class SourceDayCareView {
     }
     const confirmation = this.confirmation;
     if (confirmation !== null) {
-      const storedSlot = model.dayCare.slots[confirmation.slot];
-      const storedEntry = entries[confirmation.slot];
-      const teamEntry = confirmation.kind === "exchange"
-        ? team.find((entry) => entry.pokemon.id === confirmation.pokemonId) ?? null : null;
-      if (storedSlot === null || storedEntry === null || confirmation.kind === "exchange" && teamEntry === null) {
-        this.confirmation = null;
-      } else {
-        const fee = sourceDayCareWithdrawalFee(storedSlot);
-        const exchangeCopy = confirmation.kind === "exchange" && teamEntry !== null
-          ? `<div class="source-day-care-confirm-pokemon"><span>${sourcePokemonIconHtml(teamEntry)}</span><div><small>CONFIER À LA PENSION</small><strong>${escapeHtml(teamEntry.displayName)}</strong><em>Niveau ${teamEntry.pokemon.level}</em></div></div>` : "";
-        overlay = `<div class="source-day-care-dialog-backdrop"><section class="source-day-care-confirm" role="alertdialog" aria-modal="true" aria-labelledby="source-day-care-confirm-title">
-          <small>CONFIRMATION DE PAIEMENT</small><h3 id="source-day-care-confirm-title">${confirmation.kind === "withdraw" ? `Récupérer ${escapeHtml(storedEntry.displayName)} ?` : "Confirmer cet échange ?"}</h3>
-          <div class="source-day-care-confirm-pokemon"><span>${sourcePokemonIconHtml(storedEntry)}</span><div><small>RÉCUPÉRER</small><strong>${escapeHtml(storedEntry.displayName)}</strong><em>Niveau ${storedEntry.pokemon.level}</em></div></div>${exchangeCopy}
-          <dl><div><dt>Prix à payer</dt><dd>${money(fee)}</dd></div><div><dt>Après paiement</dt><dd>${money(model.money - fee)}</dd></div></dl>
-          <p>${confirmation.kind === "withdraw" ? "Le Pokémon rejoindra votre équipe." : `${escapeHtml(teamEntry!.displayName)} prendra sa place à la Pension.`}</p>
-          <footer><button type="button" data-day-care-confirm-cancel>Annuler</button><button type="button" class="primary" data-day-care-confirm-accept>Payer et confirmer</button></footer>
+      if (confirmation.kind === "deposit") {
+        const teamEntry = team.find((entry) => entry.pokemon.id === confirmation.pokemonId) ?? null;
+        if (model.dayCare.slots[confirmation.slot] !== null || teamEntry === null) this.confirmation = null;
+        else overlay = `<div class="source-day-care-dialog-backdrop"><section class="source-day-care-confirm" role="alertdialog" aria-modal="true" aria-labelledby="source-day-care-confirm-title">
+          <small>CONFIRMATION DU DÉPÔT</small><h3 id="source-day-care-confirm-title">Confier ${escapeHtml(teamEntry.displayName)} ?</h3>
+          <div class="source-day-care-confirm-pokemon"><span>${sourcePokemonIconHtml(teamEntry)}</span><div><small>PLACE ${confirmation.slot + 1}</small><strong>${escapeHtml(teamEntry.displayName)}</strong><em>Niveau ${teamEntry.pokemon.level}</em></div></div>
+          <dl><div><dt>Dépôt</dt><dd>Gratuit</dd></div><div><dt>Retrait initial</dt><dd>${money(100)}</dd></div></dl>
+          <p>Le Pokémon quittera votre équipe. Son retrait coûte au moins 100 ₽, puis 100 ₽ de plus par niveau gagné.</p>
+          <footer><button type="button" data-day-care-confirm-cancel>Annuler</button><button type="button" class="primary" data-day-care-confirm-accept>Confirmer le dépôt</button></footer>
         </section></div>`;
+      } else {
+        const storedSlot = model.dayCare.slots[confirmation.slot];
+        const storedEntry = entries[confirmation.slot];
+        const teamEntry = confirmation.kind === "exchange"
+          ? team.find((entry) => entry.pokemon.id === confirmation.pokemonId) ?? null : null;
+        if (storedSlot === null || storedEntry === null || confirmation.kind === "exchange" && teamEntry === null) {
+          this.confirmation = null;
+        } else {
+          const fee = sourceDayCareWithdrawalFee(storedSlot);
+          const exchangeCopy = confirmation.kind === "exchange" && teamEntry !== null
+            ? `<div class="source-day-care-confirm-pokemon"><span>${sourcePokemonIconHtml(teamEntry)}</span><div><small>CONFIER À LA PENSION</small><strong>${escapeHtml(teamEntry.displayName)}</strong><em>Niveau ${teamEntry.pokemon.level}</em></div></div>` : "";
+          overlay = `<div class="source-day-care-dialog-backdrop"><section class="source-day-care-confirm" role="alertdialog" aria-modal="true" aria-labelledby="source-day-care-confirm-title">
+            <small>CONFIRMATION DE PAIEMENT</small><h3 id="source-day-care-confirm-title">${confirmation.kind === "withdraw" ? `Récupérer ${escapeHtml(storedEntry.displayName)} ?` : "Confirmer cet échange ?"}</h3>
+            <div class="source-day-care-confirm-pokemon"><span>${sourcePokemonIconHtml(storedEntry)}</span><div><small>RÉCUPÉRER</small><strong>${escapeHtml(storedEntry.displayName)}</strong><em>Niveau ${storedEntry.pokemon.level}</em></div></div>${exchangeCopy}
+            <dl><div><dt>Prix à payer</dt><dd>${money(fee)}</dd></div><div><dt>Après paiement</dt><dd>${money(model.money - fee)}</dd></div></dl>
+            <p>${confirmation.kind === "withdraw" ? "Le Pokémon rejoindra votre équipe." : `${escapeHtml(teamEntry!.displayName)} prendra sa place à la Pension.`}</p>
+            <footer><button type="button" data-day-care-confirm-cancel>Annuler</button><button type="button" class="primary" data-day-care-confirm-accept>Payer et confirmer</button></footer>
+          </section></div>`;
+        }
       }
     }
     root.innerHTML = sourcePokemonFacilityShellHtml({ kind: "day-care", title: "Pension Pokémon",
       subtitle: `${money(model.money)} · 1 pas = 1 EXP`, teamCount: team.length,
       facilityEyebrow: "PENSION", facilityTitle: "Pokémon confiés",
-      facilityMeta: `${stored.length}/2`, teamHtml, contentHtml: content, overlayHtml: overlay });
+      facilityMeta: `${stored.length}/2`, teamHtml,
+      teamChoosing: this.exchangeSlot !== null || this.depositSlot !== null,
+      contentHtml: content, overlayHtml: overlay });
+    root.querySelector<HTMLElement>(".source-ranch-team-list")!.scrollTop = teamScrollTop;
     this.startBattlerAnimations(root);
     root.querySelector<HTMLButtonElement>("[data-facility-close]")?.addEventListener("click", this.onClose);
     root.querySelectorAll<HTMLButtonElement>("[data-pokemon-id]").forEach((button) => button.addEventListener("click", () => {
       const id = button.dataset.pokemonId; if (id === undefined) return;
       if (this.depositSlot !== null && team.some((entry) => entry.pokemon.id === id)) {
-        const slot = this.depositSlot; this.depositSlot = null; this.selected = null; this.onDeposit(id, slot); return;
+        this.requestDeposit(model, id, this.depositSlot); return;
       }
       if (this.exchangeSlot !== null && team.some((entry) => entry.pokemon.id === id)) {
         const slot = this.exchangeSlot; this.exchangeSlot = null; this.selected = null;
@@ -188,7 +227,7 @@ export class SourceDayCareView {
     root.querySelectorAll<HTMLButtonElement>("[data-day-care-empty]").forEach((button) => button.addEventListener("click", () => {
       const selected = this.selected; const slot = Number(button.dataset.dayCareEmpty);
       if (slot !== 0 && slot !== 1) return;
-      if (selected?.location === "team") { this.selected = null; this.onDeposit(selected.pokemonId, slot); return; }
+      if (selected?.location === "team") { this.requestDeposit(model, selected.pokemonId, slot); return; }
       this.depositSlot = slot; this.exchangeSlot = null; this.selected = null; this.render(model);
     }));
     root.querySelectorAll<HTMLButtonElement>("[data-source-wheel-close]").forEach((button) => button.addEventListener("click", () => { this.selected = null; this.render(model); }));
@@ -196,7 +235,8 @@ export class SourceDayCareView {
       const action = button.dataset.sourceWheelAction; const selected = this.selected;
       if (selected === null || action === undefined) return;
       if (selected.location === "team" && action.startsWith("deposit:")) {
-        const slot = Number(action.slice(8)); if (slot === 0 || slot === 1) { this.selected = null; this.onDeposit(selected.pokemonId, slot); }
+        const slot = Number(action.slice(8));
+        if (slot === 0 || slot === 1) this.requestDeposit(model, selected.pokemonId, slot);
       } else if (selected.location === "day-care" && action === "withdraw") {
         this.confirmation = { kind: "withdraw", slot: selected.slot }; this.selected = null; this.render(model);
       }
@@ -211,7 +251,8 @@ export class SourceDayCareView {
     });
     root.querySelector<HTMLButtonElement>("[data-day-care-confirm-accept]")?.addEventListener("click", () => {
       const accepted = this.confirmation; this.confirmation = null;
-      if (accepted?.kind === "withdraw") this.onWithdraw(accepted.slot);
+      if (accepted?.kind === "deposit") this.onDeposit(accepted.pokemonId, accepted.slot);
+      else if (accepted?.kind === "withdraw") this.onWithdraw(accepted.slot);
       else if (accepted?.kind === "exchange") this.onExchange(accepted.slot, accepted.pokemonId);
     });
   }

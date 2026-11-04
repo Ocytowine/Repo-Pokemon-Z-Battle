@@ -1,5 +1,8 @@
 package fr.ocytowine.pokemonzbattle;
 
+import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.NetworkCapabilities;
 import android.util.Base64;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -15,6 +18,10 @@ public class BgmPackPlugin extends Plugin {
     @PluginMethod public void status(PluginCall call) {
         JSObject result = new JSObject();
         result.put("version", store().activeVersion());
+        result.put("ready", store().isReady());
+        ConnectivityManager network = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        NetworkCapabilities capabilities = network == null ? null : network.getNetworkCapabilities(network.getActiveNetwork());
+        result.put("online", capabilities != null && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED));
         call.resolve(result);
     }
 

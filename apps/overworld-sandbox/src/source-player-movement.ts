@@ -45,7 +45,7 @@ export function sourceMovementUnlocks(state: SourceEventState, testOverride: boo
 export function sourceMovementCapabilityLabel(capability: SourceMovementCapability): string {
   switch (capability) {
     case "sprint": return "Sprint";
-    case "mount": return "Monture Chevroum";
+    case "mount": return "Monture terrestre";
     case "climb": return "Escalade avec Chevroum";
     case "surf": return "Monture Surf";
     case "dive": return "Plongée";
@@ -108,7 +108,9 @@ export function sourceMovementDuration(mode: SourceMovementMode, action: string)
   if (action === "ledge-jump" || action === "surf-transition") return 260;
   if (action === "ice-slide") return 85;
   if (action === "waterfall" || action === "climb") return 180;
-  if (mode === "mount") return 115;
+  // Source speeds: bicycle 5.2, running 4.8 (2 ** speed subpixels per frame).
+  // Keep the app's established running cadence and preserve that 2 ** 0.4 ratio.
+  if (mode === "mount") return 80;
   if (mode === "run" || mode === "surf" || mode === "dive") return 105;
   return 200;
 }
@@ -122,7 +124,8 @@ export function sourceMovementVisualMode(mode: SourceMovementMode, action: strin
 export function sourceMovementVisualPattern(mode: SourceMovementMode, basePattern: number, now: number,
   moving: boolean): number {
   if (mode === "surf" || mode === "dive") return Math.floor(Math.max(0, now) / 375) % 4;
-  if (mode === "mount" && moving) return Math.floor(Math.max(0, now) / 100) % 4;
+  // At source speed 5.2, the charset advances about every two 60 Hz frames.
+  if (mode === "mount" && moving) return Math.floor(Math.max(0, now) / (1000 / 30)) % 4;
   return basePattern;
 }
 

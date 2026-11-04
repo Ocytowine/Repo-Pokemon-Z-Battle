@@ -20,6 +20,14 @@ const emptyDayCare = { schemaVersion: 2 as const, slots: [null, null] as const, 
 const emptyIncubator = { schemaVersion: 1 as const, slots: [null, null, null, null, null, null] as const };
 
 describe("persistent source event state", () => {
+  it("restaure le tirage chromatique fixé avant un combat Coop", () => {
+    const initial = { ...createSourceEventState(), pendingEncounter: {
+      species: "BIDOOF", level: 5, victorySwitches: {}, escapable: true,
+      shinyResolved: true as const, shiny: false,
+    } };
+    expect(parseSourceEventState(JSON.parse(JSON.stringify(initial))).pendingEncounter)
+      .toMatchObject({ shinyResolved: true, shiny: false });
+  });
   it("consumes a lost wild encounter without granting victory rewards or restarting it", () => {
     const state = { ...createSourceEventState(), wildEncounterSteps: 8,
       pendingEncounter: { species: "BIDOOF", level: 5, method: "cave" as const,

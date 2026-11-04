@@ -13,6 +13,7 @@ import { selectSourceBattleTransition, SOURCE_TRANSITION_FRAME_MS, sourceTrainer
   sourceWildOutdoorFrames } from "./source-battle-transition.js";
 import { startSourcePokemonSpriteAnimation } from "./source-pokemon-sprite-animator.js";
 import { wideBattlebackAvailability } from "./source-resource-packs.js";
+import { createSourceAudio, pauseSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
 
 interface AnimatedCanvas {
   readonly element: HTMLCanvasElement;
@@ -386,7 +387,7 @@ export class SourceBattleVisuals {
       const selectedAudio = selectSourceBattleAudio(manifests.assets, manifests.pokemon, player.species, opponent.species,
         battleMusic, victoryMusic, { player: player.appearance, opponent: opponent.appearance });
       if (selectedAudio.battleMusic !== null && selectedAudio.battleMusic !== firstMusicPath) {
-        this.#battleMusic?.pause();
+        pauseSourceAudio(this.#battleMusic);
         this.#battleMusic = this.playAudio(selectedAudio.battleMusic, { loop: true, volume: 0.8 });
       }
       this.#victoryMusicPath = selectedAudio.victoryMusic;
@@ -1828,7 +1829,7 @@ export class SourceBattleVisuals {
   private playAudio(path: string, options: { readonly loop?: boolean; readonly volume?: number;
     readonly oneShot?: boolean; readonly playbackRate?: number;
     readonly kind?: "music" | "effects" }): HTMLAudioElement {
-    const audio = new Audio(sourceUrl(path));
+    const audio = createSourceAudio(sourceUrl(path));
     audio.loop = options.loop ?? false;
     const baseVolume = options.volume ?? 1;
     const kind = options.kind ?? (/^Audio\/(?:BGM|ME)\//u.test(path) ? "music" : "effects");
@@ -1836,11 +1837,16 @@ export class SourceBattleVisuals {
     this.#audioKinds.set(audio, kind);
     audio.volume = baseVolume * (kind === "music" ? this.#musicVolume : this.#effectsVolume);
     audio.playbackRate = options.playbackRate ?? 1;
+    if (options.oneShot === true && !sourceAudioActive()) {
+      pauseSourceAudio(audio);
+      return audio;
+    }
     if (options.oneShot === true) {
       this.#oneShots.add(audio);
       audio.addEventListener("ended", () => this.#oneShots.delete(audio), { once: true });
+      audio.addEventListener("pause", () => this.#oneShots.delete(audio), { once: true });
     }
-    void audio.play().catch(() => {
+    void playSourceAudio(audio).catch(() => {
       this.#oneShots.delete(audio);
       if (this.#battleMusic === audio) this.#battleMusic = null;
       if (this.#outroMusic === audio) this.#outroMusic = null;
@@ -1852,7 +1858,7 @@ export class SourceBattleVisuals {
     if (audio === null) return;
     const initialVolume = audio.volume;
     if (initialVolume <= 0 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      audio.pause();
+      pauseSourceAudio(audio);
       return;
     }
     const startedAt = performance.now();
@@ -1865,13 +1871,13 @@ export class SourceBattleVisuals {
       };
       window.requestAnimationFrame(frame);
     });
-    audio.pause();
+    pauseSourceAudio(audio);
   }
 
   private stopAudio(): void {
     for (const audio of [this.#battleMusic, this.#outroMusic, ...this.#oneShots]) {
       if (audio === null) continue;
-      audio.pause();
+      pauseSourceAudio(audio);
       audio.currentTime = 0;
     }
     this.#battleMusic = null;

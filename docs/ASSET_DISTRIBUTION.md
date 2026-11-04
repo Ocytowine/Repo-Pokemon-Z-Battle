@@ -321,6 +321,38 @@ doit conserver une musique ; le choix de la piste embarquée dépend de la
 finalisation de l'écran d'accueil. La réduction d'APK reste à réaliser avant
 de retirer les BGM embarqués ; aucune exclusion de piste.
 
+Décision du porteur le 2026-11-03 pour le prochain chantier d'écran titre :
+`Audio/BGM/Titulo2.ogg` (7 093 176 octets dans la source locale), déjà utilisé
+par `SourceTitleScreen`, sera la seule **musique BGM embarquée** dans l'APK pour
+un premier démarrage hors ligne. Sans pack BGM installé et sans réseau, l'app
+reste sur l'écran titre avec cette musique et propose le téléchargement quand
+le réseau revient ; elle ne lance pas une partie dépourvue de ses musiques.
+Un pack déjà installé demeure utilisable hors ligne après redémarrage. Toutes
+les autres pistes restent dans le pack privé, sans exclusion du jeu ; le
+retrait de leurs copies APK attend le raccord de l'écran titre, le contrôle
+du pack et une recette de première installation / reprise hors ligne.
+
+Mise en œuvre locale BZ-006 (2026-11-04) : le profil `android:release:slim`
+conserve uniquement `Audio/BGM/Titulo2.ogg` dans `Audio/BGM` ; les autres BGM
+restent tous dans le pack privé existant. Le profil APK complet continue de
+les intégrer. `android-resource-layout.json` annonce `bgmBundled: false` pour
+le profil allégé ; le client Android exige alors un pack BGM activé et dont
+tous les objets sont présents avant d'ouvrir une partie. Le titre reste
+accessible hors ligne avec sa musique ; il propose l'installation du pack
+quand le réseau revient, ainsi que la connexion si l'accès privé l'exige.
+
+Recette du porteur du 2026-11-04 : interruption du téléchargement des musiques
+sur l'app habituelle, message d'erreur, puis reprise du jeu avec musique. Le
+pack vérifié déjà actif a donc été conservé. La musique du titre a été
+confirmée sans pack. Le porteur confirme ensuite avoir déjà effectué avec
+succès le téléchargement intégral depuis une installation neuve. Recette
+locale BZ-006 terminée ; aucun pack ni manifeste distant n'a été modifié.
+
+La copie des autres dossiers `Audio` et des données de jeu reste complète.
+Le pack actif est conservé lors de la mise à jour APK ; une installation
+interrompue laisse les objets vérifiés en attente sans activer de pack incomplet.
+Ce retrait est une séparation de support, pas une exclusion de ressources.
+
 Correctif local après retour du porteur : l'activation du pack rendait les
 musiques silencieuses. Le lecteur natif découpait une plage HTTP que le WebView
 Android découpait une seconde fois, ce qui provoquait `PIPELINE_ERROR_READ`.
@@ -393,3 +425,41 @@ L'APK locale `0.1.7 (8)` du 2026-11-02 a été reconstruite avec
 la même répartition que l'APK déjà diffusée : 49 fonds larges fournis par le
 pack privé et repli 4:3 conservé. Aucun objet de pack ni manifeste R2 n'a été
 modifié ; seule la logique de rendu et de combat de la copie locale a changé.
+
+Le 2026-11-04, une APK locale `android:release:slim` a été reconstruite pour
+tester le bouton A contextuel puis installée par USB. Le script a conservé la
+même décision de livraison : 49 fonds larges et les BGM hors titre restent
+fournis par leurs packs privés ; aucun nouvel asset n'est exclu, aucun pack ni
+manifeste R2 n'a été modifié. Cette APK locale n'a pas été publiée.
+
+Après le retour tactile sur BZ-015, le correctif du maintien du sprint a été
+reconstruit le même jour dans une nouvelle APK locale `android:release:slim`
+et réinstallé par USB. Répartition des ressources et packs privés inchangés ;
+aucun objet, manifeste ou APK n'a été publié sur R2.
+
+Une APK locale supplémentaire a été reconstruite et installée par USB le
+2026-11-04 pour le remplacement du bouton B par Menu. Elle conserve la même
+répartition de `Graphics` et `Audio` et ne modifie aucun pack ni manifeste R2.
+
+### BZ-013 / BZ-012 — bandeau de lieu et fog de la forêt — 2026-11-04
+
+Le bandeau de lieu utilise l'asset source déjà conservé
+`Graphics/Windowskins/Jess_Letreros/LetsGO.png` quand la métadonnée `ShowArea`
+le demande. L'ombre de Map046 provient de l'événement source qui charge
+`Graphics/Fogs/004-Shade02.png` ; quatorze autres cartes le demandent aussi.
+Les deux fichiers restent dans la copie `Graphics` actuelle. Aucun fichier
+nouveau n'est copié, exclu, déplacé vers un pack ni publié ; seule leur
+interprétation dans le code local change. Le contrôle visuel Android reste
+à faire avant de clore les deux sujets.
+
+### APK 0.1.8 (9) — diffusion du 2026-11-04
+
+Après validation du lot par le porteur, `android:release:slim` a produit une
+APK signée de 392 546 234 octets. Le contrôle de l'archive confirme
+`LetsGO.png`, `004-Shade02.png`, les métadonnées des cartes et la seule BGM
+embarquée `Titulo2.ogg`. Les 49 fonds larges et les autres BGM restent dans
+leurs packs privés existants ; aucun fichier source n'a été exclu en plus,
+aucun pack ni manifeste de pack n'a changé. Seuls
+`updates/android/pokemon-z-battle-9.apk` et le manifeste de mise à jour
+Android ont été publiés, APK d'abord et manifeste en dernier après contrôle
+de la taille distante.

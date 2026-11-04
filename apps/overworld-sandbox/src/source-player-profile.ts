@@ -22,6 +22,7 @@ export interface SourcePlayerVisuals {
   readonly battleBack: HTMLImageElement;
   readonly bySourceName: ReadonlyMap<string, HTMLImageElement>;
   readonly runGroundOffsets: readonly (readonly number[])[];
+  readonly mountGroundOffsets: readonly (readonly number[])[];
 }
 
 const OVERWORLD_CONTEXTS: readonly OverworldContext[] = ["overworld", "bicycle", "surf", "run", "dive", "fish", "fishSurf"];
@@ -51,6 +52,18 @@ export function sourceRunGroundOffsets(walk: SpritePixels, run: SpritePixels): r
     frameBottomPadding(run, row, pattern) - frameBottomPadding(walk, row, pattern)));
 }
 
+/** Keep the mounted sprite's visible ground point steady across its four poses. */
+export function sourceMountGroundOffsets(mount: SpritePixels): readonly (readonly number[])[] {
+  if (mount.width % 4 !== 0 || mount.height % 4 !== 0) {
+    return Array.from({ length: 4 }, () => [0, 0, 0, 0]);
+  }
+  return Array.from({ length: 4 }, (_, row) => {
+    const restingPadding = frameBottomPadding(mount, row, 0);
+    return Array.from({ length: 4 }, (_, pattern) =>
+      frameBottomPadding(mount, row, pattern) - restingPadding);
+  });
+}
+
 function spritePixels(image: HTMLImageElement): SpritePixels {
   const canvas = document.createElement("canvas");
   canvas.width = image.naturalWidth;
@@ -64,6 +77,11 @@ function spritePixels(image: HTMLImageElement): SpritePixels {
 export function sourcePlayerRunGroundOffset(visuals: SourcePlayerVisuals | null,
   direction: Direction, pattern: number): number {
   return visuals?.runGroundOffsets[SOURCE_DIRECTION_ROW[direction]]?.[pattern % 4] ?? 0;
+}
+
+export function sourcePlayerMountGroundOffset(visuals: SourcePlayerVisuals | null,
+  direction: Direction, pattern: number): number {
+  return visuals?.mountGroundOffsets[SOURCE_DIRECTION_ROW[direction]]?.[pattern % 4] ?? 0;
 }
 
 function sourceUrl(path: string): string {
@@ -98,6 +116,7 @@ export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelec
   const bySourceName = new Map<string, HTMLImageElement>();
   const loadedByPath = new Map<string, Promise<HTMLImageElement>>();
   let runImage: HTMLImageElement | null = null;
+  let mountImage: HTMLImageElement | null = null;
   const load = (path: string, comparisons: readonly (string | null | undefined)[],
     fishingEquipment = false): Promise<HTMLImageElement> => {
     let pending = loadedByPath.get(path);
@@ -114,6 +133,7 @@ export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelec
     const image = await load(target, siblings.map((record) => record.assets[context].path),
       context === "fish" || context === "fishSurf");
     if (context === "run") runImage = image;
+    if (context === "bicycle") mountImage = image;
     for (const record of avatarCatalog.records) {
       const alias = record.assets[context].path; if (alias !== null) bySourceName.set(sourceCharacterAssetName(alias), image);
     }
@@ -140,7 +160,10 @@ export async function loadSourcePlayerVisuals(selection: SourcePlayerVisualSelec
     : await load(firstPose, siblings.map((record) => record.overworldPoses[0])));
   const runGroundOffsets = runImage === null ? Array.from({ length: 4 }, () => [0, 0, 0, 0])
     : sourceRunGroundOffsets(spritePixels(overworld), spritePixels(runImage));
-  return { selection, overworld, pickup, battleFront, battleBack, bySourceName, runGroundOffsets };
+  const mountGroundOffsets = mountImage === null ? Array.from({ length: 4 }, () => [0, 0, 0, 0])
+    : sourceMountGroundOffsets(spritePixels(mountImage));
+  return { selection, overworld, pickup, battleFront, battleBack, bySourceName,
+    runGroundOffsets, mountGroundOffsets };
 }
 
 export function sourcePlayerImageFor(visuals: SourcePlayerVisuals | null, sourceName: string): HTMLImageElement | null {

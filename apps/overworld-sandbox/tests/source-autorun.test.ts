@@ -55,7 +55,7 @@ describe("source autorun selection", () => {
   it("uses the final direct transfer after a narrative sequence", () => {
     expect(finalDirectSourceTransfer(commands, 17, 0, { x: 52, y: 22 })).toEqual({
       eventId: 17, pageIndex: 0, eventX: 52, eventY: 22,
-      targetMapId: 3, targetX: 15, targetY: 16, direction: 2,
+      targetMapId: 3, targetX: 15, targetY: 16, direction: 2, fade: 0,
     });
   });
 });
