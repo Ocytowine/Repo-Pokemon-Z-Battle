@@ -23,18 +23,21 @@ export class SourceOverworldHud {
   ) {}
 
   public render(model: SourceOverworldHudModel): void {
-    const { avatar } = model;
-    const tick = document.querySelector<HTMLElement>("#tick");
-    if (tick !== null) tick.textContent = `${avatar.x},${avatar.y}`;
+    this.renderStep(model.avatar, model.notice);
     this.renderProgress(model);
-    const log = document.querySelector<HTMLElement>("#events");
-    if (log !== null) log.textContent = model.notice;
     const hudNotice = document.querySelector<HTMLElement>("#source-hud-notice");
     if (hudNotice !== null) {
       hudNotice.hidden = model.hudNotice === null || model.hudNotice === undefined;
       hudNotice.textContent = model.hudNotice?.text ?? "";
       hudNotice.dataset.kind = model.hudNotice?.kind ?? "info";
     }
+  }
+
+  public renderStep(avatar: ImportedAvatar, notice: string): void {
+    const tick = document.querySelector<HTMLElement>("#tick");
+    if (tick !== null) tick.textContent = `${avatar.x},${avatar.y}`;
+    const log = document.querySelector<HTMLElement>("#events");
+    if (log !== null) log.textContent = notice;
   }
 
   private renderProgress(model: SourceOverworldHudModel): void {

@@ -124,7 +124,11 @@ export class SourceTouchControls {
     this.menuButton.disabled = action === "unavailable";
   }
 
-  public setContextAction(action: SourceContextAction): void {
+  public setContextAction(action: SourceContextAction, preserveSprintHold = false): void {
+    // Une sequence de contact silencieuse suspend le mouvement, mais ne
+    // relache pas le doigt pose sur Sprint. Garder la capture jusqu'au vrai
+    // pointerup evite de transformer l'appui maintenu en appui momentane.
+    if (preserveSprintHold && this.actionSprintHeld && action.kind === "unavailable") return;
     if (this.action.kind === action.kind && this.action.label === action.label
       && this.action.ariaLabel === action.ariaLabel) return;
     if (this.actionSprintHeld && action.kind !== "sprint") {

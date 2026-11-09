@@ -27,18 +27,22 @@ export function resolveSourceContextAction(input: SourceContextActionInput): Sou
   if (input.dialogue === "choice") return { kind: "unavailable", label: "Choisir",
     ariaLabel: "Choisir une réponse dans le dialogue" };
   if (!input.worldAvailable) return { kind: "unavailable", label: "Action", ariaLabel: "Action indisponible" };
-  if (input.traversal !== null && input.event === null) {
+  // Une page terminee sans commande est un repere narratif inerte : elle ne
+  // doit pas voler le bouton Sprint sous pretexte d'etre devant le joueur.
+  const event = input.event !== null && (input.eventTransfer
+    || input.event.page.commands.some((command) => command.kind !== "end")) ? input.event : null;
+  if (input.traversal !== null && event === null) {
     return interaction(input.traversal === "surface" ? "Remonter"
       : input.traversal === "dive" ? "Plonger" : "Surfer");
   }
   if (input.joinableBattle) return interaction("Rejoindre");
-  if (input.event !== null && (input.event.page.settings.trigger === 0 || input.eventTransfer)) {
-    const page = input.event.page;
+  if (event !== null && (event.page.settings.trigger === 0 || input.eventTransfer)) {
+    const page = event.page;
     const hasText = page.commands.some((command) => command.kind === "show-text");
     return interaction(hasText && page.graphic.characterName !== "" ? "Parler"
       : hasText && page.graphic.tileId > 0 ? "Lire" : "Interagir");
   }
-  if (input.remotePlayer && input.event === null) return interaction("Défier");
+  if (input.remotePlayer && event === null) return interaction("Défier");
   return input.sprintAllowed
     ? { kind: "sprint", label: "Sprint", ariaLabel: "Maintenir pour sprinter" }
     : { kind: "unavailable", label: "Action", ariaLabel: "Aucune action disponible" };

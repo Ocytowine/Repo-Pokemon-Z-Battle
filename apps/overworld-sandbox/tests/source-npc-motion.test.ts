@@ -13,7 +13,7 @@ const map: ImportedMap = {
 const event: ImportedMapEvent = { id: 6, name: "Promeneur", x: 2, y: 2, pages: [{
   condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
   graphic: { tileId: 0, characterName: "npc", direction: 2, pattern: 0, opacity: 255 },
-  settings: { moveType: 1, moveSpeed: 3, moveFrequency: 5, walkAnimation: true,
+  settings: { moveType: 1, moveSpeed: 3, moveFrequency: 6, walkAnimation: true,
     stepAnimation: false, directionFix: false, through: false, alwaysOnTop: false, trigger: 0 },
   commands: [],
 }] };
@@ -60,11 +60,13 @@ describe("source NPC motion", () => {
     expect(controller.setScriptedActorLocation(999, { x: 1, y: 1 })).toBe(false);
   });
 
-  it("converts source speed and frequency to bounded timings", () => {
-    expect(sourceNpcStepDuration(3)).toBe(250);
-    expect(sourceNpcStepDuration(6)).toBe(80);
-    expect(sourceNpcMoveDelay(3)).toBe(700);
-    expect(sourceNpcMoveDelay(5)).toBe(150);
+  it("converts the original game's step speed and idle frequency to milliseconds", () => {
+    expect(sourceNpcStepDuration(1)).toBe(1_067);
+    expect(sourceNpcStepDuration(3)).toBe(267);
+    expect(sourceNpcStepDuration(6)).toBe(33);
+    expect(sourceNpcMoveDelay(3)).toBe(1_717);
+    expect(sourceNpcMoveDelay(5)).toBe(517);
+    expect(sourceNpcMoveDelay(6)).toBe(17);
   });
 
   it("starts a deterministic random tile movement and exposes an interpolated pose", () => {
@@ -74,7 +76,7 @@ describe("source NPC motion", () => {
     const logical = controller.logicalEvents([event])[0]!;
     expect(Math.abs(logical.x - event.x) + Math.abs(logical.y - event.y)).toBe(1);
     const start = controller.poses(150).get(event.id)!;
-    const middle = controller.poses(275).get(event.id)!;
+    const middle = controller.poses(150 + sourceNpcStepDuration(3) / 2).get(event.id)!;
     expect(start).toMatchObject({ x: 2, y: 2, pattern: 0 });
     expect(middle.pattern).toBe(1);
     expect(Math.abs(middle.x - start.x) + Math.abs(middle.y - start.y)).toBeCloseTo(0.5);
@@ -192,6 +194,58 @@ describe("source NPC motion", () => {
     expect(controller.poses(151).get(event.id)).toMatchObject({ x: 2, y: 2, direction: 6 });
   });
 
+  it("retries a blocked non-skippable route step before taking the next turn", () => {
+    const routedEvent: ImportedMapEvent = { ...event, pages: [{ ...event.pages[0]!, settings: {
+      ...event.pages[0]!.settings, moveType: 3, moveRoute: { repeat: false, skippable: false,
+        steps: [{ kind: "step-right", parameters: [] }, { kind: "step-down", parameters: [] }] },
+    } }] };
+    const controller = new SourceNpcMotionController();
+    const state = createSourceEventState();
+    controller.reset(map.id, [routedEvent], 0);
+    controller.update(150, map, [routedEvent], state, [{ x: 3, y: 2 }]);
+    expect(controller.logicalEvents([routedEvent])[0]).toMatchObject({ x: 2, y: 2 });
+    controller.update(300, map, [routedEvent], state, [{ x: 4, y: 4 }]);
+    expect(controller.logicalEvents([routedEvent])[0]).toMatchObject({ x: 3, y: 2 });
+    controller.update(550, map, [routedEvent], state, [{ x: 4, y: 4 }]);
+    controller.update(700, map, [routedEvent], state, [{ x: 4, y: 4 }]);
+    expect(controller.logicalEvents([routedEvent])[0]).toMatchObject({ x: 3, y: 3 });
+  });
+
+  it("keeps a route speed change for subsequent steps and sends it to a Coop guest", () => {
+    const routedEvent: ImportedMapEvent = { ...event, pages: [{ ...event.pages[0]!, settings: {
+      ...event.pages[0]!.settings, moveType: 3, moveRoute: { repeat: false, skippable: false,
+        steps: [{ kind: "change-speed", parameters: [6] }, { kind: "step-right", parameters: [] }] },
+    } }] };
+    const state = createSourceEventState();
+    const host = new SourceNpcMotionController();
+    host.reset(map.id, [routedEvent], 0);
+    host.update(150, map, [routedEvent], state, [{ x: 4, y: 4 }]);
+    host.update(151, map, [routedEvent], state, [{ x: 4, y: 4 }]);
+    const snapshot = host.worldActors([routedEvent], map.id, state);
+    expect(snapshot[0]).toMatchObject({ x: 3, y: 2, moveSpeed: 6, action: "step" });
+    expect(host.poses(151 + sourceNpcStepDuration(6) / 2).get(event.id)?.x).toBeCloseTo(2.5);
+    const guest = new SourceNpcMotionController();
+    guest.reset(map.id, [routedEvent], 0);
+    guest.applyNetworkWorldActors(snapshot, 1_000);
+    expect(guest.poses(1_000 + sourceNpcStepDuration(6) / 2).get(event.id)?.x).toBeCloseTo(2.5);
+  });
+
+  it("starts consecutive fast steps at the source cadence without an extra render-frame pause", () => {
+    const fastEvent: ImportedMapEvent = { ...event, pages: [{ ...event.pages[0]!, settings: {
+      ...event.pages[0]!.settings, moveType: 3, moveSpeed: 6, moveFrequency: 6,
+      moveRoute: { repeat: false, skippable: false,
+        steps: [{ kind: "step-right", parameters: [] }, { kind: "step-right", parameters: [] }] },
+    } }] };
+    const controller = new SourceNpcMotionController();
+    const state = createSourceEventState();
+    controller.reset(map.id, [fastEvent], 0);
+    controller.update(17, map, [fastEvent], state, [{ x: 0, y: 0 }]);
+    expect(controller.logicalEvents([fastEvent])[0]).toMatchObject({ x: 3, y: 2 });
+    controller.update(67, map, [fastEvent], state, [{ x: 0, y: 0 }]);
+    expect(controller.logicalEvents([fastEvent])[0]).toMatchObject({ x: 4, y: 2 });
+    expect(controller.poses(83.5).get(event.id)?.x).toBeCloseTo(3.5);
+  });
+
   it("animates a scripted route and exposes its graphic changes", () => {
     const controller = new SourceNpcMotionController();
     controller.reset(map.id, [event], 0);
@@ -199,9 +253,9 @@ describe("source NPC motion", () => {
     const duration = controller.applyScriptedActor(event.id,
       { ...actor, direction: "right", characterName: "npc-revealed", opacity: 128, pattern: 2 },
       { x: 3, y: 2 }, 100);
-    expect(duration).toBe(250);
+    expect(duration).toBe(267);
     expect(controller.logicalEvents([event])[0]).toMatchObject({ x: 3, y: 2 });
-    expect(controller.poses(225).get(event.id)).toMatchObject({
+    expect(controller.poses(100 + duration / 2).get(event.id)).toMatchObject({
       x: 2.5, y: 2, direction: 6, characterName: "npc-revealed", opacity: 128,
     });
   });
@@ -212,10 +266,10 @@ describe("source NPC motion", () => {
     const actor = controller.scriptedActor(event.id, map.id, [event], createSourceEventState(), 100)!;
     const duration = controller.applyScriptedActor(event.id, actor, { x: 6, y: 2 }, 100, "jump");
 
-    expect(duration).toBe(1_000);
-    expect(controller.poses(600).get(event.id)).toMatchObject({ x: 4, y: 2 });
-    expect(controller.poses(600).get(event.id)?.renderOffsetY).toBeLessThan(-10);
-    expect(controller.poses(1_100).get(event.id)).toMatchObject({ x: 6, y: 2, renderOffsetY: 0 });
+    expect(duration).toBe(1_068);
+    expect(controller.poses(100 + duration / 2).get(event.id)).toMatchObject({ x: 4, y: 2 });
+    expect(controller.poses(100 + duration / 2).get(event.id)?.renderOffsetY).toBeLessThan(-10);
+    expect(controller.poses(100 + duration).get(event.id)).toMatchObject({ x: 6, y: 2, renderOffsetY: 0 });
   });
 
   it("replays a narrative actor's vertical jump offset for a Coop guest", () => {
@@ -240,13 +294,13 @@ describe("source NPC motion", () => {
     guest.reset(map.id, [event], 0);
     guest.applyNetworkWorldActors(actors, 1_000);
     const start = guest.poses(1_000).get(event.id)!;
-    const middle = guest.poses(1_125).get(event.id)!;
+    const middle = guest.poses(1_000 + sourceNpcStepDuration(3) / 2).get(event.id)!;
     guest.applyNetworkWorldActors(actors.map((actor) => ({ ...actor, action: "idle" as const })), 1_150);
     const afterEarlyIdle = guest.poses(1_175).get(event.id)!;
-    const end = guest.poses(1_250).get(event.id)!;
+    const end = guest.poses(1_000 + sourceNpcStepDuration(3)).get(event.id)!;
     expect(start).toMatchObject({ x: event.x, y: event.y });
     expect(Math.abs(middle.x - start.x) + Math.abs(middle.y - start.y)).toBeCloseTo(0.5);
-    expect(Math.abs(afterEarlyIdle.x - start.x) + Math.abs(afterEarlyIdle.y - start.y)).toBeCloseTo(0.7);
+    expect(Math.abs(afterEarlyIdle.x - start.x) + Math.abs(afterEarlyIdle.y - start.y)).toBeCloseTo(175 / sourceNpcStepDuration(3));
     expect(end).toMatchObject({ x: actors[0]!.x, y: actors[0]!.y });
   });
 
@@ -263,10 +317,10 @@ describe("source NPC motion", () => {
     controller.reset(map.id, [event], 0);
     controller.applyNetworkWorldActors([{ eventId: event.id, x: 3, y: 2, direction: "right",
       blocking: true, moveSpeed: 3, action: "step" }], 1_000);
-    expect(controller.poses(1_125).get(event.id)).toMatchObject({ x: 2.5, y: 2 });
+    expect(controller.poses(1_125).get(event.id)?.x).toBeCloseTo(2 + 125 / sourceNpcStepDuration(3));
     controller.applyNetworkWorldActors([{ eventId: event.id, x: 4, y: 2, direction: "right",
       blocking: true, moveSpeed: 3, action: "step" }], 1_125);
-    expect(controller.poses(1_125).get(event.id)).toMatchObject({ x: 2.5, y: 2 });
-    expect(controller.poses(1_500).get(event.id)).toMatchObject({ x: 4, y: 2 });
+    expect(controller.poses(1_125).get(event.id)?.x).toBeCloseTo(2 + 125 / sourceNpcStepDuration(3));
+    expect(controller.poses(1_600).get(event.id)).toMatchObject({ x: 4, y: 2 });
   });
 });

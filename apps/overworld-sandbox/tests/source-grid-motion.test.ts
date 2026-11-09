@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSourceGridMotion, sampleSourceGridMotion } from "../src/source-grid-motion.js";
+import { createSourceGridMotion, sampleSourceGridMotion, sourceChainedMotionStart } from "../src/source-grid-motion.js";
 
 describe("source grid motion", () => {
   it("interpolates one logical tile with one alternating walking pose", () => {
@@ -31,5 +31,13 @@ describe("source grid motion", () => {
       { duration: 200, action: "surf-transition" });
     expect(sampleSourceGridMotion(surf, 1_100).renderOffsetY).toBeLessThan(-10);
     expect(sampleSourceGridMotion(surf, 1_200).renderOffsetY).toBe(0);
+  });
+
+  it("starts a held next step at the previous deadline with bounded catch-up", () => {
+    const motion = createSourceGridMotion({ x: 1, y: 1 }, { x: 2, y: 1 }, "right", 1_000,
+      { duration: 200 });
+    expect(sourceChainedMotionStart(motion, 1_207)).toBe(1_200);
+    expect(sourceChainedMotionStart(motion, 1_250)).toBe(1_234);
+    expect(sourceChainedMotionStart(null, 1_250)).toBe(1_250);
   });
 });

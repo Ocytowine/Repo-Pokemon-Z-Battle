@@ -1,4 +1,5 @@
 import { createSourceAudio, pauseSourceAudio, playSourceAudio, sourceAudioActive } from "./source-audio-lifecycle.js";
+import { SOURCE_VIEWPORT_HEIGHT, SOURCE_VIEWPORT_WIDTH } from "./source-viewport.js";
 
 export interface SourcePresentationCommand {
   readonly kind: string;
@@ -485,7 +486,7 @@ export class SourceScenePresentation {
   private updateFogBackgroundSize(image: HTMLImageElement): void {
     if (this.fogImage !== image) return;
     const viewport = this.elements.fog.parentElement?.querySelector("canvas");
-    const viewportWidth = viewport?.width ?? 576;
+    const viewportWidth = viewport?.width ?? SOURCE_VIEWPORT_WIDTH;
     const width = sourceFogBackgroundWidthPercent(image.naturalWidth, this.fogZoom, viewportWidth);
     if (width > 0) this.elements.fog.style.backgroundSize = `${width}% auto`;
   }
@@ -716,8 +717,8 @@ export class SourceScenePresentation {
       try { await image.decode(); } catch { return; }
     }
     const canvas = document.createElement("canvas");
-    canvas.width = 576;
-    canvas.height = 432;
+    canvas.width = SOURCE_VIEWPORT_WIDTH;
+    canvas.height = SOURCE_VIEWPORT_HEIGHT;
     canvas.className = "source-map-animation-canvas";
     this.elements.animations.append(canvas);
     const context = canvas.getContext("2d");
@@ -766,10 +767,10 @@ export class SourceScenePresentation {
   private flashTarget(color: Readonly<Record<string, unknown>>, duration: number, target: SourceScreenTarget): void {
     const element = document.createElement("span");
     element.className = "source-map-target-flash";
-    element.style.left = `${target.x / 576 * 100}%`;
-    element.style.top = `${(target.bottom - target.height) / 432 * 100}%`;
-    element.style.width = `${Math.max(32, target.height) / 576 * 100}%`;
-    element.style.height = `${Math.max(32, target.height) / 432 * 100}%`;
+    element.style.left = `${target.x / SOURCE_VIEWPORT_WIDTH * 100}%`;
+    element.style.top = `${(target.bottom - target.height) / SOURCE_VIEWPORT_HEIGHT * 100}%`;
+    element.style.width = `${Math.max(32, target.height) / SOURCE_VIEWPORT_WIDTH * 100}%`;
+    element.style.height = `${Math.max(32, target.height) / SOURCE_VIEWPORT_HEIGHT * 100}%`;
     element.style.backgroundColor = `rgba(${clamp(finite(color.red), 0, 255)}, ${clamp(finite(color.green), 0, 255)}, ${clamp(finite(color.blue), 0, 255)}, ${clamp(finite(color.alpha) / 255, 0, 1)})`;
     element.style.transition = `opacity ${duration}ms linear`;
     this.elements.animations.append(element);

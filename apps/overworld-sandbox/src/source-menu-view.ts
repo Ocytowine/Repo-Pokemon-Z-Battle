@@ -299,15 +299,28 @@ export class SourceMenuView {
     this.pokeVialConfirming = false;
   }
 
+  public hide(): void {
+    this.stopRegionMapLayout?.();
+    this.stopRegionMapLayout = null;
+    const menu = document.querySelector<HTMLElement>("#source-menu");
+    if (menu !== null) menu.hidden = true;
+    this.wasOpen = false;
+    this.clearTeamSelection();
+    this.characterGuideOpen = false;
+    this.openDevSection = null;
+    this.bagResizeObserver?.disconnect();
+    this.bagResizeObserver = null;
+    this.bagModel = null;
+  }
+
   public render(model: SourceMenuViewModel): void {
+    if (!model.open) { this.hide(); return; }
     this.stopRegionMapLayout?.();
     this.stopRegionMapLayout = null;
     const menu = document.querySelector<HTMLElement>("#source-menu");
     const content = document.querySelector<HTMLElement>("#source-menu-content");
     if (menu === null || content === null) return;
-    menu.hidden = !model.open;
-    if (!model.open) { this.wasOpen = false; this.clearTeamSelection(); this.characterGuideOpen = false; this.openDevSection = null;
-      this.bagResizeObserver?.disconnect(); this.bagResizeObserver = null; this.bagModel = null; return; }
+    menu.hidden = false;
     if (!this.wasOpen) this.clearTeamSelection();
     this.wasOpen = true;
     if (model.tab !== "team") this.clearTeamSelection();

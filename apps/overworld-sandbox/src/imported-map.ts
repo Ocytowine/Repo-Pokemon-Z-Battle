@@ -385,24 +385,8 @@ export function blockingDefaultEventPoints(events: readonly ImportedMapEvent[], 
     const page = selectEventPage(event, mapId, state);
     if (page === null || page.settings.through) return [];
     const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
-    // RPG Maker laisse traverser une page sans graphisme, mais ses declencheurs
-    // de contact 1/2 arretent tout de meme le pas pour lancer l'evenement. L'hote
-    // les execute avant son mouvement ; un invite sans autorite narrative doit
-    // donc recevoir la meme occupation effective depuis la room.
-    const contact = page.settings.trigger === 1 || page.settings.trigger === 2;
-    return visible || contact ? eventFootprint(event) : [];
-  });
-}
-
-/** Obstacles sans acteur visuel qui doivent tout de meme etre partages par la room. */
-export function blockingNarrativeEventPoints(events: readonly ImportedMapEvent[], mapId = 0,
-  state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): GridPoint[] {
-  return events.flatMap((event) => {
-    const page = selectEventPage(event, mapId, state);
-    if (page === null || page.settings.through) return [];
-    const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
-    const contact = page.settings.trigger === 1 || page.settings.trigger === 2;
-    return !visible && contact ? eventFootprint(event) : [];
+    // Les contacts invisibles se declenchent sur leur case apres le pas.
+    return visible ? eventFootprint(event) : [];
   });
 }
 
@@ -436,9 +420,29 @@ export function eventInInteractionRange(events: readonly ImportedMapEvent[], ava
 }
 
 export function playerTouchEventInDirection(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
-  direction: Direction, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
+  direction: Direction, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE,
+  map?: ImportedMap): ActiveMapEvent | null {
   const active = eventInFront(events, { ...avatar, direction }, mapId, state);
-  return active !== null && (active.page.settings.trigger === 1 || active.page.settings.trigger === 2) ? active : null;
+  if (active === null || (active.page.settings.trigger !== 1 && active.page.settings.trigger !== 2)) return null;
+  // Dans le jeu source, check_event_trigger_touch ne demarre que si le pas
+  // echoue contre un evenement qui n'est pas "over_trigger". Une page sans
+  // graphisme sur une case praticable demarre apres l'entree ; sur une case
+  // entierement bloquee, elle demarre depuis la case voisine.
+  const delta = DELTAS[direction];
+  const facing = { x: avatar.x + delta.x, y: avatar.y + delta.y };
+  const blockedTile = map !== undefined && facing.x >= 0 && facing.y >= 0
+    && facing.x < map.width && facing.y < map.height
+    && map.collision.masks[facing.y * map.width + facing.x] === 0;
+  return blockedTile || !active.page.settings.through
+    && (active.page.graphic.characterName !== "" || active.page.graphic.tileId > 0) ? active : null;
+}
+
+/** Contact rencontre a l'arrivee d'une route imposee, sans relancer sa propre page. */
+export function contactAfterPlayerRoute(events: readonly ImportedMapEvent[], avatar: ImportedAvatar,
+  previousEventId: number, mapId = 0, state: SourceEventState = EMPTY_SOURCE_EVENT_STATE): ActiveMapEvent | null {
+  const active = activeEventAt(events, avatar.x, avatar.y, mapId, state);
+  return active !== null && active.event.id !== previousEventId
+    && (active.page.settings.trigger === 1 || active.page.settings.trigger === 2) ? active : null;
 }
 
 export function transferForEvent(map: ImportedMap, activeEvent: ActiveMapEvent): ImportedTransfer | null {
@@ -736,10 +740,12 @@ function parseBattleCatalog(pokemonValue: unknown, movesValue: unknown, abilitie
 
 const jsonCache = new Map<string, Promise<unknown>>();
 const imageCache = new Map<string, Promise<HTMLImageElement>>();
+let staticTileChunks = new WeakMap<ImportedMapAssets, Map<string, HTMLCanvasElement>>();
 
 export function clearImportedMapCaches(): void {
   jsonCache.clear();
   imageCache.clear();
+  staticTileChunks = new WeakMap();
   clearSourceLocalDataCache();
 }
 
@@ -929,6 +935,74 @@ function drawTile(context: CanvasRenderingContext2D, assets: ImportedMapAssets, 
   });
 }
 
+const STATIC_TILE_CHUNK_TILES = 16;
+const STATIC_TILE_CHUNK_PIXELS = STATIC_TILE_CHUNK_TILES * 32;
+const STATIC_TILE_CHUNK_LIMIT = 36;
+
+function animatedAutotile(assets: ImportedMapAssets, tileId: number): boolean {
+  if (tileId < 48 || tileId >= 384) return false;
+  const image = assets.autotileImages[Math.floor(tileId / 48) - 1];
+  return image !== null && image !== undefined && image.width > (image.height === 32 ? 32 : 96);
+}
+
+function staticTileChunk(assets: ImportedMapAssets, layerIndex: number, chunkX: number,
+  chunkY: number): HTMLCanvasElement {
+  let chunks = staticTileChunks.get(assets);
+  if (chunks === undefined) {
+    chunks = new Map();
+    staticTileChunks.set(assets, chunks);
+  }
+  const key = `${layerIndex}:${chunkX}:${chunkY}`;
+  const cached = chunks.get(key);
+  if (cached !== undefined) {
+    chunks.delete(key);
+    chunks.set(key, cached);
+    return cached;
+  }
+  const canvas = document.createElement("canvas");
+  canvas.width = STATIC_TILE_CHUNK_PIXELS;
+  canvas.height = STATIC_TILE_CHUNK_PIXELS;
+  const context = canvas.getContext("2d");
+  if (context !== null) {
+    context.imageSmoothingEnabled = false;
+    const map = assets.map;
+    const layer = [map.layers.lower, map.layers.middle, map.layers.upper][layerIndex]!;
+    const startX = chunkX * STATIC_TILE_CHUNK_TILES;
+    const startY = chunkY * STATIC_TILE_CHUNK_TILES;
+    for (let y = startY; y < Math.min(startY + STATIC_TILE_CHUNK_TILES, map.height); y += 1) {
+      for (let x = startX; x < Math.min(startX + STATIC_TILE_CHUNK_TILES, map.width); x += 1) {
+        const tileId = layer[y * map.width + x] ?? 0;
+        if ((assets.tileset.priorities[tileId] ?? 0) !== 0 || animatedAutotile(assets, tileId)) continue;
+        drawTile(context, assets, tileId, (x - startX) * 32, (y - startY) * 32, 0);
+      }
+    }
+  }
+  chunks.set(key, canvas);
+  if (chunks.size > STATIC_TILE_CHUNK_LIMIT) chunks.delete(chunks.keys().next().value!);
+  return canvas;
+}
+
+function drawCachedTileLayer(context: CanvasRenderingContext2D, assets: ImportedMapAssets,
+  layerIndex: number, cameraX: number, cameraY: number,
+  startX: number, startY: number, endX: number, endY: number, frame: number): void {
+  for (let chunkY = Math.floor(startY / STATIC_TILE_CHUNK_TILES);
+    chunkY <= Math.floor((endY - 1) / STATIC_TILE_CHUNK_TILES); chunkY += 1) {
+    for (let chunkX = Math.floor(startX / STATIC_TILE_CHUNK_TILES);
+      chunkX <= Math.floor((endX - 1) / STATIC_TILE_CHUNK_TILES); chunkX += 1) {
+      context.drawImage(staticTileChunk(assets, layerIndex, chunkX, chunkY),
+        chunkX * STATIC_TILE_CHUNK_PIXELS - cameraX, chunkY * STATIC_TILE_CHUNK_PIXELS - cameraY);
+    }
+  }
+  const map = assets.map;
+  const layer = [map.layers.lower, map.layers.middle, map.layers.upper][layerIndex]!;
+  for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) {
+    const tileId = layer[y * map.width + x] ?? 0;
+    if ((assets.tileset.priorities[tileId] ?? 0) === 0 && animatedAutotile(assets, tileId)) {
+      drawTile(context, assets, tileId, x * 32 - cameraX, y * 32 - cameraY, frame);
+    }
+  }
+}
+
 function directionRow(direction: number): number {
   switch (direction) {
     case 4: return 1;
@@ -1103,13 +1177,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   context.imageSmoothingEnabled = false;
   context.clearRect(0, 0, canvas.width, canvas.height);
   const mapLayers = [map.layers.lower, map.layers.middle, map.layers.upper] as const;
-  for (const layer of mapLayers) {
-    for (let y = startY; y < endY; y += 1) for (let x = startX; x < endX; x += 1) {
-      const tileId = layer[y * map.width + x] ?? 0;
-      if ((assets.tileset.priorities[tileId] ?? 0) === 0) {
-        drawTile(context, assets, tileId, x * 32 - cameraX, y * 32 - cameraY, frame);
-      }
-    }
+  for (let layerIndex = 0; layerIndex < mapLayers.length; layerIndex += 1) {
+    drawCachedTileLayer(context, assets, layerIndex, cameraX, cameraY, startX, startY, endX, endY, frame);
   }
   const eventEntries = assets.events.flatMap((event) => {
     if (hiddenEventIds.has(event.id)) return [];

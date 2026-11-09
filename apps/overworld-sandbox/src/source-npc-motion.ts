@@ -3,7 +3,7 @@ import { moveImportedAvatar, selectEventPage, type ImportedEventPose, type Impor
   type ImportedMapEvent } from "./imported-map.js";
 import { selectActiveEventPage, type SourceEventState } from "./source-event-state.js";
 import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
-import { executeSourceMoveRouteStep, type SourceRouteActor } from "./source-move-route.js";
+import { executeSourceMoveRouteStep, type SourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
 import type { SourceSceneActorSnapshot, SourceWorldActorSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import { parseSourceTruthEventTag } from "./source-truth-lens.js";
 
@@ -20,6 +20,8 @@ interface NpcRuntime {
   pattern?: number;
   pageIndex: number | null;
   routeIndex: number;
+  moveSpeed: number;
+  moveFrequency: number;
   noticeCooldownUntil: number;
   noticeLatched: boolean;
   networkRenderOffsetY?: number;
@@ -71,11 +73,15 @@ function nextRandom(runtime: NpcRuntime): number {
 }
 
 export function sourceNpcStepDuration(moveSpeed: number): number {
-  return Math.max(80, Math.min(500, 250 * 2 ** (3 - moveSpeed)));
+  const speed = Math.max(1, Math.min(6, moveSpeed));
+  // RGSS avance de 2 ** speed unités par image, sur 128 unités par case à 60 images/s.
+  return Math.round(128_000 / (60 * 2 ** speed));
 }
 
 export function sourceNpcMoveDelay(moveFrequency: number): number {
-  return [2_500, 1_800, 1_200, 700, 350, 150][Math.max(0, Math.min(5, moveFrequency))] ?? 1_200;
+  const frequency = Math.max(1, Math.min(6, moveFrequency));
+  // Game_Character#update attend que stop_count dépasse ce seuil avant un nouveau pas.
+  return Math.round(((40 - frequency * 2) * (6 - frequency) + 1) * 1_000 / 60);
 }
 
 export class SourceNpcMotionController {
@@ -95,6 +101,8 @@ export class SourceNpcMotionController {
       walkingPattern: 1,
       pageIndex: null,
       routeIndex: 0,
+      moveSpeed: event.pages[0]?.settings.moveSpeed ?? 3,
+      moveFrequency: event.pages[0]?.settings.moveFrequency ?? 3,
       noticeCooldownUntil: 0,
       noticeLatched: false,
     }));
@@ -118,13 +126,15 @@ export class SourceNpcMotionController {
         delete runtime.opacity;
         delete runtime.pattern;
         runtime.routeIndex = 0;
+        runtime.moveSpeed = page.settings.moveSpeed;
+        runtime.moveFrequency = page.settings.moveFrequency;
       }
       if (runtime.motion !== null) {
         if (sampleSourceGridMotion(runtime.motion, now).complete) {
+          const completedAt = runtime.motion.startedAt + runtime.motion.duration;
           runtime.motion = null;
-          runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
-        }
-        continue;
+          runtime.nextMoveAt = completedAt + sourceNpcMoveDelay(runtime.moveFrequency);
+        } else continue;
       }
       if (runtime.preInteractionDirection !== undefined) continue;
       const sightRange = page.settings.trigger === 2 ? sourceTrainerSightRange(event.name) : null;
@@ -148,14 +158,16 @@ export class SourceNpcMotionController {
         runtime.characterName = result.actor.characterName;
         runtime.opacity = result.actor.opacity;
         runtime.pattern = result.actor.pattern;
-        runtime.routeIndex = result.complete ? route.repeat ? 0 : route.steps.length
-          : Math.min(runtime.routeIndex + 1, route.steps.length);
+        runtime.moveSpeed = result.actor.moveSpeed;
+        runtime.moveFrequency = result.actor.moveFrequency;
         if (!result.supported) {
-          runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+          this.advanceRoute(runtime, route);
+          runtime.nextMoveAt = now + sourceNpcMoveDelay(runtime.moveFrequency);
           continue;
         }
         if (result.waitMs > 0 || result.destination === null) {
-          runtime.nextMoveAt = now + Math.max(result.waitMs, result.complete ? sourceNpcMoveDelay(page.settings.moveFrequency) : 0);
+          this.advanceRoute(runtime, route, result.complete);
+          runtime.nextMoveAt = now + Math.max(result.waitMs, result.complete ? sourceNpcMoveDelay(runtime.moveFrequency) : 0);
           continue;
         }
       }
@@ -164,7 +176,8 @@ export class SourceNpcMotionController {
         ? DIRECTIONS[nextRandom(runtime) % DIRECTIONS.length] ?? "down"
         : this.directionTo(actor, result.destination!);
       if (direction === null) {
-        runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+        if (route?.skippable) this.advanceRoute(runtime, route);
+        runtime.nextMoveAt = now + sourceNpcMoveDelay(runtime.moveFrequency);
         continue;
       }
       if (!page.settings.directionFix) runtime.direction = direction;
@@ -172,7 +185,8 @@ export class SourceNpcMotionController {
         y: runtime.y + (direction === "up" ? -1 : direction === "down" ? 1 : 0) };
       const touchedPlayer = narrativePlayers.find((player) => destination.x === player.x && destination.y === player.y);
       if (page.settings.trigger === 2 && touchedPlayer !== undefined) {
-        runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+        if (route?.skippable) this.advanceRoute(runtime, route);
+        runtime.nextMoveAt = now + sourceNpcMoveDelay(runtime.moveFrequency);
         return { event, page, pageIndex: selection.pageIndex, target: { ...touchedPlayer } };
       }
       const occupied = [...players.map((player) => ({ ...player })), ...events.flatMap((candidate) => {
@@ -186,17 +200,26 @@ export class SourceNpcMotionController {
       runtime.x = next.x;
       runtime.y = next.y;
       if (next.x !== before.x || next.y !== before.y) {
+        if (route !== null) this.advanceRoute(runtime, route);
         runtime.motion = createSourceGridMotion(before, next, runtime.direction, now,
-          { duration: sourceNpcStepDuration(page.settings.moveSpeed), walkingPattern: runtime.walkingPattern });
+          { duration: sourceNpcStepDuration(runtime.moveSpeed), walkingPattern: runtime.walkingPattern });
         runtime.walkingPattern = runtime.walkingPattern === 1 ? 3 : 1;
-      } else runtime.nextMoveAt = now + sourceNpcMoveDelay(page.settings.moveFrequency);
+      } else {
+        if (route?.skippable) this.advanceRoute(runtime, route);
+        runtime.nextMoveAt = now + sourceNpcMoveDelay(runtime.moveFrequency);
+      }
     }
     return null;
   }
 
+  private advanceRoute(runtime: NpcRuntime, route: SourceMoveRoute, complete = false): void {
+    runtime.routeIndex = complete ? route.repeat ? 0 : route.steps.length
+      : Math.min(runtime.routeIndex + 1, route.steps.length);
+  }
+
   private runtimeActor(runtime: NpcRuntime, page: NonNullable<ReturnType<typeof selectActiveEventPage>>["page"]): SourceRouteActor {
     return { x: runtime.x, y: runtime.y, direction: runtime.direction,
-      moveSpeed: page.settings.moveSpeed, moveFrequency: page.settings.moveFrequency,
+      moveSpeed: runtime.moveSpeed, moveFrequency: runtime.moveFrequency,
       walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
       directionFix: page.settings.directionFix, through: page.settings.through,
       alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
@@ -271,7 +294,7 @@ export class SourceNpcMotionController {
       const visible = page.graphic.characterName !== "" || page.graphic.tileId > 0;
       if (!visible) return [];
       return [{ eventId: event.id, x: runtime.x, y: runtime.y, direction: runtime.direction,
-        blocking: !page.settings.through, moveSpeed: page.settings.moveSpeed,
+        blocking: !page.settings.through, moveSpeed: runtime.moveSpeed,
         action: runtime.motion === null ? "idle" as const : "step" as const }];
     });
   }
@@ -287,6 +310,8 @@ export class SourceNpcMotionController {
     if (runtime.pageIndex !== selection.pageIndex) {
       runtime.pageIndex = selection.pageIndex;
       runtime.direction = directionName(page.graphic.direction);
+      runtime.moveSpeed = page.settings.moveSpeed;
+      runtime.moveFrequency = page.settings.moveFrequency;
       delete runtime.preInteractionDirection;
       delete runtime.interactionPageIndex;
       delete runtime.characterName;
@@ -295,7 +320,7 @@ export class SourceNpcMotionController {
     }
     return {
       x: runtime.x, y: runtime.y, direction: runtime.direction,
-      moveSpeed: page.settings.moveSpeed, moveFrequency: page.settings.moveFrequency,
+      moveSpeed: runtime.moveSpeed, moveFrequency: runtime.moveFrequency,
       walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
       directionFix: page.settings.directionFix, through: page.settings.through,
       alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
@@ -331,7 +356,7 @@ export class SourceNpcMotionController {
     const selection = event === undefined ? null : selectActiveEventPage(event, mapId, state);
     if (selection !== null && selection.pageIndex === runtime.interactionPageIndex) {
       if (!selection.page.settings.directionFix) runtime.direction = runtime.preInteractionDirection;
-      runtime.nextMoveAt = now + sourceNpcMoveDelay(selection.page.settings.moveFrequency);
+      runtime.nextMoveAt = now + sourceNpcMoveDelay(runtime.moveFrequency);
     }
     delete runtime.preInteractionDirection;
     delete runtime.interactionPageIndex;
@@ -343,6 +368,8 @@ export class SourceNpcMotionController {
     if (runtime === undefined) return 0;
     const before = { x: runtime.x, y: runtime.y, direction: runtime.direction };
     runtime.direction = actor.direction;
+    runtime.moveSpeed = actor.moveSpeed;
+    runtime.moveFrequency = actor.moveFrequency;
     runtime.characterName = actor.characterName;
     runtime.opacity = actor.opacity;
     runtime.pattern = actor.pattern;
@@ -401,6 +428,7 @@ export class SourceNpcMotionController {
       const moved = runtime.x !== actor.x || runtime.y !== actor.y;
       runtime.x = actor.x;
       runtime.y = actor.y;
+      runtime.moveSpeed = actor.moveSpeed;
       if (runtime.preInteractionDirection === undefined) runtime.direction = actor.direction;
       const currentMotion = runtime.motion;
       runtime.motion = moved && actor.action === "step"

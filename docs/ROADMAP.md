@@ -13,11 +13,11 @@
 | 6 - Equipes completes | Terminee | Equipes de six, test local et mecanismes principaux |
 | 7 - Prototype overworld | Terminee | Deux personnages synchronises sur deux zones de test |
 | 8 - Prototype coop | Terminee | Interactions et evenements classes |
-| 9 - Import progressif du monde | En cours | Cartes compatibles importees par lots |
-| 10 - Stabilisation du vertical jouable | En cours, quatre lots clos | `STAB-BATTLE-1` valide apres ses dependances et musique des lieux restauree |
+| 9 - Import progressif du monde | En cours, 507 cartes extraites ; géométrie et mouvements à reprendre sur les cas signalés | Parcours narratif et transferts vérifiés sur les cartes accessibles |
+| 10 - Stabilisation du vertical jouable | En cours, quatre lots clos ; saccades et comportements de combat à qualifier | `STAB-BATTLE-1` validé après ses dépendances, puis régression solo/Coop |
 | 11 - Mecanismes solo structurants | En cours, noyaux objets/capture/evolution et registre Pokedex fonctionnels | Fidelite de combat verticale puis finitions capture/evolution |
 | 12 - Extensions Coop | Planifiee | Capture, loot, Ranch et chat selon contrats autoritaires |
-| 13 - Plateforme et ergonomie | A qualifier | Cloud, import de sauvegarde, responsive et Android cadres |
+| 13 - Plateforme et ergonomie | En cours ; APK 0.1.8 (9) diffusée, cloud et packs actifs | Import robuste, fluidité et interfaces validés sur Android |
 
 Le rapport de reference de la Phase 0 est `docs/POKEMON_Z_ANALYSIS.md`.
 Les constats produit ajoutes le 2026-10-05 sont normalises dans
@@ -34,6 +34,14 @@ personnel est maintenant raccorde.
 Les rapports de support doivent etre regeneres apres toute evolution de ces
 registres afin que les anciens constats historiques ne soient pas pris pour l'etat
 courant.
+
+État du 2026-11-04 : le second rapport Android, reçu après la diffusion de
+`0.1.8 (9)`, ajoute dix observations actives parmi `BZ-019` à `BZ-030`,
+regroupées en neuf lots ci-dessous.
+`BZ-020` (titre) et `BZ-021` (import) ont été retirés du suivi actif à la
+demande du porteur. Le PDF ne précise pas sa version installée ni les étapes
+de reproduction de chaque cas ; les dix points restants sont **signalés, non corrigés**. Les validations antérieures restent
+valables pour leurs scénarios précis, sans effacer les nouvelles observations.
 
 ## Phase 0 - Analyse terminee
 
@@ -4324,7 +4332,57 @@ remplace pas.
   confirmée par le porteur le 2026-11-04 ; la régression hôte/invité reste à
   contrôler lors d'une session Coop. Aucune diffusion en ligne.
 
-**Ordre de reprise proposé :** reproduire `BZ-016` et `BZ-001` sur l'APK avec
+### Retour d'état « Bug 2 » — 2026-11-04
+
+Source : `docs/Débug/Bug/Bug 2_261104_223915.pdf` (trois pages, observations
+textuelles sur la première) et ajout oral du porteur sur les saccades générales.
+Le rapport ne donne ni version de l'APK, ni trace de performance, ni étapes
+détaillées pour chaque cas. Les statuts ci-dessous décrivent **ce qui est
+observé**, sans attribuer une cause ni annuler les validations de 0.1.8. Chaque
+identifiant est stable ; les chantiers existants sont liés dans la colonne
+« Raccord ». `BZ-020` (effet du titre) et `BZ-021` (import « Thomas ») sont
+**retirés du suivi actif le 2026-11-04** à la demande du porteur : ces deux
+observations ne sont plus d'actualité. Leurs identifiants restent réservés
+pour préserver les références historiques du rapport.
+
+| ID / priorité | Retour du porteur et raccord existant | État et prochaine preuve |
+|---|---|---|
+| **BZ-019 / P1 — Fluidité générale** | Le décor et le personnage saccadent ensemble pendant la marche sur toutes les cartes, en comparaison du jeu d'origine. Distinct de la synchronisation PNJ Coop. | **Validé en solo sur téléphone le 2026-11-09 ; régression Coop à contrôler.** Cache de géométrie et de tuiles fixes, rendu léger de fin de pas, persistance regroupée et enchaînement sans pause ; zoom source 512 × 384 validé. La correction des quatre poses du joueur seule n'avait rien changé. Le profil WebView a ensuite identifié une relecture des deux sauvegardes complètes qui bloquait JavaScript 40 à 55 ms environ toutes les 200 ms. Le menu fermé ne lit plus ces sauvegardes et les pas enchaînés en solo ne reconstruisent plus tous les panneaux. Le profil CPU ne montre plus ce coût répétitif ; après installation de l'APK locale finale, le porteur confirme « Oui, c’est fluide ». Vérifier hôte et invité Coop lors d'une session adaptée. |
+| **BZ-022 / P3 — Cartes Pokémon transparentes** | Souhait de fond transparent pour les cartes de l'Équipe, du Ranch et du Pokédex. Raccord : grilles et présentation des cartes `BZ-009`/`BZ-010`. | **Amélioration à concevoir.** Définir une transparence commune qui garde lisibles sprite, nom, types, PV et attaques sur les trois décors ; vérifier paysage Android et contrastes. |
+| **BZ-023 / P0 — Pont et escalier de Map233** | Mur invisible sur le pont ; l'escalier décale ou téléporte légèrement le joueur. Raccord : géométrie, collisions directionnelles et transferts de l'incrément 9.7. | **Validé en solo sur téléphone.** Le porteur confirme le passage du pont, le départ et l'arrivée du saut, puis le maintien simultané de Sprint et du déplacement pendant la traversée. Une page d'événement vide remplaçait Sprint par « Interagir » ; le filtre générique des pages inertes corrige ce point. Hôte, invité et reconnexion restent ouverts. |
+| **BZ-024 / P1 — Bouton Méga-Évolution** | Le porteur ne voit pas le bouton en combat. Raccord : `SOLO-MEGA-1`, dont les règles et animations sont déjà partiellement portées. | **Cause à qualifier.** Le code rend déjà un bouton dans le sous-menu Attaque si `active.megaEvolution` existe ; il peut être masqué par une projection d'éligibilité absente ou par la présentation. Reproduire avec objet et gemme compatibles, puis contrôler visibilité et activation en solo, Coop, simple, double et reconnexion. |
+| **BZ-025 / P1 — Capacités particulières** | Revoir les attaques à déroulement spécial, notamment Tunnel. Raccord : audit de fonctions/animations de combat et `BZ-004`, sans confondre règle tactique et animation. | **À auditer.** Comparer tour de préparation, invulnérabilité, interruption, cible, animation et règlement à la source ; commencer par Tunnel puis les fonctions du même type, dans le noyau commun simple/double/Coop. |
+| **BZ-026 / P1 — Animation d'attaque ratée** | Une animation se joue malgré l'échec du jet de précision. Raccord : `Attaque raté.md` et présentation des combats. | **Signalé.** Reproduire sur une capacité de précision inférieure à 100 %, puis distinguer animation de lancement, d'impact et message « raté » ; respecter le résultat autoritaire en solo et Coop, sans masquer les effets que la source joue réellement. |
+| **BZ-027 / P1 — Vitesse et fluidité des PNJ** | Les PNJ rapides progressaient par à-coups, alors que leur déplacement est fluide dans le jeu d'origine. Il ne s'agit pas d'une option de vitesse à exposer. Raccord : cadence source, interpolation locale et `Synchronisation pnj en multi.md`. | **Validé en solo sur téléphone.** La durée du pas suit `128 / 2^vitesse` images à 60 images/s et l'attente entre pas suit la fréquence source. Le plafond artificiel de 80 ms est retiré ; le pas suivant peut démarrer dès l'échéance prévue. Le porteur confirme une marche fluide et à la bonne vitesse sur l'APK locale. Hôte, invité et reconnexion restent à contrôler. |
+| **BZ-028 / P1 — Trajet PNJ déraillé par le joueur** | Un joueur peut perturber la route d'un PNJ. Raccord : collisions narratives et mouvements imposés de l'incrément 9.7. | **Correctif local, recette ouverte.** Une étape de mouvement non franchie reste en attente si la route n'est pas skippable ; une route skippable avance. Tests ciblés passés. Vérifier sur téléphone les blocages par l'hôte et l'invité, le rendu distant et la reconnexion. |
+| **BZ-029 / P0 — Mouvements scriptés et glissades** | Les collisions et glissades, notamment Map235, ne suivent pas le trajet prévu. Le départ de la glissade peut être manqué ; le personnage termine alors au mauvais endroit (`BZ-030`). Raccord : routes forcées et terrain de l'incrément 9.7. | **Validé en solo sur téléphone pour Map235.** Le porteur confirme que le trajet démarre et arrive au bon endroit avec l'APK locale 0.1.8 (9). La règle générique de contact invisible et le chaînage des routes sont en place ; hôte, invité et reconnexion restent à vérifier avant clôture globale. |
+| **BZ-030 / P0 — Sous-cas d'arrivée de BZ-029** | Précision du porteur : l'arrivée hors zone est la conséquence d'un **départ de glissade non détecté**. Ce n'est pas, à ce stade, un défaut général de Vol ou de tous les transferts. | **Résolu dans la recette solo de BZ-029.** Le porteur confirme la bonne arrivée sur téléphone. L'événement 23 en (19,28) impose cinq pas jusqu'à l'événement 25 en (19,23) ; le départ anticipé en (19,29) est corrigé. Conserver le contrôle Coop et reconnexion du lot parent. |
+
+**Ordre proposé :**
+
+1. **Mesure initiale `BZ-019`.** Relever la fluidité sur l'APK actuelle avant
+   les correctifs, dans une carte calme et dans Map235. Ce témoin aide à
+   distinguer les saccades générales des ratés de mouvement.
+2. **Déplacements forcés `BZ-029` + `BZ-030`.** Reproduire le départ manqué de
+   glissade, corriger le trajet complet et contrôler la case finale. Un seul lot
+   et une seule recette solo/hôte/invité/reconnexion couvrent les deux IDs.
+3. **Géométrie `BZ-023`.** Contrôler le pont et l'escalier de Map233 avec le
+   même contrat de collision et de position, dans les deux sens.
+4. **Routes, vitesse et fluidité des PNJ `BZ-028` puis `BZ-027`.** Garantir
+   qu'un obstacle joueur ne dérègle pas la route, puis retrouver la vitesse et
+   la fluidité du jeu source sans réglage utilisateur et aligner les poses Coop. Rapprocher
+   les mesures de `BZ-019` et optimiser la fluidité là où la trace démontre la cause.
+5. **Combat `BZ-026`, `BZ-024`, puis `BZ-025`.** Corriger le rendu d'un raté,
+   déterminer pourquoi le bouton Méga existant n'apparaît pas, puis auditer
+   les capacités à plusieurs temps comme Tunnel dans le noyau commun.
+6. **Finition `BZ-022`.** Harmoniser la transparence des cartes Pokémon après
+   stabilisation des parcours principaux.
+
+Les priorités peuvent changer après une trace Android montrant une cause
+commune. Aucun de ces sujets n'est codé dans ce classement ; ne pas diffuser
+de correctif sur la seule base du PDF.
+
+**Ordre historique du premier rapport :** reproduire `BZ-016` et `BZ-001` sur l'APK avec
 une trace courte ; fixer le contrat des boss (capture, BGM, audio et plans) et
 le cycle des rencontres dans le noyau commun ; arrêter la règle de niveau de
 référence de `BZ-003` puis coder son journal d'EXP et sa case Coop ; traiter

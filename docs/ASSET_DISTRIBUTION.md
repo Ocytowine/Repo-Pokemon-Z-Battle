@@ -463,3 +463,43 @@ aucun pack ni manifeste de pack n'a changé. Seuls
 `updates/android/pokemon-z-battle-9.apk` et le manifeste de mise à jour
 Android ont été publiés, APK d'abord et manifeste en dernier après contrôle
 de la taille distante.
+
+Le lot local BZ-029/030 a été construit avec le même profil
+`android:release:slim`, signé et installé par USB. Le correctif porte sur le déclenchement des événements et
+les routes imposées ; aucune décision de livraison, aucune ressource du jeu,
+aucun pack ni manifeste distant n'a été modifié. L'APK reste au code de
+version 0.1.8 (9) tant que le lot n'est pas validé pour diffusion.
+
+Le complément local BZ-023 du 2026-11-05 a été construit et installé avec
+ce même profil. Il ne modifie que la règle de déclenchement des événements
+sur cases bloquées ; la copie de `Graphics` et `Audio`, les packs privés et
+leurs manifestes conservent la décision précédente. Aucune publication R2.
+
+Le complément tactile BZ-023 sur le maintien du sprint au pont a de nouveau
+produit une APK locale avec ce profil. Aucun fichier `Graphics` ou `Audio`
+n'a été ajouté, supprimé ou changé de pack ; aucune publication R2.
+
+Le second correctif local du bouton Sprint au pont ne change encore que le
+code de présentation. L'APK de recette a été reconstruite et installée en
+conservant la même répartition des ressources et les packs existants.
+
+### Icône native Android — 2026-11-09
+
+Le logo local `Graphics/Logo_PokéballZBattle.png` est utilisé pour générer les
+dix PNG d'icône native Android, transparents. Ces fichiers dérivés sont des ressources du
+lanceur, distinctes de la copie de `Graphics` utilisée par le jeu. La copie
+Android de `Graphics` et `Audio`, les packs privés et leurs manifestes gardent
+leur répartition actuelle ; aucune ressource du jeu n'est exclue ou publiée.
+Le PNG source reste local et hors Git.
+L'APK release allégée locale a été reconstruite avec cette icône, en conservant
+les 49 fonds larges et les BGM hors titre dans leurs packs privés existants.
+Aucun pack, manifeste ou APK distant n'a été modifié.
+Cette APK locale a été installée par USB sur le Samsung SM-S911U1 avec
+`adb install -r`, sans changement de répartition des ressources.
+Le lanceur Samsung a affiché un fond noir lorsque le fond adaptatif était
+transparent. Les définitions adaptatives ont été retirées pour laisser les
+PNG transparents au lanceur ; aucune ressource `Graphics` ou `Audio`, aucun
+pack ni manifeste distant n'a été modifié. L'APK release allégée est signée
+et installée par USB sur le Samsung. One UI ajoute un fond blanc autour du
+PNG transparent dans l'écran d'informations de l'application ; la ressource
+de l'APK elle-même garde son canal alpha.

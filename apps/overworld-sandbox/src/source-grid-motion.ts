@@ -30,6 +30,12 @@ export function createSourceGridMotion(from: GridPoint, to: GridPoint, direction
     action: options.action ?? "step" };
 }
 
+/** Rattrape au plus une image après un pas pour éviter une pause à chaque case. */
+export function sourceChainedMotionStart(completed: SourceGridMotion | null, now: number): number {
+  if (completed === null) return now;
+  return Math.max(now - 16, Math.min(now, completed.startedAt + completed.duration));
+}
+
 export function sampleSourceGridMotion(motion: SourceGridMotion, now: number): SourceGridPose {
   const progress = Math.max(0, Math.min(1, (now - motion.startedAt) / motion.duration));
   return {

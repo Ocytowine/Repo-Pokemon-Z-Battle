@@ -16,6 +16,8 @@ export interface SourceSequenceSession {
   pendingChoice: PendingEventChoice | null;
   cursor: number;
   advancing: boolean;
+  /** Au moins un pas impose au joueur a abouti pendant cette sequence. */
+  playerRouteMoved?: boolean;
   autorunBaseline?: SourceEventState;
   /** One-shot presentation override from the current source event. */
   nextBattleMusic?: string | null;

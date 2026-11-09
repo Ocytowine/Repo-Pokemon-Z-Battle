@@ -138,4 +138,35 @@ describe("source Android touch controls", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  it("keeps a physical sprint press through a silent contact sequence", () => {
+    const control = () => Object.assign(new EventTarget(), {
+      style: { transform: "" }, classList: { add: vi.fn(), remove: vi.fn() },
+      dataset: {}, disabled: false, textContent: "", setAttribute: vi.fn(), setPointerCapture: vi.fn(),
+    });
+    const actionButton = control();
+    const elements = new Map([
+      ["#source-touch-joystick", control()], ["#source-touch-joystick-knob", control()],
+      ["#source-touch-interact", actionButton], ["#source-touch-menu", control()],
+    ]);
+    vi.stubGlobal("document", { querySelector: (selector: string) => elements.get(selector) ?? null });
+    try {
+      const onSprint = vi.fn();
+      const controls = new SourceTouchControls({ onDirection: vi.fn(), onInteract: vi.fn(), onCancel: vi.fn(),
+        onMenu: vi.fn(), onSprint, getSecondaryAction: () => "menu",
+        getAction: () => ({ kind: "sprint", label: "Sprint", ariaLabel: "Maintenir pour sprinter" }) });
+      const pointer = (type: string) => Object.assign(new Event(type, { cancelable: true }), { pointerId: 7 });
+      controls.setContextAction({ kind: "sprint", label: "Sprint", ariaLabel: "Maintenir pour sprinter" });
+      actionButton.dispatchEvent(pointer("pointerdown"));
+      controls.setContextAction({ kind: "unavailable", label: "Action", ariaLabel: "Action indisponible" }, true);
+      expect(actionButton.disabled).toBe(false);
+      expect(actionButton.textContent).toBe("Sprint");
+      expect(onSprint).not.toHaveBeenCalledWith(false);
+      controls.setContextAction({ kind: "sprint", label: "Sprint", ariaLabel: "Maintenir pour sprinter" });
+      actionButton.dispatchEvent(pointer("pointerup"));
+      expect(onSprint).toHaveBeenLastCalledWith(false);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });

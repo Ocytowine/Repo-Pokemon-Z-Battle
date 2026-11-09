@@ -10986,3 +10986,351 @@ le nom, la taille, le hash et le MIME `application/json` attendus. Le Worker
 existant derrière Cloudflare Access annonce donc cette version sans nouveau
 déploiement. Aucun pack, ressource source ou secret n'a été publié dans Git ;
 aucun commit n'a été créé.
+
+## Retour Android « Bug 2 » — tri documentaire du 2026-11-04
+
+Le porteur a ajouté `docs/Débug/Bug/Bug 2_261104_223915.pdf` après la diffusion
+de 0.1.8 et signale en plus des saccades générales. La roadmap contient
+désormais dix observations actives parmi `BZ-019` à `BZ-030`, regroupées en
+neuf lots, avec priorité, lien vers les lots existants, état et preuve attendue.
+`BZ-020` (titre) et `BZ-021`
+(import) ont été retirés du suivi actif à la demande du porteur ; leurs numéros
+restent réservés dans l'historique. Aucun code ni APK n'a été changé pour ce
+tri. La version réellement testée n'est pas indiquée dans le PDF.
+
+Précision ultérieure du porteur : `BZ-030` est un sous-cas de `BZ-029`. Un
+départ de glissade non détecté entraîne le mauvais point d'arrivée ; il ne
+faut pas ouvrir un chantier général de transferts ou de Vol sur cette seule
+observation. L'ordre proposé est : mesure témoin de la fluidité `BZ-019`,
+correction du trajet forcé `BZ-029`/`BZ-030`, puis pont et escalier `BZ-023` ;
+routes PNJ `BZ-028`, vitesse et fluidité `BZ-027`/`BZ-019`, combat, puis cartes
+transparentes. `BZ-024` renvoie à la Méga-Évolution partiellement portée ;
+`BZ-025` et `BZ-026` distinguent mécaniques d'attaques spéciales et animation
+jouée lors d'un raté. `BZ-022` est une amélioration de transparence des cartes
+Équipe/Ranch/Pokédex. Les validations anciennes restent attachées à leurs
+scénarios précis et n'effacent pas ces nouveaux signalements.
+
+## BZ-019 / BZ-029 / BZ-030 — premier lot local du 2026-11-04
+
+Mesure témoin sur Samsung SM-S911U1, APK 0.1.8 (9), usine Map235 sans mouvement :
+`dumpsys gfxinfo` relève 1 449 images en 12 secondes, 6 images saccadées
+(0,41 %), médiane 5 ms et 99e percentile 6 ms. Cette mesure ne couvre pas
+les à-coups pendant la marche, le combat ou la Coop : BZ-019 reste ouvert.
+
+Cause vérifiée dans les données et les scripts source : les glissades de Map235
+sont des événements invisibles de contact, pas des tuiles de glace. L'événement
+23 est en (19,28), impose cinq pas vers le haut et doit arriver sur l'événement
+25 en (19,23). L'app démarrait son événement avant d'entrer sur (19,28),
+depuis (19,29), ce qui décalait toute la route d'une case. `Game_Player` de la
+source ne lance un contact devant lui que si l'événement bloque le pas ; une
+page traversable sans graphisme démarre après l'entrée sur sa case.
+
+La correction applique cette règle dans `playerTouchEventInDirection` et retire
+les contacts invisibles des obstacles locaux et de `blockedPoints` dans la
+room. Les PNJ visibles bloquants restent déclenchés avant le pas. À la fin
+d'une route imposée au joueur, un autre contact sur la case d'arrivée est
+relancé si l'interpolation s'est déjà achevée ; si elle est encore en cours,
+le contrôle habituel de fin de pas le prend en charge. Une route qui sortirait
+de la carte est interrompue, ou saute ce pas si elle est marquée `skippable`.
+Le noyau `resolveSourceMovement` et les snapshots de room conservent la même
+occupation ; l'état narratif reste à l'hôte et la présentation personnelle
+reste à l'invité. Aucune donnée de sauvegarde ni ressource n'a changé.
+
+`corepack pnpm test` et `corepack pnpm build` passent. Les tests couvrent
+l'entrée sur un contact invisible, ses pages conditionnelles et le contact
+visible bloquant. Le `typecheck` isolé de l'Overworld échoue sur des erreurs
+préexistantes dans les modules combat et présentation, sans diagnostic dans
+les fichiers de ce lot. Validation tactile du trajet complet, de l'invité
+Coop et de la reconnexion encore nécessaire ; ne pas clôturer BZ-029/030
+sur le seul test automatique. L'APK locale signée 0.1.8 (9) a été construite
+avec `android:release:slim` et son certificat attendu ; `adb install -r` a
+répondu `Success` sur le Samsung. `firstInstallTime` est resté au 2026-10-28,
+et l'activité a été relancée. Le porteur doit encore valider le trajet tactile.
+
+Retour du porteur sur cette APK locale : **trajet et arrivée corrects** pour
+la glissade de l'usine. La recette solo de BZ-029 et son sous-cas BZ-030 sont
+donc validés sur téléphone. Le statut global de BZ-029 reste ouvert pour la
+recette hôte/invité et reconnexion prévue par le contrat Coop.
+
+## BZ-023 — analyse de Map233 du 2026-11-05
+
+Le rendu des tuiles source situe le pont central sur les colonnes 27–28,
+lignes 29–36. Leurs masques de collision extraits valent 15 : le tablier
+lui-même autorise les quatre directions. L'événement invisible 43,
+`size(4,1)`, couvre les cases (26–29,37) à son entrée sud. Sa page active
+est de contact (`trigger=1`) ; l'ancien calcul d'occupation de l'app la
+traitait comme un obstacle. La règle générique corrigée pour BZ-029 permet
+maintenant d'entrer sur la zone avant de lancer l'événement. Cette cause
+explique le mur invisible signalé sans modifier la carte ni les ressources.
+
+Deux autres événements invisibles de contact, 44 en (33,19) et 45 en
+(34,18), imposent respectivement des sauts relatifs (0,+4) et (+2,+1) selon
+la direction du joueur. Leurs cases ont un masque de collision 0. Le jeu
+source les déclenche donc **avant** d'entrer sur ces cases, depuis (33,18) ;
+les destinations attendues sont (33,22) et (35,19), toutes deux passables.
+La première version de BZ-029, qui ne déclenchait plus aucun contact invisible
+devant le joueur, rendait ces deux événements inaccessibles. Le prédicat de
+contact distingue désormais case traversable (activation après l'entrée)
+et case entièrement bloquée (activation depuis la case voisine). Cette règle
+est générique et ne dépend d'aucun numéro d'événement.
+
+Retour du porteur sur l'APK locale précédente : « j'ai plus le bug » en
+Map233. La capture ADB situe le joueur sur l'entrée sud du pont, ce qui
+confirme que ce passage n'est plus bloqué. La recette spécifique des
+événements de saut n'a pas été isolée dans ce retour ; leur nuance de
+déclenchement sur cases bloquées vient d'être ajoutée au code.
+`corepack pnpm test`, `corepack pnpm build` et `android:release:slim` passent.
+La nouvelle APK locale 0.1.8 (9), signée avec le certificat attendu, a été
+installée par `adb install -r` (`Success`) et relancée ; `firstInstallTime`
+n'a pas changé. Retour du porteur sur cette nouvelle APK : départ et arrivée
+du saut corrects. Le pont et l'escalier de Map233 sont donc validés en solo.
+La recette Coop
+et reconnexion reste ouverte. Aucun asset n'a changé.
+
+Retour complémentaire du porteur sur le même pont : le bouton Sprint se
+désactive pendant la traversée alors que le doigt reste appuyé. L'événement
+invisible 43 ouvre une séquence de contact ; le rafraîchissement de l'action
+tactile la marquait indisponible et `SourceTouchControls` émettait
+`onSprint(false)` immédiatement. La fin d'une séquence de contact sans route
+ne relançait pas non plus le joystick maintenu. Le code garde désormais la
+capture physique du bouton pendant une séquence silencieuse, puis reprend
+le déplacement encore maintenu à sa clôture. Un dialogue réel ou le retrait
+du doigt conserve le comportement de libération. Test ciblé ajouté ; recette
+tactile du pont en sprint encore nécessaire avant de valider ce complément.
+
+Le dépôt a passé `corepack pnpm test` et `corepack pnpm build` ; l'APK locale
+`android:release:slim` 0.1.8 (9) est signée avec le certificat attendu et
+réinstallée sur le Samsung par `adb install -r` (`Success`). L'activité a été
+relancée, `firstInstallTime` reste au 2026-10-28. Aucun manifeste R2 ni APK
+publique n'a été modifié. Recette tactile en attente du porteur.
+
+Le porteur confirme que cette première APK ne règle pas le sprint. La capture
+ADB montre la cause supplémentaire : devant le pont, le bouton tactile affiche
+« Interagir » à la place de « Sprint ». La page active de l'événement 43,
+conditionnée par le switch 483, a `trigger=0` mais ne contient que `end`.
+`resolveSourceContextAction` traitait toute page d'action comme interactive,
+même vide, et `SourceTouchControls` libérait alors Sprint. Le résolveur ignore
+maintenant une page sans commande utile, sauf si un transfert est réellement
+présent. Test ciblé ajouté pour page vide et transfert ; test tactile Android
+de ce second correctif attendu. Le premier correctif de maintien reste utile
+pour les séquences de contact non vides.
+
+`corepack pnpm test` et `corepack pnpm build` repassent ; les tests de
+l'Overworld sont 559/559. `android:release:slim` a produit une nouvelle APK
+locale signée 0.1.8 (9), installée avec `adb install -r` (`Success`) et
+relancée. `firstInstallTime` reste au 2026-10-28. Le test tactile du porteur
+sur le pont reste nécessaire ; aucun pack ni APK publique n'a changé.
+
+Contrôle visuel ADB supplémentaire : après reprise de la sauvegarde locale
+en Map233, à la même position au sud du pont, le bouton affiche maintenant
+« Sprint » ; la capture précédente montrait « Interagir ». Ce contrôle
+confirme le choix contextuel, sans prouver encore la tenue simultanée de
+Sprint et du joystick sur toute la traversée.
+
+Retour du porteur sur cette APK locale : le bouton reste « Sprint » et le
+déplacement continue pendant la traversée du pont avec les deux appuis
+maintenus. Le défaut de sprint de BZ-023 est donc validé comme corrigé en solo
+sur téléphone. Les contrôles hôte, invité et reconnexion restent ouverts ;
+aucune APK publique n'a été diffusée pour ce lot.
+
+## BZ-028 et BZ-027 — routes et vitesse des PNJ — 2026-11-05
+
+Le porteur a ajouté le réglage de la vitesse des PNJ au lot suivant. Le script
+source `Game_Character#move_type_custom` conserve l'index d'une étape de
+mouvement bloquée lorsque la route n'est pas skippable ; il l'avance si la
+route est skippable ou si le mouvement réussit. Le contrôleur du portage
+avançait l'index avant de tester la collision, ce qui faisait dérailler la
+route lorsqu'un joueur occupait la case suivante. Le correctif local attend
+maintenant la réussite du pas pour avancer l'index des routes non skippables.
+
+Les commandes source `change-speed` et `change-frequency` étaient comprises
+par l'interpréteur de route mais leur résultat n'était pas gardé par le PNJ.
+Le contrôleur conserve désormais ces valeurs pendant la page active, les
+réinitialise au changement de page, utilise la vitesse active pour la durée
+du pas et la publie dans le snapshot des acteurs du monde. L'hôte reste
+l'autorité des positions et de la cadence ; l'invité interpole avec la vitesse
+répliquée. L'état est celui du monde partagé, visible aux joueurs présents.
+Au retour dans une room active, le snapshot restaure position, direction et
+vitesse sur l'invité ; une reconstruction après redémarrage complet de l'hôte
+réinitialise encore l'index de route et reste une dette de reconnexion.
+
+Tests ciblés : route non skippable bloquée puis libérée, changement de vitesse
+et interpolation invitée. `corepack pnpm test` et `corepack pnpm build` sont
+passés avant la correction de cadence ci-dessous (561 tests Overworld).
+`BZ-028` attend aussi un essai sur téléphone.
+
+Précision du porteur : « régler la vitesse » signifie retrouver le déplacement
+rapide et fluide des PNJ du jeu d'origine, sans option de vitesse pour le joueur.
+Le code source fixe `Graphics.frame_rate=60`, `Game_Map.realResX=128` et
+`Game_Character#update_move` avance de `2 ** move_speed` unités par image.
+Le portage plafonnait tous les pas rapides à au moins 80 ms : à vitesse 6,
+le pas source dure environ 33 ms. Il ajoutait aussi 150 ms entre les pas à
+fréquence 6, contre environ 17 ms dans la formule source de `stop_count`.
+`sourceNpcStepDuration` et `sourceNpcMoveDelay` reprennent maintenant ces
+formules, et la prochaine échéance est calculée depuis la fin réelle du pas,
+sans attendre une image supplémentaire. Un test de deux pas rapides successifs
+vérifie cette cadence. La fluidité perçue sur téléphone et la cadence des
+snapshots Coop restent à contrôler avant validation de `BZ-027`.
+
+Après cette correction de cadence, `corepack pnpm test` passe (562 tests
+Overworld) ainsi que `corepack pnpm build`. `android:release:slim` a produit
+l'APK locale signée avec le certificat attendu ; `adb install -r` a réussi
+sur le Samsung connecté. La recette visuelle du PNJ rapide a été demandée au
+porteur. Aucun déploiement public ni pack R2 n'a été modifié.
+
+Retour du porteur sur l'APK locale : le PNJ précédemment saccadé marche
+maintenant de façon fluide et à la bonne vitesse. `BZ-027` est validé en
+solo sur téléphone ; la recette hôte, invité et reconnexion reste ouverte.
+
+## BZ-019 — fluidité de l'overworld — 2026-11-05
+
+Le porteur situe les saccades sur toutes les cartes et voit le décor et le
+personnage s'arrêter ensemble pendant la marche. Sur Samsung SM-S911U1,
+`dumpsys gfxinfo` après un essai de marche relève 62 images saccadées sur
+3 128 (1,98 %), médiane 6 ms, 99e percentile 10 ms. Cette mesure native
+ne donne pas directement la cadence des animations JavaScript ; elle sert
+de témoin avant le nouveau correctif.
+
+Analyse du chemin de marche : `move()` reconstruisait à chaque case le contrat
+du monde, notamment la chaîne des collisions et le terrain de chaque case de
+la carte. Même en solo, il reconstruisait ce contrat une seconde fois pour
+une publication Coop sans session active. À la fin du pas, `renderImportedView`
+recalculait les panneaux, menus, équipe et Ranch, dont le grand HTML du HUD
+de diagnostic. Les compteurs de progression écrivaient aussi deux fois le
+grand état JSON en stockage local à chaque case. Ces tâches synchrones
+retardaient le pas suivant et la prochaine image.
+
+Le correctif local garde la géométrie immuable en cache tant que les assets
+de carte sont les mêmes, évite la publication du monde hors room, met à jour
+seulement le statut visible pendant une marche continue et reconstruit les
+interfaces complètes à l'arrêt ou lors d'un avis de terrain. Les progrès de
+marche sans rencontre sont regroupés sur 500 ms ; les rencontres et autres
+mutations explicites restent persistées immédiatement. Le tampon est vidé
+avant la sauvegarde sur `visibilitychange` et `pagehide`. Le pas suivant peut
+reprendre à l'échéance du précédent avec un rattrapage plafonné à 16 ms.
+
+Autorité et état : les pas et les compteurs personnels restent au joueur
+concerné ; la narration du monde reste à l'hôte. En room, la géométrie en
+cache et la logique de mouvement sont les mêmes qu'en solo, les positions
+et acteurs continuent d'être publiés par l'hôte et le tampon personnel est
+persisté avant sortie. L'invité conserve sa copie de progression personnelle.
+Recette visuelle solo, hôte, invité et reconnexion à refaire sur Android.
+
+## Icône native Android — 2026-11-09
+
+Le logo local `Graphics/Logo_PokéballZBattle.png` sert aux icônes
+`ic_launcher` et `ic_launcher_round` pour les cinq densités Android. Le script
+`apps/overworld-sandbox/scripts/generate-android-icon.ps1` recrée ces PNG
+transparents à partir du logo local.
+Le manifeste utilisait déjà ces noms de ressources. Il s'agit seulement de la
+présentation native de l'application : aucune autorité, sauvegarde ou donnée Coop
+ne change. Le PNG source local n'est pas ajouté à Git.
+`corepack pnpm test` et `corepack pnpm build` passent. Les APK debug et release
+allégée ont été construites ; la release est signée avec le certificat attendu
+et contient les ressources de lanceur. L'APK release
+allégée a ensuite été installée par `adb install -r` sur le Samsung SM-S911U1 :
+ADB a répondu `Success` et le paquet indique toujours `0.1.8 (9)`. Le contrôle
+visuel de l'icône sur le lanceur restait à faire. Aucune APK ni aucun manifeste
+n'a été publié.
+
+Retour du porteur : le fond du logo doit rester transparent. Un premier essai
+avec fond adaptatif transparent a été installé et inspecté sur le Samsung ; le
+lanceur One UI a remplacé cette transparence par du noir autour du logo. Les
+deux définitions adaptatives `mipmap-anydpi-v26/ic_launcher*.xml` sont donc
+retirées afin que le lanceur utilise directement les PNG transparents. Les
+ressources extraites restent inchangées. `corepack pnpm test` et
+`corepack pnpm build` passent ; l'APK release allégée est reconstruite et
+signée avec le certificat attendu. Après reconnexion ADB, cette APK a été
+installée par `adb install -r` (`Success`). L'écran d'informations de
+l'application sur ce Samsung montre que One UI ajoute un fond blanc autour
+du PNG transparent. Le PNG de l'APK reste transparent, mais le lanceur ne
+respecte pas une transparence visible sur cet appareil. Aucun APK ni pack
+distant n'a été publié.
+
+## BZ-019 — deuxième passe et cadrage source — 2026-11-09
+
+Le porteur a testé le premier correctif de fluidité sur téléphone : « un peu
+mieux, mais encore des à-coups ». Il signale aussi que le personnage paraît
+légèrement plus petit dans l'overworld que dans le jeu d'origine. La source
+déclare `DEFAULTSCREENWIDTH=512` et `DEFAULTSCREENHEIGHT=384` ; notre canvas
+montrait 576 × 432 pixels de carte, soit 12,5 % de scène en plus à taille
+physique égale. Le viewport de carte et les animations de carte utilisent
+maintenant 512 × 384, via des constantes communes. La surface physique de
+l'overworld et la taille des menus ne sont pas modifiées.
+
+Le rendu précédent redessinait chaque tuile statique des trois couches à
+chaque image. `imported-map.ts` garde maintenant les tuiles de priorité nulle
+dans des blocs de 16 × 16 cases, avec une limite LRU de 36 blocs par carte.
+Les autotuiles qui possèdent plusieurs images continuent d'être dessinées à
+chaque image, dans leur couche et leur ordre d'origine ; les tuiles de priorité
+haute, acteurs, marques et effets restent dynamiques. Le cache est lié à
+l'objet d'assets de la carte et vidé avec les autres caches locaux.
+
+Le cadrage et ce cache sont uniquement visuels : aucune autorité ni intention
+Coop, sauvegarde ou état narratif ne change. Ils s'appliquent à la carte en
+solo, à l'hôte et à l'invité, y compris après reconnexion ou changement de
+carte. Recette Android de fluidité et de placement des animations à refaire.
+
+`corepack pnpm test` passe (563 tests Overworld) et `corepack pnpm build` passe.
+L'APK release allégée locale a été reconstruite avec le certificat attendu et
+installée par `adb install -r` (`Success`). Une capture Android de Map233 montre
+le cadrage 512 × 384 sans couture visible entre les blocs de tuiles ; la recette
+sur une carte à autotuiles animées et le ressenti du porteur restent ouverts.
+Le premier relevé Android après installation mélange démarrage et marche :
+45/3 296 images ratées (1,37 %), médiane 6 ms, 99e percentile 17 ms. Il ne
+constitue pas encore une comparaison contrôlée avec le témoin initial.
+Aucune APK publique, pack ni manifeste R2 n'a été changé.
+
+### Relevé et cadence du sprite — 2026-11-09
+
+Le porteur confirme que le zoom 512 × 384 est bon, mais voit encore des à-coups.
+Pendant une marche continue sur le Samsung, `gfxinfo` relève 12 images en retard
+sur 2 240 (0,54 %, médiane 5 ms, 99e percentile 7 ms). Ce relevé porte sur le
+pipeline Android et ne mesure pas les intervalles des images du canvas WebView.
+La cause exacte des à-coups perçus n'est donc pas établie ; BZ-019 reste ouvert.
+
+Le porteur suggère de vérifier l'animation du joueur. La source
+`019-1893309-game-character.rb` avance le charset sur quatre poses, à chaque
+5 images RGSS en marche et 3 images en course. Le port ne montrait que la pose
+neutre et une pose alternée par case. Le joueur local utilise désormais les
+quatre poses sur une horloge continue entre cases, avec retour à la pose neutre
+à l'arrêt. La logique vaut en solo, pour l'hôte et pour l'invité ; elle est
+visuelle, sans état répliqué ni persistant. Le rendu des autres joueurs et des
+PNJ reste sur son contrat actuel. En solo, la publication d'acteurs Coop ne
+calcule plus inutilement la liste complète des pages d'événement à chaque image.
+`corepack pnpm test` (564 tests Overworld) et `corepack pnpm build` passent.
+Recette visuelle sur téléphone et contrôle de la cadence du canvas encore attendus.
+
+### BZ-019 — cause des pauses régulières isolée — 2026-11-09
+
+Le porteur ne constate aucun changement après la correction des quatre poses et
+confirme que le décor lui-même saccade. Une sonde temporaire Chrome DevTools
+branchée sur le WebView du Samsung a mesuré, pendant un déplacement contrôlé,
+un rappel canvas toutes les 8,3 ms à l'arrêt (120 Hz, dessin médian 1,1 ms),
+mais des traitements de 40 à 55 ms environ toutes les 200 ms pendant la marche.
+Le profil CPU remonte la chaîne `finishImportedStep` → `move` →
+`renderImportedView` → `renderSourceMenu` → `sourceSaveSlotSummaries` →
+lecture et `JSON.parse` des deux sauvegardes complètes. Le menu était fermé :
+ce travail et sa validation profonde étaient inutiles à chaque case.
+
+`renderSourceMenu` masque maintenant directement le menu fermé et évite toute
+lecture des sauvegardes ; `SourceMenuView.hide` conserve son nettoyage des
+sélections et observateurs. Pendant une marche maintenue en solo, le nouveau pas
+ne reconstruit plus tous les panneaux après que le HUD a déjà été mis à jour à
+la fin du pas précédent. Le canvas et le moteur de mouvement continuent de
+tourner ; un pas isolé, un blocage et la Coop gardent leur rendu complet.
+Le profil CPU après ce correctif ne montre plus `JSON.parse` ni
+`sourceSaveSlotSummaries` parmi les coûts de la marche. Des pics isolés restent
+possibles ; la validation du ressenti sur la version finale est attendue.
+
+`corepack pnpm test` (564 tests Overworld) et `corepack pnpm build` passent.
+L'APK release allégée a été réinstallée en local avec le certificat habituel,
+sans effacer les données. Le code Android de profilage temporaire a été retiré
+avant cette dernière installation ; aucune APK publique ni ressource distante
+n'a été diffusée. Le changement de rendu vaut pour le solo et les deux rôles
+Coop ; la réduction du rendu lors d'une marche maintenue est limitée au solo.
+
+Validation du porteur sur l'APK locale finale le 2026-11-09, après marche et
+sprint sur téléphone : « Oui, c’est fluide ». Le cadrage 512 × 384 avait déjà
+été validé. BZ-019 est donc validé pour le parcours solo testé ; la régression
+hôte/invité Coop reste à contrôler lors d'une session multijoueur.

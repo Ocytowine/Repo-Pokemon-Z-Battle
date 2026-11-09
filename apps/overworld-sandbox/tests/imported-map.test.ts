@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, dialogueLines, eventFootprint, eventGraphicPattern,
+import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, contactAfterPlayerRoute, dialogueLines, eventFootprint, eventGraphicPattern,
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
   localizedDialogueText,
   parseImportedEncounter, parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
   selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
+import { executeSourceMoveRouteStep, type SourceRouteActor } from "../src/source-move-route.js";
 
 function map(masks: readonly number[]): ImportedMap {
   return { id: 3, name: "Test", width: 3, height: 1, tilesetId: 1,
@@ -111,7 +112,7 @@ describe("imported RPG Maker map", () => {
     expect(active === null ? null : transferForEvent(withTransfer, active)?.targetMapId).toBe(4);
   });
 
-  it("shares collision for invisible narrative pages and follows their active switch page", () => {
+  it("enters invisible contact pages before triggering them, including a scripted slide", () => {
     const basePage: ImportedMapEvent["pages"][number] = {
       condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
       graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
@@ -125,9 +126,42 @@ describe("imported RPG Maker map", () => {
       settings: { ...basePage.settings, trigger: 0 },
     }] };
 
-    expect(blockingDefaultEventPoints([event], 3)).toEqual([{ x: 2, y: 0 }]);
+    expect(blockingDefaultEventPoints([event], 3)).toEqual([]);
+    expect(playerTouchEventInDirection([event], { x: 1, y: 0, direction: "right" }, "right", 3)).toBeNull();
+    const entered = moveImportedAvatar(map([15, 15, 15]), { x: 1, y: 0, direction: "right" }, "right",
+      blockingDefaultEventPoints([event], 3));
+    expect(entered).toMatchObject({ x: 2, y: 0 });
+    expect(activeEventAt([event], entered.x, entered.y, 3)?.event.id).toBe(8);
+    expect(contactAfterPlayerRoute([event], entered, event.id, 3)).toBeNull();
+    const blockedStair = map([15, 15, 0]);
+    expect(moveImportedAvatar(blockedStair, { x: 1, y: 0, direction: "right" }, "right"))
+      .toMatchObject({ x: 1, y: 0 });
+    expect(playerTouchEventInDirection([event], { x: 1, y: 0, direction: "right" },
+      "right", 3, createSourceEventState(), blockedStair)?.event.id).toBe(8);
     expect(blockingDefaultEventPoints([event], 3,
       { ...createSourceEventState(), switches: { "10": true } })).toEqual([]);
+  });
+
+  it("chains scripted contacts from their landing cell instead of one cell early", () => {
+    const page: ImportedMapEvent["pages"][number] = {
+      condition: { switch1Id: null, switch2Id: null, variable: null, selfSwitch: null },
+      graphic: { tileId: 0, characterName: "", direction: 2, pattern: 0, opacity: 255 },
+      settings: { moveType: 0, moveSpeed: 3, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
+        directionFix: false, through: false, alwaysOnTop: false, trigger: 1 }, commands: [],
+    };
+    const first: ImportedMapEvent = { id: 23, name: "Glissade", x: 19, y: 28, pages: [page] };
+    const next: ImportedMapEvent = { id: 25, name: "Suite", x: 19, y: 23, pages: [page] };
+    expect(playerTouchEventInDirection([first, next], { x: 19, y: 29, direction: "up" }, "up")).toBeNull();
+    let actor: SourceRouteActor = { x: 19, y: 28, direction: "up", moveSpeed: 4, moveFrequency: 3,
+      walkAnimation: true, stepAnimation: false, directionFix: false, through: false, alwaysOnTop: false,
+      opacity: 255, characterName: "player", characterHue: 0, pattern: 0 };
+    for (let step = 0; step < 5; step += 1) {
+      const result = executeSourceMoveRouteStep(actor, { kind: "step-up", parameters: [] }, { player: actor });
+      expect(result.destination).not.toBeNull();
+      actor = { ...result.actor, ...result.destination };
+    }
+    expect({ x: actor.x, y: actor.y }).toEqual({ x: 19, y: 23 });
+    expect(contactAfterPlayerRoute([first, next], actor, first.id)?.event.id).toBe(next.id);
   });
 
   it("updates invisible collision from the active self-switch page", () => {
@@ -144,7 +178,7 @@ describe("imported RPG Maker map", () => {
       settings: { ...blockingPage.settings, trigger: 0 },
     }] };
 
-    expect(blockingDefaultEventPoints([event], 3)).toEqual([{ x: 1, y: 0 }]);
+    expect(blockingDefaultEventPoints([event], 3)).toEqual([]);
     expect(blockingDefaultEventPoints([event], 3,
       { ...createSourceEventState(), selfSwitches: { "3:12:A": true } })).toEqual([]);
   });
@@ -192,7 +226,7 @@ describe("imported RPG Maker map", () => {
     ]);
     expect(activeEventAt([event], 7, 3)?.event.id).toBe(8);
     expect(activeEventAt([event], 4, 4)).toBeNull();
-    expect(playerTouchEventInDirection([event], { x: 6, y: 4, direction: "right" }, "up")?.event.id).toBe(8);
+    expect(playerTouchEventInDirection([event], { x: 6, y: 4, direction: "right" }, "up")).toBeNull();
   });
 
   it("starts an event-touch trainer when the player walks into the trainer", () => {

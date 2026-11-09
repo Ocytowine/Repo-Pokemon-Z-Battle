@@ -1,7 +1,7 @@
 import type { Direction, GridPoint } from "@pokemon-z-battle/overworld-engine";
 import { Capacitor, SystemBars } from "@capacitor/core";
 import { App } from "@capacitor/app";
-import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, blockingNarrativeEventPoints, eventFootprint,
+import { SOURCE_MAP_ID, activeEventAt, blockingDefaultEventPoints, contactAfterPlayerRoute, eventFootprint,
   clearImportedMapCaches, drawImportedMap, eventInInteractionRange, importedCameraPosition, loadSourceAssetImage,
   localizedDialogueText, playerTouchEventInDirection, selectEventPage, transferForEvent,
   type ImportedAvatar, type ImportedEventPage, type ImportedMapAssets, type ImportedTransfer } from "./imported-map.js";
@@ -44,7 +44,8 @@ import { planFishingAttempt, resolveSourceFishingRod, rollEncounterForMethod, ro
 import { advanceSourceTypeAmulet } from "./source-type-amulet.js";
 import { advanceSourceRepel, reconcileSourceEscapePointAfterTransfer, sourceRepelBlocksEncounter,
   useSourceFieldItem as applySourceFieldItem } from "./source-field-item.js";
-import { createSourceGridMotion, sampleSourceGridMotion, type SourceGridMotion } from "./source-grid-motion.js";
+import { createSourceGridMotion, sampleSourceGridMotion, sourceChainedMotionStart,
+  type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
   findSourceMapEntryAutorun, type ActiveSourceAutorun } from "./source-autorun.js";
@@ -156,6 +157,7 @@ import { isSourceFacingFishableTerrain, isSourceSurfableTerrain, loadSourceMovem
   persistSourceMovementTestOverride,
   sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
   sourceMovementUnlocks, sourceMovementVisualMode, sourceMovementVisualOffset, sourceMovementVisualPattern,
+  sourcePlayerWalkingPattern,
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
 import { loadSourceDevSettings, persistSourceDevSettings, sourceDevLevelCap } from "./source-dev-tools.js";
 import { sourceLocalDataDiagnostic, validateSourceLocalData } from "./source-local-data.js";
@@ -447,6 +449,7 @@ let sourceMovementTestOverride = loadSourceMovementTestOverride(localStorage);
 let sourceDevSettings = loadSourceDevSettings(localStorage);
 let pendingTransferMovementMode: SourceMovementMode | null = null;
 let importedPlayerMotion: SourceGridMotion | null = null;
+let sourceWalkingAnimationStartedAt: number | null = null;
 let resumeSourceMovementAfterNetworkAck = false;
 let importedWalkingPattern: 1 | 3 = 1;
 let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
@@ -582,7 +585,12 @@ function loadSourceEventState(): SourceEventState {
   }
 }
 
+let pendingSourceFieldProgressPersist: ReturnType<typeof setTimeout> | null = null;
 function persistSourceEventState(): void {
+  if (pendingSourceFieldProgressPersist !== null) {
+    clearTimeout(pendingSourceFieldProgressPersist);
+    pendingSourceFieldProgressPersist = null;
+  }
   sourceEventState = reconcileSourcePokedex(sourceEventState);
   localStorage.setItem(SOURCE_EVENT_STATE_STORAGE_KEY, JSON.stringify(sourceEventState));
   scheduleSourceAutoSave();
@@ -591,6 +599,21 @@ function persistSourceEventState(): void {
   queueMicrotask(publishCurrentSourceWorld);
   queueMicrotask(publishCurrentSourceActors);
   queueMicrotask(publishActiveSourceFollower);
+}
+
+function scheduleSourceFieldProgressPersistence(): void {
+  if (pendingSourceFieldProgressPersist !== null) return;
+  pendingSourceFieldProgressPersist = setTimeout(() => {
+    pendingSourceFieldProgressPersist = null;
+    if (!sourceSaveSlotReloadPending) persistSourceEventState();
+  }, 500);
+}
+
+function flushSourceFieldProgressPersistence(): void {
+  if (pendingSourceFieldProgressPersist === null) return;
+  clearTimeout(pendingSourceFieldProgressPersist);
+  pendingSourceFieldProgressPersist = null;
+  if (!sourceSaveSlotReloadPending) persistSourceEventState();
 }
 
 function activeSourceFollower(): { species: string; appearance: NonNullable<SourceFollowerSnapshot["appearance"]> } | null {
@@ -605,17 +628,30 @@ function publishActiveSourceFollower(): void {
   multiplayer.publishSourceFollower(follower?.species ?? null, follower?.appearance);
 }
 
+let cachedSourceWorldGeometry: { readonly assets: ImportedMapAssets;
+  readonly passages: string; readonly terrain: string } | null = null;
+
+function sourceWorldGeometry(assets: ImportedMapAssets): { readonly passages: string; readonly terrain: string } {
+  if (cachedSourceWorldGeometry?.assets === assets) return cachedSourceWorldGeometry;
+  const { map, tileset } = assets;
+  cachedSourceWorldGeometry = { assets,
+    passages: map.collision.masks.map((mask) => Math.max(0, Math.min(15, mask)).toString(16)).join(""),
+    terrain: Array.from({ length: map.width * map.height }, (_, index) => sourceTerrainAt(map,
+      tileset, index % map.width, Math.floor(index / map.width)).toString(36)).join("") };
+  return cachedSourceWorldGeometry;
+}
+
 function sourceWorldHostState(narrativeState: SourceEventState = sourceEventState): SourceWorldHostState | null {
   if (importedAssets === null) return null;
   const map = importedAssets.map;
+  const geometry = sourceWorldGeometry(importedAssets);
   const activeIndex = sourceEventState.party.activeIndex;
   const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
   const followerPosition = sourceFollowerMotion.positionSnapshot();
   return { mapId: map.id, width: map.width, height: map.height,
-    passages: map.collision.masks.map((mask) => Math.max(0, Math.min(15, mask)).toString(16)).join(""),
-    terrain: Array.from({ length: map.width * map.height }, (_, index) => sourceTerrainAt(map,
-      importedAssets!.tileset, index % map.width, Math.floor(index / map.width)).toString(36)).join(""),
-    blockedPoints: blockingNarrativeEventPoints(sourceNonTruthEvents(), map.id, narrativeState),
+    passages: geometry.passages,
+    terrain: geometry.terrain,
+    blockedPoints: [],
     actors: currentSourceWorldActors(narrativeState),
     truthEvents: sourceTruthEventSnapshots(sourceMapEvents(), eventFootprint),
     host: { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
@@ -627,6 +663,7 @@ function sourceWorldHostState(narrativeState: SourceEventState = sourceEventStat
 }
 
 function publishCurrentSourceWorld(relocateHost = false): void {
+  if (!multiplayer.active) return;
   const world = sourceWorldHostState();
   if (world !== null) multiplayer.publishSourceWorld(world, relocateHost);
 }
@@ -726,7 +763,7 @@ function currentSourceWorldActors(narrativeState: SourceEventState = sourceEvent
 }
 
 function publishCurrentSourceActors(): void {
-  if (importedAssets === null) return;
+  if (importedAssets === null || !multiplayer.active) return;
   multiplayer.publishSourceActors(importedAssets.map.id, currentSourceWorldActors());
 }
 
@@ -758,7 +795,8 @@ function checkSourceWildEncounter(): boolean {
     pendingEncounter: encounter === null ? null : { ...encounter,
       method: importedAssets.encounter?.methods.some((entry) => entry.method === "Cave") === true ? "cave" : "land",
       victorySwitches: {}, escapable: true } };
-  persistSourceEventState();
+  if (encounter === null) scheduleSourceFieldProgressPersistence();
+  else persistSourceEventState();
   if (encounter === null) return false;
   const definition = importedAssets.battleCatalog.pokemon.find((candidate) => candidate.internalName === encounter.species);
   importedNotice = `Rencontre sauvage : ${definition?.name ?? encounter.species} niveau ${encounter.level}.`;
@@ -833,11 +871,11 @@ function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: nu
     sourceEventState.pendingHatches);
   sourceEventState = { ...sourceEventState, party: incubation.party, incubator: incubation.incubator,
     pendingHatches: incubation.pendingHatches };
-  persistSourceEventState();
+  scheduleSourceFieldProgressPersistence();
   queueMicrotask(maybeStartSourceHatch);
 }
 
-function finishImportedStep(): void {
+function finishImportedStep(completedMotion: SourceGridMotion | null = null): void {
   if (importedAssets === null) return;
   const sharedGuest = guestUsesSharedSourceWorld();
   if (isNetworkGuest()) {
@@ -853,11 +891,14 @@ function finishImportedStep(): void {
       beginSourceSequence(sharedEvent, `Événement personnel ${sharedEvent.event.id} · ${sharedEvent.event.name}`);
       return;
     }
-    importedNotice = pendingSourceFieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+    const fieldNotice = pendingSourceFieldNotice;
+    importedNotice = fieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
     pendingSourceFieldNotice = null;
     if ((!sharedGuest || multiplayer.current?.roomBattleActive === false) && checkSourceWildEncounter()) return;
-    renderImportedView();
-    continueSourceMovement();
+    if (fieldNotice !== null) renderImportedView();
+    else sourceOverworldHud.renderStep(importedAvatar, importedNotice);
+    continueSourceMovement(completedMotion);
+    if (fieldNotice === null && importedPlayerMotion === null && !multiplayer.movementPending) renderImportedView();
     return;
   }
   const entered = activeEventAt(sourceInteractiveMapEvents(), importedAvatar.x, importedAvatar.y, importedAssets.map.id, sourceEventState);
@@ -866,13 +907,16 @@ function finishImportedStep(): void {
     return;
   }
   if (checkSourceWildEncounter()) return;
-  importedNotice = pendingSourceFieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
+  const fieldNotice = pendingSourceFieldNotice;
+  importedNotice = fieldNotice ?? `Déplacement vers ${importedAvatar.x},${importedAvatar.y}.`;
   pendingSourceFieldNotice = null;
-  renderImportedView();
-  continueSourceMovement();
+  if (fieldNotice !== null) renderImportedView();
+  else sourceOverworldHud.renderStep(importedAvatar, importedNotice);
+  continueSourceMovement(completedMotion);
+  if (fieldNotice === null && importedPlayerMotion === null && !multiplayer.movementPending) renderImportedView();
 }
 
-function continueSourceMovement(): void {
+function continueSourceMovement(completedMotion: SourceGridMotion | null = null): void {
   if (multiplayer.movementPending) {
     // A real network round trip can outlast the local interpolation. Resume
     // from the authoritative acknowledgement instead of losing the held key.
@@ -881,11 +925,11 @@ function continueSourceMovement(): void {
   }
   resumeSourceMovementAfterNetworkAck = false;
   if (sourceMovementAction === "ice-slide" || sourceMovementAction === "waterfall") {
-    move("player", importedAvatar.direction);
+    move("player", importedAvatar.direction, undefined, completedMotion);
     return;
   }
   sourceMovementAction = "idle";
-  continueHeldSourceMovement();
+  continueHeldSourceMovement(completedMotion);
 }
 
 function sourceMapEvents(): readonly ImportedMapAssets["events"][number][] {
@@ -1118,6 +1162,12 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       if (route.skippable) continue;
       throw new Error(result.reason ?? `mouvement ${step.kind} invalide`);
     }
+    if (playerTarget && result.destination !== null
+      && (result.destination.x < 0 || result.destination.y < 0
+        || result.destination.x >= assets.map.width || result.destination.y >= assets.map.height)) {
+      if (route.skippable) continue;
+      throw new Error(`route de mouvement hors carte : ${result.destination.x},${result.destination.y}`);
+    }
     actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
     if (result.switchChange !== null) {
       sourceEventState = { ...sourceEventState,
@@ -1133,6 +1183,7 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       const playerBefore = importedAvatar;
       importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
       if (result.destination !== null) {
+        sequence.playerRouteMoved = true;
         duration = sourceNpcStepDuration(actor.moveSpeed);
         const startedAt = performance.now();
         importedPlayerMotion = createSourceGridMotion(result.actor, result.destination, actor.direction,
@@ -1251,6 +1302,24 @@ function completeSourceSequence(sequence: SourceSequenceSession): void {
         && importedAssets?.map.id === sequence.mapId
         && beginNewlyActivatedSourceAutorun(autorunBaseline, sourceEventState);
       if (!activated) queueMicrotask(beginPendingSourceMapEntryAutorun);
+      if (!activated && !sequence.playerRouteMoved && importedAssets?.map.id === sequence.mapId
+        && (sequence.sourcePage?.settings.trigger === 1 || sequence.sourcePage?.settings.trigger === 2)) {
+        queueMicrotask(() => {
+          if (importedAssets?.map.id === sequence.mapId && sourceSequences.current === null
+            && importedPlayerMotion === null) continueHeldSourceMovement();
+        });
+      }
+      if (sequence.playerRouteMoved && importedAssets?.map.id === sequence.mapId) {
+        // La derniere interpolation peut s'etre terminee pendant l'interprete.
+        // Dans ce cas, le contact sur la case d'arrivee doit encore etre teste.
+        queueMicrotask(() => {
+          if (importedAssets?.map.id !== sequence.mapId || sourceSequences.current !== null
+            || importedPlayerMotion !== null) return;
+          const landed = contactAfterPlayerRoute(sourceInteractiveMapEvents(), importedAvatar,
+            sequence.eventId, sequence.mapId, sourceInteractionState());
+          if (landed !== null) finishImportedStep();
+        });
+      }
 }
 
 function failSourceSequence(sequence: SourceSequenceSession, currentCommand: string, error: unknown): void {
@@ -2638,8 +2707,12 @@ function animateImportedMap(now: number): void {
     : sampleSourceGridMotion(importedPlayerMotion, now);
   const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction,
     importedPlayerMotion !== null);
+  if (importedPlayerMotion === null) sourceWalkingAnimationStartedAt = null;
+  else sourceWalkingAnimationStartedAt ??= importedPlayerMotion.startedAt;
   const playerPattern = sourceFishingView.open ? sourceFishingView.visualPattern(now)
-    : sourceMovementVisualPattern(localVisualMode, pose.pattern, now, importedPlayerMotion !== null);
+    : localVisualMode === "walk" || localVisualMode === "run"
+      ? sourcePlayerWalkingPattern(localVisualMode, now, sourceWalkingAnimationStartedAt)
+      : sourceMovementVisualPattern(localVisualMode, pose.pattern, now, importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
     const narrativeTargets: GridPoint[] = importedPlayerMotion === null
@@ -2725,7 +2798,7 @@ function animateImportedMap(now: number): void {
     const trainerStarted = pendingContact !== null
       && beginSourceSequence(pendingContact,
         `Contact événement ${pendingContact.event.id} · ${pendingContact.event.name}`, pendingContact.target);
-    if (!trainerStarted && sourceSequences.current === null) finishImportedStep();
+    if (!trainerStarted && sourceSequences.current === null) finishImportedStep(completedMotion);
   }
   if (networkRemoteSourceMotion !== null && sampleSourceGridMotion(networkRemoteSourceMotion, now).complete) {
     const completedRemoteMotion = networkRemoteSourceMotion;
@@ -3124,6 +3197,7 @@ function requestSourceFishing(rod: SourceFishingRod): void {
 
 function renderSourceMenu(): void {
   if (importedAssets === null) return;
+  if (!sourceScenes.menuOpen) { sourceMenuView.hide(); return; }
   const assets = importedAssets;
   const network = multiplayer.current;
   const renderedState = renderedSourceEventState();
@@ -4947,7 +5021,8 @@ function remotePlayerAdjacent(): boolean {
     && sourcePlayersAdjacent(networkSourceWorld, session.ticket.side);
 }
 
-function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode): void {
+function move(playerId: string, direction: Direction, requestedModeOverride?: SourceMovementMode,
+  completedMotion: SourceGridMotion | null = null): void {
   if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
   if (viewedMapId === AVATAR_LAB_MAP_ID) return;
   if (viewedMapId === SOURCE_MAP_ID && importedAssets !== null) {
@@ -4959,7 +5034,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     const events = sourceInteractiveMapEvents();
     const facingAvatar = { ...importedAvatar, direction };
     const eventAhead = playerTouchEventInDirection(events, importedAvatar, direction, importedAssets.map.id,
-      sourceInteractionState());
+      sourceInteractionState(), importedAssets.map);
     const directTransfer = eventAhead === null ? null : guestDirectSourceTransfer(eventAhead);
     if (directTransfer !== null) {
       importedAvatar = facingAvatar;
@@ -5010,7 +5085,7 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
       if (!moved) lastSourceBumpSoundAt = now;
     }
     if (moved) {
-      const startedAt = performance.now();
+      const startedAt = sourceChainedMotionStart(completedMotion, performance.now());
       const duration = sourceMovementDuration(sourceMovementMode, sourceMovementAction);
       importedPlayerMotion = createSourceGridMotion(before, next, direction, startedAt,
         { duration,
@@ -5021,7 +5096,10 @@ function move(playerId: string, direction: Direction, requestedModeOverride?: So
     } else {
       importedNotice = `Passage bloqué vers ${direction}. La collision directionnelle source est respectée.`;
     }
-    renderImportedView();
+    // Une marche maintenue a déjà actualisé le HUD à la fin du pas précédent.
+    // La boucle canvas dessine le nouveau pas ; reconstruire tous les panneaux
+    // ici provoquerait une pause régulière à chaque case en solo.
+    if (!moved || completedMotion === null || multiplayer.active) renderImportedView();
     if (networkSide === null) publishCurrentSourceWorld();
     return;
   }
@@ -5162,7 +5240,10 @@ function currentSourceContextAction(): SourceContextAction {
 
 function refreshSourceContextAction(): void {
   if (!sourceAndroidPresentationEnabled()) return;
-  sourceTouchControls.setContextAction(currentSourceContextAction());
+  const activity = sourceSceneActivity();
+  const preserveSprintHold = activity.sequence && !activity.dialogue && !activity.battle
+    && !activity.transition && !sourceScenes.menuOpen;
+  sourceTouchControls.setContextAction(currentSourceContextAction(), preserveSprintHold);
   sourceTouchControls.setSecondaryAction(currentSourceSecondaryAction());
 }
 
@@ -5326,9 +5407,9 @@ function heldSourceMovementDirection(): Direction | null {
   return command?.[0] === "player" ? command[1] : null;
 }
 
-function continueHeldSourceMovement(): void {
+function continueHeldSourceMovement(completedMotion: SourceGridMotion | null = null): void {
   const direction = heldSourceMovementDirection();
-  if (direction !== null) move("player", direction);
+  if (direction !== null) move("player", direction, undefined, completedMotion);
 }
 
 function handleSourceCancelInput(): boolean {
@@ -5441,12 +5522,16 @@ window.addEventListener("keydown", resumeSourceAudioAfterGesture, { capture: tru
 document.addEventListener("visibilitychange", () => {
   syncSourceAudioForeground();
   setSourceDocumentInputActive(!document.hidden);
-  if (document.hidden) saveAutomaticSourceWorld(true);
+  if (document.hidden) {
+    flushSourceFieldProgressPersistence();
+    saveAutomaticSourceWorld(true);
+  }
   if (!document.hidden) hideSourceNativeSystemBars();
 });
 window.addEventListener("pagehide", () => {
   sourcePageHidden = true;
   syncSourceAudioForeground();
+  flushSourceFieldProgressPersistence();
   saveAutomaticSourceWorld(true);
   setSourceDocumentInputActive(false);
 });

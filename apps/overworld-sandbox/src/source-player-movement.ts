@@ -129,6 +129,17 @@ export function sourceMovementVisualPattern(mode: SourceMovementMode, basePatter
   return basePattern;
 }
 
+/** Le charset source possède quatre poses de marche, avancées à la cadence RGSS. */
+export function sourcePlayerWalkingPattern(mode: SourceMovementMode, now: number,
+  animationStartedAt: number | null): number {
+  if (animationStartedAt === null) return 0;
+  if (mode !== "walk" && mode !== "run") return 0;
+  // Game_Character#update_move incrémente anime_count de 1,5 par image à 60 Hz.
+  // Le seuil est 18 - move_speed * 3 : 5 images en marche, 3 en course.
+  const frameDuration = mode === "run" ? 50 : 1000 / 12;
+  return Math.floor(Math.max(0, now - animationStartedAt) / frameDuration) % 4;
+}
+
 export function sourceMovementVisualOffset(mode: SourceMovementMode, now: number): number {
   const vehicleAnchor = mode === "surf" || mode === "dive" ? 16 : 0;
   if (mode !== "surf" && mode !== "dive") return vehicleAnchor;

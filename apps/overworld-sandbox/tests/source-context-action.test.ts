@@ -36,4 +36,11 @@ describe("context action button", () => {
     expect(resolveSourceContextAction({ ...base,
       worldAvailable: scenes.mode(moving) === "overworld" }).kind).toBe("sprint");
   });
+
+  it("ignores an empty action page at the entrance of a bridge", () => {
+    const inert = { ...event, page: { ...event.page, graphic: { characterName: "", tileId: 0 },
+      commands: [{ kind: "end" }] } } as ActiveMapEvent;
+    expect(resolveSourceContextAction({ ...base, event: inert }).kind).toBe("sprint");
+    expect(resolveSourceContextAction({ ...base, event: inert, eventTransfer: true }).kind).toBe("interact");
+  });
 });

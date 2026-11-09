@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createSourceEventState, parseSourceEventState } from "../src/source-event-state.js";
 import { loadSourceMovementTestOverride, persistSourceMovementTestOverride,
   isSourceFacingFishableTerrain, sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
-  sourceMovementVisualOffset, sourceMovementVisualPattern } from "../src/source-player-movement.js";
+  sourceMovementVisualOffset, sourceMovementVisualPattern, sourcePlayerWalkingPattern } from "../src/source-player-movement.js";
 
 describe("source player movement unlocks", () => {
   it("keeps progression requirements separate from the test override", () => {
@@ -52,6 +52,14 @@ describe("source player movement unlocks", () => {
     expect(sourceMovementVisualPattern("mount", 0, 67, false)).toBe(0);
     expect(sourceMovementDuration("walk", "step")).toBe(200);
     expect(sourceMovementDuration("run", "step")).toBe(105);
+  });
+
+  it("plays all four source walking poses continuously across tile boundaries", () => {
+    expect([0, 84, 167, 251, 334].map((time) => sourcePlayerWalkingPattern("walk", time, 0)))
+      .toEqual([0, 1, 2, 3, 0]);
+    expect([0, 50, 100, 150, 200].map((time) => sourcePlayerWalkingPattern("run", time, 0)))
+      .toEqual([0, 1, 2, 3, 0]);
+    expect(sourcePlayerWalkingPattern("walk", 200, null)).toBe(0);
   });
 
   it("detects fishable water only on the tile faced by the player", () => {
