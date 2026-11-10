@@ -11334,3 +11334,151 @@ Validation du porteur sur l'APK locale finale le 2026-11-09, après marche et
 sprint sur téléphone : « Oui, c’est fluide ». Le cadrage 512 × 384 avait déjà
 été validé. BZ-019 est donc validé pour le parcours solo testé ; la régression
 hôte/invité Coop reste à contrôler lors d'une session multijoueur.
+
+## APK 0.1.9 (10) publiée — 2026-11-10
+
+Le porteur demande la diffusion de tous les correctifs locaux et fournit une
+nouvelle image `Graphics/Logo_PokéballZBattle.png` de 512 × 512 pixels.
+Les dix icônes natives ont été régénérées à partir de cette image. La version
+Android passe à `0.1.9` (`versionCode 10`) avec le même certificat de diffusion.
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim`,
+`android:manifest` et `git diff --check` passent. Le profil allégé conserve
+les 49 fonds larges et les BGM hors titre dans leurs packs privés existants.
+
+L'APK signée de **392 688 590 octets**, SHA-256
+`0afd9d64c7ba2dff624626502a9b79cb84e20ab74e651cd4327df1f0a5364eb1`,
+a été installée sur le Samsung par `adb install -r` (`Success`). Android indique
+`0.1.9 (10)` et la date de première installation reste au 2026-10-28. L'APK a
+été envoyée sur R2 sous `updates/android/pokemon-z-battle-10.apk` ; la taille,
+le MIME Android et le SHA-256 après retéléchargement sont conformes. Le
+manifeste `updates/android/latest.json` a été publié en dernier et relu :
+version, notes, taille, SHA-256 et MIME JSON concordent. Le lien permanent
+répond par la redirection Cloudflare Access attendue sans session. Aucun pack
+de ressources ni Worker n'a été modifié. Les recettes hôte, invité et
+reconnexion des derniers correctifs restent ouvertes comme indiqué dans la
+roadmap ; leur publication ne constitue pas une validation de ces parcours.
+
+## APK 0.1.10 (11) — icône sans marge ajoutée — 2026-11-10
+
+Le porteur confirme que l'image 512 × 512 occupe déjà la forme voulue. Le
+script de génération des icônes Android dessine maintenant le PNG sur toute
+la surface de chaque densité, sans la réduction précédente à 92 %. Une APK
+locale 0.1.9 (10) de contrôle a été installée sur le Samsung : la capture de
+l'écran d'accueil montre le contour doré au bord de l'icône, sans le liseré
+blanc ajouté autour du logo. Le fond clair à l'intérieur du contour appartient
+à l'image fournie. Le lanceur Samsung conserve son propre rendu de forme.
+
+La version de diffusion passe à `0.1.10` (`versionCode 11`).
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim`, `android:manifest` et
+`git diff --check` passent. L'APK signée a été installée par `adb install -r`
+sur le Samsung (`Success`) ; la première date d'installation reste inchangée.
+L'APK de **392 718 010 octets**, SHA-256
+`8b21a3a1bc3dc12d7c99cababb717c044bdc244afc68abfa2b8a6b148edcf600`,
+a été publiée dans R2 sous `updates/android/pokemon-z-battle-11.apk`. La taille,
+le MIME et le hash après retéléchargement concordent. Le manifeste
+`updates/android/latest.json` a été publié en dernier et relu avec version,
+notes, taille, hash et MIME attendus. Le lien permanent redirige vers
+Cloudflare Access sans session. Les packs et le Worker restent inchangés.
+
+## BZ-026 — ratés de combat et lecture des messages — 2026-11-10
+
+Le porteur demande de supprimer l'animation d'une attaque ratée et de laisser
+plus de temps pour lire les textes de combat. Le résultat du combat était déjà
+autoritaire ; le défaut venait de la présentation, qui lançait l'animation dès
+`moveUsed` sans attendre les événements suivants. Dans la source Ruby,
+`pbSuccessCheck` et le contrôle de précision précèdent l'animation normale.
+
+Le constructeur commun de séquence marque maintenant l'action comme non
+animable si elle ne produit qu'un `moveMissed`. Une capacité de zone qui manque
+une cible mais en touche une autre reste animée. Le lecteur d'animation utilise
+ce marqueur, sans modifier dégâts, précision, PP, sauvegarde ni protocole.
+La même séquence est utilisée en solo et en Coop, simple et double ; les
+événements de combat restent l'unique autorité. L'annonce du coup et le message
+de raté restent visibles. Les messages de combat reçoivent une durée calculée
+depuis leur longueur (environ 1,2 à 2,3 secondes) ; toucher la fenêtre ou
+valider peut avancer après 350 ms, pour éviter un saut accidentel immédiat.
+
+`corepack pnpm test` passe (567 tests Overworld), `corepack pnpm build`,
+`android:release:slim` et `git diff --check` passent. L'APK locale signée a été
+installée sur le Samsung par `adb install -r` (`Success`), sans effacer les
+données. Le porteur confirme le 2026-11-10 sur cette APK locale qu'un raté ne
+joue plus l'animation et que le temps de lecture convient. La régression
+hôte/invité Coop et le double sur appareil restent à contrôler séparément.
+Aucun nouvel APK public, pack ni Worker n'a été publié.
+
+## BZ-024 — bandeau Méga et ancrage du sprite — 2026-11-10
+
+Le porteur précise que le bouton existe avec une équipe éligible, mais paraît
+mal intégré au menu Attaque. Il signale aussi un sprite en bas à gauche après
+l'activation. La commande Méga est désormais un bandeau indépendant, fin et
+étendu sur la largeur des quatre capacités, avec état sélectionné et objet
+porté lisibles. La sélection périmée est effacée si l'éligibilité disparaît.
+
+L'animation source `Common:MegaEvolution` contient des cellules de Pokémon
+utilisateur (`-1`) et cible (`-2`). Pour une animation ciblant son propre
+utilisateur, les deux cellules pilotent le même sprite ; la cellule cible
+emploie pourtant l'ancrage adverse et le décale de 256 × 128 unités source.
+Le lecteur privilégie maintenant la cellule utilisateur si les deux sont
+présentes, sans supprimer la cellule cible lorsqu'elle est seule ni modifier
+les animations dirigées vers un adversaire. Le rendu est partagé par les
+combats solo et Coop ; aucune règle de combat, sauvegarde ou réplication ne
+change. Un test couvre les trois configurations de cellules.
+
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim` et
+`git diff --check` passent. L'APK locale signée est installée sur le Samsung
+par `adb install -r` (`Success`), sans suppression des sauvegardes. Après un
+premier essai, le porteur a demandé un bandeau plus fin couvrant les quatre
+attaques ; la seconde APK locale contient cet ajustement. Le porteur confirme
+sur téléphone le bon alignement du bandeau et la position correcte du sprite
+pendant l'activation de la Méga-Évolution. Les parcours double et Coop restent
+à vérifier. Aucun APK public n'a été publié.
+
+## Fonds d'animation sur les combats larges — 2026-11-10
+
+Le porteur voit encore certains fonds d'animation limités au cadre central
+4:3. Le fond de bataille couvre déjà la fenêtre entière, mais les plans de
+fond et d'avant-plan des animations restaient enfants des couches de la scène
+4:3. Pour les scènes larges, ces plans prennent maintenant les dimensions et
+le décalage de la fenêtre de combat. Les cellules dessinées sur canvas et les
+transformations des sprites gardent leurs coordonnées source ; les fonds sont
+les seuls éléments étirés. Les dimensions sont mesurées une fois au début de
+l'animation, sans recalcul de disposition à chaque image. Le rendu commun est
+utilisé en solo et en Coop, sans nouvel état ni changement de persistance.
+Un test couvre la géométrie large et 4:3. Le porteur confirme sur téléphone
+que le fond couvre la largeur du combat sans déformer les effets ni déplacer
+les Pokémon. Le double et la Coop restent à vérifier. `corepack pnpm test`,
+`corepack pnpm build`, `android:release:slim` et `git diff --check` passent.
+L'APK locale signée a été installée sur le Samsung par `adb install -r`
+(`Success`), sans effacer les sauvegardes. Aucun asset ou pack n'a changé ;
+aucun APK public n'a été publié.
+
+## BZ-025 — attaques à plusieurs tours et animations absentes — 2026-11-10
+
+Le porteur cite Tunnel (`DIG`, fonction source `0CA`) et Lamassacre
+(`ESPADASEDOSA`, fonction `906`). Le noyau commun gérait déjà le tour de
+préparation, le verrouillage du second tour, le coût de PP unique et
+l'invulnérabilité de Tunnel en solo et Coop. Le défaut visible venait de la
+présentation : `moveUsed` déclenchait l'animation d'impact avant l'événement
+autoritaire de charge. La séquence commune réserve maintenant cette animation
+au tour de sortie. Le sprite est masqué pendant les phases d'invulnérabilité
+correspondantes, y compris après restauration de l'état, puis rétabli avant
+l'action de sortie ou après interruption. Cette règle couvre les codes de vol,
+creusement, plongée et leurs variantes sans numéro de capacité ou de carte.
+
+L'audit local trouve 730 capacités dans `move2anim.dat`, dont 97 sans index
+joueur. Lamassacre fait partie de ces absences source ; aucune animation n'est
+inventée pour elle. Sur 929 animations extraites, 48 chemins graphiques ne
+correspondent pas exactement aux fichiers locaux ; 45 sont référencés par une
+capacité. Deux chemins ont une correspondance unique après normalisation du
+nom (dont `PRAS- PsychicBG.png` vers `PRAS- Psychic BG.png`) ; le lecteur peut
+désormais les utiliser. Les autres restent en fallback, sans exclusion de
+ressource. Le fallback CSS montre maintenant une impulsion visible sur
+l'attaquant et, pour une capacité offensive ciblée, sur sa cible. Les règles
+de dégâts, la sauvegarde, la room et le protocole Coop ne changent pas.
+
+Les tests ciblés de présentation simple/double, de sprite caché et de
+résolution unique d'image passent. `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim` et `git diff --check` passent. L'APK locale signée est
+installée sur le Samsung par `adb install -r` (`Success`), sans suppression de
+partie. La recette sur téléphone pour Tunnel et Lamassacre, puis le double et
+la Coop, reste ouverte. Aucun APK public ni pack n'est modifié.

@@ -100,6 +100,13 @@ export function sourceBattleReplacementMenuShouldClose(replacementSlots: readonl
   return replacementSlots.length === 0 && pending !== null;
 }
 
+export function sourceBattleForcedChargeMoveIndex(member: BattleTeam["members"][number]): number | null {
+  const chargingMove = member.volatile?.chargingMove;
+  if (chargingMove == null) return null;
+  const index = member.moves.findIndex((slot) => slot.move.internalName === chargingMove);
+  return index < 0 ? null : index;
+}
+
 export class SourceBattleOverlay {
   private menu: BattleMenu = "root";
   private renderedTurn: number | null = null;
@@ -113,6 +120,7 @@ export class SourceBattleOverlay {
   private menuPrompt: string | null = null;
   private selectedTeamIndex: number | null = null;
   private readonly megaEvolutionSelections = new Set<number>();
+  private readonly pendingAutoMoveRequests = new Set<string>();
 
   public constructor(private readonly callbacks: SourceBattleOverlayCallbacks) {
     document.querySelector<HTMLElement>("#encounter-actions")?.addEventListener("click", (event) => {
@@ -142,6 +150,7 @@ export class SourceBattleOverlay {
       this.menuPrompt = null;
       this.selectedTeamIndex = null;
       this.megaEvolutionSelections.clear();
+      this.pendingAutoMoveRequests.clear();
       return;
     }
     if (this.renderedTurn !== model.state.turn) {
@@ -149,6 +158,7 @@ export class SourceBattleOverlay {
       this.renderedTurn = model.state.turn;
       this.activeSlot = 0;
       this.megaEvolutionSelections.clear();
+      this.pendingAutoMoveRequests.clear();
       this.pendingMoveIndex = null;
       this.pendingItemId = null;
       this.pendingItemTargetIndex = null;
@@ -248,6 +258,29 @@ export class SourceBattleOverlay {
       this.pendingReplacement = null;
       this.menu = "root";
     }
+    if (!blocked && replacementSlots.length === 0) {
+      for (const slot of ownedSlots) {
+        if (model.submittedActiveSlots.includes(slot)) continue;
+        const member = team.members[activeIndices[slot]!];
+        if (member === undefined || member.hp <= 0) continue;
+        const moveIndex = sourceBattleForcedChargeMoveIndex(member);
+        if (moveIndex === null) continue;
+        const key = `${model.state.turn}:${slot}`;
+        if (this.pendingAutoMoveRequests.has(key)) continue;
+        this.pendingAutoMoveRequests.add(key);
+        queueMicrotask(() => {
+          this.pendingAutoMoveRequests.delete(key);
+          if (this.renderedTurn !== model.state?.turn) return;
+          this.callbacks.onMove(moveIndex, model.local, slot, false);
+        });
+      }
+    }
+    const forcedIndex = sourceBattleForcedChargeMoveIndex(active);
+    if (forcedIndex !== null) {
+      const move = active.moves[forcedIndex]!.move;
+      actions.innerHTML = `<div class="source-battle-menu source-battle-result"><p>${escapeSourceHtml(active.name)} poursuit ${escapeSourceHtml(move.name)}.</p><small>${blocked ? "Tour en cours…" : "Action automatique au prochain tour…"}</small></div>`;
+      return;
+    }
     if (this.menu === "moves") this.renderMoves(actions, active, model, blocked);
     else if (this.menu === "targets") this.renderTargets(actions, model, blocked);
     else if (this.menu === "pokemon") this.renderPokemon(actions, team, model, blocked, false);
@@ -318,6 +351,7 @@ export class SourceBattleOverlay {
     const megaAvailable = model.megaEvolutionEnabled && active.megaEvolution !== undefined
       && active.megaEvolution.activationAvailable && active.appearance?.form !== active.megaEvolution.form
       && !model.state?.megaEvolution?.usedOwnerIds.includes(megaOwner);
+    if (!megaAvailable) this.megaEvolutionSelections.delete(this.activeSlot);
     const megaSelected = megaAvailable && this.megaEvolutionSelections.has(this.activeSlot);
     const cards = active.moves.map((slot, index) => {
       const category = moveCategoryPresentation(slot.move.category);
@@ -325,8 +359,8 @@ export class SourceBattleOverlay {
       const accuracy = slot.move.accuracy === 0 ? "Auto" : `${slot.move.accuracy}%`;
       return `<button data-encounter-move="${index}" data-move-type="${escapeSourceHtml(slot.move.type)}"${disabled(blocked || slot.pp <= 0)}><span class="source-move-name"><img src="${pokemonTypeIconUrl(slot.move.type)}" alt="${escapeSourceHtml(slot.move.type)}"><span>${escapeSourceHtml(slot.move.name)}</span><em class="source-move-category" title="${category.label}" aria-label="${category.label}">${category.symbol}</em></span><span class="source-move-metrics"><small>${slot.pp} PP</small><small>Pui. ${power}</small><small>Préc. ${accuracy}</small></span></button>`;
     }).join("");
-    const mega = active.megaEvolution === undefined ? "" : `<button type="button" class="source-battle-mega${megaSelected ? " active" : ""}" data-battle-mega${disabled(blocked || !megaAvailable)}><span>${megaSelected ? "MÉGA ACTIVÉE" : "MÉGA-ÉVOLUTION"}</span><small>${escapeSourceHtml(active.megaEvolution.heldItem)}</small></button>`;
-    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ATTAQUE</small><strong>Quelle capacité ?</strong></div>${mega}</header><div class="source-battle-move-grid">${cards}</div></div>`;
+    const mega = active.megaEvolution === undefined ? "" : `<div class="source-battle-mega-strip"><button type="button" class="source-battle-mega${megaSelected ? " active" : ""}" data-battle-mega aria-pressed="${megaSelected}"${disabled(blocked || !megaAvailable)}><span class="source-battle-mega-gem" aria-hidden="true">✦</span><span class="source-battle-mega-copy"><strong>${megaSelected ? "Méga prête" : "Méga-Évolution"}</strong><small>${escapeSourceHtml(active.megaEvolution.heldItem)}</small></span><span class="source-battle-mega-state">${megaSelected ? "Sélectionnée" : "Activer"}</span></button></div>`;
+    actions.innerHTML = `<div class="source-battle-menu source-battle-submenu source-battle-moves-menu"><header><button data-battle-back aria-label="Retour">‹</button><div><small>ATTAQUE</small><strong>Quelle capacité ?</strong></div></header>${mega}<div class="source-battle-move-grid">${cards}</div></div>`;
     this.bindBack(actions, model);
     actions.querySelector<HTMLButtonElement>("[data-battle-mega]")?.addEventListener("click", () => {
       if (megaSelected) this.megaEvolutionSelections.delete(this.activeSlot);

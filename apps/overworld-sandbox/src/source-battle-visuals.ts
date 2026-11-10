@@ -41,6 +41,23 @@ export function sourceWildPokemonCaught(species: string, caughtSpecies: readonly
   return caughtSpecies.includes(species);
 }
 
+export function sourceBattleChargingSpriteHidden(battler: BattlerState): boolean {
+  const charging = battler.volatile?.chargingMove;
+  if (charging == null) return false;
+  const functionCode = battler.volatile?.chargingCalledMove?.functionCode
+    ?? battler.moves.find((slot) => slot.move.internalName === charging)?.move.functionCode;
+  return ["0C9", "0CA", "0CB", "0CC", "0CD", "0CE", "14D"].includes(functionCode ?? "");
+}
+
+export function sourceBattleBattlerCels<T extends Pick<BattleAnimationCel, "pattern">>(
+  frame: readonly T[], targetIsUser: boolean): T[] {
+  // A self-targeted animation can contain both user and target battler cels.
+  // They refer to the same sprite, but use different source anchor points.
+  const hasUserCel = targetIsUser && frame.some((cel) => cel.pattern === -1);
+  return frame.filter((cel) => (cel.pattern === -1 || cel.pattern === -2)
+    && !(hasUserCel && cel.pattern === -2));
+}
+
 async function animatedCanvas(asset: PokemonAssetReference): Promise<AnimatedCanvas> {
   const image = new Image();
   image.src = sourceUrl(asset.path);
@@ -77,25 +94,34 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, reduced ? 20 : milliseconds));
 }
 
+export function sourceBattleMessageDuration(message: string, minimum = 850): number {
+  // A short announcement still needs time to be read; longer explanations
+  // receive more time without making a turn stall indefinitely.
+  return Math.max(minimum, Math.min(2_300, 900 + message.trim().length * 24));
+}
+
 function readableMessageDelay(milliseconds = 850): Promise<void> {
   const element = document.getElementById("source-battle-message");
+  const duration = sourceBattleMessageDuration(element?.textContent ?? "", milliseconds);
   return new Promise((resolve) => {
     let finished = false;
     let timer = 0;
+    const readableFrom = performance.now() + 350;
     const finish = (): void => {
       if (finished) return;
       finished = true;
       window.clearTimeout(timer);
       window.removeEventListener("keydown", keydown);
-      element?.removeEventListener("pointerdown", finish);
+      element?.removeEventListener("pointerdown", skip);
       resolve();
     };
+    const skip = (): void => { if (performance.now() >= readableFrom) finish(); };
     const keydown = (event: KeyboardEvent): void => {
-      if (event.key === "Enter" || event.key === " ") finish();
+      if (event.key === "Enter" || event.key === " ") skip();
     };
     window.addEventListener("keydown", keydown);
-    element?.addEventListener("pointerdown", finish, { once: true });
-    timer = window.setTimeout(finish, milliseconds);
+    element?.addEventListener("pointerdown", skip);
+    timer = window.setTimeout(finish, duration);
   });
 }
 
@@ -161,11 +187,48 @@ export function selectSourceCommonBattleAnimation(manifest: BattleAnimationsMani
   return manifest.animations.find((entry) => entry.name === name) ?? null;
 }
 
+export function selectSourceChargingBattleAnimation(manifest: BattleAnimationsManifest,
+  internalName: string): BattleAnimationRecord | null {
+  const normalized = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const move = normalized(internalName);
+  return manifest.animations.find((entry) => {
+    const match = /^Common:(.+) charging$/i.exec(entry.name);
+    return match !== null && normalized(match[1]!) === move;
+  }) ?? null;
+}
+
+export function sourceBattleAnimationGraphicPath(path: string, assets: AssetManifest): string {
+  if (assets.records.some((entry) => entry.path === path)) return path;
+  const stem = (value: string): string => (value.split("/").at(-1) ?? "")
+    .replace(/\.[^.]+$/, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const expected = stem(path);
+  const candidates = assets.records.filter((entry) => entry.mediaType === "image"
+    && entry.path.startsWith("Graphics/Animations/") && stem(entry.path) === expected);
+  // A typo or spacing difference in the source can be repaired only when
+  // exactly one real file matches. Missing or ambiguous art keeps the fallback.
+  return candidates.length === 1 ? candidates[0]!.path : path;
+}
+
 export interface SourceBattleAnimationPlaneState {
   readonly path: string | null;
   readonly x: number;
   readonly y: number;
   readonly opacity: number;
+}
+
+export interface SourceBattleAnimationPlaneBounds {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export function sourceBattleAnimationPlaneBounds(stage: SourceBattleAnimationPlaneBounds,
+  viewport: SourceBattleAnimationPlaneBounds, wide: boolean): SourceBattleAnimationPlaneBounds {
+  return wide
+    ? { left: viewport.left - stage.left, top: viewport.top - stage.top,
+      width: viewport.width, height: viewport.height }
+    : { left: 0, top: 0, width: stage.width, height: stage.height };
 }
 
 /** Replays the source plane timings at a given frame. Types 1/2 address the
@@ -647,13 +710,29 @@ export class SourceBattleVisuals {
       if (step.kind === "action") {
         const battler = step.state.teams[step.side].members[step.state.teams[step.side].activeIndex];
         const move = battler?.moves.find((slot) => slot.move.internalName === step.move)?.move;
+        const sprite = spriteId === null ? null : document.getElementById(spriteId);
+        // The release turn begins with the sprite hidden by its charge state.
+        sprite?.classList.remove("charging-hidden");
         this.message(step.message);
         await readableMessageDelay(500);
-        if (move === undefined || !(await this.playSourceAnimation(step.side, move, stepSlot))) {
-          const sprite = spriteId === null ? null : document.getElementById(spriteId);
+        if (step.charging) {
+          if (!(await this.playSourceChargeAnimation(step.side, step.move, stepSlot))) {
+            sprite?.classList.add("charging");
+            try { await delay(420); }
+            finally { sprite?.classList.remove("charging"); }
+          }
+        }
+        if (step.playAnimation && (move === undefined || !(await this.playSourceAnimation(step.side, move, stepSlot)))) {
           sprite?.classList.add("attacking");
-          await delay(360);
-          sprite?.classList.remove("attacking");
+          const targetSide = step.side === "player" ? "opponent" : "player";
+          const targetTeam = step.state.teams[targetSide];
+          const targetSlot = Math.max(0, (targetTeam.activeIndices ?? [targetTeam.activeIndex])
+            .indexOf(targetTeam.activeIndex));
+          const target = move?.category === "Status" || !["00", "400"].includes(move?.targetCode ?? "00")
+            ? null : document.getElementById(`source-${targetSide}-sprite${targetSlot === 0 ? "" : `-${targetSlot + 1}`}`);
+          target?.classList.add("fallback-target");
+          try { await delay(420); }
+          finally { sprite?.classList.remove("attacking"); target?.classList.remove("fallback-target"); }
         }
       } else if (step.kind === "impact") {
         await this.playCue(step.effectiveness > 1 ? "superdamage" : step.effectiveness > 0 && step.effectiveness < 1
@@ -1279,9 +1358,13 @@ export class SourceBattleVisuals {
       const team = state.teams[side];
       const active = team.activeIndices ?? [team.activeIndex];
       active.forEach((index, slot) => {
+        const member = team.members[index];
+        if (member === undefined) return;
         const suffix = slot === 0 ? "" : `-${slot + 1}`;
         document.getElementById(`source-${side}-sprite${suffix}`)
-          ?.classList.toggle("fainted", (team.members[index]?.hp ?? 0) <= 0);
+          ?.classList.toggle("fainted", member.hp <= 0);
+        document.getElementById(`source-${side}-sprite${suffix}`)
+          ?.classList.toggle("charging-hidden", sourceBattleChargingSpriteHidden(member));
       });
     }
   }
@@ -1390,7 +1473,7 @@ export class SourceBattleVisuals {
       for (const suffix of ["", "-2"]) {
         const slot = document.getElementById(`source-${side}-sprite${suffix}`);
         slot?.replaceChildren();
-        slot?.classList.remove("attacking", "hit", "fainted");
+        slot?.classList.remove("attacking", "hit", "fainted", "charging-hidden", "charging", "fallback-target");
       }
     }
   }
@@ -1403,6 +1486,15 @@ export class SourceBattleVisuals {
     if (selection === null) return false;
     const { animation, explicitOpponent, reverse } = selection;
     return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse, activeSlot);
+  }
+
+  private async playSourceChargeAnimation(side: BattleSide, move: string, activeSlot = 0): Promise<boolean> {
+    const manifests = await this.manifests();
+    const animations = manifests.animations;
+    if (animations === undefined) return false;
+    const animation = selectSourceChargingBattleAnimation(animations, move);
+    return animation === null ? false
+      : this.playSourceAnimationRecord(side, animation, false, side === "opponent", activeSlot, true);
   }
 
   private async playCommonSourceAnimation(side: BattleSide, name: string, activeSlot = 0,
@@ -1424,7 +1516,7 @@ export class SourceBattleVisuals {
     if (front === null || back === null) return false;
     try {
       const image = new Image();
-      image.src = sourceUrl(animation.graphicPath);
+      image.src = sourceUrl(sourceBattleAnimationGraphicPath(animation.graphicPath, this.#manifests!.assets));
       await image.decode();
       const canvas = document.createElement("canvas");
       canvas.width = sourceAnimations.coordinateSystem.width;
@@ -1436,14 +1528,18 @@ export class SourceBattleVisuals {
       const foregroundPlane = backgroundPlane.cloneNode(false) as HTMLDivElement;
       front.replaceChildren(canvas, foregroundPlane);
       back.replaceChildren(backgroundPlane, backCanvas);
+      const viewport = document.getElementById("encounter-panel");
+      const bounds = sourceBattleAnimationPlaneBounds(front.getBoundingClientRect(),
+        viewport?.getBoundingClientRect() ?? front.getBoundingClientRect(),
+        viewport?.classList.contains("wide-background") ?? false);
       const context = canvas.getContext("2d");
       const backContext = backCanvas.getContext("2d");
       for (const [frameIndex, frame] of animation.frames.entries()) {
         this.playSourceTimings(animation, frameIndex, side, activeSlot);
         this.applyAnimationPlane(backgroundPlane,
-          sourceBattleAnimationPlaneState(animation, frameIndex, "background"));
+          sourceBattleAnimationPlaneState(animation, frameIndex, "background"), bounds);
         this.applyAnimationPlane(foregroundPlane,
-          sourceBattleAnimationPlaneState(animation, frameIndex, "foreground"));
+          sourceBattleAnimationPlaneState(animation, frameIndex, "foreground"), bounds);
         this.transformBattlers(frame, side, explicitOpponent, reverse, activeSlot, targetIsUser);
         this.drawSourceFrame(backContext, image, frame, reverse, false);
         this.drawSourceFrame(context, image, frame, reverse, true);
@@ -1489,8 +1585,7 @@ export class SourceBattleVisuals {
     const userSide: BattleSide = explicitOpponent ? (attacker === "player" ? "opponent" : "player") : attacker;
     const targetSide: BattleSide = userSide === "player" ? "opponent" : "player";
     const stageWidth = document.getElementById("source-battle-stage")?.getBoundingClientRect().width ?? 512;
-    for (const cel of frame) {
-      if (cel.pattern !== -1 && cel.pattern !== -2) continue;
+    for (const cel of sourceBattleBattlerCels(frame, targetIsUser)) {
       const side = cel.pattern === -1 || targetIsUser ? userSide : targetSide;
       const reference = transformBattleAnimationPoint(cel.pattern === -1 ? 128 : 384, cel.pattern === -1 ? 224 : 96, reverse);
       const point = transformBattleAnimationPoint(cel.x, cel.y, reverse);
@@ -1504,9 +1599,13 @@ export class SourceBattleVisuals {
     }
   }
 
-  private applyAnimationPlane(element: HTMLElement, state: SourceBattleAnimationPlaneState): void {
-    const width = element.parentElement?.clientWidth ?? 512;
-    const height = element.parentElement?.clientHeight ?? 384;
+  private applyAnimationPlane(element: HTMLElement, state: SourceBattleAnimationPlaneState,
+    bounds: SourceBattleAnimationPlaneBounds): void {
+    const { width, height } = bounds;
+    element.style.left = `${bounds.left}px`;
+    element.style.top = `${bounds.top}px`;
+    element.style.width = `${width}px`;
+    element.style.height = `${height}px`;
     element.style.backgroundImage = state.path === null ? "none" : `url("${sourceUrl(state.path)}")`;
     element.style.backgroundSize = `${width}px ${height}px`;
     element.style.backgroundPosition = `${(-state.x / 512) * width}px ${(-state.y / 384) * height}px`;

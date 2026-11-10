@@ -11,7 +11,8 @@ export type SourceBattleStatusVisual = "burn" | "caduco" | "confusion" | "cured"
 
 export type SourceBattlePresentationStep =
   | { readonly kind: "action"; readonly side: BattleSide; readonly move: string;
-      readonly message: string; readonly state: TeamBattleState }
+      readonly message: string; readonly state: TeamBattleState;
+      readonly playAnimation: boolean; readonly charging: boolean }
   | { readonly kind: "impact"; readonly side: BattleSide; readonly effectiveness: number;
       readonly state: TeamBattleState }
   | { readonly kind: "health"; readonly side: BattleSide; readonly from: number; readonly to: number;
@@ -117,6 +118,32 @@ function effectivenessMessage(effectiveness: number): string | null {
   return null;
 }
 
+/** The move animation belongs to the resolved hit, not to the move announcement. */
+function moveAnimationPresentation(events: readonly (TeamBattleEvent | DoubleBattleEvent)[], index: number,
+  side: BattleSide, move: string): { readonly playAnimation: boolean; readonly charging: boolean } {
+  const outcomes: (TeamBattleEvent | DoubleBattleEvent)[] = [];
+  for (let next = index + 1; next < events.length; next += 1) {
+    const event = events[next]!;
+    if (event.type === "moveUsed" || event.type === "positionedActionResolved"
+      || event.type === "turnEnded" || event.type === "battleEnded") break;
+    outcomes.push(event);
+  }
+  // The first turn of a charged move announces the move but does not strike.
+  const charging = outcomes.some((event) => event.type === "volatileApplied" && event.source === side
+    && event.move === move && (event.effect === "charge" && event.turns === 1
+      || event.effect === "bide"));
+  if (charging) return { playAnimation: false, charging: true };
+  if (!outcomes.some((event) => event.type === "moveMissed" && event.move === move)) {
+    return { playAnimation: true, charging: false };
+  }
+  // A spread move may miss one target and hit another. A self-change caused by
+  // the missed move (or crash recoil) is not evidence that a target was hit.
+  return { playAnimation: outcomes.some((event) => ["damageApplied", "substituteChanged", "collateralDamage",
+    "hpRestored", "hpShared", "statusApplied", "volatileApplied", "statStageChanged",
+    "battleEffectChanged", "abilityChanged", "abilitySuppressed", "abilitiesSwapped",
+    "heldItemTransferred", "heldItemRemoved", "forcedSwitchRequested"].includes(event.type)), charging: false };
+}
+
 /**
  * Derives a deterministic visual queue from authoritative battle events. This is
  * shared by local and network battles and never resolves gameplay a second time.
@@ -141,7 +168,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
     steps.push({ kind: "health", side, from: current, to: hp, message: value, state });
   };
 
-  for (const event of events) {
+  for (let eventIndex = 0; eventIndex < events.length; eventIndex += 1) {
+    const event = events[eventIndex]!;
     if (event.type === "positionedActionResolved") {
       const previousActive = { player: state.teams.player.activeIndex, opponent: state.teams.opponent.activeIndex };
       const actorIndex = state.teams[event.actor.side].activeIndices?.[event.actor.slot];
@@ -174,7 +202,8 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       const battler = state.teams[event.side].members[state.teams[event.side].activeIndex];
       const move = battler?.moves.find((slot) => slot.move.internalName === event.move)?.move;
       steps.push({ kind: "action", side: event.side, move: event.move,
-        message: `${activeName(state, event.side)} utilise ${move?.name ?? event.move} !`, state });
+        message: `${activeName(state, event.side)} utilise ${move?.name ?? event.move} !`, state,
+        ...moveAnimationPresentation(events, eventIndex, event.side, event.move) });
     } else if (event.type === "moveReflected") {
       message(`${activeName(state, event.target)} renvoie ${event.move} !`, "status");
     } else if (event.type === "moveSnatched") {

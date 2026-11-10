@@ -188,3 +188,26 @@ R2 confirme la version, la taille et le SHA-256
 son type est `application/json`. Le certificat de diffusion est identique aux
 versions précédentes. L'installation sur téléphone, les sauvegardes et les
 combats solo/Duo/Coop restent à tester par le porteur.
+
+## Patch 0.1.9 — 2026-11-10
+
+L'APK `versionCode 10` est signée avec le certificat de diffusion existant.
+Elle a été installée par-dessus la 0.1.8 sur le Samsung sans changer la date
+de première installation. L'objet privé
+`updates/android/pokemon-z-battle-10.apk` mesure 392 688 590 octets ; son
+SHA-256 local et retéléchargé est
+`0afd9d64c7ba2dff624626502a9b79cb84e20ab74e651cd4327df1f0a5364eb1`.
+Le manifeste `latest.json` a été envoyé ensuite et relu dans R2 ; il annonce
+0.1.9 (10) avec les mêmes taille, empreinte et notes. Le lien permanent reste
+protégé par Cloudflare Access et redirige vers sa connexion sans session.
+
+## Patch 0.1.10 — 2026-11-10
+
+L'icône native utilise le logo 512 × 512 sans marge ajoutée. L'APK signée
+`versionCode 11` a été installée sur le Samsung par-dessus la version 10,
+sans changement de la date de première installation. L'objet
+`updates/android/pokemon-z-battle-11.apk` mesure 392 718 010 octets ; son
+SHA-256 vérifié après retéléchargement est
+`8b21a3a1bc3dc12d7c99cababb717c044bdc244afc68abfa2b8a6b148edcf600`.
+Le manifeste `latest.json` a été publié après l'APK et relu avec les mêmes
+version, taille, hash et notes. Le lien permanent reste protégé par Access.

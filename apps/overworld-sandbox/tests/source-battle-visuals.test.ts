@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
 import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG,
   type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
-  selectSourceCommonBattleAnimation, sourceHealthAnimationDuration,
-  sourceBattleAnimationPlaneState, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
-import type { BattleAnimationsManifest } from "@pokemon-z-battle/local-assets";
+import { sourceBattleAnimationGraphicPath, sourceBattleBattlerCels, sourceBattleChargingSpriteHidden, sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
+  selectSourceChargingBattleAnimation, selectSourceCommonBattleAnimation, sourceHealthAnimationDuration, sourceBattleMessageDuration,
+  sourceBattleAnimationPlaneBounds, sourceBattleAnimationPlaneState, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
+import type { AssetManifest, BattleAnimationsManifest } from "@pokemon-z-battle/local-assets";
+
+describe("source battle message pacing", () => {
+  it("leaves longer text on screen while bounding automatic waits", () => {
+    expect(sourceBattleMessageDuration("Coup critique !")).toBeGreaterThan(1_100);
+    expect(sourceBattleMessageDuration("Le Pokémon adverse rate son attaque.")).toBeGreaterThan(1_600);
+    expect(sourceBattleMessageDuration("A".repeat(200))).toBe(2_300);
+    expect(sourceBattleMessageDuration("Bref", 2_500)).toBe(2_500);
+  });
+});
 
 function battler(id: string): BattlerState {
   return { id, species: id, name: id, level: 5, types: ["NORMAL"], hp: 20,
@@ -23,6 +32,63 @@ describe("source battle health animation", () => {
 });
 
 describe("source common battle animations", () => {
+  it("uses the source charging animation matched by move name", () => {
+    const dig = { index: 542, name: "Common:Dig charging",
+      graphicPath: "Graphics/Animations/PRAS- Dig.png", hue: 0, position: 4,
+      frames: [], timings: [] };
+    const skyDrop = { ...dig, index: 913, name: "Common:Sky Drop charging" };
+    const manifest = { schemaVersion: "1.0.0",
+      coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
+      mappings: [], animations: [dig, skyDrop] } satisfies BattleAnimationsManifest;
+    expect(selectSourceChargingBattleAnimation(manifest, "DIG")).toBe(dig);
+    expect(selectSourceChargingBattleAnimation(manifest, "SKYDROP")).toBe(skyDrop);
+    expect(selectSourceChargingBattleAnimation(manifest, "FLY")).toBeNull();
+  });
+
+  it("recovers a uniquely matching source graphic without inventing a move animation", () => {
+    const graphic = (path: string): AssetManifest["records"][number] => ({ path,
+      category: "graphics/animations", mediaType: "image", image: null });
+    const assets: AssetManifest = { schemaVersion: "1.0.0", records: [
+      graphic("Graphics/Animations/PRAS- Psychic BG.png"), graphic("Graphics/Animations/!.png") ] };
+    expect(sourceBattleAnimationGraphicPath("Graphics/Animations/PRAS- PsychicBG.png", assets))
+      .toBe("Graphics/Animations/PRAS- Psychic BG.png");
+    expect(sourceBattleAnimationGraphicPath("Graphics/Animations/Absent.png", assets))
+      .toBe("Graphics/Animations/Absent.png");
+    expect(sourceBattleAnimationGraphicPath("Graphics/Animations/!", assets))
+      .toBe("Graphics/Animations/!.png");
+    const ambiguous: AssetManifest = { ...assets, records: [...assets.records,
+      graphic("Graphics/Animations/PRAS Psychic BG.png")] };
+    expect(sourceBattleAnimationGraphicPath("Graphics/Animations/PRAS- PsychicBG.png", ambiguous))
+      .toBe("Graphics/Animations/PRAS- PsychicBG.png");
+  });
+
+  it("hides only a semi-invulnerable charging battler, including a restored state", () => {
+    const tunnel = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DIG", functionCode: "0CA" as const };
+    const user = { ...battler("user"), moves: [{ move: tunnel, pp: 9 }],
+      volatile: { chargingMove: "DIG" } };
+    expect(sourceBattleChargingSpriteHidden(user)).toBe(true);
+    expect(sourceBattleChargingSpriteHidden(JSON.parse(JSON.stringify(user)) as BattlerState)).toBe(true);
+    expect(sourceBattleChargingSpriteHidden({ ...user, volatile: { chargingMove: null } })).toBe(false);
+    expect(sourceBattleChargingSpriteHidden({ ...user, moves: [{ move: {
+      ...tunnel, functionCode: "0C4" }, pp: 9 }] })).toBe(false);
+  });
+
+  it("extends only animation background planes to the wide battle viewport", () => {
+    const stage = { left: 160, top: 0, width: 480, height: 360 };
+    const viewport = { left: 0, top: 0, width: 800, height: 360 };
+    expect(sourceBattleAnimationPlaneBounds(stage, viewport, true))
+      .toEqual({ left: -160, top: 0, width: 800, height: 360 });
+    expect(sourceBattleAnimationPlaneBounds(stage, viewport, false))
+      .toEqual({ left: 0, top: 0, width: 480, height: 360 });
+  });
+
+  it("uses only the user anchor when a self-targeted animation contains both battler cels", () => {
+    const frame = [{ pattern: -1, x: 128, y: 224 }, { pattern: -2, x: 128, y: 224 }];
+    expect(sourceBattleBattlerCels(frame, true)).toEqual([frame[0]]);
+    expect(sourceBattleBattlerCels(frame, false)).toEqual(frame);
+    expect(sourceBattleBattlerCels([frame[1]!], true)).toEqual([frame[1]]);
+  });
+
   it("selects a source status animation by its canonical Common name", () => {
     const sleep = { index: 4, name: "Common:Sleep", graphicPath: "Graphics/Animations/status.png",
       hue: 0, position: 4, frames: [], timings: [] };

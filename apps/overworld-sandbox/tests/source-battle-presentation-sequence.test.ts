@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState,
-  type TeamBattleEvent } from "@pokemon-z-battle/battle-engine";
+import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG, resolveTeamTurn,
+  type BattlerState, type TeamBattleEvent } from "@pokemon-z-battle/battle-engine";
 import { buildSourceBattlePresentationSequence } from "../src/source-battle-presentation-sequence.js";
 
 function battler(id: string, hp = 20): BattlerState {
@@ -12,6 +12,75 @@ function battler(id: string, hp = 20): BattlerState {
 }
 
 describe("source battle presentation sequence", () => {
+  it("reserves the impact animation of a two-turn move for its release", () => {
+    const tunnel = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DIG", name: "Tunnel",
+      functionCode: "0CA" as const };
+    const user = { ...battler("Héros"), moves: [{ move: tunnel, pp: 10 }] };
+    const state = createTeamBattleState({ player: [user], opponent: [battler("Cible")] });
+    const charge = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "DIG" },
+      { type: "ppChanged", side: "player", move: "DIG", pp: 9 },
+      { type: "volatileApplied", source: "player", target: "player",
+        effect: "charge", turns: 1, move: "DIG" },
+    ]);
+    expect(charge[0]).toMatchObject({ kind: "action", playAnimation: false, charging: true });
+    const release = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "DIG" },
+      { type: "damageApplied", source: "player", target: "opponent", amount: 4, hp: 16,
+        critical: false, effectiveness: 1 },
+    ]);
+    expect(release[0]).toMatchObject({ kind: "action", playAnimation: true, charging: false });
+    const double = createDoubleTeamBattleState({ player: [user, battler("Allié")],
+      opponent: [battler("Cible"), battler("Autre")] });
+    const positioned = buildSourceBattlePresentationSequence(double, [{ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, targets: [{ side: "opponent", slot: 0 }],
+      events: [{ type: "moveUsed", side: "player", move: "DIG" },
+        { type: "volatileApplied", source: "player", target: "player",
+          effect: "charge", turns: 1, move: "DIG" }] }]);
+    expect(positioned[0]).toMatchObject({ kind: "action", playAnimation: false });
+    const actions = { player: { kind: "move" as const, moveIndex: 0 },
+      opponent: { kind: "wait" as const } };
+    const random = { nextInt: (max: number): number => max - 1 };
+    const firstTurn = resolveTeamTurn(state, actions, random);
+    const firstSteps = buildSourceBattlePresentationSequence(state, firstTurn.events);
+    expect(firstSteps.find((step) => step.kind === "action" && step.side === "player"))
+      .toMatchObject({ playAnimation: false });
+    const secondTurn = resolveTeamTurn(firstTurn.state, actions, random);
+    const secondSteps = buildSourceBattlePresentationSequence(firstTurn.state, secondTurn.events);
+    expect(secondSteps.find((step) => step.kind === "action" && step.side === "player"))
+      .toMatchObject({ playAnimation: true });
+  });
+
+  it("does not animate a move that misses, including in a positioned double action", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const missed = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "TACKLE" },
+      { type: "ppChanged", side: "player", move: "TACKLE", pp: 9 },
+      { type: "moveMissed", side: "player", move: "TACKLE" },
+    ]);
+    expect(missed[0]).toMatchObject({ kind: "action", playAnimation: false });
+    expect(missed[1]).toMatchObject({ kind: "message", message: "Héros rate son attaque." });
+
+    const double = createDoubleTeamBattleState({ player: [battler("Héros"), battler("Allié")],
+      opponent: [battler("Cible"), battler("Autre")] });
+    const positioned = buildSourceBattlePresentationSequence(double, [{ type: "positionedActionResolved",
+      actor: { side: "player", slot: 0 }, targets: [{ side: "opponent", slot: 0 }],
+      events: [{ type: "moveUsed", side: "player", move: "TACKLE" },
+        { type: "moveMissed", side: "player", move: "TACKLE" }] }]);
+    expect(positioned[0]).toMatchObject({ kind: "action", playAnimation: false });
+  });
+
+  it("keeps the animation when a spread move misses one target but hits another", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const steps = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "TACKLE" },
+      { type: "moveMissed", side: "player", move: "TACKLE" },
+      { type: "damageApplied", source: "player", target: "opponent", amount: 4, hp: 16,
+        critical: false, effectiveness: 1 },
+    ]);
+    expect(steps[0]).toMatchObject({ kind: "action", playAnimation: true });
+  });
+
   it("shows the French held-item name when Quick Claw activates", () => {
     const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Rival")] });
     const steps = buildSourceBattlePresentationSequence(state,

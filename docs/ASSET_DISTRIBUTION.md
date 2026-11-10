@@ -503,3 +503,34 @@ pack ni manifeste distant n'a été modifié. L'APK release allégée est signé
 et installée par USB sur le Samsung. One UI ajoute un fond blanc autour du
 PNG transparent dans l'écran d'informations de l'application ; la ressource
 de l'APK elle-même garde son canal alpha.
+
+### APK 0.1.9 (10) — diffusion du 2026-11-10
+
+Le logo local redimensionné à 512 × 512 a régénéré les dix PNG natifs du
+lanceur. Le profil `android:release:slim` conserve la même répartition : les
+49 fonds larges et les BGM hors titre restent fournis par les packs privés
+existants, et `Titulo2.ogg` demeure la seule BGM de l'APK. La copie de
+`Graphics` et `Audio` n'exclut aucun nouveau fichier. L'APK signée a été
+publiée sous `updates/android/pokemon-z-battle-10.apk`, puis son manifeste
+Android a été publié après contrôle de l'objet ; aucun manifeste de pack,
+objet de pack ou Worker n'a changé.
+
+### APK 0.1.10 (11) — icône native — 2026-11-10
+
+Les dix PNG d'icône Android sont régénérés depuis le même logo local 512 × 512
+sans marge de réduction. La capture du lanceur Samsung confirme la disparition
+du liseré blanc ajouté autour du contour doré. Aucune copie de `Graphics` ou
+`Audio` n'a changé de répartition : 49 fonds larges et les BGM hors titre
+restent dans les packs privés, avec `Titulo2.ogg` embarqué. Seuls l'objet APK
+`pokemon-z-battle-11.apk` et le manifeste Android `latest.json` ont été
+publiés dans R2 ; aucun pack ni manifeste de pack n'a été modifié.
+
+### Plans de fond des animations de combat — 2026-11-10
+
+Les images déclenchées par les commandes de fond et d'avant-plan des animations
+restent dans leur distribution actuelle. Sur un combat à fond large, le moteur
+étire uniquement leur plan de présentation à la fenêtre de combat ; les
+cellules animées, sprites et coordonnées de combat restent dans le repère
+source 512 × 384. Aucun fichier `Graphics` n'est modifié ou exclu, et aucun
+pack ne change. Le porteur confirme le rendu sur téléphone : fond plein écran,
+effets et Pokémon préservés. Le double et la Coop restent à vérifier.
