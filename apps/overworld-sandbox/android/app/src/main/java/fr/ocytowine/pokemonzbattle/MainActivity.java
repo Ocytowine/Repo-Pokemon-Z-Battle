@@ -18,6 +18,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(SourceSaveLocatorPlugin.class);
         registerPlugin(ResourcePackPlugin.class);
         registerPlugin(BgmPackPlugin.class);
+        registerPlugin(PrivateApkUpdatePlugin.class);
+        registerPlugin(MobileAccountPlugin.class);
         super.onCreate(savedInstanceState);
         resourcePackStore = new ResourcePackStore(this);
         bgmPackStore = new BgmPackStore(this);

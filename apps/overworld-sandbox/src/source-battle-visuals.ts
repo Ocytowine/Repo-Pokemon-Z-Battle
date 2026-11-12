@@ -41,12 +41,16 @@ export function sourceWildPokemonCaught(species: string, caughtSpecies: readonly
   return caughtSpecies.includes(species);
 }
 
+export function sourceBattleChargeHidesSprite(move: Pick<BattleMove, "functionCode">): boolean {
+  return ["0C9", "0CA", "0CB", "0CC", "0CD", "0CE", "14D"].includes(move.functionCode);
+}
+
 export function sourceBattleChargingSpriteHidden(battler: BattlerState): boolean {
   const charging = battler.volatile?.chargingMove;
   if (charging == null) return false;
   const functionCode = battler.volatile?.chargingCalledMove?.functionCode
     ?? battler.moves.find((slot) => slot.move.internalName === charging)?.move.functionCode;
-  return ["0C9", "0CA", "0CB", "0CC", "0CD", "0CE", "14D"].includes(functionCode ?? "");
+  return functionCode !== undefined && sourceBattleChargeHidesSprite({ functionCode });
 }
 
 export function sourceBattleBattlerCels<T extends Pick<BattleAnimationCel, "pattern">>(
@@ -172,14 +176,32 @@ export function transformBattleAnimationPoint(x: number, y: number, reverse: boo
   return reverse ? { x: 512 - x, y: 320 - y } : { x, y };
 }
 
+// PokeBattle_Scene#pbFindAnimation in the original Scripts.rxdata uses these
+// moves when a capability has no explicit move2anim entry (e.g. Lamassacre).
+const SOURCE_TYPE_DEFAULT_ANIMATION: Readonly<Record<string, string>> = {
+  NORMAL: "TACKLE", FIGHTING: "COMETPUNCH", FLYING: "GUST", POISON: "SLUDGE",
+  GROUND: "MUDSLAP", ROCK: "ROCKTHROW", BUG: "TWINEEDLE", GHOST: "NIGHTSHADE",
+  STEEL: "GYROBALL", FIRE: "EMBER", WATER: "WATERGUN", GRASS: "RAZORLEAF",
+  ELECTRIC: "THUNDERSHOCK", PSYCHIC: "CONFUSION", ICE: "ICEBALL",
+  DRAGON: "DRAGONRAGE", DARK: "PURSUIT", FAIRY: "FAIRYWIND",
+};
+
 export function selectSourceBattleAnimation(manifest: BattleAnimationsManifest, side: BattleSide,
-  internalName: string): { readonly animation: BattleAnimationRecord; readonly explicitOpponent: boolean; readonly reverse: boolean } | null {
-  const mapping = manifest.mappings.find((entry) => entry.internalName === internalName);
-  if (mapping === undefined) return null;
-  const explicitOpponent = side === "opponent" && mapping.opponent !== null;
-  const animationIndex = side === "player" ? mapping.player : (mapping.opponent ?? mapping.player);
-  const animation = manifest.animations.find((entry) => entry.index === animationIndex);
-  return animation === undefined ? null : { animation, explicitOpponent, reverse: side === "opponent" && !explicitOpponent };
+  internalName: string, type?: string): { readonly animation: BattleAnimationRecord; readonly explicitOpponent: boolean; readonly reverse: boolean } | null {
+  const mapped = (name: string): { readonly animation: BattleAnimationRecord;
+    readonly explicitOpponent: boolean; readonly reverse: boolean } | null => {
+    const entry = manifest.mappings.find((candidate) => candidate.internalName === name);
+    if (entry === undefined) return null;
+    const explicitOpponent = side === "opponent" && entry.opponent !== null;
+    const index = side === "player" ? entry.player : (entry.opponent ?? entry.player);
+    const animation = manifest.animations.find((candidate) => candidate.index === index);
+    return animation === undefined ? null : { animation, explicitOpponent,
+      reverse: side === "opponent" && !explicitOpponent };
+  };
+  const exact = mapped(internalName);
+  if (exact !== null || type === undefined) return exact;
+  return mapped(SOURCE_TYPE_DEFAULT_ANIMATION[type.toUpperCase()] ?? "TACKLE")
+    ?? mapped("TACKLE");
 }
 
 export function selectSourceCommonBattleAnimation(manifest: BattleAnimationsManifest,
@@ -188,13 +210,13 @@ export function selectSourceCommonBattleAnimation(manifest: BattleAnimationsMani
 }
 
 export function selectSourceChargingBattleAnimation(manifest: BattleAnimationsManifest,
-  internalName: string): BattleAnimationRecord | null {
-  const normalized = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const move = normalized(internalName);
-  return manifest.animations.find((entry) => {
-    const match = /^Common:(.+) charging$/i.exec(entry.name);
-    return match !== null && normalized(match[1]!) === move;
-  }) ?? null;
+  side: BattleSide, internalName: string): { readonly animation: BattleAnimationRecord;
+    readonly explicitOpponent: boolean; readonly reverse: boolean } | null {
+  const base = selectSourceBattleAnimation(manifest, side, internalName);
+  if (base === null) return null;
+  const animation = manifest.animations.find((entry) => entry.index === base.animation.index + 1
+    && / charging$/i.test(entry.name));
+  return animation === undefined ? null : { ...base, animation };
 }
 
 export function sourceBattleAnimationGraphicPath(path: string, assets: AssetManifest): string {
@@ -700,6 +722,13 @@ export class SourceBattleVisuals {
       ...(this.options.abilityName === undefined ? {} : { abilityName: this.options.abilityName }),
       ...(this.options.itemName === undefined ? {} : { itemName: this.options.itemName }),
     };
+    const pendingChargeReveals = new Set<HTMLElement>();
+    const revealChargedBattlers = (): void => {
+      for (const sprite of pendingChargeReveals) {
+        sprite.classList.remove("charging-hidden", "charge-release-pending");
+      }
+      pendingChargeReveals.clear();
+    };
     for (const step of buildSourceBattlePresentationSequence(before, events, presentationOptions)) {
       const stepSide = "side" in step ? step.side : null;
       const active = stepSide === null ? null : step.state.teams[stepSide];
@@ -708,18 +737,31 @@ export class SourceBattleVisuals {
       const spriteId = stepSide === null ? null
         : `source-${stepSide}-sprite${stepSlot === 0 ? "" : `-${stepSlot + 1}`}`;
       if (step.kind === "action") {
+        // The previous action's damage and messages are now complete.
+        revealChargedBattlers();
         const battler = step.state.teams[step.side].members[step.state.teams[step.side].activeIndex];
         const move = battler?.moves.find((slot) => slot.move.internalName === step.move)?.move;
         const sprite = spriteId === null ? null : document.getElementById(spriteId);
-        // The release turn begins with the sprite hidden by its charge state.
-        sprite?.classList.remove("charging-hidden");
+        // The animation is followed by impact, HP and status messages. Keep
+        // the battler hidden until that whole action has finished.
+        const releasingHiddenSprite = !step.charging && battler?.volatile?.chargingMove === step.move
+          && sourceBattleChargingSpriteHidden(battler);
+        if (releasingHiddenSprite && sprite !== null) {
+          sprite.classList.add("charging-hidden", "charge-release-pending");
+          pendingChargeReveals.add(sprite);
+        }
         this.message(step.message);
         await readableMessageDelay(500);
         if (step.charging) {
-          if (!(await this.playSourceChargeAnimation(step.side, step.move, stepSlot))) {
+          if (move === undefined || !(await this.playSourceChargeAnimation(step.side, move, stepSlot))) {
             sprite?.classList.add("charging");
             try { await delay(420); }
             finally { sprite?.classList.remove("charging"); }
+          }
+          // The original dig/fly/dive charge animation can make the battler
+          // disappear. Preserve that result before the "prepares" message.
+          if (move !== undefined && sourceBattleChargeHidesSprite(move)) {
+            sprite?.classList.add("charging-hidden");
           }
         }
         if (step.playAnimation && (move === undefined || !(await this.playSourceAnimation(step.side, move, stepSlot)))) {
@@ -811,6 +853,7 @@ export class SourceBattleVisuals {
         await this.playCapture(step, session);
       }
     }
+    revealChargedBattlers();
   }
 
   message(value: string): void {
@@ -832,11 +875,30 @@ export class SourceBattleVisuals {
     const curtain = document.getElementById("source-battle-curtain");
     if (curtain === null) return;
     const world = document.getElementById("world") as HTMLCanvasElement | null;
-    let snapshot: string | null = null;
-    try { snapshot = world?.toDataURL("image/png") ?? null; } catch { /* Canvas indisponible. */ }
+    for (const animation of curtain.getAnimations()) animation.cancel();
     curtain.replaceChildren();
     curtain.style.opacity = "1";
-    curtain.style.background = snapshot === null ? "#050706" : `#050706 url("${snapshot}") center / contain no-repeat`;
+    curtain.style.background = "#050706";
+    if (world !== null) {
+      const snapshot = document.createElement("canvas");
+      snapshot.width = world.width;
+      snapshot.height = world.height;
+      snapshot.className = "source-battle-world-snapshot";
+      const rect = world.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        // The battle panel can expand to the full phone width while assets load.
+        // Keep the world image at its original screen position and scale.
+        snapshot.style.position = "fixed";
+        snapshot.style.left = `${rect.left}px`;
+        snapshot.style.top = `${rect.top}px`;
+        snapshot.style.width = `${rect.width}px`;
+        snapshot.style.height = `${rect.height}px`;
+      }
+      try {
+        snapshot.getContext("2d")?.drawImage(world, 0, 0);
+        curtain.append(snapshot);
+      } catch { /* Le fond noir reste disponible si le canvas source est inaccessible. */ }
+    }
     curtain.classList.add("active");
   }
 
@@ -854,8 +916,16 @@ export class SourceBattleVisuals {
     canvas.style.width = "100%";
     canvas.style.height = "100%";
     const context = canvas.getContext("2d");
-    if (context === null) return;
-    curtain.replaceChildren(canvas);
+    if (context === null) {
+      if (session === this.#audioSession) {
+        curtain.replaceChildren();
+        curtain.removeAttribute("style");
+        curtain.classList.remove("active");
+      }
+      return;
+    }
+    curtain.append(canvas);
+    let reveal: Animation | null = null;
     try {
       if (!reduced) {
         for (let pulse = 0; pulse < 3; pulse += 1) {
@@ -884,14 +954,16 @@ export class SourceBattleVisuals {
       context.clearRect(0, 0, width, height);
       context.fillStyle = "#050706";
       context.fillRect(0, 0, width, height);
-      const reveal = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
+      reveal = curtain.animate([{ opacity: 1 }, { opacity: 0 }],
         { duration: reduced ? 20 : 18 * SOURCE_TRANSITION_FRAME_MS, fill: "forwards", easing: "linear" });
       await reveal.finished.catch(() => undefined);
-      reveal.cancel();
     } finally {
-      curtain.replaceChildren();
-      curtain.removeAttribute("style");
-      curtain.classList.remove("active");
+      if (session === this.#audioSession) {
+        curtain.replaceChildren();
+        curtain.classList.remove("active");
+        curtain.removeAttribute("style");
+      }
+      reveal?.cancel();
     }
   }
 
@@ -1482,19 +1554,20 @@ export class SourceBattleVisuals {
     const manifests = await this.manifests();
     const sourceAnimations = manifests.animations;
     if (sourceAnimations === undefined) return false;
-    const selection = selectSourceBattleAnimation(sourceAnimations, side, move.internalName);
+    const selection = selectSourceBattleAnimation(sourceAnimations, side, move.internalName, move.type);
     if (selection === null) return false;
     const { animation, explicitOpponent, reverse } = selection;
     return this.playSourceAnimationRecord(side, animation, explicitOpponent, reverse, activeSlot);
   }
 
-  private async playSourceChargeAnimation(side: BattleSide, move: string, activeSlot = 0): Promise<boolean> {
+  private async playSourceChargeAnimation(side: BattleSide, move: BattleMove, activeSlot = 0): Promise<boolean> {
     const manifests = await this.manifests();
     const animations = manifests.animations;
     if (animations === undefined) return false;
-    const animation = selectSourceChargingBattleAnimation(animations, move);
-    return animation === null ? false
-      : this.playSourceAnimationRecord(side, animation, false, side === "opponent", activeSlot, true);
+    const selection = selectSourceChargingBattleAnimation(animations, side, move.internalName);
+    return selection === null ? false
+      : this.playSourceAnimationRecord(side, selection.animation,
+        selection.explicitOpponent, selection.reverse, activeSlot);
   }
 
   private async playCommonSourceAnimation(side: BattleSide, name: string, activeSlot = 0,

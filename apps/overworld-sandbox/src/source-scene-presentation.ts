@@ -45,7 +45,7 @@ export interface SourceMapVisualState {
 }
 
 export interface SourceWeatherState {
-  readonly kind: "none" | "rain" | "storm" | "snow";
+  readonly kind: "none" | "rain" | "storm" | "snow" | "blizzard" | "sandstorm" | "heavy-rain" | "sun";
   readonly power: number;
   readonly durationMs: number;
 }
@@ -155,9 +155,21 @@ export function parseSourceWeather(data: Readonly<Record<string, unknown>>): Sou
   const type = finite(values[0], -1);
   const power = finite(values[1], -1);
   const duration = finite(values[2], -1);
-  if (!Number.isInteger(type) || type < 0 || type > 3 || power < 0 || duration < 0) return null;
-  const kinds = ["none", "rain", "storm", "snow"] as const;
+  if (!Number.isInteger(type) || type < 0 || type > 7 || power < 0 || duration < 0) return null;
+  // PBFieldWeather extends RPG Maker's four native values in the source game.
+  const kinds = ["none", "rain", "storm", "snow", "blizzard", "sandstorm", "heavy-rain", "sun"] as const;
   return { kind: kinds[type]!, power: clamp(power, 0, 9), durationMs: duration * 25 };
+}
+
+/** Decodes the current weather carried inside the existing Coop presentation cue. */
+export function parseSourceWeatherState(value: unknown): SourceWeatherState | null {
+  if (!record(value)) return null;
+  const kinds: ReadonlySet<string> = new Set(["none", "rain", "storm", "snow", "blizzard", "sandstorm", "heavy-rain", "sun"]);
+  if (typeof value.kind !== "string" || !kinds.has(value.kind)
+    || !Number.isInteger(value.power) || (value.power as number) < 0 || (value.power as number) > 9
+    || !Number.isFinite(value.durationMs) || (value.durationMs as number) < 0
+    || (value.durationMs as number) > 60_000) return null;
+  return value as unknown as SourceWeatherState;
 }
 
 export function parseSourceScroll(data: Readonly<Record<string, unknown>>): SourceScrollState | null {
@@ -276,6 +288,8 @@ export class SourceScenePresentation {
   private pokemonAssetsManifest: Promise<SourcePokemonAssetsManifest | null> | null = null;
   private sourceAudioPaths: Promise<ReadonlySet<string> | null> | null = null;
   private animationSession = 0;
+  private weatherSession = 0;
+  private weatherState: SourceWeatherState = { kind: "none", power: 0, durationMs: 0 };
 
   public constructor(private readonly elements: PresentationElements,
     audioMix: SourceAudioMix = { music: 1, effects: 1, coopEffects: 1 },
@@ -324,7 +338,7 @@ export class SourceScenePresentation {
       }
       return true;
     }
-    if (command.kind === "weather") return this.weather(command.data, delay);
+    if (command.kind === "weather") return this.weather(command.data);
     if (command.kind === "change-map-settings") return this.changeMapSettings(command.data);
     if (command.kind === "panorama-motion") return this.panoramaMotion(command.data);
     if (["show-picture", "move-picture", "erase-picture"].includes(command.kind)) {
@@ -354,25 +368,26 @@ export class SourceScenePresentation {
     this.elements.fog.style.setProperty("--source-fog-base-y", `${-y * this.fogZoom * scale}px`);
   }
 
-  public resetMapPresentation(): void {
+  public resetMapPresentation(preserveMapEffects = false): void {
     this.scrollSession += 1;
     this.scrollQueue = Promise.resolve();
     this.cameraOffset = { x: 0, y: 0 };
     this.options.onCameraOffset?.(this.cameraOffset);
     this.animationSession += 1;
     this.elements.animations.replaceChildren();
-    this.elements.panorama.style.backgroundImage = "none";
-    this.elements.panorama.style.animation = "none";
-    this.elements.panorama.style.removeProperty("--source-panorama-x");
-    this.elements.panorama.style.removeProperty("--source-panorama-y");
-    this.elements.fog.style.backgroundImage = "none";
-    this.elements.fog.style.removeProperty("background-size");
-    this.fogAssetName = null;
-    this.fogImage = null;
-    this.fogZoom = 1;
+    if (!preserveMapEffects) {
+      this.elements.panorama.style.backgroundImage = "none";
+      this.elements.panorama.style.animation = "none";
+      this.elements.panorama.style.removeProperty("--source-panorama-x");
+      this.elements.panorama.style.removeProperty("--source-panorama-y");
+      this.elements.fog.style.backgroundImage = "none";
+      this.elements.fog.style.removeProperty("background-size");
+      this.fogAssetName = null;
+      this.fogImage = null;
+      this.fogZoom = 1;
+      this.applyWeather({ kind: "none", power: 0, durationMs: 0 });
+    }
     this.mapCamera = { x: Number.NaN, y: Number.NaN };
-    this.elements.weather.dataset.weather = "none";
-    this.elements.weather.style.opacity = "0";
     this.elements.dialogue.dataset.position = "bottom";
     this.elements.dialogue.classList.remove("transparent");
   }
@@ -503,14 +518,25 @@ export class SourceScenePresentation {
     return true;
   }
 
-  private async weather(data: Readonly<Record<string, unknown>>, delay: Delay): Promise<boolean> {
+  public currentWeather(): SourceWeatherState { return this.weatherState; }
+
+  public applyWeather(weather: SourceWeatherState): void {
+    this.weatherState = weather;
+    const session = ++this.weatherSession;
+    const layer = this.elements.weather;
+    layer.style.transition = `opacity ${weather.durationMs}ms linear`;
+    if (weather.kind !== "none") layer.dataset.weather = weather.kind;
+    layer.style.opacity = weather.kind === "none" ? "0" : String(0.2 + weather.power / 15);
+    if (weather.kind === "none") {
+      if (weather.durationMs === 0) layer.dataset.weather = "none";
+      else setTimeout(() => { if (this.weatherSession === session) layer.dataset.weather = "none"; }, weather.durationMs);
+    }
+  }
+
+  private weather(data: Readonly<Record<string, unknown>>): boolean {
     const weather = parseSourceWeather(data);
     if (weather === null) return false;
-    this.elements.weather.style.transition = `opacity ${weather.durationMs}ms linear`;
-    if (weather.kind !== "none") this.elements.weather.dataset.weather = weather.kind;
-    this.elements.weather.style.opacity = weather.kind === "none" ? "0" : String(0.2 + weather.power / 15);
-    await delay(weather.durationMs);
-    if (weather.kind === "none") this.elements.weather.dataset.weather = "none";
+    this.applyWeather(weather);
     return true;
   }
 

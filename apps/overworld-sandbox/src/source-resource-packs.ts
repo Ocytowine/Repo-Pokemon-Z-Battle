@@ -1,6 +1,7 @@
 import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
+import { MOBILE_ORIGIN, mobileAuthorization } from "./source-mobile-account.js";
 
-const ORIGIN = "https://pokemon-z-battle-cloud-save.mimidu33-eb.workers.dev";
+const ORIGIN = MOBILE_ORIGIN;
 const LATEST = `${ORIGIN}/api/resources/packs/battlebacks-wide/latest`;
 
 interface WideBattlebackFile {
@@ -98,7 +99,10 @@ export async function installedWideBattlebackPackVersion(): Promise<string | nul
 /** Downloads only absent immutable objects, then atomically activates the verified pack. */
 export async function installWideBattlebackPack(onProgress: (done: number, total: number) => void): Promise<WideBattlebackInstallResult> {
   if (Capacitor.getPlatform() !== "android") return "non-android";
-  const response = await CapacitorHttp.get({ url: LATEST, connectTimeout: 10_000, readTimeout: 20_000 });
+  const authorization = await mobileAuthorization();
+  if (authorization === null) return "login-required";
+  const response = await CapacitorHttp.get({ url: LATEST, headers: { Authorization: authorization },
+    connectTimeout: 10_000, readTimeout: 20_000 });
   if (response.status === 204) return "not-published";
   if (response.status === 401 || response.status === 403 || response.status === 302) return "login-required";
   const pack = response.status === 200 ? parseWideBattlebackPack(response.data) : null;
@@ -116,7 +120,8 @@ export async function installWideBattlebackPack(onProgress: (done: number, total
     const file = byHash.get(hash);
     if (file === undefined) throw new Error("Objet absent du manifeste.");
     const object = await CapacitorHttp.get({ url: `${ORIGIN}/api/resources/objects/${hash}`,
-      responseType: "blob", connectTimeout: 15_000, readTimeout: 45_000 });
+      headers: { Authorization: authorization }, responseType: "blob",
+      connectTimeout: 15_000, readTimeout: 45_000 });
     if (object.status === 401 || object.status === 403 || object.status === 302) return "login-required";
     if (object.status !== 200 || typeof object.data !== "string") throw new Error(`Fond indisponible : ${file.path}.`);
     await nativePack.installObject({ sha256: hash, sizeBytes: file.sizeBytes, base64: object.data });

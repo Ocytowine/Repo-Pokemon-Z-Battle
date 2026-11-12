@@ -18,6 +18,7 @@
     "prepare:local": "corepack pnpm --filter @pokemon-z-battle/extractor prepare:local",
     "audit:combat": "corepack pnpm --filter @pokemon-z-battle/extractor audit:combat",
     "audit:items": "corepack pnpm --filter @pokemon-z-battle/extractor audit:items",
+    "audit:narrative": "corepack pnpm exec tsx apps/overworld-sandbox/scripts/audit-narrative.mts",
     "android:apk": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox android:apk",
     "android:open": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox android:open",
     "android:sync": "corepack pnpm --filter @pokemon-z-battle/overworld-sandbox android:sync",

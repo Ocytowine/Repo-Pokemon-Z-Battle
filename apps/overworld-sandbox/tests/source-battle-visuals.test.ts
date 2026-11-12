@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createDoubleTeamBattleState, createTeamBattleState, MINIMAL_MOVE_CATALOG,
   type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { sourceBattleAnimationGraphicPath, sourceBattleBattlerCels, sourceBattleChargingSpriteHidden, sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
-  selectSourceChargingBattleAnimation, selectSourceCommonBattleAnimation, sourceHealthAnimationDuration, sourceBattleMessageDuration,
+import { sourceBattleAnimationGraphicPath, sourceBattleBattlerCels, sourceBattleChargeHidesSprite, sourceBattleChargingSpriteHidden, sourceBattleGenderSymbol, sourceBattleTeamBallPath, sourceCaptureBallIndex, sourceExperienceHudSlot,
+  selectSourceBattleAnimation, selectSourceChargingBattleAnimation, selectSourceCommonBattleAnimation, sourceHealthAnimationDuration, sourceBattleMessageDuration,
   sourceBattleAnimationPlaneBounds, sourceBattleAnimationPlaneState, sourceWildPokemonCaught } from "../src/source-battle-visuals.js";
 import type { AssetManifest, BattleAnimationsManifest } from "@pokemon-z-battle/local-assets";
 
@@ -32,17 +32,34 @@ describe("source battle health animation", () => {
 });
 
 describe("source common battle animations", () => {
-  it("uses the source charging animation matched by move name", () => {
-    const dig = { index: 542, name: "Common:Dig charging",
+  it("uses the adjacent source charging animation, including those outside Common", () => {
+    const digImpact = { index: 541, name: "Move:DIG",
       graphicPath: "Graphics/Animations/PRAS- Dig.png", hue: 0, position: 4,
       frames: [], timings: [] };
-    const skyDrop = { ...dig, index: 913, name: "Common:Sky Drop charging" };
+    const dig = { ...digImpact, index: 542, name: "Common:Dig charging" };
+    const flyImpact = { ...digImpact, index: 292, name: "Move:FLY" };
+    const fly = { ...digImpact, index: 293, name: "Fly charging" };
     const manifest = { schemaVersion: "1.0.0",
       coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
-      mappings: [], animations: [dig, skyDrop] } satisfies BattleAnimationsManifest;
-    expect(selectSourceChargingBattleAnimation(manifest, "DIG")).toBe(dig);
-    expect(selectSourceChargingBattleAnimation(manifest, "SKYDROP")).toBe(skyDrop);
-    expect(selectSourceChargingBattleAnimation(manifest, "FLY")).toBeNull();
+      mappings: [{ internalName: "DIG", player: 541, opponent: null },
+        { internalName: "FLY", player: 292, opponent: null }],
+      animations: [digImpact, dig, flyImpact, fly] } satisfies BattleAnimationsManifest;
+    expect(selectSourceChargingBattleAnimation(manifest, "player", "DIG")?.animation).toBe(dig);
+    expect(selectSourceChargingBattleAnimation(manifest, "opponent", "DIG"))
+      .toMatchObject({ animation: dig, reverse: true });
+    expect(selectSourceChargingBattleAnimation(manifest, "player", "FLY")?.animation).toBe(fly);
+  });
+
+  it("uses the original type fallback for a move without a direct animation", () => {
+    const bug = { index: 193, name: "Move:TWINEEDLE",
+      graphicPath: "Graphics/Animations/PRAS- Megahorn.png", hue: 0, position: 4,
+      frames: [], timings: [] };
+    const manifest = { schemaVersion: "1.0.0",
+      coordinateSystem: { width: 512, height: 384, cellSize: 192, sheetColumns: 5, framesPerSecond: 20 },
+      mappings: [{ internalName: "ESPADASEDOSA", player: null, opponent: null },
+        { internalName: "TWINEEDLE", player: 193, opponent: null }],
+      animations: [bug] } satisfies BattleAnimationsManifest;
+    expect(selectSourceBattleAnimation(manifest, "player", "ESPADASEDOSA", "BUG")?.animation).toBe(bug);
   });
 
   it("recovers a uniquely matching source graphic without inventing a move animation", () => {
@@ -63,6 +80,9 @@ describe("source common battle animations", () => {
   });
 
   it("hides only a semi-invulnerable charging battler, including a restored state", () => {
+    expect(sourceBattleChargeHidesSprite({ functionCode: "0CA" })).toBe(true);
+    expect(sourceBattleChargeHidesSprite({ functionCode: "0C9" })).toBe(true);
+    expect(sourceBattleChargeHidesSprite({ functionCode: "0C4" })).toBe(false);
     const tunnel = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DIG", functionCode: "0CA" as const };
     const user = { ...battler("user"), moves: [{ move: tunnel, pp: 9 }],
       volatile: { chargingMove: "DIG" } };

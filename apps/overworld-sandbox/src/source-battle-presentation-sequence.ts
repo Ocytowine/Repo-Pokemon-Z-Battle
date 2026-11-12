@@ -112,7 +112,6 @@ function withSwitchedIndex(state: TeamBattleState, side: BattleSide, fromIndex: 
 }
 
 function effectivenessMessage(effectiveness: number): string | null {
-  if (effectiveness === 0) return "Cela n'affecte pas la cible…";
   if (effectiveness > 1) return "C'est super efficace !";
   if (effectiveness < 1) return "Ce n'est pas très efficace…";
   return null;
@@ -133,6 +132,21 @@ function moveAnimationPresentation(events: readonly (TeamBattleEvent | DoubleBat
     && event.move === move && (event.effect === "charge" && event.turns === 1
       || event.effect === "bide"));
   if (charging) return { playAnimation: false, charging: true };
+  const damage = outcomes.filter((event) => event.type === "damageApplied");
+  // pbSuccessCheck in the source rejects an immune target before pbShowAnimation.
+  // A spread move still animates when at least one other target is affected.
+  if (damage.length > 0 && damage.every((event) => event.effectiveness === 0)) {
+    return { playAnimation: false, charging: false };
+  }
+  const successfulEffect = outcomes.some((event) => event.type === "damageApplied" && event.effectiveness > 0
+    || event.type === "statusApplied" || event.type === "statStageChanged"
+    || event.type === "hpRestored" || event.type === "battleEffectChanged"
+    || event.type === "volatileApplied" || event.type === "heldItemTransferred");
+  if (!successfulEffect && outcomes.some((event) => event.type === "moveFailed"
+    || event.type === "statusApplicationFailed"
+      && (event.reason === "type-immune" || event.reason === "ability-immune"))) {
+    return { playAnimation: false, charging: false };
+  }
   if (!outcomes.some((event) => event.type === "moveMissed" && event.move === move)) {
     return { playAnimation: true, charging: false };
   }
@@ -210,6 +224,10 @@ export function buildSourceBattlePresentationSequence(before: TeamBattleState,
       message(`${activeName(state, event.target)} vole l'effet de ${event.move} !`, "status");
     } else if (event.type === "damageApplied") {
       const targetName = activeName(state, event.target);
+      if (event.effectiveness === 0) {
+        message(`Cela n'affecte pas ${targetName}…`);
+        continue;
+      }
       steps.push({ kind: "impact", side: event.target, effectiveness: event.effectiveness, state });
       health(event.target, event.hp, event.amount === 0
         ? `${targetName} ne perd aucun PV.`

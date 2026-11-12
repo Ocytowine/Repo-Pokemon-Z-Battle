@@ -42,6 +42,7 @@ describe("source battle presentation sequence", () => {
       opponent: { kind: "wait" as const } };
     const random = { nextInt: (max: number): number => max - 1 };
     const firstTurn = resolveTeamTurn(state, actions, random);
+    expect(firstTurn.state.teams.player.members[0]?.volatile?.chargingMove).toBe("DIG");
     const firstSteps = buildSourceBattlePresentationSequence(state, firstTurn.events);
     expect(firstSteps.find((step) => step.kind === "action" && step.side === "player"))
       .toMatchObject({ playAnimation: false });
@@ -49,6 +50,9 @@ describe("source battle presentation sequence", () => {
     const secondSteps = buildSourceBattlePresentationSequence(firstTurn.state, secondTurn.events);
     expect(secondSteps.find((step) => step.kind === "action" && step.side === "player"))
       .toMatchObject({ playAnimation: true });
+    const releaseStep = secondSteps.find((step) => step.kind === "action" && step.side === "player");
+    if (releaseStep?.kind !== "action") throw new Error("L'action de sortie manque.");
+    expect(releaseStep.state.teams.player.members[0]?.volatile?.chargingMove).toBe("DIG");
   });
 
   it("does not animate a move that misses, including in a positioned double action", () => {
@@ -238,7 +242,7 @@ describe("source battle presentation sequence", () => {
   });
 
   it.each([
-    [0, "Cela n'affecte pas la cible…"],
+    [0, "Cela n'affecte pas Cible…"],
     [0.5, "Ce n'est pas très efficace…"],
     [2, "C'est super efficace !"],
   ])("announces effectiveness %s", (effectiveness, expected) => {
@@ -248,6 +252,59 @@ describe("source battle presentation sequence", () => {
         hp: effectiveness === 0 ? 20 : 17, critical: false, effectiveness },
     ]);
     expect(sequence.at(-1)).toMatchObject({ kind: "message", message: expected });
+    if (effectiveness === 0) expect(sequence.some((step) => step.kind === "impact" || step.kind === "health")).toBe(false);
+  });
+
+  it("omits attack and impact visuals for type immunity in a resolved turn", () => {
+    const ghost = { ...battler("Spectre"), types: ["GHOST"] };
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [ghost] });
+    const result = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, { nextInt: (max: number) => max - 1 });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "damageApplied",
+      source: "player", amount: 0, effectiveness: 0 }));
+    const sequence = buildSourceBattlePresentationSequence(state, result.events);
+    expect(sequence.find((step) => step.kind === "action" && step.side === "player"))
+      .toMatchObject({ playAnimation: false });
+    expect(sequence.some((step) => step.kind === "impact" || step.kind === "health")).toBe(false);
+    expect(sequence).toContainEqual(expect.objectContaining({ kind: "message",
+      message: "Cela n'affecte pas Spectre…" }));
+  });
+
+  it("keeps a spread attack animation when another target can be hit", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "TACKLE" },
+      { type: "damageApplied", source: "player", target: "opponent", amount: 0,
+        hp: 20, critical: false, effectiveness: 0 },
+      { type: "damageApplied", source: "player", target: "opponent", amount: 4,
+        hp: 16, critical: false, effectiveness: 1 },
+    ]);
+    expect(sequence[0]).toMatchObject({ kind: "action", playAnimation: true });
+    expect(sequence.filter((step) => step.kind === "impact")).toHaveLength(1);
+  });
+
+  it("omits an immune status move's animation without hiding its explanation", () => {
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [battler("Cible")] });
+    const sequence = buildSourceBattlePresentationSequence(state, [
+      { type: "moveUsed", side: "player", move: "TACKLE" },
+      { type: "statusApplicationFailed", source: "player", target: "opponent",
+        status: "paralysis", reason: "type-immune" },
+    ]);
+    expect(sequence[0]).toMatchObject({ kind: "action", playAnimation: false });
+    expect(sequence[1]).toMatchObject({ kind: "status", message: "Cible est immunisé contre la paralysie." });
+  });
+
+  it("does not animate a move stopped by Wonder Guard", () => {
+    const protectedTarget = { ...battler("Cible"), ability: "WONDERGUARD", types: ["BUG"] };
+    const state = createTeamBattleState({ player: [battler("Héros")], opponent: [protectedTarget] });
+    const result = resolveTeamTurn(state, { player: { kind: "move", moveIndex: 0 },
+      opponent: { kind: "wait" } }, { nextInt: (max: number) => max - 1 });
+    expect(result.events).toContainEqual(expect.objectContaining({ type: "abilityActivated",
+      ability: "WONDERGUARD" }));
+    const sequence = buildSourceBattlePresentationSequence(state, result.events);
+    expect(sequence.find((step) => step.kind === "action" && step.side === "player"))
+      .toMatchObject({ playAnimation: false });
+    expect(sequence.some((step) => step.kind === "impact")).toBe(false);
   });
 
   it("presents misses, statuses, healing and replacement in event order", () => {

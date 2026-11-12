@@ -11466,8 +11466,11 @@ l'action de sortie ou après interruption. Cette règle couvre les codes de vol,
 creusement, plongée et leurs variantes sans numéro de capacité ou de carte.
 
 L'audit local trouve 730 capacités dans `move2anim.dat`, dont 97 sans index
-joueur. Lamassacre fait partie de ces absences source ; aucune animation n'est
-inventée pour elle. Sur 929 animations extraites, 48 chemins graphiques ne
+joueur. Lamassacre fait partie de ces absences directes, mais le jeu d'origine
+joue alors l'animation de remplacement de son type (`BUG` : `TWINEEDLE`).
+`pbFindAnimation` définit les animations par type puis Placage en dernier recours ;
+le lecteur reproduit désormais ce choix. Sur 929 animations extraites avant
+réextraction, 48 chemins graphiques ne
 correspondent pas exactement aux fichiers locaux ; 45 sont référencés par une
 capacité. Deux chemins ont une correspondance unique après normalisation du
 nom (dont `PRAS- PsychicBG.png` vers `PRAS- Psychic BG.png`) ; le lecteur peut
@@ -11476,9 +11479,336 @@ ressource. Le fallback CSS montre maintenant une impulsion visible sur
 l'attaquant et, pour une capacité offensive ciblée, sur sa cible. Les règles
 de dégâts, la sauvegarde, la room et le protocole Coop ne changent pas.
 
-Les tests ciblés de présentation simple/double, de sprite caché et de
-résolution unique d'image passent. `corepack pnpm test`, `corepack pnpm build`,
-`android:release:slim` et `git diff --check` passent. L'APK locale signée est
-installée sur le Samsung par `adb install -r` (`Success`), sans suppression de
-partie. La recette sur téléphone pour Tunnel et Lamassacre, puis le double et
-la Coop, reste ouverte. Aucun APK public ni pack n'est modifié.
+Une première APK locale a été installée et testée : le porteur voit l'effet de
+Lamassacre, mais Tunnel ne joue pas son animation de charge et lui laisse choisir
+une action au second tour. Le correctif en cours extrait les animations de charge
+adjacentes aux impacts, joue la charge au premier tour et soumet automatiquement
+la capacité verrouillée au second tour dans la même interface solo/Coop. Le noyau
+autoritaire impose déjà cette capacité même si un autre choix est soumis ; le
+verrou visuel est désormais raccordé. `prepare:local` a régénéré 942 animations,
+dont `DIG` 541/542 et `FLY` 292/293 (joueur) et 294/295 (adversaire).
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim` et
+`git diff --check` passent. L'APK locale signée est prête, mais le téléphone
+n'apparaît pas dans ADB : installation et recette à faire à sa reconnexion.
+Contrôler Tunnel sur téléphone, puis le double, hôte, invité et reconnexion.
+Aucun APK public ni pack n'est modifié.
+
+Retour de recette BZ-025 sur la première APK installée : Tunnel soumet bien son
+second tour, mais le sprite réapparaît avant la fin de l'attaque. Le lecteur
+retirait `charging-hidden` dès l'annonce de la capacité. La correction garde le
+sprite invisible durant l'animation d'impact et le révèle après celle-ci ; la
+classe impose aussi l'opacité zéro pendant les transformations animées. Une
+nouvelle APK locale a été compilée et installée avec succès sur le Samsung.
+`corepack pnpm test`, `corepack pnpm build`, `android:release:slim` et
+`git diff --check` passent. Recette visuelle demandée au porteur, sans
+changement de pack ni publication.
+
+Second retour de recette : le sprite revient encore trop tôt lorsque la seule
+animation graphique est terminée. La résolution du coup continue alors avec
+l'impact, la variation des PV et les messages. Le lecteur conserve désormais
+une classe de masquage jusqu'au début de l'action suivante (ou la fin du tour),
+y compris si un rendu intermédiaire actualise l'état du Pokémon. Nouvelle
+recette locale à faire sur Tunnel ; les phases hôte/invité restent ouvertes.
+`corepack pnpm test`, `corepack pnpm build` et `android:release:slim` passent ;
+la nouvelle APK a été installée sur le Samsung (`adb install -r` : `Success`).
+La validation visuelle du porteur est demandée. La règle est fondée sur l'état
+de charge et la séquence d'événements, pas sur l'identifiant de Tunnel.
+
+Troisième retour : réapparition encore précoce. L'état autoritaire du tour de
+sortie conserve bien `chargingMove=DIG` (test réel ajouté). Le lecteur ne dépend
+plus uniquement de la présence d'une classe CSS, qui peut être perdue par un
+rendu intermédiaire : il réimpose le masquage à partir de cet état au début du
+tour de sortie. Tests complets et build passés ; attente de la précision du
+porteur sur la phase visuelle exacte et nouvelle recette Android à faire.
+
+Précision du porteur : c'est **son Pokémon au premier tour** qui réapparaît
+pendant « prépare son attaque », juste après l'animation de creusage. Le lecteur
+laissait alors l'animation de charge remettre l'opacité du sprite, et n'appliquait
+le masquage de `chargingMove` qu'au rendu final du tour. Le lecteur applique
+maintenant `charging-hidden` immédiatement après l'animation de charge, avant
+le message de préparation, pour tous les codes source de charge à disparition.
+La correction du tour de sortie reste en place ; nouvelle APK à installer et
+tester sur téléphone.
+`corepack pnpm test`, `corepack pnpm build` et `android:release:slim` passent.
+L'APK signée est prête ; ADB ne détecte plus le téléphone au moment de
+l'installation. Aucun APK public ni pack n'a été publié.
+Le téléphone a ensuite été reconnecté et cette APK a été installée avec succès
+(`adb install -r`). Le porteur confirme que son Pokémon reste désormais caché
+après le creusage et pendant « prépare son attaque ». La recette de ce défaut
+visuel en solo est validée. Les autres capacités de charge, le double et la Coop
+restent à contrôler avant clôture globale de BZ-025.
+
+## BZ-026 — immunité et animation de coup — 2026-11-12
+
+Retour du porteur : une attaque visant un adversaire insensible jouait encore
+l'animation et le son du coup. Le script source `PokeBattle_Battler#pbSuccessCheck`
+vérifie l'immunité de type et certaines immunités de talent avant
+`pbShowAnimation`. Notre noyau commun publie une `damageApplied` à 0 PV avec
+`effectiveness=0` pour une immunité de type ; la présentation interprétait cet
+événement comme un impact et ajoutait le son de dégât et « ne perd aucun PV ».
+
+La séquence de présentation, commune au solo et à la room Coop, supprime
+maintenant l'animation de capacité quand toutes les cibles du coup sont
+immunisées. Pour chaque cible immunisée, elle omet l'impact, le son de dégât et
+la variation de PV, puis annonce « Cela n'affecte pas [nom]… ». Une attaque de
+zone qui atteint une autre cible garde son animation et l'impact de cette cible.
+Les capacités de statut refusées par une immunité et les capacités arrêtées
+avant effet, notamment par Super Garde, n'animent plus le coup ; leur message
+d'explication reste visible. Aucune règle de dégâts, sauvegarde ou ressource ne
+change. Tests sur événements du moteur et cas de zone ajoutés. Recette Android
+solo et Coop encore à faire ; aucune diffusion publique. `corepack pnpm test`,
+`corepack pnpm build`, `android:release:slim` et `git diff --check` passent.
+L'APK locale signée a été installée sur le Samsung reconnecté (`adb install -r` :
+`Success`) sans effacer les sauvegardes. La recette d'immunité en jeu est
+demandée au porteur. Le porteur confirme ensuite sur téléphone : l'annonce et
+le message d'immunité restent, sans animation de coup ni son d'impact. Ce cas
+solo est validé ; la régression double et Coop reste à contrôler.
+
+## BZ-031 — météo de l'overworld — 2026-11-12
+
+Le retour « Liste bug ou manques » signale les effets météo absents. Audit de la
+source : `PBFieldWeather` définit huit types (aucun, pluie, orage, neige,
+blizzard, tempête de sable, forte pluie, soleil). `PBS/metadata.txt` de cette
+version ne contient aucune clé `Weather=` : les climats utilisés viennent des
+commandes `weather` des événements, notamment les pages parallèles de neige.
+Ne pas inférer le climat du nom de carte ou du fond de combat.
+
+Le lecteur accepte maintenant les huit valeurs de la source, rend les variantes
+sans nouveau fichier graphique et fait la transition sans bloquer le déroulement
+de l'événement. La météo survit au transfert sur la même carte. Le noyau visuel
+est commun au solo et à la Coop : l'hôte est autoritaire pour la météo de la
+carte partagée ; l'instantané de scène réplique l'état courant et le restaure à
+la reconnexion de l'invité. Cet état voyage dans `presentation.data.fieldWeather`,
+accepté par le protocole et le Worker déjà en ligne ; aucun déploiement serveur
+n'est requis pour ce champ. Une excursion personnelle de l'invité dérive son
+ambiance de ses événements locaux. Aucun état météo n'est ajouté à la sauvegarde
+personnelle : au rechargement de carte, les événements parallèles source le
+réappliquent. Le Miel consulte l'état météo actif, comme dans le script source.
+
+`corepack pnpm test` et `corepack pnpm build` passent. Téléphone absent d'ADB :
+contrôler visuellement neige/pluie sur une carte à météo, maintien pendant un
+transfert interne, sortie de carte, hôte/invité et reprise après reconnexion.
+Aucun APK public ni pack de ressources publié.
+La même APK locale a ensuite été installée sur le Samsung. Le porteur confirme
+que l'effet météo apparaît, reste visible pendant la marche et disparaît en
+quittant la zone. Cette recette solo est validée ; hôte, invité et reconnexion
+restent à contrôler. La zone exacte n'a pas été relevée pendant le test.
+
+## BZ-032 — ouverture du combat — 2026-11-12
+
+Le retour « Liste bug ou manques » signale un défaut au début de l'animation
+d'entrée en combat. Le porteur précise : petit zoom, clignotement, puis animation.
+Cause visible dans le lecteur : `prepareOpeningCurtain` convertissait le canvas
+overworld en PNG synchrone, l'affichait en `contain` dans un panneau susceptible
+de passer de 4:3 au plein écran, puis `playOpeningTransition` retirait cette
+image au profit d'un canvas d'effets initialement transparent. Le changement de
+cadrage et la disparition d'une image produisaient les deux artefacts signalés.
+
+La capture est désormais copiée directement dans un canvas, fixée à la position
+et à la taille de l'overworld au moment du départ. Le panneau peut s'élargir
+sans zoomer ce contenu. Le canvas des impulsions et bandes s'ajoute au-dessus de
+la capture ; il ne la remplace qu'une fois le noir final posé. Le nettoyage du
+rideau tient compte d'un démarrage de combat plus récent et annule le fondu
+après masquage, pour éviter un nouveau flash. Le chemin de présentation est le
+même en solo et Coop ; aucune règle de combat, sauvegarde ou ressource ne change.
+
+Recette Android à faire dès que le téléphone est disponible : rencontre sauvage,
+combat de Dresseur, écran large, puis hôte/invité Coop. Aucun APK public publié.
+La même APK locale signée et allégée a été construite le 2026-11-12 puis
+installée sur le Samsung branché (`adb install -r` : `Success`), sans supprimer
+les sauvegardes. Le porteur confirme que le zoom et le clignotement ont disparu
+sur l'entrée d'un combat sauvage : transition fluide. Combat de Dresseur et
+Coop restent à valider.
+
+## BZ-033 — flares de Romant-sous-Bois — 2026-11-12
+
+Audit de Map233 et du script source : EV041 (autorun) remet la météo et le ton à
+zéro puis s'efface ; EV042 (autorun suivant) applique le brouillard
+`fogCiudadRomantis` avec opacité 175/255, zoom 200 % et fusion écran, puis
+s'efface. Les deux pages sont sans condition. Le fichier graphique est présent
+dans la source et dans la copie Android. Le lecteur ne relançait la recherche
+d'autorun qu'après un changement d'état narratif ; l'effacement temporaire
+d'EV041 ne déclenchait donc pas EV042. Trois autres événements de la carte
+utilisent `Luz2` avec teinte 240 ; l'import conservait le champ dans le JSON
+mais le perdait avant le dessin.
+
+Le lecteur reprend maintenant l'autorun actif suivant après l'effacement d'un
+autorun achevé, sans cibler Map233 ni un numéro d'événement. Le reset d'une
+présentation lors d'un transfert sur la même carte préserve brouillard,
+panorama et météo. Les invités Coop n'exécutent toujours pas la narration de
+l'hôte : ils reconstruisent seulement les commandes d'ambiance des autoruns
+visuels à effacement immédiat. L'import et le canvas appliquent la teinte et le
+mode de fusion déclarés par la page graphique. Aucun état personnel ni ressource
+nouvelle n'est nécessaire ; l'ambiance est dérivée localement de la carte.
+
+APK locale signée `android:release:slim` installée par USB le 2026-11-12 ;
+`corepack pnpm test` et `corepack pnpm build` réussis. Le porteur confirme en
+solo que les flares colorés et les petites lumières apparaissent, y compris
+après un changement de zone. Hôte, invité et reconnexion restent à vérifier.
+Aucun APK public ni pack n'est modifié.
+
+## Affichage du nom de lieu — 2026-11-12
+
+Le bandeau `LetsGO.png` place son dessin vers la gauche du fichier source : son
+centre visuel est environ au pixel 96 sur une image de 256 pixels. Le premier
+essai avec `background-position: center` a déplacé le dessin trop à gauche ;
+le porteur confirme que le texte semblait bien placé, mais que le cadre avait
+bougé et paraissait déformé. Le dessin est maintenant compensé de 13 px à
+l'échelle actuelle du bandeau, ce qui le centre dans les 314 px du conteneur
+sans changer sa taille ni celle du texte. La marge haute du libellé reste
+retirée. Le porteur confirme sur la seconde APK locale que le cadre a retrouvé
+sa forme et que le texte est bien centré. Cette recette visuelle est validée.
+
+## APK 0.1.11 (12) publiée — 2026-11-12
+
+À la demande du porteur, les correctifs locaux validés depuis la 0.1.10 sont
+diffusés dans l'APK privée : météo de carte, flares et lumières de
+Romant-sous-Bois, centrage du nom de lieu, entrée en combat, bandeau Méga,
+plans de fond des animations, ratés et immunités, puis Tunnel sur deux tours.
+Les recettes solo sont consignées ci-dessus ; les contrôles hôte/invité et
+reconnexion encore ouverts dans la roadmap restent à faire.
+
+`android-version.json` passe à `0.1.11` (`versionCode 12`) avec le certificat
+SHA-256 de diffusion inchangé. `corepack pnpm test`, `corepack pnpm build`,
+`android:release:slim`, `android:manifest` et `git diff --check` réussissent.
+L'APK signée fait **392 729 346 octets**, SHA-256
+`be993581f832145fc3074ef1bf89fd4e0292db8b41946e0d3e234fb05406e567`.
+L'objet R2 `updates/android/pokemon-z-battle-12.apk` a été envoyé puis relu à
+la même taille, avec MIME Android et hash identiques après retéléchargement.
+Le manifeste `updates/android/latest.json` a été publié en dernier et relu :
+version 0.1.11 (12), notes, taille, SHA-256 et MIME JSON concordent. Le lien
+permanent du Worker renvoie vers Cloudflare Access sans session, comme attendu.
+Aucun pack de ressources ni Worker n'a été modifié. Le porteur confirme que la
+mise à jour 0.1.11 a été téléchargée et installée avec succès depuis le jeu.
+
+## BZ-034 — compte cloud persistant Android — 2026-11-12
+
+Le porteur demandait un compte reconnu à chaque ouverture, sans nouveau code
+par courriel, et un seul accès pour sauvegardes, packs et mises à jour. La
+session Cloudflare Access seule ne suffit pas : son cookie est temporaire et
+le navigateur externe de téléchargement utilise un autre stockage. Une
+connexion Access vérifiée émet désormais un code aléatoire à usage unique,
+valable deux minutes. La passerelle publique `pokemon-z-battle-mobile` échange
+ce code contre un jeton personnel révocable ; elle n'accepte aucune identité
+transmise par l'APK. D1 ne conserve que le SHA-256 du jeton, et Android Keystore
+chiffre sa copie locale. La session ne s'éteint qu'à la déconnexion volontaire
+ou à une révocation serveur. La déconnexion bloque aussi le réamorçage
+automatique par un ancien cookie Access.
+
+Autorité : Worker pour l'identité et les droits ; téléphone pour l'intention de
+connexion/déconnexion. Domaine : compte personnel, sans mutation narrative ni
+état partagé. Persistance : jeton chiffré sur ce téléphone et ligne D1, restaurés
+après fermeture et redémarrage. Aucune intention n'est envoyée à la room Coop
+et aucune donnée de compte n'est répliquée aux autres joueurs. L'audience est
+uniquement le propriétaire ; les parcours solo, hôte et invité emploient les
+mêmes API personnelles.
+
+Les API de sauvegarde, ressources et mises à jour passent par la passerelle et
+exigent toutes le jeton. Le téléchargement de l'APK se fait dans l'app Android,
+avec reprise par plage HTTP, contrôle de taille, SHA-256, paquet et version,
+puis ouverture de l'installateur. Le manifeste public 0.1.11 (12) et les
+ressources R2 ne changent pas. Migration D1 `0002_mobile_sessions.sql` appliquée
+en WEUR ; Workers Access et mobile déployés. Contrôles réels : route anonyme
+refusée, activation d'un code test puis révocation, session réelle créée après
+correction de l'en-tête JSON Capacitor. L'APK locale signée 0.1.11 (12) a été
+installée sans effacer les données ; le porteur confirme « compte reconnu sans
+code » après réouverture. Les suites Worker et app, le build et les tests Java
+Android passent. Le porteur confirme que « Synchroniser » réussit et que la
+connexion reste active après fermeture/réouverture, sans nouveau code.
+Déconnexion/reconnexion volontaire sur téléphone reste à confirmer ; la nouvelle chaîne d'installation attend une
+version supérieure à 12 pour une recette de bout en bout. Aucune APK publique
+nouvelle n'a été publiée.
+
+Reconstruction finale de l'APK locale après ajustement du contrôle du paquet
+téléchargé : le fichier partiel est vérifié par taille et SHA-256, puis son
+identité Android est contrôlée une fois renommé `.apk`. `android:release:slim`
+et `:app:testDebugUnitTest` réussissent ; certificat de diffusion inchangé.
+Installation USB par-dessus la même application : `Success`. Les données de
+compte et les sauvegardes ont été conservées.
+
+Le porteur a ensuite testé la déconnexion volontaire suivie d'une reconnexion
+et répond « parfait » : ce parcours est validé sur l'APK locale. Un dernier
+ajustement évite que le bouton « Connexion » rouvre Access lorsque la session
+mobile est déjà active. `corepack pnpm test`, `corepack pnpm build` et
+`android:release:slim` réussissent après ce changement ; l'APK locale finale
+a été réinstallée par USB (`Success`). La publication publique et la recette
+d'une mise à jour vers un `versionCode` supérieur à 12 restent ouvertes.
+
+## BZ-035 — premier inventaire de la narration — 2026-11-12
+
+Le porteur signale des dialogues qui manquent lors de la première visite puis
+apparaissent au retour alors que le joueur n'est plus à la bonne case. L'audit
+statique reproductible `corepack pnpm audit:narrative` a parcouru les 507 cartes,
+12 070 événements et 18 737 pages, avec expansion des événements communs.
+Le tableau par carte est versionné dans `docs/NARRATIVE_MAP_AUDIT.csv` ; les
+5 069 candidats par événement/page restent dans
+`.pokemon-z/data/narrative-audit.json`, ignoré par Git. La méthode, les limites,
+les premières familles et l'ordre de validation figurent dans
+`docs/NARRATIVE_AUDIT.md`. Ces candidats ne sont pas des bugs tous confirmés.
+
+Piste moteur concrète : `resolveEventFlow` refuse une page entière dès qu'une
+commande de son parcours n'est pas portée. `beginPendingSourceMapEntryAutorun`
+efface sa demande avant de savoir si la scène a effectivement démarré. Des
+seuils automatiques de Map003, EV008 à EV011, combinent justement la condition
+Ruby `get_character(0).onEvent?`, deux commandes `change-transparency` et
+`setTempSwitchOn("A")`, non couvertes par le flux courant. L'hypothèse d'un
+départ manqué puis d'une relance au mauvais endroit demande encore la trace
+d'une carte reproduisant le symptôme. Aucun correctif du moteur ni APK n'a été
+fait pendant cet inventaire. Conserver les changements préexistants du worktree.
+
+Le porteur a fourni Map283, La Frescale, et confirmé la scène Mélia/Crisanto.
+EV032 est automatique pour variable 194 = 3–4 ; EV037 l'est à partir de 10
+jusqu'au switch 516. Les deux déplacent ensuite le joueur vers une case fixe.
+EV006 joue d'abord l'ambiance puis s'efface. EV011 à EV015, des portes
+automatiques conditionnées par le switch 127, précèdent les scènes dans l'ordre
+des identifiants ; elles contiennent la condition Ruby `onEvent?` non portée.
+Si 127 est vrai à l'entrée, elles peuvent monopoliser l'ordonnanceur puis
+bloquer le lancement de la scène. Cette hypothèse concorde avec le défaut,
+mais la valeur du switch dans la sauvegarde réelle et l'identité EV032/EV037
+restent à établir avant correctif. Le détail est dans `docs/NARRATIVE_AUDIT.md`.
+
+Premier correctif BZ-035 du 2026-11-12 : Map285/EV026 place la variable 194 à
+4 juste avant de transférer le joueur vers Map283 (32,45) ; EV032 y est donc
+éligible dès l'entrée. Le lancement d'un autorun demandé à l'entrée est
+maintenant repris par la boucle overworld dès que le mouvement, le dialogue
+ou la transition se termine, avant la reprise d'une marche maintenue. La
+sélection et la reprise sont testées sur une page équivalente à EV032.
+L'autorité reste locale en solo et à l'hôte en Coop ; l'invité reçoit la
+présentation de scène existante, sans nouvel état persistant ni nouvelle
+intention réseau. L'état de progression et la position restent sauvegardés et
+restaurés selon le contrat actuel. Le switch 127 est un switch ordinaire
+« NO TOCAR » dans System.rxdata, et sa valeur dans la sauvegarde du porteur
+reste inconnue. Si actif, les portes EV011–EV015 peuvent encore bloquer l'ordre
+des scènes : leurs commandes et conditions manquantes restent dans BZ-035.
+Recette Map283 sur téléphone et contrôle hôte/invité/reconnexion ouverts.
+
+Précision du porteur : le défaut se situait après le combat contre Tyrazilla,
+dans la chaîne de dialogues et déplacements dirigés Mélia, Christian/Crisanto
+et Aster, avant le retour du contrôle pour monter sur le toit du moulin. Une
+nouvelle tentative a déroulé toute la scène normalement sur sa version en
+cours. Ne pas marquer BZ-035 validé : le défaut est intermittent ou dépend
+d'un état non encore relevé, et le correctif d'autorun ci-dessus n'était pas
+installé pour cet essai. Voir `docs/NARRATIVE_AUDIT.md` pour le parcours
+Map285/EV026 → Map283/EV032 et les points de trace.
+
+L'APK locale signée avec le correctif BZ-035 a été reconstruite via
+`android:release:slim` puis installée par `adb install -r` sur le Samsung
+branché (`Success`) le 2026-11-12. L'application a été lancée. Le porteur doit
+encore refaire Tyrazilla → dialogues dirigés → reprise du contrôle vers le
+toit sur cette APK avant toute conclusion. La copie des ressources Android
+garde sa distribution actuelle ; aucune publication n'a eu lieu.
+
+Retour de recette sur cette APK locale : le porteur a refait le parcours après
+Tyrazilla jusqu'à la reprise du contrôle pour monter sur le toit et confirme
+que dialogues, déplacements dirigés et positions des personnages sont
+corrects. Cette traversée solo de Map285/Map283 est validée. La cause du
+premier échec intermittent n'est pas prouvée par un passage réussi ; BZ-035
+reste ouvert pour la couverture des autres chemins, des portes et de la Coop.
+
+Clôture du cas signalé Map283/EV032, confirmée par le porteur le 2026-11-12 :
+après plusieurs nouveaux essais sur l'APK locale corrigée, la scène Mélia,
+Christian/Crisanto et Aster se lance au bon moment, les déplacements et
+positions sont corrects et l'ancien défaut ne se reproduit plus. Ce constat
+valide le parcours solo testé ; il ne prouve pas rétrospectivement la cause
+unique de l'incident. L'audit narratif BZ-035 reste ouvert pour les autres
+cartes, les commandes de porte et les parcours Coop.

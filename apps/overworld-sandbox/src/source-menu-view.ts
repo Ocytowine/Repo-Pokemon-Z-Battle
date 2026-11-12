@@ -137,6 +137,7 @@ export interface SourceMenuViewCallbacks {
   readonly onRecoverAutoSave: () => void;
   readonly onRecoverManualSave: () => void;
   readonly onCloudConnect: () => void;
+  readonly onCloudDisconnect: () => void;
   readonly onCloudCheck: () => void;
   readonly onCloudSync: () => void;
   readonly onCloudRecover: (slot: SourceSaveSlotId, kind: "manual" | "auto") => void;
@@ -1184,7 +1185,7 @@ export class SourceMenuView {
       <div class="source-save-slots" role="group" aria-label="Choisir une partie">${slotCards}</div>
       <div class="source-save-card"><div class="source-save-location"><small>${locationLabel} · PARTIE ${model.activeSaveSlot}</small><strong>${escapeSourceHtml(model.assets.map.name)}</strong><span>${model.avatar.x}, ${model.avatar.y} · direction ${model.avatar.direction}</span></div><div class="source-save-status"><i></i><div><strong>${escapeSourceHtml(savedLabel)}</strong><small>${saveHelp}</small></div></div><div class="source-save-actions"><button id="save-source-world">${actionLabel}</button>${model.autoSaveSelected && activeManual !== null ? '<button type="button" data-source-save-manual>Reprendre la manuelle</button>' : ""}${model.worldSave === null ? "" : '<button id="delete-source-world" class="danger">Effacer la position</button>'}</div></div>
       <section class="source-save-auto"><div><small>SAUVEGARDE AUTOMATIQUE · PARTIE ${model.activeSaveSlot}</small><strong>${escapeSourceHtml(autoLabel)}</strong><span>Indépendante de la sauvegarde manuelle.</span></div>${activeAuto === null || model.autoSaveSelected ? "" : `<button type="button" data-source-save-recover${model.canChangeSaveSlot ? "" : " disabled"}>Reprendre</button>`}</section>
-      <section class="source-save-cloud"><div><small>SAUVEGARDES CLOUD</small><strong>${escapeSourceHtml(model.cloudStatus)}</strong><span>Après une réinstallation : Connexion → Synchroniser → Récupérer cloud. « Garder locale » envoie la partie actuelle et remplace celle du cloud.</span></div><button type="button" data-source-cloud-connect>Connexion</button><button type="button" data-source-cloud-check>Vérifier</button><button type="button" data-source-cloud-sync>Synchroniser</button></section>
+      <section class="source-save-cloud"><div><small>SAUVEGARDES CLOUD</small><strong>${escapeSourceHtml(model.cloudStatus)}</strong><span>Après une réinstallation : Connexion → Synchroniser → Récupérer cloud. « Garder locale » envoie la partie actuelle et remplace celle du cloud.</span></div><button type="button" data-source-cloud-connect>Connexion</button><button type="button" data-source-cloud-check>Vérifier</button><button type="button" data-source-cloud-sync>Synchroniser</button><button type="button" data-source-cloud-disconnect>Déconnexion</button></section>
       <div class="source-cloud-list">${model.cloudItems.filter((item) => item.state !== "local-only").map((item) => {
         const label = item.kind === "manual" ? "Manuelle" : "Automatique";
         const date = item.remoteAt === null ? "" : ` · ${new Date(item.remoteAt).toLocaleString("fr-FR")}`;
@@ -1208,6 +1209,7 @@ export class SourceMenuView {
     content.querySelector<HTMLButtonElement>("[data-source-save-recover]")?.addEventListener("click", this.callbacks.onRecoverAutoSave);
     content.querySelector<HTMLButtonElement>("[data-source-save-manual]")?.addEventListener("click", this.callbacks.onRecoverManualSave);
     content.querySelector<HTMLButtonElement>("[data-source-cloud-connect]")?.addEventListener("click", this.callbacks.onCloudConnect);
+    content.querySelector<HTMLButtonElement>("[data-source-cloud-disconnect]")?.addEventListener("click", this.callbacks.onCloudDisconnect);
     content.querySelector<HTMLButtonElement>("[data-source-cloud-check]")?.addEventListener("click", this.callbacks.onCloudCheck);
     content.querySelector<HTMLButtonElement>("[data-source-cloud-sync]")?.addEventListener("click", this.callbacks.onCloudSync);
     content.querySelectorAll<HTMLButtonElement>("[data-cloud-recover], [data-cloud-keep]").forEach((button) => button.addEventListener("click", () => {

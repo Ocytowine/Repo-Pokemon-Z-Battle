@@ -1,6 +1,7 @@
 import { Capacitor, CapacitorHttp, registerPlugin } from "@capacitor/core";
+import { MOBILE_ORIGIN, mobileAuthorization } from "./source-mobile-account.js";
 
-const ORIGIN = "https://pokemon-z-battle-cloud-save.mimidu33-eb.workers.dev";
+const ORIGIN = MOBILE_ORIGIN;
 const LATEST = `${ORIGIN}/api/resources/packs/bgm/latest`;
 const CHUNK_BYTES = 4 * 1024 * 1024;
 const hashPattern = /^[a-f0-9]{64}$/;
@@ -95,7 +96,10 @@ export function bgmPackRequiredForAndroid(): Promise<boolean> {
 /** A failed object remains absent; already verified files are reused on retry. */
 export async function installBgmPack(onProgress: (done: number, total: number) => void): Promise<BgmInstallResult> {
   if (Capacitor.getPlatform() !== "android") return "non-android";
-  const response = await CapacitorHttp.get({ url: LATEST, connectTimeout: 10_000, readTimeout: 20_000 });
+  const authorization = await mobileAuthorization();
+  if (authorization === null) return "login-required";
+  const response = await CapacitorHttp.get({ url: LATEST, headers: { Authorization: authorization },
+    connectTimeout: 10_000, readTimeout: 20_000 });
   if (response.status === 204) return "not-published";
   if (isBgmLoginResponse(response.status, response.headers ?? {}, response.data)) return "login-required";
   const pack = response.status === 200 ? parseBgmPack(response.data) : null;
@@ -115,7 +119,7 @@ export async function installBgmPack(onProgress: (done: number, total: number) =
     for (let offset = 0; offset < file.sizeBytes; offset += CHUNK_BYTES) {
       const end = Math.min(file.sizeBytes, offset + CHUNK_BYTES) - 1;
       const object = await CapacitorHttp.get({ url: `${ORIGIN}/api/resources/audio/${hash}`,
-        headers: { Range: `bytes=${offset}-${end}` }, responseType: "blob",
+        headers: { Authorization: authorization, Range: `bytes=${offset}-${end}` }, responseType: "blob",
         connectTimeout: 15_000, readTimeout: 45_000 });
       if ([401, 403, 302].includes(object.status)) return "login-required";
       if (object.status !== 206 || typeof object.data !== "string") {

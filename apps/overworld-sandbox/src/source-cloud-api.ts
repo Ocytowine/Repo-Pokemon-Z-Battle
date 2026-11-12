@@ -2,8 +2,9 @@ import { Capacitor, CapacitorHttp } from "@capacitor/core";
 import { CloudSaveConflict, type CloudSaveApi, type CloudSaveHead } from "./source-cloud-sync.js";
 import { parseSourceSaveSlotSnapshot, type SourceSaveKind, type SourceSaveSlotId,
   type SourceSaveSlotSnapshot } from "./source-save-slots.js";
+import { MOBILE_ORIGIN, mobileAuthorization, mobileIdentity } from "./source-mobile-account.js";
 
-const BASE = "https://pokemon-z-battle-cloud-save.mimidu33-eb.workers.dev/api";
+const BASE = `${MOBILE_ORIGIN}/api`;
 
 function object(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -30,28 +31,31 @@ function data(response: { status: number; data: unknown }): Record<string, unkno
 
 export async function cloudIdentity(): Promise<string | null> {
   if (Capacitor.getPlatform() !== "android") return null;
-  const response = await CapacitorHttp.get({ url: `${BASE}/session`, connectTimeout: 10_000, readTimeout: 10_000 });
-  if (response.status !== 200 || !object(response.data) || response.data.authenticated !== true
-    || typeof response.data.email !== "string") return null;
-  return response.data.email.trim().toLowerCase();
+  return mobileIdentity();
+}
+
+async function authorization(): Promise<Record<string, string>> {
+  const value = await mobileAuthorization();
+  if (value === null) throw new Error("Connexion cloud nécessaire. Ouvre Sauvegardes pour te connecter.");
+  return { Authorization: value };
 }
 
 export const sourceCloudApi: CloudSaveApi = {
   async list() {
-    const value = data(await CapacitorHttp.get({ url: `${BASE}/saves`, connectTimeout: 10_000,
+    const value = data(await CapacitorHttp.get({ url: `${BASE}/saves`, headers: await authorization(), connectTimeout: 10_000,
       readTimeout: 15_000 }));
     if (!Array.isArray(value.heads)) throw new Error("Liste des sauvegardes cloud illisible.");
     return value.heads.map(head);
   },
   async get(slot: SourceSaveSlotId, kind: SourceSaveKind) {
-    const value = data(await CapacitorHttp.get({ url: `${BASE}/saves/${slot}/${kind}`,
+    const value = data(await CapacitorHttp.get({ url: `${BASE}/saves/${slot}/${kind}`, headers: await authorization(),
       connectTimeout: 10_000, readTimeout: 20_000 }));
     return { head: head(value.head), snapshot: parseSourceSaveSlotSnapshot(value.snapshot) };
   },
   async put(slot: SourceSaveSlotId, kind: SourceSaveKind, expectedRevisionId: string | null,
     snapshot: SourceSaveSlotSnapshot) {
     const value = data(await CapacitorHttp.put({ url: `${BASE}/saves/${slot}/${kind}`,
-      headers: { "Content-Type": "application/json" },
+      headers: { ...await authorization(), "Content-Type": "application/json" },
       data: { expectedRevisionId, snapshot }, connectTimeout: 10_000, readTimeout: 25_000 }));
     return head(value.head);
   },

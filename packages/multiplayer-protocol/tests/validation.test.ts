@@ -380,6 +380,9 @@ describe("multiplayer protocol", () => {
         renderOffsetY: -12 }],
       presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
     expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
+    expect(parseSourceSceneSnapshot({ ...scene, presentation: { id: 2, kind: "weather",
+      data: { parameters: [3, 7, 0], fieldWeather: { kind: "snow", power: 7, durationMs: 0 } } } }))
+      .toMatchObject({ presentation: { data: { fieldWeather: { kind: "snow", power: 7 } } } });
     const message: ClientMessage = { type: "setSourceScene", version: 15, requestId: "scene-1", scene };
     expect(parseClientMessage(serializeMessage(message))).toEqual(message);
     expect(() => parseSourceSceneSnapshot({ ...scene,

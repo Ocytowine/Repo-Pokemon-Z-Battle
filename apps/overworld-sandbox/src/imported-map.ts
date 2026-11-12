@@ -85,7 +85,8 @@ interface TilesetFile { readonly records: readonly ImportedTileset[] }
 
 export interface ImportedEventPage {
   readonly condition: { readonly switch1Id: number | null; readonly switch2Id: number | null; readonly variable: { readonly id: number; readonly minimum: number } | null; readonly selfSwitch: string | null };
-  readonly graphic: { readonly tileId: number; readonly characterName: string; readonly direction: number; readonly pattern: number; readonly opacity: number };
+  readonly graphic: { readonly tileId: number; readonly characterName: string; readonly direction: number;
+    readonly pattern: number; readonly opacity: number; readonly hue?: number; readonly blendType?: number };
   readonly settings: { readonly moveType: number; readonly moveSpeed: number; readonly moveFrequency: number;
     readonly moveRoute?: SourceMoveRoute | null;
     readonly walkAnimation: boolean; readonly stepAnimation: boolean; readonly directionFix: boolean;
@@ -538,6 +539,8 @@ function parseMapEvents(value: unknown, commonEvents: ReadonlyMap<number, Source
         || typeof page.graphic.characterName !== "string" || !Number.isInteger(page.graphic.tileId)
         || !Number.isInteger(page.graphic.direction) || !Number.isInteger(page.graphic.pattern)
         || !Number.isInteger(page.graphic.opacity) || !Number.isInteger(page.settings.moveType)
+        || (page.graphic.hue !== undefined && !Number.isInteger(page.graphic.hue))
+        || (page.graphic.blendType !== undefined && ![0, 1, 2].includes(page.graphic.blendType as number))
         || !Number.isInteger(page.settings.moveSpeed) || !Number.isInteger(page.settings.moveFrequency)
         || typeof page.settings.walkAnimation !== "boolean"
         || typeof page.settings.stepAnimation !== "boolean" || typeof page.settings.directionFix !== "boolean"
@@ -554,7 +557,10 @@ function parseMapEvents(value: unknown, commonEvents: ReadonlyMap<number, Source
         condition: { switch1Id: nullableNumber(page.condition.switch1Id), switch2Id: nullableNumber(page.condition.switch2Id),
           variable: page.condition.variable as { readonly id: number; readonly minimum: number } | null, selfSwitch: page.condition.selfSwitch },
         graphic: { tileId: page.graphic.tileId as number, characterName: page.graphic.characterName,
-          direction: page.graphic.direction as number, pattern: page.graphic.pattern as number, opacity: page.graphic.opacity as number },
+          direction: page.graphic.direction as number, pattern: page.graphic.pattern as number,
+          opacity: page.graphic.opacity as number,
+          ...(page.graphic.hue === undefined ? {} : { hue: page.graphic.hue as number }),
+          ...(page.graphic.blendType === undefined ? {} : { blendType: page.graphic.blendType as number }) },
         settings: { moveType: page.settings.moveType as number, moveSpeed: page.settings.moveSpeed as number,
           moveFrequency: page.settings.moveFrequency as number,
           moveRoute,
@@ -1210,10 +1216,17 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       if (image !== undefined) {
         const field = sourceFieldVisualState(map, assets.tileset, Math.round(eventX), Math.round(eventY), "walk",
           (pose?.renderOffsetY ?? 0) !== 0, page.settings.alwaysOnTop);
+        context.save();
+        if (page.graphic.hue !== undefined && page.graphic.hue !== 0) {
+          context.filter = `hue-rotate(${page.graphic.hue}deg)`;
+        }
+        if (page.graphic.blendType === 1) context.globalCompositeOperation = "lighter";
+        else if (page.graphic.blendType === 2) context.globalCompositeOperation = "multiply";
         drawCharacter(context, image, pose?.direction ?? page.graphic.direction,
           pose?.pattern ?? eventGraphicPattern(page, now), opacity,
           eventX, eventY, cameraX, cameraY, sourceEventHasShadow(event.name) && field.shadow,
           pose?.renderOffsetY ?? 0, field.bushDepth, field.reflection && sourceEventHasReflection(event.name), now);
+        context.restore();
       }
     }
   };

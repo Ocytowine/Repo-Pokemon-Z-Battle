@@ -48,7 +48,8 @@ import { createSourceGridMotion, sampleSourceGridMotion, sourceChainedMotionStar
   type SourceGridMotion } from "./source-grid-motion.js";
 import { SourceNpcMotionController, sourceNpcStepDuration, type SourceNpcEventContact } from "./source-npc-motion.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
-  findSourceMapEntryAutorun, type ActiveSourceAutorun } from "./source-autorun.js";
+  findSourceMapEntryAutorun, resumeSourceMapEntryAutorun, sourceMapEntryAmbientVisuals,
+  type ActiveSourceAutorun } from "./source-autorun.js";
 import { resolveEventFlow, type PendingEventChoice } from "./source-event-flow.js";
 import { sourceNewAchievementNames } from "./source-achievements.js";
 import { executeSourceMoveRouteStep, parseSourceMoveRoute, type SourceRouteActor } from "./source-move-route.js";
@@ -63,7 +64,7 @@ import { AVATAR_LAB_MAP_ID, AvatarLabView } from "./avatar-lab-view.js";
 import { isSourceStateCommand, sourceCommandCapability } from "./source-command-registry.js";
 import { SourceSceneCoordinator, isSourceMenuTab,
   type SourceSceneActivity } from "./source-scene-coordinator.js";
-import { parseSourceAudio, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
+import { parseSourceAudio, parseSourceWeatherState, SourceScenePresentation, type SourcePresentationCommand } from "./source-scene-presentation.js";
 import { SourceMenuView, SourceShopView } from "./source-menu-view.js";
 import { sourceVisibleRegionPoints, type SourceRegionDestination } from "./source-region-map.js";
 import { parseSourceTrainerLocalizations, sourceTrainerDisplayName,
@@ -124,6 +125,7 @@ import { convertRxdataSave, type RxdataImportCatalog, type RxdataImportPreview }
 import { readOriginalSaveCandidate, searchOriginalSaveFolder,
   type OriginalSaveCandidate } from "./source-save-locator.js";
 import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-session.js";
+import { disconnectMobileAccount } from "./source-mobile-account.js";
 import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
   type SourceAndroidUpdate } from "./source-android-update.js";
 import { installWideBattlebackPack, installedWideBattlebackPackVersion } from "./source-resource-packs.js";
@@ -249,13 +251,30 @@ function showAndroidUpdateNotice(update: SourceAndroidUpdate): void {
   notice.querySelector<HTMLButtonElement>("[data-update-later]")?.addEventListener("click", () => notice.remove());
   document.body.append(notice);
 }
-async function downloadAndroidUpdate(): Promise<void> {
+async function downloadAndroidUpdate(retriedAfterLogin = false): Promise<void> {
   if (sourceAndroidUpdate === null) return;
+  sourceAndroidUpdateStatus = "Téléchargement sécurisé dans l’application…";
+  refreshAndroidUpdateMenu();
   try {
-    await openSourceAndroidUpdate(sourceAndroidUpdate);
-    sourceAndroidUpdateStatus = "Téléchargement ouvert dans le navigateur. Android demandera confirmation avant l’installation.";
-  } catch {
-    sourceAndroidUpdateStatus = "Impossible d’ouvrir le téléchargement. Réessaie plus tard.";
+    const result = await openSourceAndroidUpdate(sourceAndroidUpdate, (done, total) => {
+      sourceAndroidUpdateStatus = `Téléchargement de l’APK : ${Math.round(done / total * 100)} %`;
+      refreshAndroidUpdateMenu();
+    });
+    if (result === "login-required") {
+      sourceAndroidUpdateStatus = "Session cloud expirée. Reconnexion nécessaire.";
+      if (!retriedAfterLogin) void openSourceCloudLogin((status) => {
+        sourceCloudStatus = status;
+        if (status.startsWith("Connecté au cloud :")) void downloadAndroidUpdate(true);
+        else refreshAndroidUpdateMenu();
+      });
+    } else if (result === "permission-required") {
+      sourceAndroidUpdateStatus = "Autorise l’installation depuis cette app dans Android, puis relance la mise à jour.";
+    } else {
+      sourceAndroidUpdateStatus = "APK vérifiée. Confirme son installation dans Android.";
+    }
+  } catch (error) {
+    sourceAndroidUpdateStatus = error instanceof Error ? error.message
+      : "Téléchargement interrompu. Réessaie pour le reprendre.";
   }
   refreshAndroidUpdateMenu();
 }
@@ -389,6 +408,29 @@ async function runCloudSync(explicit: boolean, uploadAutomatic = true): Promise<
       void runCloudSync(true);
     }
   }
+}
+async function disconnectSourceCloudAccount(): Promise<void> {
+  if (sourceCloudBusy) {
+    sourceCloudStatus = "Attends la fin de la synchronisation avant de te déconnecter.";
+    refreshCloudMenu();
+    return;
+  }
+  if (!confirm("Déconnecter ce téléphone du compte cloud ? Les sauvegardes locales et les packs installés seront conservés.")) return;
+  try {
+    await disconnectMobileAccount();
+    if (pendingManualCloudSync !== null) clearTimeout(pendingManualCloudSync);
+    if (pendingAutoCloudSync !== null) clearTimeout(pendingAutoCloudSync);
+    pendingManualCloudSync = null;
+    pendingAutoCloudSync = null;
+    queuedExplicitCloudSync = false;
+    sourceCloudItems = [];
+    sourceAndroidUpdate = null;
+    sourceAndroidUpdateStatus = "Connecte-toi au cloud pour vérifier les mises à jour privées.";
+    sourceCloudStatus = "Compte déconnecté de cet appareil. Les parties locales sont conservées.";
+  } catch (error) {
+    sourceCloudStatus = error instanceof Error ? error.message : "Déconnexion impossible actuellement.";
+  }
+  refreshCloudMenu();
 }
 function scheduleCloudSync(kind: "manual" | "auto" = "auto"): void {
   if (linkedCloudEmail(localStorage) === null) return;
@@ -689,12 +731,14 @@ function currentSourceScene(): SourceSceneSnapshot | null {
       ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }),
       ...(pose.renderOffsetY === undefined ? {} : { renderOffsetY: pose.renderOffsetY }) }];
   });
+  const presentation = sourcePresentationCue ?? { id: 1, kind: "weather", data: {} };
   return { mapId: importedAssets.map.id, sequenceActive: sourceSequences.current !== null,
     dialogue: dialogue === null ? null : { label: dialogue.label,
       text: dialogue.choosing ? null : dialogue.lines[dialogue.index] ?? "",
       choices: pendingChoice === null ? [] : pendingChoice.choices.map((choice) =>
         localizedDialogueText(choice, dialogue.translations, dialogue.variables)) },
-    actors, presentation: sourcePresentationCue };
+    actors, presentation: { ...presentation,
+      data: { ...presentation.data, fieldWeather: sourcePresentation.currentWeather() } } };
 }
 
 function publishCurrentSourceScene(): void {
@@ -987,10 +1031,16 @@ function refreshSourceParallelPresentation(assets: ImportedMapAssets): void {
       const flow = resolveEventFlow(page, [], sourceEventState, assets.map.id, event.id);
       if (!flow.complete || flow.pendingChoice !== null) continue;
       for (const command of flow.page.commands) {
-        if (command.kind === "change-map-settings") {
+        if (command.kind === "change-map-settings"
+          || (command.kind === "weather" && networkSourceWorld?.mapId !== assets.map.id)) {
           void sourcePresentation.execute(command, async () => undefined);
         }
       }
+    }
+    // A guest does not execute the host's narrative autoruns. Reconstruct only
+    // self-erasing, visual-only map entry settings such as the town's fog.
+    for (const command of sourceMapEntryAmbientVisuals(sourceMapEvents(), assets.map.id, renderedSourceEventState())) {
+      void sourcePresentation.execute(command, async () => undefined);
     }
     return;
   }
@@ -1130,11 +1180,13 @@ function beginNewlyActivatedSourceAutorun(previousState: SourceEventState, nextS
 }
 
 function beginPendingSourceMapEntryAutorun(): boolean {
-  if (importedAssets === null || pendingSourceMapEntryAutorun !== importedAssets.map.id
-    || isNetworkGuest() || !sourceScenes.allows("start-sequence", sourceSceneActivity())) return false;
-  pendingSourceMapEntryAutorun = null;
-  const autorun = findSourceMapEntryAutorun(sourceMapEvents(), importedAssets.map.id, sourceEventState);
-  return autorun !== null && beginSourceAutorun(autorun);
+  if (importedAssets === null) return false;
+  const mapId = importedAssets.map.id;
+  const result = resumeSourceMapEntryAutorun(pendingSourceMapEntryAutorun, mapId,
+    !isNetworkGuest() && sourceScenes.allows("start-sequence", sourceSceneActivity()),
+    () => findSourceMapEntryAutorun(sourceMapEvents(), mapId, sourceEventState), beginSourceAutorun);
+  pendingSourceMapEntryAutorun = result.pendingMapId;
+  return result.started;
 }
 
 function sourcePlayerRouteActor(): SourceRouteActor {
@@ -1301,6 +1353,13 @@ function completeSourceSequence(sequence: SourceSequenceSession): void {
       const activated = !isNetworkGuest() && autorunBaseline !== undefined
         && importedAssets?.map.id === sequence.mapId
         && beginNewlyActivatedSourceAutorun(autorunBaseline, sourceEventState);
+      // RPG Maker continues with the next active autorun when a one-shot page
+      // erases itself. Otherwise the next map-entry visual (e.g. a fog) never runs.
+      if (!activated && sequence.sourcePage?.settings.trigger === 3
+        && erasedSourceEvents.has(`${sequence.mapId}:${sequence.eventId}`)
+        && importedAssets?.map.id === sequence.mapId) {
+        pendingSourceMapEntryAutorun = sequence.mapId;
+      }
       if (!activated) queueMicrotask(beginPendingSourceMapEntryAutorun);
       if (!activated && !sequence.playerRouteMoved && importedAssets?.map.id === sequence.mapId
         && (sequence.sourcePage?.settings.trigger === 1 || sequence.sourcePage?.settings.trigger === 2)) {
@@ -1406,12 +1465,17 @@ const sourceLaunchScreen = new SourceLaunchScreen(requiredAppElement("source-lau
     renderSourceLaunchScreen();
     void openSourceCloudLogin((status) => { sourceCloudStatus = status; renderSourceLaunchScreen(); });
   },
+  cloudDisconnect: () => { void disconnectSourceCloudAccount(); },
   cloudSync: () => { void runCloudSync(true); },
   cloudRecover: (slot, kind) => { void recoverLaunchCloudSave(slot, kind); },
   cloudKeepLocal: (slot, kind) => { void keepLaunchLocalSave(slot, kind); },
   checkUpdate: () => { void checkAvailableAndroidUpdate(false); },
   downloadUpdate: () => { void downloadAndroidUpdate(); },
   back: () => { sourceLaunchScreen.hide(); sourceTitleScreen.show(); },
+});
+if (sourceNativeAndroidMode) void checkSourceCloudSession().then((status) => {
+  sourceCloudStatus = status;
+  renderSourceLaunchScreen();
 });
 let rxdataImportCatalogPromise: Promise<RxdataImportCatalog> | null = null;
 let pendingRxdataImport: RxdataImportPreview | null = null;
@@ -1685,6 +1749,14 @@ const sourcePresentation = new SourceScenePresentation({
 
 async function presentSourceCommand(command: SourcePresentationCommand,
   delay: (milliseconds: number) => Promise<void>): Promise<boolean> {
+  if (command.kind === "weather") {
+    const applied = await sourcePresentation.execute(command, delay);
+    if (applied) {
+      sourcePresentationCue = { id: ++sourcePresentationCueId, kind: command.kind, data: command.data };
+      publishCurrentSourceScene();
+    }
+    return applied;
+  }
   const capability = sourceCommandCapability(command.kind);
   if (capability?.support === "rendered"
     && (capability.family === "audiovisual" || command.kind === "text-options")) {
@@ -1720,6 +1792,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
       if (sourceScenes.menuOpen && sourceScenes.menuTab === "save") renderSourceMenu();
     });
   },
+  onCloudDisconnect: () => { void disconnectSourceCloudAccount(); },
   onCloudCheck: () => {
     sourceCloudStatus = "Vérification…";
     renderSourceMenu();
@@ -2158,6 +2231,13 @@ const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
   onSourceSceneState: (scene) => {
     if (!isNetworkGuest() || guestSourceExcursion || importedAssets?.map.id !== scene.mapId) return;
     if (scene.sequenceActive) sourceNpcMotions.applyNetworkActors(scene.actors, performance.now());
+    const weather = parseSourceWeatherState(scene.presentation?.data.fieldWeather);
+    if (weather !== null) {
+      const current = sourcePresentation.currentWeather();
+      if (current.kind !== weather.kind || current.power !== weather.power) {
+        sourcePresentation.applyWeather(weather);
+      }
+    }
   },
   onSourceSound: (side, mapId, name, volume, pitch) => {
     if (importedAssets?.map.id !== mapId || networkSourceWorld?.mapId !== mapId
@@ -2818,6 +2898,7 @@ function animateImportedMap(now: number): void {
     refreshSourceContextAction();
     nextSourceContextActionRefreshAt = now + 100;
   }
+  if (pendingSourceMapEntryAutorun === importedAssets.map.id) beginPendingSourceMapEntryAutorun();
   const destinationReadyInRoom = !multiplayer.active || guestSourceExcursion
     || networkSourceWorld?.mapId === importedAssets.map.id
       && (!isNetworkGuest() || networkSourceWorld.presence.opponent === "shared");
@@ -4132,7 +4213,8 @@ function useSourceFieldItem(itemId: string): {
       eventState: sourceEventState };
   }
   const result = applySourceFieldItem(sourceEventState, itemId, itemName,
-    { mapId: importedAssets.map.id, x: importedAvatar.x, y: importedAvatar.y });
+    { mapId: importedAssets.map.id, x: importedAvatar.x, y: importedAvatar.y,
+      weatherActive: sourcePresentation.currentWeather().kind !== "none" });
   if (result.ok) {
     sourceEventState = result.state;
     persistSourceEventState();
@@ -4661,7 +4743,7 @@ async function executeSourceSequenceTransfer(transfer: ImportedTransfer,
   importedPlayerMotion = null;
   pendingSourceNpcContact = null;
   heldMovementKeys.clear();
-  sourcePresentation.resetMapPresentation();
+  sourcePresentation.resetMapPresentation(true);
   sourceNpcMotions.reset(importedAssets.map.id, importedAssets.events, performance.now());
   sourceFollowerMotion.reset(importedAssets.map, importedAvatar);
   void refreshSourceParallelPresentation(importedAssets);

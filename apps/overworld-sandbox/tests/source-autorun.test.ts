@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ImportedEventPage, ImportedMapEvent } from "../src/imported-map.js";
 import { finalDirectSourceTransfer, findActiveSourceParallelEvents, findNewlyActivatedSourceAutorun,
-  findSourceMapEntryAutorun } from "../src/source-autorun.js";
+  findSourceMapEntryAutorun, resumeSourceMapEntryAutorun, sourceMapEntryAmbientVisuals } from "../src/source-autorun.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 
 const commands: ImportedEventPage["commands"] = [
@@ -40,6 +40,41 @@ describe("source autorun selection", () => {
     const laterEvent = { ...openingEvent, id: 29, name: "later" };
     expect(findSourceMapEntryAutorun([laterEvent, openingEvent], 3, createSourceEventState()))
       .toMatchObject({ event: { id: 1 }, pageIndex: 0 });
+  });
+
+  it("resumes a map-entry scene after the foreground becomes free", () => {
+    const state = { ...createSourceEventState(), variables: { 194: 4 } };
+    const neutralPage = { ...page, settings: { ...page.settings, trigger: 0 },
+      condition: { ...page.condition, switch1Id: null, variable: { id: 194, minimum: 5 } } };
+    const storyPage = { ...page,
+      condition: { ...page.condition, switch1Id: null, variable: { id: 194, minimum: 3 } } };
+    const storyEvent = { ...event, id: 32, pages: [storyPage, neutralPage] };
+    const select = () => findSourceMapEntryAutorun([storyEvent], 283, state);
+    const started: number[] = [];
+    const start = (autorun: { event: ImportedMapEvent }) => { started.push(autorun.event.id); return true; };
+    const busy = resumeSourceMapEntryAutorun(283, 283, false, select, start);
+    expect(busy).toEqual({ pendingMapId: 283, started: false });
+    expect(started).toEqual([]);
+    expect(resumeSourceMapEntryAutorun(busy.pendingMapId, 283, true, select, start))
+      .toEqual({ pendingMapId: null, started: true });
+    expect(started).toEqual([32]);
+  });
+
+  it("advances to the next map-entry effect after a self-erasing autorun", () => {
+    const cleanup = { ...openingEvent, id: 41, pages: [{ ...openingEvent.pages[0]!, commands: [
+      { kind: "weather", text: null, indent: 0, data: { parameters: [0, 5, 0] } },
+      { kind: "erase-event", text: null, indent: 0, data: {} },
+    ] }] };
+    const fog = { ...openingEvent, id: 42, pages: [{ ...openingEvent.pages[0]!, commands: [
+      { kind: "change-map-settings", text: null, indent: 0,
+        data: { parameters: [1, "fogCiudadRomantis", 0, 175, 1, 200, 0, 0] } },
+      { kind: "erase-event", text: null, indent: 0, data: {} },
+    ] }] };
+    const state = createSourceEventState();
+    expect(findSourceMapEntryAutorun([fog, cleanup], 233, state)?.event.id).toBe(41);
+    expect(findSourceMapEntryAutorun([fog], 233, state)?.event.id).toBe(42);
+    expect(sourceMapEntryAmbientVisuals([cleanup, fog], 233, state)).toEqual([fog.pages[0]!.commands[0]]);
+    expect(sourceMapEntryAmbientVisuals([fog, openingEvent], 233, state)).toEqual([fog.pages[0]!.commands[0]]);
   });
 
   it("selects active parallel pages in deterministic event order", () => {

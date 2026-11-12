@@ -226,3 +226,15 @@ Références : [note initiale](Débug/Amélioration/slot%20sauvegarde.md),
 [D1](https://developers.cloudflare.com/d1/),
 [R2](https://developers.cloudflare.com/r2/get-started/workers-api/),
 [règles de mise à jour Android](https://developer.android.com/google/play/app-updates).
+
+### Session mobile persistante (BZ-034, 2026-11-12)
+
+La prochaine APK remplace la dépendance permanente au cookie Access par une
+session propre au téléphone, émise après une première vérification Access. Le
+Worker attribue seul l'adresse du compte ; le jeton est révocable et chiffré
+dans Android Keystore. Les sauvegardes cloud restent personnelles en solo,
+hôte et invité. Une déconnexion volontaire révoque la session et désactive sa
+recréation automatique. Sur l'APK locale de test, le porteur confirme la
+reconnaissance du compte et une synchronisation réussie après fermeture puis
+réouverture, sans nouveau code courriel. L'APK publique 0.1.11 (12) conserve
+encore l'ancien parcours jusqu'à la prochaine publication.

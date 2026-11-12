@@ -2,6 +2,7 @@
 import { handleSaveRequest, type SaveEnv } from "./save-store.js";
 import { handleAndroidUpdateRequest } from "./update-distribution.js";
 import { handleResourceRequest } from "./resource-distribution.js";
+import { issueMobileLoginCode } from "./mobile-sessions.js";
 
 export interface AccessIdentity {
   readonly email?: string;
@@ -36,6 +37,10 @@ export default {
     const email = identity?.email?.trim().toLowerCase();
     if (!email) return json({ error: "access_required" }, 401);
     try {
+      if (path === "/api/mobile/issue") {
+        return request.method === "POST" ? await issueMobileLoginCode(env, email)
+          : json({ error: "method_not_allowed" }, 405);
+      }
       if (path.startsWith("/api/updates/")) return await handleAndroidUpdateRequest(request, env);
       if (path.startsWith("/api/resources/")) return await handleResourceRequest(request, env);
       return await handleSaveRequest(request, env, email);

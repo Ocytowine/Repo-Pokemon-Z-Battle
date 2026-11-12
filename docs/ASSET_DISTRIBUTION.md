@@ -55,6 +55,15 @@ room Coop reste autoritaire. Chaque participant résout ses propres ressources.
 L'absence d'un pack ne doit jamais changer une décision serveur ou corrompre une
 sauvegarde.
 
+### BZ-025 — animations de charge — 2026-11-10
+
+L'extraction inclut les entrées d'animation de charge placées juste après les
+animations d'impact correspondantes dans `PkmnAnimations.rxdata`. Ces entrées
+référencent les images `Graphics/Animations` déjà conservées dans l'APK ; aucune
+image ni son n'est exclu, ajouté à un pack ou publié. Le fichier de données
+`battle-animations.json` de l'APK locale est régénéré. La répartition actuelle
+des fonds de combat et des BGM reste identique.
+
 ## Registre initial des décisions
 
 État au 2026-10-29. Une décision candidate ne vaut pas déploiement.
@@ -534,3 +543,60 @@ cellules animées, sprites et coordonnées de combat restent dans le repère
 source 512 × 384. Aucun fichier `Graphics` n'est modifié ou exclu, et aucun
 pack ne change. Le porteur confirme le rendu sur téléphone : fond plein écran,
 effets et Pokémon préservés. Le double et la Coop restent à vérifier.
+
+### APK locale météo et transition — 2026-11-12
+
+Le profil `android:release:slim` a reconstruit puis installé par USB une APK
+locale signée de 392 729 062 octets. La copie Android garde la répartition
+existante : 49 fonds larges et les BGM hors titre restent dans les packs déjà
+activés, tandis que `Titulo2.ogg` reste embarqué. Les effets météo et la
+capture du rideau de combat sont générés par le moteur ; aucun nouveau fichier
+`Graphics` ou `Audio` n'est ajouté, exclu ou publié. Aucun manifeste distant
+ni pack R2 n'a été modifié.
+
+### APK locale flares de Romant-sous-Bois — 2026-11-12
+
+Le profil `android:release:slim` a reconstruit une APK locale signée et
+installée par USB pour la recette de Map233. `fogCiudadRomantis.png` et
+`Luz2.png` étaient déjà présents dans la copie Android. Le correctif porte
+uniquement sur l'exécution des événements et le rendu de leurs paramètres ;
+aucun fichier `Graphics` ou `Audio` n'a été ajouté, exclu ou publié. La
+répartition des 49 fonds larges et des BGM hors titre reste identique, sans
+changement de manifeste ni de pack R2.
+
+### APK locale centrage du nom de lieu — 2026-11-12
+
+Le profil `android:release:slim` a reconstruit une APK locale signée, installée
+par USB pour vérifier le centrage du bandeau de lieu. L'image `LetsGO.png`
+était déjà embarquée : seule sa position CSS et celle du texte changent.
+Aucun fichier `Graphics` ou `Audio` n'est ajouté, exclu ou publié ; la
+répartition des packs et leurs manifestes restent identiques.
+
+### APK 0.1.11 (12) — diffusion privée — 2026-11-12
+
+L'APK allégée signée de 392 729 346 octets a été publiée sous
+`updates/android/pokemon-z-battle-12.apk`, puis le manifeste Android
+`updates/android/latest.json` a été publié après vérification de la taille,
+du MIME et du SHA-256 distant. Les corrections d'ambiance et de bandeau
+utilisent uniquement les ressources déjà distribuées. La répartition reste
+inchangée : 49 fonds larges et les BGM hors titre dans les packs, `Titulo2.ogg`
+dans l'APK. Aucun pack, manifeste de pack, fichier source `Graphics` ou `Audio`
+n'a été ajouté, exclu ou modifié.
+
+### Compte mobile persistant — APK locale — 2026-11-12
+
+Une nouvelle APK locale `android:release:slim` a été construite pour vérifier
+la connexion cloud persistante. La copie Android de `Graphics` et `Audio` a été
+recréée par la commande de build, sans nouvelle inclusion ni exclusion. Les
+packs R2, leurs manifestes et le manifeste de l'APK publique ne changent pas.
+Les nouveaux fichiers concernent seulement l'authentification et le
+téléchargement d'une future APK dans l'application.
+
+### BZ-035 — APK locale de recette narrative — 2026-11-12
+
+Le profil `android:release:slim` a reconstruit une APK signée puis installée
+par USB sur le Samsung pour le contrôle du lancement des scènes de Map283.
+Le correctif porte sur l'ordonnanceur des événements ; la copie de `Graphics`
+et `Audio` conserve la répartition existante, avec 49 fonds larges et les BGM
+hors titre dans les packs, et `Titulo2.ogg` dans l'APK. Aucun asset, pack,
+manifeste distant ou APK publique n'a été modifié ou publié.

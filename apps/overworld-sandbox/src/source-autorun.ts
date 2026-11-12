@@ -8,6 +8,20 @@ export interface ActiveSourceAutorun {
   readonly pageIndex: number;
 }
 
+export interface SourceMapEntryResumeResult {
+  readonly pendingMapId: number | null;
+  readonly started: boolean;
+}
+
+/** Keep an entry request while the foreground is busy; consume it only after an attempt. */
+export function resumeSourceMapEntryAutorun(pendingMapId: number | null, currentMapId: number,
+  ready: boolean, select: () => ActiveSourceAutorun | null,
+  start: (autorun: ActiveSourceAutorun) => boolean): SourceMapEntryResumeResult {
+  if (pendingMapId !== currentMapId || !ready) return { pendingMapId, started: false };
+  const autorun = select();
+  return { pendingMapId: null, started: autorun !== null && start(autorun) };
+}
+
 export function findSourceMapEntryAutorun(events: readonly ImportedMapEvent[], mapId: number,
   state: SourceEventState): ActiveSourceAutorun | null {
   for (const event of [...events].sort((left, right) => left.id - right.id)) {
@@ -25,6 +39,19 @@ export function findActiveSourceParallelEvents(events: readonly ImportedMapEvent
       const active = selectActiveEventPage(event, mapId, state);
       return active?.page.settings.trigger === 4 ? [{ event, ...active }] : [];
     });
+}
+
+/** Ambient one-shot autoruns are safe to reconstruct locally for a Coop guest. */
+export function sourceMapEntryAmbientVisuals(events: readonly ImportedMapEvent[], mapId: number,
+  state: SourceEventState): readonly ImportedEventPage["commands"][number][] {
+  const ambientKinds = new Set(["change-map-settings", "weather", "screen-tone", "screen-flash",
+    "erase-picture", "erase-event", "end"]);
+  return events.flatMap((event) => {
+    const active = selectActiveEventPage(event, mapId, state)?.page;
+    if (active?.settings.trigger !== 3 || !active.commands.some((command) => command.kind === "erase-event")
+      || !active.commands.every((command) => ambientKinds.has(command.kind))) return [];
+    return active.commands.filter((command) => command.kind === "change-map-settings");
+  });
 }
 
 export function findNewlyActivatedSourceAutorun(events: readonly ImportedMapEvent[], mapId: number,

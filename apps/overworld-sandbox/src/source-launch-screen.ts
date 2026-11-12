@@ -16,6 +16,7 @@ export interface SourceLaunchActions {
   restoreImportBackup(slot: SourceSaveSlotId): void;
   deleteSave(slot: SourceSaveSlotId): void;
   cloudConnect(): void;
+  cloudDisconnect(): void;
   cloudSync(): void;
   cloudRecover(slot: SourceSaveSlotId, kind: SourceSaveKind): void;
   cloudKeepLocal(slot: SourceSaveSlotId, kind: SourceSaveKind): void;
@@ -254,6 +255,7 @@ export class SourceLaunchScreen {
     const actions = document.createElement("div");
     actions.className = "source-launch-service-actions";
     this.button(actions, "Se connecter", this.actions.cloudConnect, busy);
+    this.button(actions, "Déconnexion", this.actions.cloudDisconnect, busy);
     this.button(actions, "Synchroniser", this.actions.cloudSync, busy);
     view.append(heading, message, actions);
     const choices = items.filter((entry) => entry.state === "cloud-only" || entry.state === "conflict");

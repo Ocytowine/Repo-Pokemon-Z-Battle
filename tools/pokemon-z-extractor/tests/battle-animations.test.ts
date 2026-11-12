@@ -54,6 +54,20 @@ describe("battle animation normalization", () => {
     expect(result.animations).toEqual([]);
   });
 
+  it("extracts the adjacent source charging animation used by hitnum=1", () => {
+    const impact = animation("DIG");
+    const charging = animation("IGNORED");
+    charging.ivars["@name"] = string("Common:Dig charging");
+    const unrelated = animation("OTHER");
+    const root: RubyExtendedValue = { kind: "user-class", moduleName: "PBAnimations", value: [],
+      ivars: { "@array": [impact, charging, unrelated] } };
+    const player: RubyMarshalValue[] = [];
+    player[225] = 0;
+    const result = normalizeBattleAnimations(root, [player, []],
+      [{ id: 225, internalName: "DIG", functionCode: "0CA" }]);
+    expect(result.animations.map((entry) => entry.name)).toEqual(["Move:DIG", "Common:Dig charging"]);
+  });
+
   it("always expands common battle effects outside move2anim", () => {
     const common = animation("IGNORED");
     common.ivars["@name"] = string("Common:Sleep");

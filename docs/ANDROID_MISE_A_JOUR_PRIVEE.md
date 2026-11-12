@@ -211,3 +211,28 @@ SHA-256 vérifié après retéléchargement est
 `8b21a3a1bc3dc12d7c99cababb717c044bdc244afc68abfa2b8a6b148edcf600`.
 Le manifeste `latest.json` a été publié après l'APK et relu avec les mêmes
 version, taille, hash et notes. Le lien permanent reste protégé par Access.
+
+## Patch 0.1.11 — 2026-11-12
+
+L'APK signée `versionCode 12` a été publiée sous
+`updates/android/pokemon-z-battle-12.apk`. L'objet mesure 392 729 346 octets ;
+son SHA-256, vérifié après retéléchargement depuis R2, est
+`be993581f832145fc3074ef1bf89fd4e0292db8b41946e0d3e234fb05406e567`.
+Le manifeste `latest.json` a été publié après l'APK et relu avec la version,
+les notes, la taille et l'empreinte attendues. Le lien permanent reste protégé
+par Cloudflare Access. Les packs de ressources et le Worker sont inchangés.
+Le porteur confirme que le téléchargement et l'installation depuis le jeu ont
+réussi sur son téléphone.
+
+## Connexion persistante Android (BZ-034, 2026-11-12)
+
+À partir de la prochaine APK publiée, une connexion par code courriel est
+convertie en session personnelle de l'appareil. Elle reste active après
+fermeture ou redémarrage jusqu'au bouton « Déconnecter le compte cloud ».
+Sauvegardes, packs et recherche/téléchargement d'APK utilisent la même session.
+Le téléchargement de l'APK s'effectue dans l'app, avec contrôle de taille,
+SHA-256, paquet et version avant ouverture de l'installateur Android. L'ancienne
+version 0.1.11 (12) publiée garde son flux Access/Chrome ; le nouveau flux est
+installé seulement sur l'APK locale de test pour le moment. Le Worker mobile et
+la migration D1 sont déjà en ligne. Une recette d'installation complète demande
+une version supérieure à 12 ; ne pas déclarer cette partie validée avant ce test.

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseSourceAnimation, parseSourceAudio, parseSourceMapVisual, parseSourcePicture, parseSourceScroll,
-  parseSourceTextOptions, parseSourceTone, parseSourceWeather, selectSourceCryPath,
+  parseSourceTextOptions, parseSourceTone, parseSourceWeather, parseSourceWeatherState, selectSourceCryPath,
   sourceAudioCandidates, sourceFogBackgroundWidthPercent } from "../src/source-scene-presentation.js";
 
 describe("source scene presentation parameters", () => {
@@ -54,6 +54,14 @@ describe("source scene presentation parameters", () => {
     });
     expect(parseSourceWeather({ parameters: [0, 5, 10] })).toEqual({ kind: "none", power: 5, durationMs: 250 });
     expect(parseSourceWeather({ parameters: [3, 9, 20] })).toEqual({ kind: "snow", power: 9, durationMs: 500 });
+    expect(parseSourceWeather({ parameters: [4, 8, 0] })).toEqual({ kind: "blizzard", power: 8, durationMs: 0 });
+    expect(parseSourceWeather({ parameters: [5, 6, 0] })).toEqual({ kind: "sandstorm", power: 6, durationMs: 0 });
+    expect(parseSourceWeather({ parameters: [6, 9, 0] })).toEqual({ kind: "heavy-rain", power: 9, durationMs: 0 });
+    expect(parseSourceWeather({ parameters: [7, 5, 0] })).toEqual({ kind: "sun", power: 5, durationMs: 0 });
+    expect(parseSourceWeather({ parameters: [8, 5, 0] })).toBeNull();
+    expect(parseSourceWeatherState({ kind: "snow", power: 7, durationMs: 0 }))
+      .toEqual({ kind: "snow", power: 7, durationMs: 0 });
+    expect(parseSourceWeatherState({ kind: "unknown", power: 7, durationMs: 0 })).toBeNull();
     expect(sourceFogBackgroundWidthPercent(256, 2, 576)).toBeCloseTo(88.8889, 3);
   });
 

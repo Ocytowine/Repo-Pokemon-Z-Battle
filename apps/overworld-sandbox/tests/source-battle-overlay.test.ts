@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createTeamBattleState, MINIMAL_MOVE_CATALOG, type BattlerState } from "@pokemon-z-battle/battle-engine";
-import { SourceBattleOverlay, sourceBattleReplacementMenuShouldClose,
+import { SourceBattleOverlay, sourceBattleForcedChargeMoveIndex, sourceBattleReplacementMenuShouldClose,
   sourceBattleReplacementSubmitted } from "../src/source-battle-overlay.js";
 
 function battler(id: string): BattlerState {
@@ -12,6 +12,15 @@ function battler(id: string): BattlerState {
 }
 
 describe("source battle overlay", () => {
+  it("selects the locked charging move even when no PP remains", () => {
+    const dig = { ...MINIMAL_MOVE_CATALOG.TACKLE, internalName: "DIG", name: "Tunnel" };
+    const member = { ...battler("player"),
+      moves: [{ move: MINIMAL_MOVE_CATALOG.TACKLE, pp: 10 }, { move: dig, pp: 0 }],
+      volatile: { chargingMove: "DIG", chargingTurns: 1 } } as BattlerState;
+    expect(sourceBattleForcedChargeMoveIndex(member)).toBe(1);
+    expect(sourceBattleForcedChargeMoveIndex({ ...member, volatile: undefined })).toBeNull();
+  });
+
   it("uses the visible submenu back action for cancel and ignores a closed battle", () => {
     const back = { disabled: false, click: vi.fn() };
     const panel = { hidden: false, querySelector: () => back };

@@ -141,8 +141,17 @@ export function normalizeBattleAnimations(
   const selectedIndices = new Set<number>();
   for (const entry of mappings) {
     if (!includedMoves.has(entry.internalName)) continue;
-    if (entry.player !== null) selectedIndices.add(entry.player);
-    if (entry.opponent !== null) selectedIndices.add(entry.opponent);
+    for (const index of [entry.player, entry.opponent]) {
+      if (index === null) continue;
+      selectedIndices.add(index);
+      // The source calls pbAnimation(move, ..., hitnum=1) on a charge turn.
+      // That animation is stored directly after the move's impact animation,
+      // sometimes without a Common: prefix or a move2anim entry of its own.
+      const next = sourceAnimations[index + 1];
+      if (next === undefined || !isUserClass(next, "PBAnimation")) continue;
+      const name = rubyText(next.ivars["@name"] ?? null);
+      if (/ charging$/i.test(name ?? "")) selectedIndices.add(index + 1);
+    }
   }
   // Common effects are not referenced by move2anim.dat. They include status,
   // stat, weather and persistent battle effects and must stay data-driven.

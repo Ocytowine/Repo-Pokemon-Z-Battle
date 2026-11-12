@@ -1,9 +1,17 @@
-import { Capacitor, CapacitorHttp } from "@capacitor/core";
-import { InAppBrowser } from "@capacitor/inappbrowser";
+import { Capacitor, CapacitorHttp, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
 import installedVersion from "../android-version.json" with { type: "json" };
+import { MOBILE_ORIGIN, mobileAuthorization, mobileToken } from "./source-mobile-account.js";
 
-const UPDATE_ORIGIN = "https://pokemon-z-battle-cloud-save.mimidu33-eb.workers.dev";
+const UPDATE_ORIGIN = MOBILE_ORIGIN;
 const UPDATE_URL = `${UPDATE_ORIGIN}/api/updates/latest`;
+type InstallResult = "installer-opened" | "permission-required" | "login-required";
+interface PrivateApkUpdatePlugin {
+  downloadAndInstall(options: { readonly url: string; readonly versionCode: number;
+    readonly sizeBytes: number; readonly sha256: string; readonly token: string }): Promise<{ readonly state: InstallResult }>;
+  addListener(eventName: "progress", listener: (progress: { readonly done: number;
+    readonly total: number }) => void): Promise<PluginListenerHandle>;
+}
+const privateApkUpdate = registerPlugin<PrivateApkUpdatePlugin>("PrivateApkUpdate");
 
 export interface SourceAndroidUpdate {
   readonly versionCode: number;
@@ -50,8 +58,10 @@ export function installedSourceAndroidVersion(): string {
 export async function checkSourceAndroidUpdate(): Promise<SourceAndroidUpdateResult> {
   if (Capacitor.getPlatform() !== "android") return { state: "non-android" };
   try {
+    const authorization = await mobileAuthorization();
+    if (authorization === null) return { state: "login-required" };
     const response = await CapacitorHttp.get({ url: UPDATE_URL, connectTimeout: 8_000,
-      readTimeout: 8_000, headers: { "Cache-Control": "no-cache" } });
+      readTimeout: 8_000, headers: { Authorization: authorization, "Cache-Control": "no-cache" } });
     if (response.status === 204) return { state: "not-published" };
     if (response.status === 401 || response.status === 403 || response.status === 302
       || typeof response.data === "string") return { state: "login-required" };
@@ -60,7 +70,16 @@ export async function checkSourceAndroidUpdate(): Promise<SourceAndroidUpdateRes
   } catch { return { state: "unavailable" }; }
 }
 
-export async function openSourceAndroidUpdate(update: SourceAndroidUpdate): Promise<void> {
+export async function openSourceAndroidUpdate(update: SourceAndroidUpdate,
+  report?: (done: number, total: number) => void): Promise<InstallResult> {
   if (parseSourceAndroidUpdate(update) === null) throw new Error("Lien de mise à jour invalide.");
-  await InAppBrowser.openInExternalBrowser({ url: update.downloadUrl });
+  if (Capacitor.getPlatform() !== "android") throw new Error("Installation disponible dans l'APK Android.");
+  const token = await mobileToken();
+  if (token === null) return "login-required";
+  const listener = await privateApkUpdate.addListener("progress", ({ done, total }) => report?.(done, total));
+  try {
+    const result = await privateApkUpdate.downloadAndInstall({ url: update.downloadUrl,
+      versionCode: update.versionCode, sizeBytes: update.sizeBytes, sha256: update.sha256, token });
+    return result.state;
+  } finally { await listener.remove(); }
 }

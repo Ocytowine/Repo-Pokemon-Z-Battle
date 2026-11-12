@@ -5,9 +5,10 @@
   "type": "module",
   "description": "Private Cloudflare Access gateway for player saves.",
   "scripts": {
-    "build": "wrangler deploy --dry-run --outdir dist",
+    "build": "wrangler deploy --dry-run --outdir dist && wrangler deploy --config wrangler.mobile.jsonc --dry-run --outdir dist-mobile",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "deploy:mobile": "wrangler deploy --config wrangler.mobile.jsonc",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
