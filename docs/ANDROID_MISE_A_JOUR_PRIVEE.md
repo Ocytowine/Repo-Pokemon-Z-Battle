@@ -255,11 +255,12 @@ en lançant l'installation intégrée de la 0.1.12 (13). `PluginCall.getLong`
 renvoie `null` pour `sizeBytes` reçu comme `Integer` du JSON Capacitor ; le
 manifeste R2 est valide. Son pointeur public a été remis à 12. Le correctif
 natif est dans la candidate 0.1.13 (14), installée par ADB sur le téléphone
-avec données conservées ; il faut encore valider la partie et les packs avant
-de publier le manifeste 14. Ce premier passage ne peut pas utiliser le
-téléchargeur défectueux de l'APK 12.
+avec données conservées. Le porteur confirme partie, compte cloud et packs
+présents. L'APK 14 a été retéléchargée depuis R2 avec taille et SHA-256 exacts,
+puis son manifeste a été publié en dernier et relu. Ce premier passage ne
+pouvait pas utiliser le téléchargeur défectueux de l'APK 12.
 
-Le prochain APK équipé du chargeur de code doit être installé intégralement une
+L'APK 14 équipée du chargeur de code doit être installée intégralement une
 fois. Ensuite, un correctif qui ne change que le JavaScript ou le CSS peut être
 téléchargé dans Options → Mises à jour Android → Code du jeu. Il est activé au
 prochain démarrage, sans ouvrir l'installateur Android. L'APK fournit un repli

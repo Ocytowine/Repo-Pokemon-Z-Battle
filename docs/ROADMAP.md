@@ -4434,8 +4434,10 @@ Retour immédiat : l'APK 12 rejette le manifeste 13 avant téléchargement car
 Le manifeste public a été ramené à 12. Le correctif natif accepte désormais
 les nombres entiers Capacitor sans arrondi ; test Android ajouté. La candidate
 0.1.13 (14) est installée localement par ADB avec données Android conservées ;
-recette des sauvegardes, du compte et des packs en attente avant sa diffusion.
-Un vrai téléchargement intégré sera contrôlé sur une version ultérieure >14.
+le porteur confirme la conservation des sauvegardes, du compte et des packs.
+L'APK 14 et son SHA-256 ont été vérifiés sur R2, puis le manifeste 14 a été
+publié en dernier. Un vrai téléchargement intégré sera contrôlé sur une
+version ultérieure >14 ; le canal de code web reste sans manifeste public.
 
 Ordre de traitement proposé : BZ-037 et BZ-038 (contrat de déplacement), puis
 BZ-039 et BZ-040 (ordre personnel de l'équipe puis suiveur), enfin BZ-036 (validation visuelle

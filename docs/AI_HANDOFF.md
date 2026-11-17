@@ -12056,3 +12056,13 @@ envoyer l'APK 14 sous sa clé immuable, retélécharger et vérifier son SHA-256
 puis seulement remplacer `updates/android/latest.json` par le manifeste 14.
 Le passage 12 → 14 se fait cette fois par ADB ou installation manuelle ; le
 parcours interne de téléchargement sera vérifié lors d'un prochain code >14.
+
+Validation et diffusion : le porteur confirme que la partie, le compte cloud
+et les packs de fonds/musique sont tous conservés après l'installation locale.
+L'APK 0.1.13 (14) de 392 752 674 octets, SHA-256
+`d8ceba25428587d3e02c7cf4aef1ab6eae93cf599f9b9dd8c693c59843ba0c28`,
+a été retéléchargée depuis R2 et vérifiée. Le manifeste Android a été publié
+en dernier et relu : code 14, taille, empreinte et notes concordent. Aucun
+manifeste de correctif web n'est encore publié. Le prochain test distinct est
+un vrai correctif JS/CSS sur l'APK 14, puis un passage 14 → 15 par le
+téléchargeur intégré pour vérifier le correctif natif de ce lot.
