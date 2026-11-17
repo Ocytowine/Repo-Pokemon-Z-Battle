@@ -36,7 +36,7 @@ public class PrivateApkUpdatePlugin extends Plugin {
         }
         try {
             request = PrivateApkUpdateRequest.parse(call.getString("url"), call.getInt("versionCode"),
-                call.getLong("sizeBytes"), call.getString("sha256"));
+                PrivateApkUpdateRequest.wholeNumber(call.getData().opt("sizeBytes")), call.getString("sha256"));
             JSObject deltaInput = call.getObject("delta");
             delta = deltaInput == null ? null : PrivateApkDeltaRequest.parse(
                 deltaInput.optString("url", null), deltaInput.optInt("fromVersionCode", 0),

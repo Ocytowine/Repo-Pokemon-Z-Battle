@@ -4429,6 +4429,14 @@ mais **aucun manifeste de correctif web n'est publié**. L'installation depuis
 la 0.1.11, le redémarrage hors ligne, un vrai correctif de code et le repli
 restent à valider avant de déclarer BZ-041 terminé.
 
+Retour immédiat : l'APK 12 rejette le manifeste 13 avant téléchargement car
+`PluginCall.getLong` reçoit un `Integer` pour une taille inférieure à 2 Go.
+Le manifeste public a été ramené à 12. Le correctif natif accepte désormais
+les nombres entiers Capacitor sans arrondi ; test Android ajouté. La candidate
+0.1.13 (14) est installée localement par ADB avec données Android conservées ;
+recette des sauvegardes, du compte et des packs en attente avant sa diffusion.
+Un vrai téléchargement intégré sera contrôlé sur une version ultérieure >14.
+
 Ordre de traitement proposé : BZ-037 et BZ-038 (contrat de déplacement), puis
 BZ-039 et BZ-040 (ordre personnel de l'équipe puis suiveur), enfin BZ-036 (validation visuelle
 des tuiles sur les trois lieux cités). Cet ordre reste soumis aux blocages

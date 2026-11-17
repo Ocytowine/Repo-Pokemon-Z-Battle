@@ -250,6 +250,15 @@ depuis la 0.1.11. Le Worker mobile est déployé, mais aucun manifeste de
 correctif web n'est encore publié : la recette d'un vrai petit patch et de
 son repli reste à faire après validation de cette APK sur téléphone.
 
+**Incident de migration :** la 0.1.11 (12) affiche « Manifeste APK invalide »
+en lançant l'installation intégrée de la 0.1.12 (13). `PluginCall.getLong`
+renvoie `null` pour `sizeBytes` reçu comme `Integer` du JSON Capacitor ; le
+manifeste R2 est valide. Son pointeur public a été remis à 12. Le correctif
+natif est dans la candidate 0.1.13 (14), installée par ADB sur le téléphone
+avec données conservées ; il faut encore valider la partie et les packs avant
+de publier le manifeste 14. Ce premier passage ne peut pas utiliser le
+téléchargeur défectueux de l'APK 12.
+
 Le prochain APK équipé du chargeur de code doit être installé intégralement une
 fois. Ensuite, un correctif qui ne change que le JavaScript ou le CSS peut être
 téléchargé dans Options → Mises à jour Android → Code du jeu. Il est activé au

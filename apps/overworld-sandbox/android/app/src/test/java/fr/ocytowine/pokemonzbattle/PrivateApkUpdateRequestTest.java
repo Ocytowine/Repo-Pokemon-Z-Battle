@@ -27,4 +27,11 @@ public class PrivateApkUpdateRequestTest {
         assertTrue(PrivateApkUpdateRequest.matchesRange("bytes 100-999/1000", 100, 1000));
         assertFalse(PrivateApkUpdateRequest.matchesRange("bytes 0-999/1000", 100, 1000));
     }
+
+    @Test public void acceptsCapacitorIntegerSizesWithoutLosingLongSizes() {
+        assertEquals(Long.valueOf(392752498L), PrivateApkUpdateRequest.wholeNumber(392752498));
+        assertEquals(Long.valueOf(3000000000L), PrivateApkUpdateRequest.wholeNumber(3000000000L));
+        assertNull(PrivateApkUpdateRequest.wholeNumber(392752498.5));
+        assertNull(PrivateApkUpdateRequest.wholeNumber("392752498"));
+    }
 }

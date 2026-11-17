@@ -11,6 +11,15 @@ final class PrivateApkUpdateRequest {
     final long sizeBytes;
     final String sha256;
 
+    /** Capacitor JSON uses Integer below 2^31 and Long above it. Accept both without rounding. */
+    static Long wholeNumber(Object value) {
+        if (!(value instanceof Number)) return null;
+        Number number = (Number) value;
+        long whole = number.longValue();
+        double decimal = number.doubleValue();
+        return Double.isFinite(decimal) && decimal == whole ? whole : null;
+    }
+
     private PrivateApkUpdateRequest(String url, int versionCode, long sizeBytes, String sha256) {
         this.url = url;
         this.versionCode = versionCode;

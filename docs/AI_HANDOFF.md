@@ -12034,3 +12034,25 @@ première installation n'effectue donc aucun téléchargement de code redondant.
 Le porteur confirme que les trois clés privées ont une sauvegarde hors PC.
 Recette téléphone de l'installation 12 → 13, conservation des sauvegardes et
 packs, démarrage hors ligne, puis vrai patch web/repli et session Coop ouverte.
+
+Retour du porteur sur la 0.1.11 (12) : l'installation depuis Options échoue
+avant téléchargement avec « Manifeste APK invalide ». Le manifeste public a
+été remis sur le code 12 ; l'objet signé du code 13 reste privé sur R2 mais
+n'est plus annoncé. Cause trouvée dans l'APK 12 : `PluginCall.getLong` accepte
+seulement un objet Java `Long`, alors que le JSON Capacitor représente une APK
+de 392 Mo par `Integer`. Le parseur recevait donc `null`. Le plugin lit
+maintenant tout `Number` entier sans perte et un test Android couvre `Integer`,
+`Long`, valeur fractionnaire et texte. Le correctif est **natif** : l'APK 12
+ne peut pas le recevoir par le canal web, encore absent de la version publique.
+
+La candidate 0.1.13 (14) est signée avec le même certificat, `pnpm test`,
+`pnpm build` et `:app:testDebugUnitTest` passent. Elle a été installée
+localement par `adb install -r` sur le Samsung : Android affiche le code 14 et
+conserve `firstInstallTime=2026-10-28 14:43:40`. Vérification des sauvegardes,
+du compte et des packs par le porteur en attente. Le manifeste R2 reste sur 12
+pendant cette recette. Le code web de base 14 est signé et préparé localement
+(25 fichiers, 6 069 627 octets), sans manifeste web public. Après contrôle,
+envoyer l'APK 14 sous sa clé immuable, retélécharger et vérifier son SHA-256,
+puis seulement remplacer `updates/android/latest.json` par le manifeste 14.
+Le passage 12 → 14 se fait cette fois par ADB ou installation manuelle ; le
+parcours interne de téléchargement sera vérifié lors d'un prochain code >14.
