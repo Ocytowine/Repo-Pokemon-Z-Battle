@@ -9,10 +9,13 @@ export const ROOM_CHECKPOINT_MAX_MS = 30_000;
  * Critical gameplay mutations remain write-through; recoverable positions are checkpointed.
  */
 export function roomPersistenceMode(message: ClientMessage): RoomPersistenceMode {
-  if (message.type === "ping" || message.type === "requestSnapshot" || message.type === "emitSourceSound") {
+  if (message.type === "ping" || message.type === "requestSnapshot" || message.type === "emitSourceSound"
+    || message.type === "sendSocialInvite" || message.type === "sendSocialText"
+    || message.type === "sendSocialEmoji" || message.type === "sendSocialTeam") {
     return "none";
   }
-  if (message.type === "moveAvatar" || message.type === "setSourceActors") return "checkpoint";
+  if (message.type === "moveAvatar" || message.type === "setSourceActors"
+    || message.type === "setSocialVisibility") return "checkpoint";
   return "immediate";
 }
 

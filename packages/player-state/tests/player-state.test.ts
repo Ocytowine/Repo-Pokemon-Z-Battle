@@ -9,10 +9,10 @@ import { addPokemonToParty, addPokemonToStorage, applySharedBattleExperience, ca
   usePokemonEvolutionItem, useRareCandy,
   healPlayerParty, loadPlayerAvatarSelection, parsePlayerAvatarSelection,
   loadSessionPlayerAvatarSelection, parsePlayerParty, parsePlayerPokemonStorage, parsePlayerProfile, persistSessionPlayerAvatarSelection,
-  movePokemonToPartyFront, playerPartyToBattleTeam, pokemonZParticipantExperience,
+  movePokemonToPartyFront, partyFollowerPokemon, playerPartyToBattleTeam, pokemonZParticipantExperience,
   nicknameOwnedPokemon, placeCapturedPokemon,
   pokemonZParticipantExperienceCalculation, publicPokemonIdentity, recalculatePersistentPokemonStats,
-  reorderPokemonMoves, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
+  reorderPokemonMoves, swapPokemonPartyMembers, storeBattleTeam, storeOwnedBattleResults, storeProjectedBattleTeam,
   transferPokemonToParty, transferPokemonToStorage, type PlayerBattleCatalog,
   sourcePokemonAbility, type PlayerCreationCatalog, type PlayerPartyState } from "../src/index.js";
 import { createTeamBattleState, hiddenPowerTypeFromIvs,
@@ -176,6 +176,31 @@ describe("persistent player party", () => {
     const result = movePokemonToPartyFront({ ...party, activeIndex: 0, members: [party.members[0]!, second] }, "second");
     expect(result).toMatchObject({ activeIndex: 0, members: [{ id: "second", nickname: "Second" }, { id: "starter" }] });
     expect(() => movePokemonToPartyFront(party, "missing")).toThrow("absent de l'équipe");
+  });
+
+  it("swaps two team slots while keeping the active Pokemon identity", () => {
+    const second = { ...party.members[0]!, id: "second" };
+    const third = { ...party.members[0]!, id: "third" };
+    const reordered = swapPokemonPartyMembers({ ...party, activeIndex: 1,
+      members: [party.members[0]!, second, third] }, "starter", "third");
+    expect(reordered.members.map((member) => member.id)).toEqual(["third", "second", "starter"]);
+    expect(reordered.activeIndex).toBe(1);
+    expect(() => swapPokemonPartyMembers(party, "starter", "missing")).toThrow("absent de l'équipe");
+  });
+
+  it("keeps the first party member as follower after another Pokemon fought", () => {
+    const second = { ...party.members[0]!, id: "second" };
+    const afterBattle = { ...party, activeIndex: 1, members: [party.members[0]!, second] };
+    expect(partyFollowerPokemon(afterBattle)?.id).toBe("starter");
+    expect(partyFollowerPokemon(swapPokemonPartyMembers(afterBattle, "starter", "second"))?.id).toBe("second");
+  });
+
+  it("starts the next battle with the first able party slot after a prior switch", () => {
+    const second = { ...party.members[0]!, id: "second" };
+    const afterBattle = { ...party, activeIndex: 1, members: [party.members[0]!, second] };
+    expect(playerPartyToBattleTeam(afterBattle, catalog).activeIndex).toBe(0);
+    expect(playerPartyToBattleTeam({ ...afterBattle,
+      members: [{ ...party.members[0]!, hp: 0 }, second] }, catalog).activeIndex).toBe(1);
   });
 
   it("reorders move slots in the canonical party or Ranch state", () => {

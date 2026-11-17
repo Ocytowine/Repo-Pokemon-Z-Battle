@@ -354,6 +354,42 @@ export function parseClientMessage(payload: string): ClientMessage {
       } catch {
         return invalid("setProfile mal formé");
       }
+    case "setSocialVisibility":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "visible"])
+        || !isIdentifier(value.requestId) || typeof value.visible !== "boolean") {
+        return invalid("setSocialVisibility mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "sendSocialInvite":
+      if (!hasExactKeys(value, ["type", "version", "requestId"]) || !isIdentifier(value.requestId)) {
+        return invalid("sendSocialInvite mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "sendSocialText":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "text"])
+        || !isIdentifier(value.requestId) || typeof value.text !== "string"
+        || value.text.trim().length < 1 || [...value.text].length > 140) {
+        return invalid("sendSocialText mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "sendSocialEmoji":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "emoji"])
+        || !isIdentifier(value.requestId)
+        || !["wave", "heart", "happy", "surprised", "sad", "idea"].includes(String(value.emoji))) {
+        return invalid("sendSocialEmoji mal formé");
+      }
+      return value as unknown as ClientMessage;
+    case "sendSocialTeam":
+      if (!hasExactKeys(value, ["type", "version", "requestId", "team"])
+        || !isIdentifier(value.requestId) || !Array.isArray(value.team) || value.team.length > 6
+        || !value.team.every((member: unknown) => isRecord(member)
+          && hasExactKeys(member, ["species", "name", "level"])
+          && typeof member.species === "string" && /^[A-Z0-9_]{1,32}$/u.test(member.species)
+          && typeof member.name === "string" && member.name.length >= 1 && [...member.name].length <= 32
+          && Number.isInteger(member.level) && (member.level as number) >= 1 && (member.level as number) <= 100)) {
+        return invalid("sendSocialTeam mal formé");
+      }
+      return value as unknown as ClientMessage;
     case "setSourceWorld":
       if (Object.keys(value).some((key) => !["type", "version", "requestId", "world", "relocateHost"].includes(key))
         || !["type", "version", "requestId", "world"].every((key) => key in value)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { ImportedMap, ImportedMapEvent } from "../src/imported-map.js";
-import { createSourceEventState } from "../src/source-event-state.js";
+import { selectEventPage, type ImportedMap, type ImportedMapEvent } from "../src/imported-map.js";
+import { applySafeStateCommands, createSourceEventState } from "../src/source-event-state.js";
+import { executeSourceMoveRouteStep } from "../src/source-move-route.js";
 import { SourceNpcMotionController, sourceNpcMoveDelay, sourceNpcStepDuration, sourceTrainerSightRange }
   from "../src/source-npc-motion.js";
 
@@ -19,6 +20,46 @@ const event: ImportedMapEvent = { id: 6, name: "Promeneur", x: 2, y: 2, pages: [
 }] };
 
 describe("source NPC motion", () => {
+  it("keeps a falling boulder above characters, replicates its pose, then shows the filled hole", () => {
+    const boulder: ImportedMapEvent = { ...event, pages: [
+      { ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, characterName: "rocafuerza" },
+        settings: { ...event.pages[0]!.settings, moveType: 0 } },
+      { ...event.pages[0]!, condition: { ...event.pages[0]!.condition, switch1Id: 773 },
+        graphic: { ...event.pages[0]!.graphic, characterName: "" },
+        settings: { ...event.pages[0]!.settings, moveType: 0 } },
+    ] };
+    const hole: ImportedMapEvent = { ...event, id: 7, x: 0, pages: [
+      { ...event.pages[0]!, graphic: { ...event.pages[0]!.graphic, characterName: "agujero" } },
+      { ...event.pages[0]!, condition: { ...event.pages[0]!.condition, switch1Id: 773 },
+        graphic: { ...event.pages[0]!.graphic, characterName: "rocagujero2" } },
+    ] };
+    const host = new SourceNpcMotionController();
+    host.reset(map.id, [boulder, hole], 0);
+    let actor = host.scriptedActor(boulder.id, map.id, [boulder, hole], createSourceEventState(), 0)!;
+    for (const [index, kind] of ["through-on", "always-on-top-on", "step-left", "step-left"].entries()) {
+      const result = executeSourceMoveRouteStep(actor, { kind, parameters: [] }, { player: { x: 4, y: 4 } });
+      expect(result.supported).toBe(true);
+      host.applyScriptedActor(boulder.id, result.actor, result.destination, index * 300);
+      actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
+    }
+    expect(host.logicalEvents([boulder])[0]).toMatchObject({ x: hole.x, y: hole.y });
+    expect(host.poses(1_200).get(boulder.id)?.alwaysOnTop).toBe(true);
+    const guest = new SourceNpcMotionController();
+    guest.reset(map.id, [boulder, hole], 0);
+    guest.applyNetworkActors([{ eventId: boulder.id, x: hole.x, y: hole.y,
+      direction: "left", alwaysOnTop: true }], 1_200);
+    expect(guest.poses(1_200).get(boulder.id)?.alwaysOnTop).toBe(true);
+
+    const switched = applySafeStateCommands(createSourceEventState(), { ...boulder.pages[0]!, commands: [
+      { kind: "set-switches", text: null, indent: 0, data: { firstId: 773, lastId: 773, value: true } },
+    ] }, map.id, boulder.id);
+    expect(switched.safe).toBe(true);
+    const fallen = switched.state;
+    expect(selectEventPage(boulder, map.id, fallen)?.graphic.characterName).toBe("");
+    expect(selectEventPage(hole, map.id, fallen)?.graphic.characterName).toBe("rocagujero2");
+    host.update(1_500, map, [boulder, hole], fallen, [{ x: 4, y: 4 }]);
+    expect(host.poses(1_500).get(boulder.id)?.alwaysOnTop).toBeUndefined();
+  });
   it("faces the interacting player, freezes autonomous movement, and restores the previous direction", () => {
     const controller = new SourceNpcMotionController();
     const state = createSourceEventState();

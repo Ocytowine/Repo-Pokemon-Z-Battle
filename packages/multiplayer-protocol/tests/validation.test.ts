@@ -22,6 +22,28 @@ const duelTeam = { activeIndex: 0, members: [{ id: "p1", species: "EEVEE", name:
   moves: [{ move: MINIMAL_MOVE_CATALOG.TACKLE, pp: MINIMAL_MOVE_CATALOG.TACKLE.pp }] }] };
 
 describe("multiplayer protocol", () => {
+  it("bounds social messages and accepts only known emoji", () => {
+    const base = { version: 15, requestId: "social-1" };
+    expect(parseClientMessage(JSON.stringify({ ...base, type: "setSocialVisibility", visible: true })))
+      .toMatchObject({ type: "setSocialVisibility", visible: true });
+    expect(parseClientMessage(JSON.stringify({ ...base, type: "sendSocialInvite" })))
+      .toMatchObject({ type: "sendSocialInvite" });
+    expect(parseClientMessage(JSON.stringify({ ...base, type: "sendSocialText", text: "Bonjour !" })))
+      .toMatchObject({ type: "sendSocialText", text: "Bonjour !" });
+    expect(parseClientMessage(JSON.stringify({ ...base, type: "sendSocialEmoji", emoji: "wave" })))
+      .toMatchObject({ type: "sendSocialEmoji", emoji: "wave" });
+    expect(parseClientMessage(JSON.stringify({ ...base, type: "sendSocialTeam",
+      team: [{ species: "EEVEE", name: "Évoli", level: 12 }] })))
+      .toMatchObject({ type: "sendSocialTeam", team: [{ species: "EEVEE", name: "Évoli", level: 12 }] });
+    expect(() => parseClientMessage(JSON.stringify({ ...base, type: "sendSocialText", text: " ".repeat(141) })))
+      .toThrow();
+    expect(() => parseClientMessage(JSON.stringify({ ...base, type: "sendSocialEmoji", emoji: "custom" })))
+      .toThrow();
+    expect(() => parseClientMessage(JSON.stringify({ ...base, type: "sendSocialInvite", text: "secret" })))
+      .toThrow();
+    expect(() => parseClientMessage(JSON.stringify({ ...base, type: "sendSocialTeam",
+      team: [{ species: "EEVEE", name: "Évoli", level: 101 }] }))).toThrow();
+  });
   it("defines a strict public cosmetic profile without gameplay state", () => {
     const networkProfile = createNetworkPlayerProfile("legacy-4", {
       ...createDefaultPlayerProfile(), displayName: "Ariane", pronouns: "feminine",
@@ -377,6 +399,7 @@ describe("multiplayer protocol", () => {
     const scene = { mapId: 3, sequenceActive: true,
       dialogue: { label: "Crisanto", text: "Regarde !", choices: [] },
       actors: [{ eventId: 7, x: 12, y: 8, direction: "left" as const, pattern: 1, opacity: 255,
+        alwaysOnTop: true,
         renderOffsetY: -12 }],
       presentation: { id: 1, kind: "screen-tone", data: { tone: { red: 0, green: 0, blue: 0, gray: 255 } } } };
     expect(parseSourceSceneSnapshot(scene)).toEqual(scene);
@@ -389,6 +412,8 @@ describe("multiplayer protocol", () => {
       presentation: { id: 2, kind: "execute-ruby", data: {} } })).toThrow("Commande visuelle");
     expect(() => parseSourceSceneSnapshot({ ...scene,
       actors: [{ ...scene.actors[0]!, renderOffsetY: -256 }] })).toThrow("Acteur de cinematique");
+    expect(() => parseSourceSceneSnapshot({ ...scene,
+      actors: [{ ...scene.actors[0]!, alwaysOnTop: "yes" }] })).toThrow("Acteur de cinematique");
   });
 
   it("rejects malformed and oversized payloads", () => {

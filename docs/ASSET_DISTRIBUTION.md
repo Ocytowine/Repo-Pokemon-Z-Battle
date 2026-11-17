@@ -362,6 +362,37 @@ Le pack actif est conservé lors de la mise à jour APK ; une installation
 interrompue laisse les objets vérifiés en attente sans activer de pack incomplet.
 Ce retrait est une séparation de support, pas une exclusion de ressources.
 
+### Transport différentiel du code APK — BZ-041 — 2026-11-13
+
+Le patch `.pzb.gz` réutilise les octets identiques de l'APK précédente pour
+reconstituer **l'APK signée complète**. Il n'est pas un pack de ressources et
+n'est jamais exécuté comme code autonome. Les distributions de `Graphics` et
+`Audio`, leurs manifestes et les fichiers source restent inchangés. Le patch
+est associé aux SHA-256 des deux APK exactes ; une autre base impose le
+téléchargement complet. Une comparaison locale entre l'APK publique code 12
+et une construction locale donne 5 141 519 octets de patch pour 392 738 754
+octets d'APK cible. Ce test ne vaut pas publication ni recette Android finale.
+
+### Canal de correctifs du code web — BZ-041 — 2026-11-13
+
+Le profil Android embarque un chargeur de code capable d'activer un bundle Web
+signé sans réinstaller l'APK. Le bundle contient uniquement les fichiers
+`dist/assets` de Vite (JavaScript, CSS et leurs dépendances). Il ne contient
+aucun `Graphics`, `Audio`, donnée source ou sauvegarde. Les manifestes des
+ressources de jeu restent indépendants et leur répartition ne change pas.
+Le manifeste signé fixe la version native et les empreintes des inventaires de
+données et de ressources embarqués ; un bundle incompatible est refusé. Une
+modification native, des données locales ou de la disposition des packs demande
+toujours une APK adaptée. Les objets du code sont contrôlés par SHA-256 avant
+activation, et le code embarqué dans l'APK sert de repli.
+
+Le premier APK avec ce chargeur doit être installé par la procédure Android
+habituelle. Les correctifs de JavaScript/CSS suivants peuvent être envoyés sur
+R2 dans `updates/web/sha256/`, puis annoncés par `updates/web/latest.json` après
+contrôle de tous les objets. Aucun de ces objets n'est un asset du jeu source.
+Au 2026-11-13, cette voie est locale et non publiée ; elle n'altère ni les
+packs actifs ni les manifestes Android en ligne.
+
 Correctif local après retour du porteur : l'activation du pack rendait les
 musiques silencieuses. Le lecteur natif découpait une plage HTTP que le WebView
 Android découpait une seconde fois, ce qui provoquait `PIPELINE_ERROR_READ`.
@@ -600,3 +631,16 @@ Le correctif porte sur l'ordonnanceur des événements ; la copie de `Graphics`
 et `Audio` conserve la répartition existante, avec 49 fonds larges et les BGM
 hors titre dans les packs, et `Titulo2.ogg` dans l'APK. Aucun asset, pack,
 manifeste distant ou APK publique n'a été modifié ou publié.
+
+### BZ-037 à BZ-040 — APK locale de recette — 2026-11-12
+
+L'APK locale allégée a été reconstruite et installée par USB pour le Surf,
+l'escalade, l'ordre de l'équipe et le suiveur. Le profil conserve les 49 fonds
+larges et les BGM hors titre dans les packs privés, avec `Titulo2.ogg` dans
+l'APK. Aucune ressource source, copie sélective, pack, manifeste distant ou
+APK publique n'a été modifié ou publié. BZ-036 reste un audit de rendu sans
+changement de fichier graphique.
+Une seconde APK locale a été signée pour inclure aussi la sélection du premier
+Pokémon apte au prochain combat ; sa tentative d'installation a échoué car
+ADB ne détectait plus le téléphone. La répartition des ressources est
+inchangée et cette APK reste uniquement locale.

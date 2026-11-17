@@ -50,6 +50,13 @@ export class SourceFollowerMotionController {
     }
   }
 
+  /** À la sortie d'une route cachée, le suiveur reste avec le joueur jusqu'au prochain pas visible. */
+  public tuckAtPlayer(map: ImportedMap, player: ImportedAvatar): void {
+    this.mapId = map.id;
+    this.position = { ...player };
+    this.motion = null;
+  }
+
   public followPlayerStep(from: ImportedAvatar, to: ImportedAvatar, startedAt: number, duration: number): void {
     if (from.x === to.x && from.y === to.y) return;
     if (this.position === null) {

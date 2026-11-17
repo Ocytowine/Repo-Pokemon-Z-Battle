@@ -4386,6 +4386,108 @@ la scène et les placements sont corrects, sans reproduction du défaut sur
 l'APK locale corrigée. BZ-035 reste ouvert comme audit général des autres
 cartes, commandes et parcours Coop ; ne pas réouvrir Map283 sans nouveau fait.
 
+### Retour « Liste bug ou manques » — complément du 2026-11-12
+
+Source : `docs/Débug/Bug/Liste bug ou manques.md`. Les points 1 (météo) et 2
+(départ du combat) sont déjà traités respectivement par BZ-031 et BZ-032 ;
+leurs validations solo ne sont pas annulées. Les points 3 à 6 restent ouverts.
+Le porteur précise que « classement » signifie **réordonner l'équipe**, et
+qu'après un combat **le premier Pokémon de l'équipe** doit redevenir le
+suiveur. Ces deux attentes sont distinctes du tri du Ranch (BZ-008).
+
+| ID / priorité | Observation et première analyse | Critère de sortie |
+| --- | --- | --- |
+| **BZ-036 / P2 — Profondeur des décors** | Des tuiles passent devant le joueur alors qu'il devrait passer au-dessus : pont de Route 14, trous de Route 21 et début des cascades. Le moteur classe actuellement les tuiles par priorité et hauteur `y`, puis les personnages ; comparer ces priorités et les passages directionnels aux données source avant de changer le calcul. | Pont, trous et deux extrémités de cascade rendus au bon plan pendant la marche et le Surf ; même rendu local et distant en Coop. |
+| **BZ-037 / P1 — Surf entre cartes** | Vérifier un transfert de carte effectué en Surf. Le chemin général de `followSourceTransfer` conserve explicitement le mode seulement pour la monture et revient sinon à `walk` ; c'est une cause probable à confirmer sur une frontière aquatique réelle. | Mode, sprite, collisions et vitesse Surf conservés des deux côtés d'une frontière d'eau ; retour à pied uniquement sur une rive valide ; solo, hôte, invité et reconnexion. |
+| **BZ-038 / P1 — Escalade de parois contiguës** | Lorsque deux parois se suivent, l'animation s'arrête alors que le personnage continue de monter. Examiner le contrat commun de mouvement et la transition de pose entre deux segments, sans cibler une carte particulière. | Deux segments d'escalade enchaînés sans pose neutre ni décalage, avec trajectoire, vitesse et rendu distant cohérents en solo et Coop. |
+| **BZ-039 / P1 — Ordre de l'équipe Pokémon** | Le porteur attend une action pour réordonner ses Pokémon dans l'équipe ; le tri du Ranch déjà livré ne répond pas à ce besoin. L'ordre est personnel et persistant, avec validation par la room pour une intention Coop. | Permutation accessible au tactile, ordre conservé après sauvegarde, cloud, combat et reconnexion ; hôte et invité voient leur propre ordre. |
+| **BZ-040 / P1 — Suiveur après combat** | Le dernier Pokémon utilisé peut rester affiché en suiveur. Le rendu lit `party.activeIndex`, que le combat peut modifier ; vérifier la transition d'état. Le comportement attendu est le **premier Pokémon de l'équipe** après combat. | Après victoire, fuite ou défaite, le premier Pokémon de l'équipe reprend le rôle de suiveur selon les règles de disponibilité du jeu d'origine, sans modifier abusivement le Pokémon actif du combat ; état personnel restauré en solo et Coop, rendu distant cohérent. |
+| **BZ-041 / P1 — Mises à jour de code ciblées** | L'APK privée allégée pèse encore environ 393 Mo et une correction du moteur faisait retélécharger tout ce paquet, malgré les packs de fonds et de musiques inchangés. Un patch binaire réutilise les octets identiques de l'APK installée et reconstruit exactement la nouvelle APK signée. Le compte, les sauvegardes et les packs restent indépendants. | Base APK exacte vérifiée, patch privé repris et vérifié, APK reconstruite identique au fichier signé, installation Android normale ; repli sur APK complète si la base diffère ; première migration et reprise interrompue testées sur téléphone. Le premier APK contenant le lecteur de patch doit être installé intégralement. |
+| **BZ-042 / P1 — Communication Coop** | Invitation à distance limitée à « veut te parler » ; bulle `…` et tchat texte/émojis quand les deux sprites sont visibles réciproquement ; présentation volontaire de l'équipe. Code local du protocole, de la room et de l'interface ajouté le 2026-11-17. Le contenu est éphémère et ne va ni en sauvegarde ni dans le cloud. | Tester sur deux clients hôte/invité la visibilité réciproque, le raccourci hors champ, les émojis, le partage d'équipe, le clavier et la reconnexion. Worker en ligne non déployé, aucune diffusion publique. |
+| **BZ-043 / P1 — Clavier Android dans le Sac** | **Validé sur téléphone en solo le 2026-11-17.** La recherche par nom recréait son élément `input` à chaque lettre, risquant de fermer le clavier logiciel. Champ conservé pendant le filtrage, taps des champs exclus du masquage des barres système et hauteur réelle du Sac verrouillée au focus. Le porteur confirme que le Sac garde sa taille et que les résultats restent disposés normalement derrière le clavier. | Régression éventuelle du champ « Effacer » et du retour au jeu à contrôler lors du prochain lot de menus ; pas de diffusion publique dans ce jalon. |
+
+Complément BZ-041 du 2026-11-13 : pour les petites corrections JavaScript/CSS,
+un canal de code web signé est préparé localement. Le premier APK qui intègre
+son chargeur doit encore être installé normalement ; ensuite un correctif du
+code compatible avec cette APK se télécharge et s'active au prochain démarrage
+sans quitter l'application ni ouvrir l'installateur Android. Le bundle ne
+comprend pas les ressources du jeu et laisse les sauvegardes et packs en place.
+La signature ECDSA, les empreintes SHA-256, la version native et les inventaires
+de données sont vérifiés avant activation ; une absence de démarrage confirmé
+ramène automatiquement au code précédent ou à celui de l'APK. Une modification
+native ou des données embarquées continue de demander une nouvelle APK, dont
+le transport différentiel reste une option. **À valider avant diffusion** :
+installation du premier APK, démarrage et retour arrière sur téléphone, compte
+mobile, correctif réel, combat solo/Coop hôte et invité, redémarrage hors ligne,
+et déploiement du Worker. Aucun correctif web public n'est encore annoncé.
+
+Ordre de traitement proposé : BZ-037 et BZ-038 (contrat de déplacement), puis
+BZ-039 et BZ-040 (ordre personnel de l'équipe puis suiveur), enfin BZ-036 (validation visuelle
+des tuiles sur les trois lieux cités). Cet ordre reste soumis aux blocages
+constatés lors des tests ; aucun de ces cinq points n'est codé par ce relevé.
+
+Lot local du 2026-11-12 : BZ-037 conserve Surf à l'arrivée d'un transfert
+aquatique et reprend la marche sur une rive ; la Plongée/Surface explicite
+reste prioritaire. BZ-038 maintient la pose animée de la monture pendant le
+bref intervalle entre deux pas, y compris pour le personnage distant. BZ-039
+ajoute l'action tactile « Échanger » entre deux cartes de l'Équipe, avec ordre
+personnel sauvegardé. BZ-040 prend le premier Pokémon de l'équipe pour le
+suiveur local et Coop, comme le script source. Tests et build complets passent ;
+APK locale signée installée sur le Samsung, recette utilisateur ouverte.
+BZ-036 reste en analyse : les Maps 269/339 (Routes 14/21) ne comportent aucune
+tuile de priorité 4, cas particulier de pont dans le moteur source. Attendre
+la capture et la position de la tuile fautive avant de modifier le classement
+général des couches. Aucun pack ni APK publique n'a changé.
+Complément BZ-039/040 : le prochain combat repart du premier Pokémon apte dans
+l'ordre de l'équipe, et non du dernier combattant actif. Test ciblé passé.
+L'APK locale finale est signée mais attend la reconnexion ADB du téléphone ;
+la première APK installée pendant ce lot ne contient pas ce complément.
+
+Recette du 2026-11-12 : le porteur confirme l'échange d'équipe, le premier
+Pokémon comme suiveur après combat, le Surf entre deux cartes et la continuité
+de l'escalade sur deux parois. BZ-037 à BZ-040 sont validés pour ces parcours
+solo ; contrôle hôte, invité et reconnexion encore ouvert. La dernière APK
+locale signée, avec la sélection du premier Pokémon disponible au prochain
+combat, a été installée par ADB. Deux captures situent le pont blanc et un
+trou près d'un rocher pour BZ-036. Les tuiles de surface du pont en Map269
+sont de priorité 0 ; les priorités élevées des Maps 269/339 sont surtout des
+arbres. Le bord exact qui masque le personnage et le moment du passage restent
+à isoler avant toute modification du classement général ; les cascades n'ont
+pas encore de capture de recette. Aucun pack ni APK publique n'a changé.
+
+Correctif local BZ-036 du 2026-11-13 : le contact horizontal du pont de Route 14
+relançait EV9 en boucle tant que le joystick restait maintenu ; 7 368 déclenchements
+ont été mesurés sur téléphone. La continuation du mouvement maintenu vérifie
+désormais que le même contact n'est pas toujours devant le joueur avant de
+relancer le pas. Le porteur confirme que le gel a disparu et que la traversée
+horizontale automatique fonctionne. La route source conserve cinq pas cachés ;
+son changement d'opacité est désormais adouci pour le joueur et le suiveur.
+Après la recette sur téléphone, le porteur a confirmé le fondu et signalé des
+traces de pas sous le pont ainsi qu'un suiveur visible sur le tablier en se
+retournant. Les pas de la route cachée ne produisent plus de marques de terrain ;
+le suiveur reste avec le joueur à la sortie jusqu'au prochain pas visible, y
+compris dans l'état minimal partagé. Le porteur confirme sur l'APK locale
+l'absence de traces sur les cases cachées et le bon suivi après la traversée.
+La traversée verticale garde le joueur visible grâce aux passages directionnels
+source et les bords restent infranchissables. En Map339, les graphismes de trou
+`agujero`/`rocagujero2` sont rendus au sol ; la route de chute du rocher conserve
+son ordre « au-dessus » en solo et dans la scène répliquée. Un test simule les
+deux pas du rocher jusqu'au trou, puis le switch source 773 et le remplacement
+du rocher par le trou rempli.
+Recette visuelle du trou et de la chute du rocher sur téléphone encore attendue,
+ainsi que les cascades, le joueur distant pendant la traversée cachée et la
+reconnexion Coop. Le porteur n'a pas de sauvegarde donnant un accès rapide au
+rocher ; le test de terrain attend la progression jusqu'à ce point. BZ-036 reste
+ouvert pour ces contrôles. Aucun pack ni APK
+publique n'a changé.
+
+Le 2026-11-14, TestDev ajoute « TP devant le rocher » : Map339, case (17,22),
+face au rocher en (16,22), avec le trou en (14,22). La case d'arrivée est
+passable dans le tileset source. Le TP ne modifie aucun switch : la page de
+chute du rocher reste soumise au switch source 170. Si la sauvegarde n'a pas
+cette progression, le TP permet l'inspection du décor mais pas encore la
+recette de la chute ; ne pas confondre cet accès de test avec une validation.
+
 **Ordre proposé :**
 
 1. **Mesure initiale `BZ-019`.** Relever la fluidité sur l'APK actuelle avant

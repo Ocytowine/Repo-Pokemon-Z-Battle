@@ -377,6 +377,37 @@ function sourceTrainerBattleContext(ownerId: string) {
 }
 
 describe("authoritative battle room", () => {
+  it("relays only an invitation at distance and requires mutual visibility for text", () => {
+    let now = 1_000;
+    const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), worldWithSource,
+      undefined, () => now);
+    room.connect("alice");
+    room.connect("bob");
+    expect(room.receive("alice", { type: "sendSocialText", version: 15,
+      requestId: "text-far", text: "Bonjour" })[0]?.message).toMatchObject({ type: "error" });
+    expect(room.receive("alice", { type: "sendSocialInvite", version: 15,
+      requestId: "invite-far" }).map((entry) => entry.message.type))
+      .toEqual(["ack", "socialReceived", "socialReceived"]);
+    now += 1_000;
+    room.receive("alice", { type: "setSocialVisibility", version: 15,
+      requestId: "visible-a", visible: true });
+    expect(room.receive("alice", { type: "sendSocialText", version: 15,
+      requestId: "text-one-sided", text: "Bonjour" })[0]?.message).toMatchObject({ type: "error" });
+    room.receive("bob", { type: "setSocialVisibility", version: 15,
+      requestId: "visible-b", visible: true });
+    expect(room.receive("alice", { type: "sendSocialText", version: 15,
+      requestId: "text-mutual", text: "Bonjour" })[2]?.message)
+      .toMatchObject({ type: "socialReceived", kind: "text", text: "Bonjour", side: "player" });
+    expect(room.receive("alice", { type: "sendSocialEmoji", version: 15,
+      requestId: "emoji-spam", emoji: "wave" })[0]?.message).toMatchObject({ type: "error" });
+    now += 1_000;
+    expect(room.receive("bob", { type: "sendSocialTeam", version: 15,
+      requestId: "team-mutual", team: [{ species: "EEVEE", name: "Évoli", level: 12 }] })[1]?.message)
+      .toMatchObject({ type: "socialReceived", kind: "team",
+        team: [{ species: "EEVEE", name: "Évoli", level: 12 }] });
+    room.disconnect("bob");
+    expect(room.snapshot().socialVisibility?.opponent).toBe(false);
+  });
   it("keeps the guest level choice authoritative across reconnection and room restoration", () => {
     const world = { ...worldWithSource, coopLevelReference: 24 };
     const room = new AuthoritativeBattleRoom("ABC234", initialBattle, new SeededRandom(1), world);

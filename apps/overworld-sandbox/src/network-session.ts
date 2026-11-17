@@ -1,8 +1,8 @@
 import { type Direction, type OverworldEvent, type OverworldState } from "@pokemon-z-battle/overworld-engine";
 import { PROTOCOL_VERSION, normalizeRoomCode, parseClientMessage, parseSourceWorldHostState, type NetworkPlayerProfile, type RoomPlayerSnapshot,
-  type RoomSnapshot, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
+  type RoomSnapshot, type ServerMessage, type SourceAvatarSnapshot, type SourceMovementIntent, type SourceWorldHostState,
   type SourceBattleContext, type SourceBattleSettlement, type SourceFollowerSnapshot,
-  type SourceBattleInventory,
+  type SourceBattleInventory, type SocialEmoji, type SocialTeamMember,
   type SourceWorldActorSnapshot, type SourceWorldSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { SourceSceneSnapshot } from "@pokemon-z-battle/multiplayer-protocol";
 import type { BattleMove, BattleTeam, BattleTrace, DoubleBattleEvent, PositionedTeamBattleAction, TeamBattleAction, TeamBattleEvent, TeamBattleState } from "@pokemon-z-battle/battle-engine";
@@ -34,6 +34,7 @@ interface MutableNetworkSession {
   submittedActiveSlots: number[];
   profile: NetworkPlayerProfile;
   sourceFollowerSignature: string | undefined;
+  socialVisibilitySent: boolean | null;
   sourceActorSignature: string | undefined;
   confirmedSourceMapId: number | null;
   sourceActorMapId: number | null;
@@ -66,6 +67,7 @@ export interface SourceBattleNetworkDraft {
 }
 
 export interface NetworkSessionCallbacks {
+  readonly onSocialReceived: (message: Extract<ServerMessage, { readonly type: "socialReceived" }>) => void;
   readonly onStatus: (state: string, notice: string, active: boolean) => void;
   readonly onWorldState: (state: OverworldState, animate: boolean) => void;
   readonly onEvents: (events: readonly OverworldEvent[]) => void;
@@ -255,6 +257,34 @@ export class OverworldNetworkSession {
     const socket = session.socket;
     if (playerId !== session.ticket.side || socket === null || socket.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "interact", version: PROTOCOL_VERSION, requestId: crypto.randomUUID() }));
+  }
+
+  public setSocialVisibility(visible: boolean): void {
+    const session = this.activeSession;
+    const socket = session?.socket;
+    if (session === null || socket?.readyState !== WebSocket.OPEN
+      || session.socialVisibilitySent === visible) return;
+    session.socialVisibilitySent = visible;
+    socket.send(JSON.stringify({ type: "setSocialVisibility", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), visible }));
+  }
+
+  public sendSocial(kind: "invite" | "text" | "emoji", value?: string | SocialEmoji): boolean {
+    const socket = this.activeSession?.socket;
+    if (socket?.readyState !== WebSocket.OPEN) return false;
+    const type = kind === "invite" ? "sendSocialInvite"
+      : kind === "text" ? "sendSocialText" : "sendSocialEmoji";
+    socket.send(JSON.stringify({ type, version: PROTOCOL_VERSION, requestId: crypto.randomUUID(),
+      ...(kind === "text" ? { text: value } : kind === "emoji" ? { emoji: value } : {}) }));
+    return true;
+  }
+
+  public shareSocialTeam(team: readonly SocialTeamMember[]): boolean {
+    const socket = this.activeSession?.socket;
+    if (socket?.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify({ type: "sendSocialTeam", version: PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(), team }));
+    return true;
   }
 
   public updateProfile(profile: NetworkPlayerProfile): void {
@@ -539,6 +569,7 @@ export class OverworldNetworkSession {
       submittedActiveSlots: [],
       profile,
       sourceFollowerSignature: undefined,
+      socialVisibilitySent: null,
       sourceActorSignature: undefined,
       confirmedSourceMapId: null,
       sourceActorMapId: null,
@@ -670,6 +701,7 @@ export class OverworldNetworkSession {
             throw new Error("Le serveur a renvoyé une place différente du ticket.");
           }
           session.reconnectAttempt = 0;
+          session.socialVisibilitySent = null;
           session.battleInventory = message.battleInventory;
           this.applySnapshot(message.snapshot, false);
           if (message.settlement !== null) this.applyBattleSettlement(session, message.settlement);
@@ -736,6 +768,8 @@ export class OverworldNetworkSession {
           if (session.snapshot !== null) session.snapshot = { ...session.snapshot, sourceScene: message.state,
             revision: message.revision };
           this.callbacks.onSourceSceneState(message.state);
+        } else if (message.type === "socialReceived") {
+          this.callbacks.onSocialReceived(message);
         } else if (message.type === "sourceSoundEmitted") {
           this.callbacks.onSourceSound(message.side, message.mapId, message.name, message.volume, message.pitch);
         } else if (message.type === "turnResolved") {

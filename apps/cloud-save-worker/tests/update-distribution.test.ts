@@ -4,13 +4,17 @@ import type { SaveEnv } from "../src/save-store.js";
 import worker from "../src/index.js";
 
 const manifest = { versionCode: 2, versionName: "0.2.0", notes: "Première version de diffusion.",
-  sizeBytes: 8, sha256: "a".repeat(64) };
+  sizeBytes: 8, sha256: "a".repeat(64), deltas: [{ fromVersionCode: 1,
+    fromSha256: "b".repeat(64), fromSizeBytes: 8, sizeBytes: 3, sha256: "c".repeat(64) }] };
 const bytes = new TextEncoder().encode("12345678");
 
 function environment(): SaveEnv {
   const bucket = {
     get: async (key: string, options?: { range?: Headers }) => {
       if (key === "updates/android/latest.json") return { json: async () => manifest, body: true };
+      if (key === "updates/android/pokemon-z-battle-1-to-2.pzb.gz") return {
+        size: 3, httpEtag: '"delta"', range: undefined,
+        body: new Blob(["abc"]).stream() };
       if (key !== "updates/android/pokemon-z-battle-2.apk") return null;
       const range = options?.range?.get("range");
       const offset = range === "bytes=2-4" ? 2 : 0;
@@ -19,7 +23,8 @@ function environment(): SaveEnv {
         body: new Blob([bytes.slice(offset, offset + length)]).stream() };
     },
     head: async (key: string) => key === "updates/android/pokemon-z-battle-2.apk"
-      ? { size: 8 } : null,
+      ? { size: 8 } : key === "updates/android/pokemon-z-battle-1-to-2.pzb.gz"
+        ? { size: 3 } : null,
   };
   return { SAVE_DB: {} as D1Database, SAVE_BUCKET: bucket as unknown as R2Bucket };
 }
@@ -54,6 +59,21 @@ describe("private Android updates", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ versionCode: 2,
       downloadUrl: "https://save.example.test/api/updates/download/2" });
+  });
+
+  it("offers only a published delta and serves it through the authenticated route", async () => {
+    const env = environment();
+    const latest = await handleAndroidUpdateRequest(
+      new Request("https://save.example.test/api/updates/latest"), env);
+    expect(await latest.json()).toMatchObject({ deltas: [{ fromVersionCode: 1,
+      downloadUrl: "https://save.example.test/api/updates/delta/1/2" }] });
+    const patch = await handleAndroidUpdateRequest(
+      new Request("https://save.example.test/api/updates/delta/1/2"), env);
+    expect(patch.headers.get("content-type")).toBe("application/octet-stream");
+    expect(await patch.text()).toBe("abc");
+    const wrongBase = await handleAndroidUpdateRequest(
+      new Request("https://save.example.test/api/updates/delta/3/2"), env);
+    expect(wrongBase.status).toBe(404);
   });
 
   it("streams the current APK and supports resumed downloads", async () => {

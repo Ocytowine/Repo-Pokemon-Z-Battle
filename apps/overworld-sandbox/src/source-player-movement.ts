@@ -84,6 +84,16 @@ export function isSourceSurfableTerrain(tag: number): boolean {
     || tag === SOURCE_TERRAIN.reflectionLake;
 }
 
+/** Resolve the movement state after a map transfer from the destination tile. */
+export function sourceModeAfterTransfer(current: SourceMovementMode, requested: SourceMovementMode | null,
+  destinationTerrain: number, mountAllowed: boolean): SourceMovementMode {
+  if (requested !== null) return requested;
+  if (current === "surf" && isSourceSurfableTerrain(destinationTerrain)) return "surf";
+  if (current === "dive" && destinationTerrain === SOURCE_TERRAIN.deepWater) return "dive";
+  if (current === "mount" && mountAllowed) return "mount";
+  return "walk";
+}
+
 /** PBTerrain.isWater? also accepts calm decorative water, even when it cannot be entered with Surf. */
 export function isSourceFishableTerrain(tag: number): boolean {
   return tag === SOURCE_TERRAIN.stillWater || isSourceSurfableTerrain(tag);
@@ -127,6 +137,11 @@ export function sourceMovementVisualPattern(mode: SourceMovementMode, basePatter
   // At source speed 5.2, the charset advances about every two 60 Hz frames.
   if (mode === "mount" && moving) return Math.floor(Math.max(0, now) / (1000 / 30)) % 4;
   return basePattern;
+}
+
+/** Scripted climbs can leave a short frame between consecutive tile motions. */
+export function sourceMountAnimationActive(moving: boolean, now: number, lastMovingAt: number): boolean {
+  return moving || now - lastMovingAt < 120;
 }
 
 /** Le charset source possède quatre poses de marche, avancées à la cadence RGSS. */

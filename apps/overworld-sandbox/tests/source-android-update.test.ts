@@ -15,4 +15,13 @@ describe("Android update offer", () => {
     expect(resolveSourceAndroidUpdate({ ...candidate,
       downloadUrl: "https://example.com/untrusted.apk" }, 2)).toEqual({ state: "unavailable" });
   });
+
+  it("accepts a smaller authenticated delta and rejects a foreign patch", () => {
+    const delta = { fromVersionCode: 2, fromSha256: "b".repeat(64), fromSizeBytes: 800_000_000,
+      sizeBytes: 20_000_000, sha256: "c".repeat(64),
+      downloadUrl: "https://pokemon-z-battle-mobile.mimidu33-eb.workers.dev/api/updates/delta/2/3" };
+    expect(resolveSourceAndroidUpdate({ ...candidate, deltas: [delta] }, 2).state).toBe("available");
+    expect(resolveSourceAndroidUpdate({ ...candidate, deltas: [{ ...delta,
+      downloadUrl: "https://example.com/patch" }] }, 2).state).toBe("unavailable");
+  });
 });

@@ -611,6 +611,26 @@ export function movePokemonToPartyFront(party: PlayerPartyState, pokemonId: stri
     members: index === 0 ? [...party.members] : [pokemon, ...party.members.filter((_, memberIndex) => memberIndex !== index)] };
 }
 
+/** The overworld follower uses the first party slot, not the last battle battler. */
+export function partyFollowerPokemon(party: PlayerPartyState): PersistentPokemon | null {
+  return party.members[0] ?? null;
+}
+
+/** Reorders two owned team slots without changing either Pokemon's identity or data. */
+export function swapPokemonPartyMembers(party: PlayerPartyState, firstId: string,
+  secondId: string): PlayerPartyState {
+  const first = party.members.findIndex((pokemon) => pokemon.id === firstId);
+  const second = party.members.findIndex((pokemon) => pokemon.id === secondId);
+  if (first < 0 || second < 0) throw new Error("Pokémon absent de l'équipe.");
+  if (first === second) return party;
+  const members = [...party.members];
+  [members[first], members[second]] = [members[second]!, members[first]!];
+  const activeId = party.activeIndex === null ? null : party.members[party.activeIndex]?.id;
+  const activeIndex = activeId === null || activeId === undefined ? null
+    : members.findIndex((pokemon) => pokemon.id === activeId);
+  return { ...party, members, activeIndex };
+}
+
 function pokemonWithReorderedMoves(pokemon: PersistentPokemon, fromIndex: number, toIndex: number): PersistentPokemon {
   if (!integer(fromIndex, 0, pokemon.moves.length - 1) || !integer(toIndex, 0, pokemon.moves.length - 1)) {
     throw new Error("Position de capacité invalide.");
@@ -1336,8 +1356,10 @@ export function applySharedBattleExperience(party: PlayerPartyState, settlement:
 export function playerPartyToBattleTeam(party: PlayerPartyState, catalog: PlayerBattleCatalog): BattleTeam {
   if (party.activeIndex === null || party.members.length === 0) throw new Error("Impossible de combattre avec une équipe vide.");
   const members = party.members.map((member) => battler(member, catalog));
-  const activeIndex = (members[party.activeIndex]?.hp ?? 0) > 0
-    ? party.activeIndex : members.findIndex((member) => member.hp > 0);
+  // A previous battle's active slot is transient. New battles lead with the
+  // first able Pokemon in the owner's current party order.
+  const activeIndex = members.findIndex((member, index) => member.hp > 0
+    && party.members[index]!.metadata.eggSteps === 0);
   if (activeIndex < 0) throw new Error("Impossible de combattre avec une équipe entièrement K.O.");
   return { activeIndex, members };
 }

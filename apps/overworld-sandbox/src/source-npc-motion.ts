@@ -17,6 +17,7 @@ interface NpcRuntime {
   walkingPattern: 1 | 3;
   characterName?: string;
   opacity?: number;
+  alwaysOnTop?: boolean;
   pattern?: number;
   pageIndex: number | null;
   routeIndex: number;
@@ -124,6 +125,7 @@ export class SourceNpcMotionController {
         delete runtime.interactionPageIndex;
         delete runtime.characterName;
         delete runtime.opacity;
+        delete runtime.alwaysOnTop;
         delete runtime.pattern;
         runtime.routeIndex = 0;
         runtime.moveSpeed = page.settings.moveSpeed;
@@ -157,6 +159,7 @@ export class SourceNpcMotionController {
         runtime.direction = result.actor.direction;
         runtime.characterName = result.actor.characterName;
         runtime.opacity = result.actor.opacity;
+        runtime.alwaysOnTop = result.actor.alwaysOnTop;
         runtime.pattern = result.actor.pattern;
         runtime.moveSpeed = result.actor.moveSpeed;
         runtime.moveFrequency = result.actor.moveFrequency;
@@ -222,7 +225,7 @@ export class SourceNpcMotionController {
       moveSpeed: runtime.moveSpeed, moveFrequency: runtime.moveFrequency,
       walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
       directionFix: page.settings.directionFix, through: page.settings.through,
-      alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
+      alwaysOnTop: runtime.alwaysOnTop ?? page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
       characterName: runtime.characterName ?? page.graphic.characterName, characterHue: 0,
       pattern: runtime.pattern ?? page.graphic.pattern };
   }
@@ -316,6 +319,7 @@ export class SourceNpcMotionController {
       delete runtime.interactionPageIndex;
       delete runtime.characterName;
       delete runtime.opacity;
+      delete runtime.alwaysOnTop;
       delete runtime.pattern;
     }
     return {
@@ -323,7 +327,7 @@ export class SourceNpcMotionController {
       moveSpeed: runtime.moveSpeed, moveFrequency: runtime.moveFrequency,
       walkAnimation: page.settings.walkAnimation, stepAnimation: page.settings.stepAnimation,
       directionFix: page.settings.directionFix, through: page.settings.through,
-      alwaysOnTop: page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
+      alwaysOnTop: runtime.alwaysOnTop ?? page.settings.alwaysOnTop, opacity: runtime.opacity ?? page.graphic.opacity,
       characterName: runtime.characterName ?? page.graphic.characterName, characterHue: 0,
       pattern: runtime.pattern ?? page.graphic.pattern,
     };
@@ -372,6 +376,7 @@ export class SourceNpcMotionController {
     runtime.moveFrequency = actor.moveFrequency;
     runtime.characterName = actor.characterName;
     runtime.opacity = actor.opacity;
+    runtime.alwaysOnTop = actor.alwaysOnTop;
     runtime.pattern = actor.pattern;
     if (destination === null) return 0;
     runtime.x = destination.x;
@@ -408,6 +413,8 @@ export class SourceNpcMotionController {
       else runtime.characterName = actor.characterName;
       if (actor.opacity === undefined) delete runtime.opacity;
       else runtime.opacity = actor.opacity;
+      if (actor.alwaysOnTop === undefined) delete runtime.alwaysOnTop;
+      else runtime.alwaysOnTop = actor.alwaysOnTop;
       if (actor.pattern === undefined) delete runtime.pattern;
       else runtime.pattern = actor.pattern;
       if (actor.renderOffsetY === undefined) delete runtime.networkRenderOffsetY;
@@ -465,6 +472,7 @@ export class SourceNpcMotionController {
           : { pattern: sampled.pattern }),
         ...(runtime.characterName === undefined ? {} : { characterName: runtime.characterName }),
         ...(runtime.opacity === undefined ? {} : { opacity: runtime.opacity }),
+        ...(runtime.alwaysOnTop === undefined ? {} : { alwaysOnTop: runtime.alwaysOnTop }),
         ...((sampled?.renderOffsetY ?? runtime.networkRenderOffsetY) === undefined ? {}
           : { renderOffsetY: sampled?.renderOffsetY ?? runtime.networkRenderOffsetY }),
       };

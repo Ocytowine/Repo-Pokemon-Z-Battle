@@ -4,7 +4,7 @@ import { sourceActionWheelHtml, type SourceActionWheelAction } from "./source-ac
 
 export type SourcePokemonActionContext = "team" | "ranch" | "battle";
 export type SourcePokemonActionId = "details" | "make-lead" | "give-item" | "deposit" | "withdraw"
-  | "mark" | "release" | "switch";
+  | "mark" | "release" | "switch" | "reorder";
 
 export type SourcePokemonAction = SourceActionWheelAction<SourcePokemonActionId>;
 
@@ -35,7 +35,9 @@ export function sourcePokemonActions(context: SourcePokemonActionContext, entry:
   const makeLead: SourcePokemonAction = { id: "make-lead", label: "Placer en tête", symbol: "1", enabled: !egg && !alreadyLead,
     hint: egg ? "Un Œuf ne peut pas combattre" : alreadyLead ? "Déjà en tête" : "Premier de l'équipe" };
   if (context === "battle") return [details, future("switch", "Envoyer", "⇄"), item];
-  if (context === "team") return [details, makeLead, item];
+  if (context === "team") return [details, makeLead,
+    { id: "reorder", label: "Échanger", symbol: "⇄", enabled: options.partySize > 1,
+      hint: "Choisir une autre place dans l'équipe" }, item];
   if (entry.location === "team") {
     return [details, item,
     { id: "deposit", label: "Déposer", symbol: "↓", enabled: options.partySize > 1,

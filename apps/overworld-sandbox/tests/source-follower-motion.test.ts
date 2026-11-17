@@ -8,6 +8,16 @@ const map: ImportedMap = { id: 3, name: "Test", width: 5, height: 5, tilesetId: 
   collision: { masks: Array(25).fill(15) }, transfers: [] };
 
 describe("source follower motion", () => {
+  it("keeps a concealed-route follower at the exit until the player takes a visible step", () => {
+    const follower = new SourceFollowerMotionController();
+    follower.synchronize(true, map, { x: 4, y: 2, direction: "left" });
+    follower.tuckAtPlayer(map, { x: 1, y: 2, direction: "left" });
+    expect(follower.positionSnapshot()).toMatchObject({ x: 1, y: 2 });
+    follower.followPlayerStep({ x: 1, y: 2, direction: "left" },
+      { x: 0, y: 2, direction: "left" }, 100, 125);
+    expect(follower.positionSnapshot()).toMatchObject({ x: 1, y: 2 });
+    expect(follower.pose(225)).toMatchObject({ x: 1, y: 2, complete: true });
+  });
   it("places the follower behind the player and interpolates toward the vacated tile", () => {
     const follower = new SourceFollowerMotionController();
     follower.synchronize(true, map, { x: 2, y: 2, direction: "right" });

@@ -97,6 +97,7 @@ export interface PersistedRoomState {
   readonly battleJoinInventory?: readonly [string, SourceBattleInventory] | null;
   readonly coopLevelReference?: number | null;
   readonly coopGuestEnabled?: boolean;
+  readonly socialVisibility?: Readonly<Record<BattleSide, boolean>>;
 }
 
 interface PendingReactiveSwitchTurn {
@@ -155,6 +156,8 @@ export class AuthoritativeBattleRoom {
   readonly #roomCode: string;
   readonly #worldCatalog: OverworldCatalog;
   readonly #movementSequences = new Map<BattleSide, number>();
+  #socialVisibility: Record<BattleSide, boolean> = { player: false, opponent: false };
+  readonly #lastSocialAt = new Map<string, number>();
   #revision = 0;
   #battleSequence = 0;
   #battleId: string | null = null;
@@ -198,6 +201,8 @@ export class AuthoritativeBattleRoom {
     this.#sourceWorldState = world.sourceWorld === null || world.sourceWorld === undefined
       ? null : sourceWorldSnapshot(world.sourceWorld);
     if (persisted !== undefined) {
+      this.#socialVisibility = { player: persisted.socialVisibility?.player ?? false,
+        opponent: persisted.socialVisibility?.opponent ?? false };
       this.#coopLevelReference = persisted.coopLevelReference ?? null;
       this.#coopGuestEnabled = persisted.coopGuestEnabled ?? false;
       this.#revision = persisted.revision;
@@ -384,6 +389,7 @@ export class AuthoritativeBattleRoom {
         player: this.#movementSequences.get("player") ?? 0,
         opponent: this.#movementSequences.get("opponent") ?? 0,
       },
+      socialVisibility: { ...this.#socialVisibility },
       coopLeveling: { referenceLevel: this.#coopLevelReference, guestEnabled: this.#coopGuestEnabled },
     };
   }
@@ -447,6 +453,7 @@ export class AuthoritativeBattleRoom {
   public exportState(): PersistedRoomState {
     return {
       version: 15,
+      socialVisibility: { ...this.#socialVisibility },
       revision: this.#revision,
       battleSequence: this.#battleSequence,
       battleId: this.#battleId,
@@ -528,6 +535,11 @@ export class AuthoritativeBattleRoom {
       return [this.error(playerId, "requestId" in message ? message.requestId : null, "UNAUTHORIZED",
         "Ce joueur doit être reconnecté avant d'envoyer une intention.")];
     }
+    if (message.type === "setSocialVisibility") {
+      return this.setSocialVisibility(player, message.requestId, message.visible);
+    }
+    if (message.type === "sendSocialInvite" || message.type === "sendSocialText"
+      || message.type === "sendSocialEmoji" || message.type === "sendSocialTeam") return this.sendSocial(player, message);
     if (message.type === "setSourceScene") return this.setSourceScene(player, message.requestId, message.scene);
     if (message.type === "emitSourceSound") return this.emitSourceSound(player, message);
     if (message.type === "activateSourceFieldEffect") {
@@ -696,6 +708,60 @@ export class AuthoritativeBattleRoom {
       { audience: { playerId: player.playerId }, message: this.acknowledge(player, requestId) },
       { audience: "all", message: { type: "sourceSceneUpdated", version: PROTOCOL_VERSION,
         revision: this.#revision, state: scene } },
+    ];
+  }
+
+  private setSocialVisibility(player: RoomPlayer, requestId: string, visible: boolean): readonly RoomDispatch[] {
+    const world = this.#sourceWorldState;
+    const remoteSide: BattleSide = player.side === "player" ? "opponent" : "player";
+    const allowed = world !== null && world.presence[player.side] === "shared"
+      && world.presence[remoteSide] === "shared"
+      && world.regionalMapIds[player.side] === world.regionalMapIds[remoteSide];
+    const next = visible && allowed;
+    const acknowledgement = { audience: { playerId: player.playerId },
+      message: this.acknowledge(player, requestId) } as const;
+    if (this.#socialVisibility[player.side] === next) return [acknowledgement];
+    this.#socialVisibility[player.side] = next;
+    this.#revision += 1;
+    return [acknowledgement, { audience: "all", message: {
+      type: "snapshot", version: PROTOCOL_VERSION, snapshot: this.snapshot(),
+    } }];
+  }
+
+  /** Ephemeral social events are relayed only to room members. Text needs mutual visibility. */
+  private sendSocial(player: RoomPlayer, message: Extract<ClientMessage,
+    { readonly type: "sendSocialInvite" | "sendSocialText" | "sendSocialEmoji" | "sendSocialTeam" }>): readonly RoomDispatch[] {
+    const remoteSide: BattleSide = player.side === "player" ? "opponent" : "player";
+    const remote = [...this.#players.values()].find((candidate) => candidate.side === remoteSide
+      && candidate.connected && !candidate.departed);
+    if (remote === undefined) return [this.error(player.playerId, message.requestId,
+      "INTERACTION_UNAVAILABLE", "L'autre joueur n'est pas connecté.")];
+    const world = this.#sourceWorldState;
+    const mutual = world !== null && world.presence.player === "shared"
+      && world.presence.opponent === "shared"
+      && world.regionalMapIds.player === world.regionalMapIds.opponent
+      && this.#socialVisibility.player && this.#socialVisibility.opponent;
+    if (message.type !== "sendSocialInvite" && !mutual) {
+      return [this.error(player.playerId, message.requestId, "INTERACTION_UNAVAILABLE",
+        "Les deux joueurs doivent se voir pour discuter.")];
+    }
+    const now = this.#now();
+    if (now - (this.#lastSocialAt.get(player.playerId) ?? Number.NEGATIVE_INFINITY) < 750) {
+      return [this.error(player.playerId, message.requestId, "INTERACTION_UNAVAILABLE",
+        "Attends un instant avant de renvoyer un message.")];
+    }
+    this.#lastSocialAt.set(player.playerId, now);
+    const kind: "invite" | "text" | "emoji" | "team" = message.type === "sendSocialInvite" ? "invite"
+      : message.type === "sendSocialText" ? "text" : message.type === "sendSocialEmoji" ? "emoji" : "team";
+    const received = { type: "socialReceived" as const, version: PROTOCOL_VERSION,
+      side: player.side, kind, sentAt: now,
+      ...(message.type === "sendSocialText" ? { text: message.text.trim() } : {}),
+      ...(message.type === "sendSocialEmoji" ? { emoji: message.emoji } : {}),
+      ...(message.type === "sendSocialTeam" ? { team: message.team } : {}) };
+    return [
+      { audience: { playerId: player.playerId }, message: this.acknowledge(player, message.requestId) },
+      { audience: { playerId: player.playerId }, message: received },
+      { audience: { playerId: remote.playerId }, message: received },
     ];
   }
 
@@ -1242,6 +1308,7 @@ export class AuthoritativeBattleRoom {
   }
 
   private markPlayerDisconnected(player: RoomPlayer, departed: boolean): void {
+    this.#socialVisibility[player.side] = false;
     this.#sourceTruthLensUntil.delete(player.side);
     player.connected = false;
     player.disconnectedAt = departed ? null : this.#now();

@@ -83,6 +83,9 @@ export interface SourceMenuViewModel {
   readonly androidVersion: string;
   readonly androidUpdateStatus: string;
   readonly androidUpdateAvailable: boolean;
+  readonly webCodeStatus: string;
+  readonly webCodeAvailable: boolean;
+  readonly webCodeInstalled: boolean;
   readonly resourcePackStatus: string;
   readonly resourcePackBusy: boolean;
   readonly resourcePackInstallable: boolean;
@@ -144,6 +147,9 @@ export interface SourceMenuViewCallbacks {
   readonly onCloudKeepLocal: (slot: SourceSaveSlotId, kind: "manual" | "auto") => void;
   readonly onCheckAndroidUpdate: () => void;
   readonly onDownloadAndroidUpdate: () => void;
+  readonly onCheckWebCodeUpdate: () => void;
+  readonly onInstallWebCodeUpdate: () => void;
+  readonly onRevertWebCodeUpdate: () => void;
   readonly onInstallResourcePack: () => void;
   readonly onInstallBgmPack: () => void;
   readonly onAudioSettingsChange: (settings: SourceAudioSettings) => void;
@@ -151,6 +157,7 @@ export interface SourceMenuViewCallbacks {
   readonly onJoinRoom: (serverUrl: string, roomCode: string) => void;
   readonly onCoopLevelSync: (selected: boolean) => void;
   readonly onDisconnectRoom: () => void;
+  readonly onInviteConversation: () => void;
   readonly onEditProfile: () => void;
   readonly onMovementMode: (mode: "walk" | "mount") => void;
   readonly onMovementTestOverride: (enabled: boolean) => void;
@@ -162,6 +169,7 @@ export interface SourceMenuViewCallbacks {
   readonly onTeleportToTestDoubleJoin: () => void;
   readonly onTeleportToTestFurfrouNest: () => void;
   readonly onTeleportToTestInsectNest: () => void;
+  readonly onTeleportToTestBoulder: () => void;
   readonly onOpenTestDayCare: () => void;
   readonly onOpenTestMining: () => void;
   readonly onAccelerateTestEggs: () => void;
@@ -173,6 +181,7 @@ export interface SourceMenuViewCallbacks {
   readonly onDive: () => void;
   readonly onFly: (destination: SourceRegionDestination) => void;
   readonly onPokemonLead: (pokemonId: string) => void;
+  readonly onPokemonReorder: (firstId: string, secondId: string) => SourceEventState;
   readonly onPokemonDetails: (pokemonId: string) => void;
   readonly onPokemonHeldItem: (pokemonId: string, itemId: string | null) => {
     readonly ok: boolean;
@@ -240,6 +249,7 @@ export class SourceMenuView {
   private selectedBagReplacementIndex: number | null = null;
   private bagResult: { readonly message: string; readonly itemId: string; readonly repeatAction: "use" | "give" | null } | null = null;
   private heldItemPokemonId: string | null = null;
+  private reorderingTeamPokemonId: string | null = null;
   private heldItemPocket: number | null = null;
   private heldItemFamilyId: string | null = null;
   private heldItemPage = 0;
@@ -256,7 +266,7 @@ export class SourceMenuView {
   private devPokemonPage = 0;
   private devPokemonLevel = 5;
   private devPokemonGender: SourceDevPokemonGender = "auto";
-  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" | "narrative-battles" | "minigames" | null = null;
+  private openDevSection: "movement" | "unlocks" | "bag" | "pokemon" | "services" | "narrative-battles" | "terrain" | "minigames" | null = null;
   private selectedAlchemyRecipeId: string | null = null;
   private alchemyQuantity = 1;
   private alchemyNotice: string | null = null;
@@ -293,6 +303,7 @@ export class SourceMenuView {
 
   private clearTeamSelection(): void {
     this.selectedTeamPokemonId = null;
+    this.reorderingTeamPokemonId = null;
     this.heldItemPokemonId = null;
     this.heldItemPocket = null;
     this.heldItemFamilyId = null;
@@ -571,13 +582,25 @@ export class SourceMenuView {
     const emptySlots = Array.from({ length: Math.max(0, 6 - entries.length) }, (_, index) =>
       `<article class="source-team-empty-slot" aria-label="Emplacement ${entries.length + index + 1} libre"><span>${entries.length + index + 1}</span><img src="/__pokemon-z/source/Graphics/Pictures/partyBall.PNG" alt=""><strong>Emplacement libre</strong></article>`).join("");
     const pokeVialConfirm = !this.pokeVialConfirming ? "" : `<section class="source-poke-vial-confirm" role="dialog" aria-modal="true" aria-label="Utiliser le Pokévial"><img src="/__pokemon-z/source/Graphics/Pictures/DP%20Pause%20Menu/vial.png" alt=""><div><small>SOIGNER L'ÉQUIPE</small><strong>Utiliser le Pokévial ?</strong><p>Les PV, statuts et PP de toute l'équipe seront restaurés. Il restera ${pokeVial.current - 1}/${pokeVial.maximum} soin${pokeVial.maximum > 1 ? "s" : ""}.</p><nav><button type="button" data-source-poke-vial-cancel>Annuler</button><button type="button" data-source-poke-vial-confirm>Soigner</button></nav></div></section>`;
-    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>Équipe Pokémon</h3></div><span>${members.length}/6</span></div>${coopLevel === null ? "" : `<p class="source-bag-notice">Stats affichées pour les combats partagés : niveau ${coopLevel}. Les rencontres personnelles gardent les niveaux et l'EXP de ta sauvegarde.</p>`}<div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${pokeVialConfirm}${wheel}${heldItemPanel}`;
+    content.innerHTML = `<div class="source-menu-title"><div><small>COMPAGNONS</small><h3>${this.reorderingTeamPokemonId === null ? "Équipe Pokémon" : "Choisis une place à échanger"}</h3></div><div class="source-team-title-actions">${this.reorderingTeamPokemonId === null ? "" : '<button type="button" data-team-reorder-cancel>Annuler</button>'}<span>${members.length}/6</span></div></div>${coopLevel === null ? "" : `<p class="source-bag-notice">Stats affichées pour les combats partagés : niveau ${coopLevel}. Les rencontres personnelles gardent les niveaux et l'EXP de ta sauvegarde.</p>`}<div class="source-team-grid">${occupiedSlots}${emptySlots}</div>${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}${pokeVialConfirm}${wheel}${heldItemPanel}`;
     bindSourceHeldItemIconFallback(content);
     content.querySelectorAll<HTMLButtonElement>(".source-team-grid [data-pokemon-id]").forEach((button) => {
       button.addEventListener("click", () => {
+        if (this.reorderingTeamPokemonId !== null) {
+          const from = this.reorderingTeamPokemonId;
+          this.reorderingTeamPokemonId = null;
+          this.selectedTeamPokemonId = null;
+          const nextState = this.callbacks.onPokemonReorder(from, button.dataset.pokemonId ?? "");
+          this.renderTeam(content, { ...model, eventState: nextState });
+          return;
+        }
         this.selectedTeamPokemonId = button.dataset.pokemonId ?? null;
         this.renderTeam(content, model);
       });
+    });
+    content.querySelector<HTMLButtonElement>("[data-team-reorder-cancel]")?.addEventListener("click", () => {
+      this.reorderingTeamPokemonId = null;
+      this.renderTeam(content, model);
     });
     content.querySelector<HTMLButtonElement>("[data-source-poke-vial-cancel]")?.addEventListener("click", () => {
       this.pokeVialConfirming = false;
@@ -616,6 +639,12 @@ export class SourceMenuView {
     }));
     content.querySelector<HTMLButtonElement>('[data-source-wheel-action="make-lead"]')?.addEventListener("click", () => {
       if (selected !== null) this.callbacks.onPokemonLead(selected.pokemon.id);
+    });
+    content.querySelector<HTMLButtonElement>('[data-source-wheel-action="reorder"]')?.addEventListener("click", () => {
+      if (selected === null) return;
+      this.reorderingTeamPokemonId = selected.pokemon.id;
+      this.selectedTeamPokemonId = null;
+      this.renderTeam(content, model);
     });
     content.querySelector<HTMLButtonElement>('[data-source-wheel-action="details"]')?.addEventListener("click", () => {
       if (selected !== null) this.callbacks.onPokemonDetails(selected.pokemon.id);
@@ -853,10 +882,21 @@ export class SourceMenuView {
         return sourceItemDisplayName(item, moveName); } });
     this.setMenuHeader("SAC", searching ? "Recherche" : selectedFamily?.name ?? pocket.name,
       `${model.eventState.money.toLocaleString("fr-FR")} ₽`);
-    content.innerHTML = `<div class="source-bag-toolbar"><label><span>Rechercher un objet</span><input type="search" data-source-bag-search value="${escapeSourceHtml(this.bagQuery)}" placeholder="Nom, effet, CT/CS…" autocomplete="off" spellcheck="false"></label><button type="button" data-source-bag-search-clear${searching ? "" : " disabled"}>Effacer</button><small>${searching ? `${entries.length} résultat${entries.length > 1 ? "s" : ""} dans tout le Sac` : "Recherche dans toutes les poches"}</small></div><nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
+    const focusedSearch = content.querySelector<HTMLInputElement>("[data-source-bag-search]") === document.activeElement;
+    const markup = `<div class="source-bag-toolbar"><label><span>Rechercher un objet</span><input type="search" data-source-bag-search value="${escapeSourceHtml(this.bagQuery)}" placeholder="Nom, effet, CT/CS…" autocomplete="off" spellcheck="false"></label><button type="button" data-source-bag-search-clear${searching ? "" : " disabled"}>Effacer</button><small>${searching ? `${entries.length} résultat${entries.length > 1 ? "s" : ""} dans tout le Sac` : "Recherche dans toutes les poches"}</small></div><nav class="source-bag-pockets" aria-label="Poches du Sac">${SOURCE_BAG_POCKETS.map((candidate) =>
         `<button type="button" data-source-pocket="${candidate.id}" class="${candidate.id === this.selectedPocket ? "active" : ""}" title="${escapeSourceHtml(candidate.name)}"><img src="${sourcePocketIconUrl(candidate.id)}" alt=""><span>${escapeSourceHtml(candidate.name)}</span><em>${counts.get(candidate.id) ?? 0}</em></button>`).join("")}</nav>
       ${selectedFamily === null ? "" : `<div class="source-inventory-breadcrumb"><button type="button" data-source-bag-family-back>‹ ${escapeSourceHtml(pocket.name)}</button><strong>${escapeSourceHtml(selectedFamily.name)}</strong><span>${familyEntries.reduce((sum, entry) => sum + entry.quantity, 0)} objets</span></div>`}
       <section class="source-inventory-browser"><div class="source-bag-list" style="--source-bag-columns:${this.bagLayout.columns};--source-bag-rows:${this.bagLayout.rows}">${inventoryGrid}</div>${sourceBagPaginationHtml(pagedNodes.page, pagedNodes.pageCount)}</section>${actionWheel}${targetPanel}${discardPanel}${partyUsePanel}${rareCandyPanel}${teachPanel}${resultPanel}${characterGuidePanel}${this.bagNotice === null ? "" : `<p class="source-bag-notice">${escapeSourceHtml(this.bagNotice)}</p>`}`;
+    if (focusedSearch) {
+      const next = document.createElement("div");
+      next.innerHTML = markup;
+      const toolbar = content.querySelector<HTMLElement>(".source-bag-toolbar")!;
+      const freshToolbar = next.querySelector<HTMLElement>(".source-bag-toolbar")!;
+      toolbar.querySelector<HTMLButtonElement>("[data-source-bag-search-clear]")!.disabled = !searching;
+      toolbar.querySelector("small")!.textContent = freshToolbar.querySelector("small")!.textContent;
+      for (const child of [...content.children]) if (child !== toolbar) child.remove();
+      for (const child of [...next.children]) if (child !== freshToolbar) content.append(child);
+    } else content.innerHTML = markup;
     const list = content.querySelector<HTMLElement>(".source-bag-list");
     if (list !== null && list.clientWidth > 0 && list.clientHeight > 0) {
       const layout = sourceGridPageLayout(list.clientWidth, list.clientHeight, 140, 70, 3, 3, 6);
@@ -869,18 +909,26 @@ export class SourceMenuView {
     }
     bindSourceItemIconFallback(content);
     const searchInput = content.querySelector<HTMLInputElement>("[data-source-bag-search]");
-    searchInput?.addEventListener("input", () => {
+    if (!focusedSearch) searchInput?.addEventListener("focus", () => {
+      const menu = content.closest<HTMLElement>(".source-menu");
+      if (menu === null) return;
+      menu.style.setProperty("--source-menu-keyboard-height", `${menu.getBoundingClientRect().height}px`);
+      menu.classList.add("source-menu-keyboard-lock");
+    });
+    if (!focusedSearch) searchInput?.addEventListener("blur", () => {
+      const menu = content.closest<HTMLElement>(".source-menu");
+      menu?.classList.remove("source-menu-keyboard-lock");
+      menu?.style.removeProperty("--source-menu-keyboard-height");
+    });
+    if (!focusedSearch) searchInput?.addEventListener("input", () => {
       this.bagQuery = searchInput.value;
       this.bagPage = 0;
       this.selectedBagFamilyId = null;
       this.selectedBagItemId = null;
       this.bagAction = null;
-      this.renderBag(content, model);
-      const nextInput = content.querySelector<HTMLInputElement>("[data-source-bag-search]");
-      nextInput?.focus();
-      nextInput?.setSelectionRange(this.bagQuery.length, this.bagQuery.length);
+      this.renderBag(content, this.bagModel ?? model);
     });
-    content.querySelector<HTMLButtonElement>("[data-source-bag-search-clear]")?.addEventListener("click", () => {
+    if (!focusedSearch) content.querySelector<HTMLButtonElement>("[data-source-bag-search-clear]")?.addEventListener("click", () => {
       this.bagQuery = "";
       this.bagPage = 0;
       this.renderBag(content, model);
@@ -1232,7 +1280,8 @@ export class SourceMenuView {
       ${control("effects", "Effets", "Pas, dialogues, capacités, cris et effets locaux.", settings.effects)}
       ${control("coopEffects", "Effets Coop", "Sons produits par l’autre joueur sur la carte partagée.", settings.coopEffects)}`
       : `
-      <article class="source-android-update-options"><strong>Mises à jour Android · ${escapeSourceHtml(model.androidVersion)}</strong><small>${escapeSourceHtml(model.androidUpdateStatus)}</small><div><button type="button" data-source-check-android-update>Vérifier</button>${model.androidUpdateAvailable ? '<button type="button" data-source-download-android-update>Télécharger l’APK</button>' : ""}</div></article>
+      <article class="source-android-update-options"><strong>Mises à jour Android · ${escapeSourceHtml(model.androidVersion)}</strong><small>${escapeSourceHtml(model.androidUpdateStatus)}</small><div><button type="button" data-source-check-android-update>Vérifier</button>${model.androidUpdateAvailable ? '<button type="button" data-source-download-android-update>Télécharger la mise à jour</button>' : ""}</div></article>
+      <article class="source-android-update-options"><strong>Code du jeu</strong><small>${escapeSourceHtml(model.webCodeStatus)}</small><div><button type="button" data-source-check-web-code>Vérifier</button>${model.webCodeAvailable ? '<button type="button" data-source-install-web-code>Installer le correctif</button>' : ""}${model.webCodeInstalled ? '<button type="button" data-source-revert-web-code>Version précédente</button>' : ""}</div></article>
       <article class="source-android-update-options"><strong>Ressources hors ligne</strong><small>Fonds : ${escapeSourceHtml(model.resourcePackStatus)}<br>Musiques : ${escapeSourceHtml(model.bgmPackStatus)}</small>${model.resourcePackInstallable ? `<div><button type="button" data-source-install-resource-pack${model.resourcePackBusy ? " disabled" : ""}>${model.resourcePackBusy ? "Installation…" : "Fonds de combat"}</button><button type="button" data-source-install-bgm-pack${model.bgmPackBusy ? " disabled" : ""}>${model.bgmPackBusy ? "Installation…" : "Musiques"}</button></div>` : ""}</article>
       `;
     content.innerHTML = `<div class="source-menu-title"><div><small>PRÉFÉRENCES</small><h3>Options</h3></div><span>LOCAL</span></div><nav class="source-options-pages" aria-label="Sections des options">
@@ -1250,6 +1299,12 @@ export class SourceMenuView {
       this.callbacks.onCheckAndroidUpdate);
     content.querySelector<HTMLButtonElement>("[data-source-download-android-update]")?.addEventListener("click",
       this.callbacks.onDownloadAndroidUpdate);
+    content.querySelector<HTMLButtonElement>("[data-source-check-web-code]")?.addEventListener("click",
+      this.callbacks.onCheckWebCodeUpdate);
+    content.querySelector<HTMLButtonElement>("[data-source-install-web-code]")?.addEventListener("click",
+      this.callbacks.onInstallWebCodeUpdate);
+    content.querySelector<HTMLButtonElement>("[data-source-revert-web-code]")?.addEventListener("click",
+      this.callbacks.onRevertWebCodeUpdate);
     content.querySelector<HTMLButtonElement>("[data-source-install-resource-pack]")?.addEventListener("click",
       this.callbacks.onInstallResourcePack);
     content.querySelector<HTMLButtonElement>("[data-source-install-bgm-pack]")?.addEventListener("click",
@@ -1350,6 +1405,7 @@ export class SourceMenuView {
       <details data-dev-section="pokemon"${this.openDevSection === "pokemon" ? " open" : ""}><summary>Donner un Pokémon <small>Équipe ou Ranch</small></summary><div class="source-dev-section source-dev-form source-dev-pokemon-picker"><div class="source-dev-pokemon-filters"><label class="source-dev-pokemon-search"><span>Rechercher</span><input id="source-dev-pokemon-query" type="search" value="${escapeSourceHtml(this.devPokemonQuery)}" placeholder="Nom français, numéro…" autocomplete="off"></label><label><span>Type</span><select id="source-dev-pokemon-type"><option value="">Tous les types</option>${pokemonTypes}</select></label><label><span>Classement</span><select id="source-dev-pokemon-sort"><option value="number"${this.devPokemonSort === "number" ? " selected" : ""}>Numéro du Pokédex</option><option value="name"${this.devPokemonSort === "name" ? " selected" : ""}>Nom alphabétique</option></select></label><button type="button" id="source-dev-pokemon-reset">Réinitialiser</button></div><div id="source-dev-pokemon-results" aria-live="polite"></div><div class="source-dev-pokemon-grant"><label><span>Niveau</span><select id="source-dev-pokemon-level">${pokemonLevels}</select></label><label><span>Genre</span><select id="source-dev-pokemon-gender" disabled><option value="auto">Choisissez une espèce</option></select></label><button type="button" id="source-dev-grant-pokemon">Ajouter le Pokémon sélectionné</button></div><small>Le genre proposé respecte l'espèce. Le Pokémon rejoint l'équipe si une place est libre, sinon le Ranch.</small></div></details>
       <details data-dev-section="services"${this.openDevSection === "services" ? " open" : ""}><summary>Services Pokémon <small>Interfaces en développement</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-day-care">TP devant la Pension</button><button type="button" id="source-dev-open-day-care">Ouvrir l’interface</button><button type="button" class="wide" id="source-dev-accelerate-eggs">Ramener les Œufs à 5 pas</button></div><small>Le TP rejoint la Route 5 sans modifier l’histoire. L’accès direct et l’accélération concernent seulement les données personnelles de test.</small></div></details>
       <details data-dev-section="narrative-battles"${this.openDevSection === "narrative-battles" ? " open" : ""}><summary>Combats narratifs <small>Parcours P0</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-double-join">TP duo Hector et Zaida</button><button type="button" id="source-dev-teleport-furfrou-nest">TP nid de Couafarel</button><button type="button" id="source-dev-teleport-insect-nest">TP nid insecte</button></div><small>Le test Coop place le joueur devant Hector et Zaida sur la Route 4. Ce duo de deux PNJ déclenche nativement un combat double ; si l’invité rejoint l’hôte, il prend le second poste allié. Ces raccourcis ne modifient aucun switch ni self-switch.</small></div></details>
+      <details data-dev-section="terrain"${this.openDevSection === "terrain" ? " open" : ""}><summary>Terrain et décors <small>Route 21</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" id="source-dev-teleport-boulder">TP devant le rocher</button></div><small>Place le joueur à droite du rocher, face à lui, pour observer le trou et tester sa chute. Le TP ne change pas les conditions de progression du rocher.</small></div></details>
       <details data-dev-section="minigames"${this.openDevSection === "minigames" ? " open" : ""}><summary>Mini-jeux <small>Fouilles</small></summary><div class="source-dev-section"><div class="source-dev-buttons"><button type="button" class="wide" id="source-dev-open-mining">Tester les fouilles</button></div><small>Lance une paroi neuve avec le marteau et le burin. Les trésors dégagés rejoignent réellement le Sac de cette sauvegarde.</small></div></details>
       </div>`;
     content.insertAdjacentHTML("afterbegin", '<button type="button" class="source-dev-back" data-source-dev-back>← Options</button>');
@@ -1466,6 +1522,8 @@ export class SourceMenuView {
       this.callbacks.onTeleportToTestFurfrouNest);
     content.querySelector<HTMLButtonElement>("#source-dev-teleport-insect-nest")?.addEventListener("click",
       this.callbacks.onTeleportToTestInsectNest);
+    content.querySelector<HTMLButtonElement>("#source-dev-teleport-boulder")?.addEventListener("click",
+      this.callbacks.onTeleportToTestBoulder);
     content.querySelector<HTMLButtonElement>("#source-dev-accelerate-eggs")?.addEventListener("click",
       this.callbacks.onAccelerateTestEggs);
     content.querySelector<HTMLButtonElement>("#source-dev-open-mining")?.addEventListener("click",
@@ -1478,10 +1536,11 @@ export class SourceMenuView {
     content.innerHTML = `<div class="source-menu-title"><div><small>AVENTURE PARTAGÉE</small><h3>Coopération</h3></div><span>${escapeSourceHtml(coop.state)}</span></div>
       <div class="source-coop-profile"><div><small>PROFIL PUBLIÉ</small><strong>${escapeSourceHtml(coop.profileName)}</strong></div><button type="button" id="source-coop-profile">Personnaliser</button></div>
       ${coop.active
-        ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p><p>${coop.levelReference === null ? "Niveau Coop indisponible" : `Niveau Coop ${coop.levelReference}${coop.levelSyncActive ? " · actif pour l'invité" : " · option désactivée"}`}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
+        ? `<div class="source-coop-room"><small>CODE D'INVITATION</small><strong>${escapeSourceHtml(coop.roomCode)}</strong><p>${escapeSourceHtml(coop.notice)}</p><p>${coop.levelReference === null ? "Niveau Coop indisponible" : `Niveau Coop ${coop.levelReference}${coop.levelSyncActive ? " · actif pour l'invité" : " · option désactivée"}`}</p></div><div class="source-coop-players">${players}</div><button type="button" id="source-coop-talk">Interpeller l'autre joueur</button><button type="button" id="source-coop-disconnect" class="danger">Quitter la partie coop</button>`
         : `<div class="source-coop-connect"><label><span>Serveur</span><input id="source-coop-server" value="${escapeSourceHtml(coop.serverUrl)}" spellcheck="false"></label><button type="button" id="source-coop-create">Créer une partie${coop.hostLevelReference === null ? "" : ` · niveau ${coop.hostLevelReference}`}</button><label class="source-movement-test"><span><strong>Niveau de l'hôte pour les combats partagés</strong><small>Si tu rejoins une partie, tes Pokémon prendront temporairement la moyenne des trois niveaux les plus élevés de l'hôte dans les combats partagés. Leur EXP sera calculée au retour en solo. Tes rencontres personnelles gardent tes niveaux et ton EXP habituels.</small></span><input id="source-coop-level-sync" type="checkbox"${coop.levelSyncSelected ? " checked" : ""}></label><div class="source-coop-join"><input id="source-coop-code" maxlength="6" value="${escapeSourceHtml(coop.roomCode)}" placeholder="CODE" aria-label="Code d'invitation"><button type="button" id="source-coop-join">Rejoindre</button></div><p>${escapeSourceHtml(coop.notice)}</p></div>`}`;
     content.querySelector<HTMLButtonElement>("#source-coop-profile")?.addEventListener("click", this.callbacks.onEditProfile);
     content.querySelector<HTMLButtonElement>("#source-coop-disconnect")?.addEventListener("click", this.callbacks.onDisconnectRoom);
+    content.querySelector<HTMLButtonElement>("#source-coop-talk")?.addEventListener("click", this.callbacks.onInviteConversation);
     const server = content.querySelector<HTMLInputElement>("#source-coop-server");
     const code = content.querySelector<HTMLInputElement>("#source-coop-code");
     code?.addEventListener("input", () => { code.value = code.value.toUpperCase().replace(/[^A-Z0-9]/gu, ""); });

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { createSourceEventState, parseSourceEventState } from "../src/source-event-state.js";
 import { loadSourceMovementTestOverride, persistSourceMovementTestOverride,
-  isSourceFacingFishableTerrain, sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
+  isSourceFacingFishableTerrain, sourceModeAfterTransfer, sourceMountAnimationActive,
+  sourceMovementDuration, sourceMovementUnlocks, sourceMovementVisualMode,
   sourceMovementVisualOffset, sourceMovementVisualPattern, sourcePlayerWalkingPattern } from "../src/source-player-movement.js";
 
 describe("source player movement unlocks", () => {
@@ -52,6 +53,18 @@ describe("source player movement unlocks", () => {
     expect(sourceMovementVisualPattern("mount", 0, 67, false)).toBe(0);
     expect(sourceMovementDuration("walk", "step")).toBe(200);
     expect(sourceMovementDuration("run", "step")).toBe(105);
+    expect(sourceMountAnimationActive(false, 1_080, 1_000)).toBe(true);
+    expect(sourceMountAnimationActive(false, 1_150, 1_000)).toBe(false);
+  });
+
+  it("keeps Surf across water map borders and dismounts only on land", () => {
+    expect(sourceModeAfterTransfer("surf", null, 7, false)).toBe("surf");
+    expect(sourceModeAfterTransfer("surf", null, 8, false)).toBe("surf");
+    expect(sourceModeAfterTransfer("surf", null, 0, false)).toBe("walk");
+    expect(sourceModeAfterTransfer("dive", null, 5, false)).toBe("dive");
+    expect(sourceModeAfterTransfer("surf", "dive", 5, false)).toBe("dive");
+    expect(sourceModeAfterTransfer("mount", null, 0, true)).toBe("mount");
+    expect(sourceModeAfterTransfer("mount", null, 0, false)).toBe("walk");
   });
 
   it("plays all four source walking poses continuously across tile boundaries", () => {

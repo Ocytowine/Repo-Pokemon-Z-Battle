@@ -13,13 +13,13 @@ import { applySafeStateCommands, createSourceEventState, parseSourceEventState, 
   type SourceEventState, type SourceFishingRod } from "./source-event-state.js";
 import { addPokemonToParty, addPokemonToStorage, coopReferenceLevel, projectCoopPartyAtLevel, createPersistentPokemon,
   loadSessionPlayerAvatarSelection, persistSessionPlayerAvatarSelection,
-  movePokemonToPartyFront, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
+  movePokemonToPartyFront, partyFollowerPokemon, storeProjectedBattleTeam, transferPokemonToParty, transferPokemonToStorage,
   changePokemonCollectionHeldItem, declinePendingPokemonMove, discardInventoryItem, isPokemonItemUsableInBattle,
   isPokemonEvolutionItem, learnPendingPokemonMove, pokemonLevelEvolutionCandidates, pokemonZLevelCap,
   recalculatePersistentPokemonStats,
   recalculatePlayerPokemonCollection, resolvePendingPokemonEvolution,
   nicknameOwnedPokemon, placeCapturedPokemon,
-  releaseStoredPokemon, reorderPokemonMoves, usePokemonItem, usePokemonPartyItem,
+  releaseStoredPokemon, reorderPokemonMoves, swapPokemonPartyMembers, usePokemonItem, usePokemonPartyItem,
   usePokemonEvolutionItem, useRareCandy,
   teachPokemonMachineMove,
   type PlayerAvatarSelection, type PlayerCreationCatalog, type PokemonCreationContext } from "@pokemon-z-battle/player-state";
@@ -128,6 +128,8 @@ import { checkSourceCloudSession, openSourceCloudLogin } from "./source-cloud-se
 import { disconnectMobileAccount } from "./source-mobile-account.js";
 import { checkSourceAndroidUpdate, installedSourceAndroidVersion, openSourceAndroidUpdate,
   type SourceAndroidUpdate } from "./source-android-update.js";
+import { checkWebCodeUpdate, installWebCodeUpdate, installedWebCodeVersion, markWebCodeHealthy,
+  revertWebCodeUpdate, type WebCodeUpdate } from "./source-web-code-update.js";
 import { installWideBattlebackPack, installedWideBattlebackPackVersion } from "./source-resource-packs.js";
 import { androidBgmPackAvailability, bgmPackRequiredForAndroid, installBgmPack, installedBgmPackVersion } from "./source-bgm-pack.js";
 import type { BgmInstallResult } from "./source-bgm-pack.js";
@@ -157,7 +159,8 @@ import { guestPersonalAchievementPage, guestSourceEventAccess, guestSourceStateC
   from "./source-coop-policy.js";
 import { isSourceFacingFishableTerrain, isSourceSurfableTerrain, loadSourceMovementTestOverride,
   persistSourceMovementTestOverride,
-  sourceFacingPoint, sourceModeForInput, sourceMovementDuration, sourceMovementModeAllowed,
+  sourceFacingPoint, sourceModeAfterTransfer, sourceModeForInput, sourceMountAnimationActive,
+  sourceMovementDuration, sourceMovementModeAllowed,
   sourceMovementUnlocks, sourceMovementVisualMode, sourceMovementVisualOffset, sourceMovementVisualPattern,
   sourcePlayerWalkingPattern,
   sourceTerrainAt, SOURCE_TERRAIN } from "./source-player-movement.js";
@@ -176,6 +179,7 @@ import { applySourceWalkingHappiness, sourceFieldMovementFinishFeedback,
   sourceFieldMarkActive, sourceFieldMarksForStep, sourceFieldMovementStartFeedback,
   type SourceFieldMark } from "./source-field-effects.js";
 import "./style.css";
+import { SourceCoopSocialView } from "./source-coop-social-view.js";
 
 const sourceNativeAndroidMode = isSourceAndroidUserAgent(navigator.userAgent) && Capacitor.getPlatform() === "android";
 const sourceLocalChromePreview = ["127.0.0.1", "localhost"].includes(window.location.hostname)
@@ -204,6 +208,10 @@ let sourceAndroidUpdateNoticePending = false;
 let sourceAndroidUpdateStatus = sourceNativeAndroidMode ? "Vérification au démarrage…"
   : "Mises à jour disponibles dans l’APK Android.";
 let sourceAndroidUpdateChecking = false;
+let sourceWebCodeUpdate: WebCodeUpdate | null = null;
+let sourceWebCodeInstalled = false;
+let sourceWebCodeStatus = sourceNativeAndroidMode ? "Code embarqué dans l’APK." : "Disponible sur Android.";
+let sourceWebCodeBusy = false;
 let sourceResourcePackBusy = false;
 let sourceResourcePackStatus = sourceNativeAndroidMode
   ? "Les fonds intégrés à l’APK restent disponibles hors ligne."
@@ -256,8 +264,8 @@ async function downloadAndroidUpdate(retriedAfterLogin = false): Promise<void> {
   sourceAndroidUpdateStatus = "Téléchargement sécurisé dans l’application…";
   refreshAndroidUpdateMenu();
   try {
-    const result = await openSourceAndroidUpdate(sourceAndroidUpdate, (done, total) => {
-      sourceAndroidUpdateStatus = `Téléchargement de l’APK : ${Math.round(done / total * 100)} %`;
+    const result = await openSourceAndroidUpdate(sourceAndroidUpdate, (done, total, kind) => {
+      sourceAndroidUpdateStatus = `Téléchargement ${kind === "delta" ? "du correctif" : "de l’APK"} : ${Math.round(done / total * 100)} %`;
       refreshAndroidUpdateMenu();
     });
     if (result === "login-required") {
@@ -276,6 +284,46 @@ async function downloadAndroidUpdate(retriedAfterLogin = false): Promise<void> {
     sourceAndroidUpdateStatus = error instanceof Error ? error.message
       : "Téléchargement interrompu. Réessaie pour le reprendre.";
   }
+  refreshAndroidUpdateMenu();
+}
+async function checkAvailableWebCodeUpdate(): Promise<void> {
+  if (sourceWebCodeBusy) return;
+  sourceWebCodeBusy = true;
+  sourceWebCodeStatus = "Vérification du code…";
+  refreshAndroidUpdateMenu();
+  const [result, installed] = await Promise.all([checkWebCodeUpdate(),
+    installedWebCodeVersion().catch(() => null)]);
+  sourceWebCodeBusy = false;
+  sourceWebCodeInstalled = installed !== null;
+  sourceWebCodeUpdate = result.state === "available" ? result.update : null;
+  sourceWebCodeStatus = result.state === "available" ? "Correctif du jeu disponible sans nouvelle APK."
+    : result.state === "current" ? "Code du jeu à jour."
+      : result.state === "not-published" ? "Aucun correctif de code publié."
+        : result.state === "login-required" ? "Connecte-toi au cloud pour vérifier le code."
+          : result.state === "non-android" ? "Disponible sur Android."
+            : "Vérification momentanément impossible.";
+  refreshAndroidUpdateMenu();
+}
+async function installAvailableWebCodeUpdate(): Promise<void> {
+  if (sourceWebCodeUpdate === null || sourceWebCodeBusy) return;
+  sourceWebCodeBusy = true;
+  sourceWebCodeStatus = "Téléchargement et vérification du code…";
+  refreshAndroidUpdateMenu();
+  try {
+    const result = await installWebCodeUpdate(sourceWebCodeUpdate, (done, total) => {
+      sourceWebCodeStatus = `Code vérifié : ${done}/${total} fichiers.`;
+      refreshAndroidUpdateMenu();
+    });
+    if (result === "login-required") sourceWebCodeStatus = "Reconnecte le compte cloud pour télécharger le code.";
+    else {
+      sourceWebCodeInstalled = true;
+      sourceWebCodeUpdate = null;
+      sourceWebCodeStatus = "Correctif installé. Il s’activera au prochain démarrage de l’app.";
+    }
+  } catch (error) {
+    sourceWebCodeStatus = error instanceof Error ? error.message : "Installation du code interrompue.";
+  }
+  sourceWebCodeBusy = false;
   refreshAndroidUpdateMenu();
 }
 async function installSourceResourcePack(): Promise<void> {
@@ -459,6 +507,7 @@ const SOURCE_DAY_CARE_DEV_DESTINATION = { mapId: 56, x: 30, y: 15, direction: 2 
 const SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION = { mapId: 27, x: 28, y: 20, direction: 8 } as const;
 const SOURCE_FURFROU_NEST_DEV_DESTINATION = { mapId: 24, x: 25, y: 15, direction: 8 } as const;
 const SOURCE_INSECT_NEST_DEV_DESTINATION = { mapId: 28, x: 7, y: 40, direction: 8 } as const;
+const SOURCE_ROUTE_21_BOULDER_DEV_DESTINATION = { mapId: 339, x: 17, y: 22, direction: 4 } as const;
 let sourceAudioPreferences = sourceAudioSettings(localStorage);
 
 function normalizedSourceAudio(settings: SourceAudioSettings): {
@@ -492,10 +541,13 @@ let sourceDevSettings = loadSourceDevSettings(localStorage);
 let pendingTransferMovementMode: SourceMovementMode | null = null;
 let importedPlayerMotion: SourceGridMotion | null = null;
 let sourceWalkingAnimationStartedAt: number | null = null;
+let lastLocalMountMotionAt = Number.NEGATIVE_INFINITY;
+let lastRemoteMountMotionAt = Number.NEGATIVE_INFINITY;
 let resumeSourceMovementAfterNetworkAck = false;
 let importedWalkingPattern: 1 | 3 = 1;
 let lastSourceBumpSoundAt = Number.NEGATIVE_INFINITY;
 let sourceFieldMarks: SourceFieldMark[] = [];
+const concealedPlayerRouteMotions = new WeakSet<SourceGridMotion>();
 let sourceTruthLensActiveUntil = Number.NEGATIVE_INFINITY;
 const erasedSourceEvents = new Set<string>();
 const heldMovementKeys = new Set<string>();
@@ -569,6 +621,9 @@ if (pendingNewGamePlayer != null) persistSessionPlayerAvatarSelection(sessionSto
 let activePlayerSelection = loadSessionPlayerAvatarSelection(sessionStorage, localStorage);
 let sourcePlayerVisuals: SourcePlayerVisuals | null = null;
 let sourcePlayerCharacterName = "player";
+let sourcePlayerRouteOpacity = 255;
+let sourcePlayerOpacityFade: { readonly from: number; readonly to: number;
+  readonly startedAt: number; readonly durationMs: number } | null = null;
 let playerProfileApplication = 0;
 let networkPlayerConnections: Partial<Record<AvatarId, RoomPlayerSnapshot["connectionState"]>> = {};
 let networkAvatarImages: Partial<Record<AvatarId, HTMLImageElement>> = {};
@@ -659,8 +714,7 @@ function flushSourceFieldProgressPersistence(): void {
 }
 
 function activeSourceFollower(): { species: string; appearance: NonNullable<SourceFollowerSnapshot["appearance"]> } | null {
-  const activeIndex = sourceEventState.party.activeIndex;
-  const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
+  const member = partyFollowerPokemon(sourceEventState.party);
   return !sourceEventState.followerEnabled || member === null ? null : { species: member.species,
     appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } };
 }
@@ -687,9 +741,10 @@ function sourceWorldHostState(narrativeState: SourceEventState = sourceEventStat
   if (importedAssets === null) return null;
   const map = importedAssets.map;
   const geometry = sourceWorldGeometry(importedAssets);
-  const activeIndex = sourceEventState.party.activeIndex;
-  const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
+  const member = partyFollowerPokemon(sourceEventState.party);
   const followerPosition = sourceFollowerMotion.positionSnapshot();
+  const followerVisible = followerPosition !== null
+    && (followerPosition.x !== importedAvatar.x || followerPosition.y !== importedAvatar.y);
   return { mapId: map.id, width: map.width, height: map.height,
     passages: geometry.passages,
     terrain: geometry.terrain,
@@ -697,7 +752,7 @@ function sourceWorldHostState(narrativeState: SourceEventState = sourceEventStat
     actors: currentSourceWorldActors(narrativeState),
     truthEvents: sourceTruthEventSnapshots(sourceMapEvents(), eventFootprint),
     host: { ...importedAvatar, mode: sourceMovementMode, action: sourceMovementAction },
-    follower: !sourceEventState.followerEnabled || member === null || followerPosition === null ? null
+    follower: !sourceEventState.followerEnabled || member === null || followerPosition === null || !followerVisible ? null
       : { ...followerPosition, species: member.species,
         appearance: { form: member.metadata.form, shiny: member.metadata.shiny, gender: member.metadata.gender } },
     story: { switches: narrativeState.switches, variables: sourceStoryVariables(narrativeState.variables),
@@ -729,6 +784,7 @@ function currentSourceScene(): SourceSceneSnapshot | null {
       ...(pose.pattern === undefined ? {} : { pattern: pose.pattern }),
       ...(pose.characterName === undefined ? {} : { characterName: pose.characterName }),
       ...(pose.opacity === undefined ? {} : { opacity: pose.opacity }),
+      ...(pose.alwaysOnTop === undefined ? {} : { alwaysOnTop: pose.alwaysOnTop }),
       ...(pose.renderOffsetY === undefined ? {} : { renderOffsetY: pose.renderOffsetY }) }];
   });
   const presentation = sourcePresentationCue ?? { id: 1, kind: "weather", data: {} };
@@ -885,6 +941,7 @@ function remoteFieldSoundVolume(point: GridPoint): number {
 
 function completeLocalSourceFieldStep(completedMotion: SourceGridMotion, now: number): void {
   if (importedAssets === null) return;
+  if (concealedPlayerRouteMotions.has(completedMotion)) return;
   appendSourceFieldMarks(completedMotion, sourceMovementMode, now);
   const feedback = sourceFieldMovementFinishFeedback(
     sourceTerrainAt(importedAssets.map, importedAssets.tileset, importedAvatar.x, importedAvatar.y),
@@ -1191,8 +1248,28 @@ function beginPendingSourceMapEntryAutorun(): boolean {
 
 function sourcePlayerRouteActor(): SourceRouteActor {
   return { ...importedAvatar, moveSpeed: 4, moveFrequency: 3, walkAnimation: true, stepAnimation: false,
-    directionFix: false, through: false, alwaysOnTop: false, opacity: 255,
+    directionFix: false, through: false, alwaysOnTop: false, opacity: sourcePlayerRouteOpacity,
     characterName: sourcePlayerCharacterName, characterHue: 0, pattern: 0 };
+}
+
+function displayedSourcePlayerOpacity(now: number): number {
+  const fade = sourcePlayerOpacityFade;
+  if (fade === null) return sourcePlayerRouteOpacity;
+  const progress = Math.min(1, Math.max(0, (now - fade.startedAt) / fade.durationMs));
+  if (progress >= 1) {
+    sourcePlayerOpacityFade = null;
+    return fade.to;
+  }
+  const eased = progress * progress * (3 - 2 * progress);
+  return Math.round(fade.from + (fade.to - fade.from) * eased);
+}
+
+function setSourcePlayerRouteOpacity(opacity: number): void {
+  if (sourcePlayerRouteOpacity === opacity) return;
+  const now = performance.now();
+  const from = displayedSourcePlayerOpacity(now);
+  sourcePlayerRouteOpacity = opacity;
+  sourcePlayerOpacityFade = from === opacity ? null : { from, to: opacity, startedAt: now, durationMs: 180 };
 }
 
 async function runSourceMoveRoute(sequence: SourceSequenceSession, target: number, rawRoute: unknown,
@@ -1206,53 +1283,68 @@ async function runSourceMoveRoute(sequence: SourceSequenceSession, target: numbe
       assets.events, sourceEventState, performance.now());
   if (actor === null) return;
   const eventId = target === 0 ? sequence.eventId : target;
-  for (const step of route.steps) {
-    if (!isActive()) return;
-    const routePlayer = playerTarget ? importedAvatar : sequence.interactionTarget ?? importedAvatar;
-    const result = executeSourceMoveRouteStep(actor, step, { player: routePlayer });
-    if (!result.supported) {
-      if (route.skippable) continue;
-      throw new Error(result.reason ?? `mouvement ${step.kind} invalide`);
-    }
-    if (playerTarget && result.destination !== null
-      && (result.destination.x < 0 || result.destination.y < 0
-        || result.destination.x >= assets.map.width || result.destination.y >= assets.map.height)) {
-      if (route.skippable) continue;
-      throw new Error(`route de mouvement hors carte : ${result.destination.x},${result.destination.y}`);
-    }
-    actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
-    if (result.switchChange !== null) {
-      sourceEventState = { ...sourceEventState,
-        switches: { ...sourceEventState.switches, [result.switchChange.id]: result.switchChange.value } };
-      persistSourceEventState();
-    }
-    if (result.sound !== null) {
-      await presentSourceCommand({ kind: "play-sound", data: { audio: result.sound } }, async () => undefined);
-    }
-    let duration = result.waitMs;
-    if (playerTarget) {
-      sourcePlayerCharacterName = actor.characterName;
-      const playerBefore = importedAvatar;
-      importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
-      if (result.destination !== null) {
-        sequence.playerRouteMoved = true;
-        duration = sourceNpcStepDuration(actor.moveSpeed);
-        const startedAt = performance.now();
-        importedPlayerMotion = createSourceGridMotion(result.actor, result.destination, actor.direction,
-          startedAt, { duration, walkingPattern: importedWalkingPattern });
-        sourceFollowerMotion.followPlayerStep(playerBefore, importedAvatar, startedAt, duration);
-        importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
+  let concealedFollower = false;
+  try {
+    for (const step of route.steps) {
+      if (!isActive()) return;
+      const routePlayer = playerTarget ? importedAvatar : sequence.interactionTarget ?? importedAvatar;
+      const result = executeSourceMoveRouteStep(actor, step, { player: routePlayer });
+      if (!result.supported) {
+        if (route.skippable) continue;
+        throw new Error(result.reason ?? `mouvement ${step.kind} invalide`);
       }
-    } else {
-      duration = Math.max(duration,
-        sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now(),
-          result.movementAction));
-      publishCurrentSourceActors();
+      if (playerTarget && result.destination !== null
+        && (result.destination.x < 0 || result.destination.y < 0
+          || result.destination.x >= assets.map.width || result.destination.y >= assets.map.height)) {
+        if (route.skippable) continue;
+        throw new Error(`route de mouvement hors carte : ${result.destination.x},${result.destination.y}`);
+      }
+      actor = result.destination === null ? result.actor : { ...result.actor, ...result.destination };
+      if (result.switchChange !== null) {
+        sourceEventState = { ...sourceEventState,
+          switches: { ...sourceEventState.switches, [result.switchChange.id]: result.switchChange.value } };
+        persistSourceEventState();
+      }
+      if (result.sound !== null) {
+        await presentSourceCommand({ kind: "play-sound", data: { audio: result.sound } }, async () => undefined);
+      }
+      let duration = result.waitMs;
+      if (playerTarget) {
+        sourcePlayerCharacterName = actor.characterName;
+        setSourcePlayerRouteOpacity(actor.opacity);
+        if (actor.opacity === 0) concealedFollower = true;
+        const playerBefore = importedAvatar;
+        importedAvatar = { x: actor.x, y: actor.y, direction: actor.direction };
+        if (result.destination !== null) {
+          sequence.playerRouteMoved = true;
+          duration = sourceNpcStepDuration(actor.moveSpeed);
+          const startedAt = performance.now();
+          importedPlayerMotion = createSourceGridMotion(result.actor, result.destination, actor.direction,
+            startedAt, { duration, walkingPattern: importedWalkingPattern });
+          if (actor.opacity === 0) concealedPlayerRouteMotions.add(importedPlayerMotion);
+          sourceFollowerMotion.followPlayerStep(playerBefore, importedAvatar, startedAt, duration);
+          importedWalkingPattern = importedWalkingPattern === 1 ? 3 : 1;
+        }
+      } else {
+        duration = Math.max(duration,
+          sourceNpcMotions.applyScriptedActor(eventId, result.actor, result.destination, performance.now(),
+            result.movementAction));
+        publishCurrentSourceActors();
+      }
+      renderImportedView();
+      if (playerTarget) publishCurrentSourceWorld(true);
+      if (duration > 0) await sequence.runner.delay(duration);
+      if (result.complete) return;
     }
-    renderImportedView();
-    if (playerTarget) publishCurrentSourceWorld(true);
-    if (duration > 0) await sequence.runner.delay(duration);
-    if (result.complete) return;
+  } finally {
+    if (playerTarget && concealedFollower && importedAssets?.map.id === assets.map.id) {
+      sourceFollowerMotion.tuckAtPlayer(assets.map, importedAvatar);
+      publishCurrentSourceWorld(true);
+    }
+    if (playerTarget && sourcePlayerRouteOpacity !== 255) {
+      setSourcePlayerRouteOpacity(255);
+      renderImportedView();
+    }
   }
 }
 
@@ -1365,7 +1457,11 @@ function completeSourceSequence(sequence: SourceSequenceSession): void {
         && (sequence.sourcePage?.settings.trigger === 1 || sequence.sourcePage?.settings.trigger === 2)) {
         queueMicrotask(() => {
           if (importedAssets?.map.id === sequence.mapId && sourceSequences.current === null
-            && importedPlayerMotion === null) continueHeldSourceMovement();
+            && importedPlayerMotion === null) {
+            const sameContact = playerTouchEventInDirection(sourceInteractiveMapEvents(), importedAvatar,
+              importedAvatar.direction, sequence.mapId, sourceInteractionState(), importedAssets.map);
+            if (sameContact?.event.id !== sequence.eventId) continueHeldSourceMovement();
+          }
         });
       }
       if (sequence.playerRouteMoved && importedAssets?.map.id === sequence.mapId) {
@@ -1395,6 +1491,22 @@ function advanceSourceSequence(): Promise<void> {
 }
 
 const canvasElement = mountOverworldApp();
+const sourceCoopSocialView = new SourceCoopSocialView(requiredAppElement("world-stage"),
+  (kind, value) => multiplayer.sendSocial(kind, value),
+  () => multiplayer.shareSocialTeam(sourceEventState.party.members.map((member) => ({
+    species: member.species,
+    name: member.nickname ?? importedAssets?.battleCatalog.pokemon.find((entry) =>
+      entry.internalName === member.species)?.name ?? member.species,
+    level: member.level,
+  }))));
+const syncSourceChatKeyboard = (): void => {
+  const viewport = window.visualViewport;
+  const covered = viewport === null ? 0 : Math.max(0,
+    window.innerHeight - viewport.height - viewport.offsetTop);
+  document.documentElement.style.setProperty("--source-ime-bottom", `${covered}px`);
+};
+window.visualViewport?.addEventListener("resize", syncSourceChatKeyboard);
+window.visualViewport?.addEventListener("scroll", syncSourceChatKeyboard);
 const sourceMapTransitionOverlay = requiredAppElement<HTMLElement>("source-map-transition");
 const sourceLocationBanner = requiredAppElement<HTMLElement>("source-location-banner");
 let sourceLocationBannerTimeout: number | null = null;
@@ -1656,8 +1768,11 @@ const syncSourceAndroidPresentation = (): void => {
 sourceAndroidPointerQuery.addEventListener("change", syncSourceAndroidPresentation);
 sourceAndroidHoverQuery.addEventListener("change", syncSourceAndroidPresentation);
 window.addEventListener("resize", syncSourceAndroidPresentation);
-requiredAppElement<HTMLElement>("app").addEventListener("pointerdown",
-  hideSourceNativeSystemBars, { capture: true });
+requiredAppElement<HTMLElement>("app").addEventListener("pointerdown", (event) => {
+  const target = event.target;
+  if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable]")) return;
+  hideSourceNativeSystemBars();
+}, { capture: true });
 const touchPortraitQuery = window.matchMedia("(orientation: portrait)");
 touchPortraitQuery.addEventListener("change", () => sourceTouchControls.release());
 const sourceLoadErrorRoot = requiredAppElement<HTMLElement>("source-load-error");
@@ -1838,6 +1953,13 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   },
   onCheckAndroidUpdate: () => { void checkAvailableAndroidUpdate(false); },
   onDownloadAndroidUpdate: () => { void downloadAndroidUpdate(); },
+  onCheckWebCodeUpdate: () => { void checkAvailableWebCodeUpdate(); },
+  onInstallWebCodeUpdate: () => { void installAvailableWebCodeUpdate(); },
+  onRevertWebCodeUpdate: () => {
+    if (window.confirm("Revenir au code précédent ? La partie doit être sauvegardée avant de redémarrer.")) {
+      void revertWebCodeUpdate();
+    }
+  },
   onInstallResourcePack: () => { void installSourceResourcePack(); },
   onInstallBgmPack: () => { void installSourceBgmPack(); },
   onAudioSettingsChange: (settings) => {
@@ -1853,6 +1975,13 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onJoinRoom: (serverUrl, roomCode) => { void createOrJoin("join", serverUrl, roomCode); },
   onCoopLevelSync: (selected) => { sourceCoopLevelSyncSelected = selected; renderSourceMenu(); },
   onDisconnectRoom: disconnectMultiplayer,
+  onInviteConversation: () => {
+    sourceScenes.closeMenu();
+    if (multiplayer.sendSocial("invite")) {
+      importedNotice = "Tu as invité l'autre joueur à parler.";
+      renderImportedView();
+    }
+  },
   onEditProfile: openPlayerCustomization,
   onMovementMode: selectSourceMovementMode,
   onMovementTestOverride: setSourceMovementTestOverride,
@@ -1864,6 +1993,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onTeleportToTestDoubleJoin: () => { void requestSourceDevTeleport(SOURCE_ROUTE_4_DUO_JOIN_DEV_DESTINATION); },
   onTeleportToTestFurfrouNest: () => { void requestSourceDevTeleport(SOURCE_FURFROU_NEST_DEV_DESTINATION); },
   onTeleportToTestInsectNest: () => { void requestSourceDevTeleport(SOURCE_INSECT_NEST_DEV_DESTINATION); },
+  onTeleportToTestBoulder: () => { void requestSourceDevTeleport(SOURCE_ROUTE_21_BOULDER_DEV_DESTINATION); },
   onAccelerateTestEggs: accelerateSourceDevEggs,
   onOpenTestDayCare: () => {
     sourceScenes.closeMenu();
@@ -1885,6 +2015,7 @@ const sourceMenuView = new SourceMenuView(localStorage, {
   onDive: requestSourceDive,
   onFly: (destination) => { void requestSourceFlight(destination); },
   onPokemonLead: setSourcePartyLead,
+  onPokemonReorder: reorderSourceParty,
   onPokemonDetails: (pokemonId) => openSourcePokemonSummary("team", pokemonId),
   onPokemonHeldItem: changeSourcePokemonHeldItem,
   onUsePokeVial: useCurrentSourcePokeVial,
@@ -2207,6 +2338,7 @@ const sourceBattleJoinView = new SourceBattleJoinView({
   onContinue: () => { multiplayer.closeBattleJoinWindow(); },
 });
 const multiplayer = new OverworldNetworkSession(STORED_SESSION_KEY, {
+  onSocialReceived: (message) => { sourceCoopSocialView.receive(message); },
   onStatus: setNetworkText,
   onWorldState: () => undefined,
   onEvents: () => undefined,
@@ -2787,12 +2919,16 @@ function animateImportedMap(now: number): void {
     : sampleSourceGridMotion(importedPlayerMotion, now);
   const localVisualMode = sourceMovementVisualMode(sourceMovementMode, sourceMovementAction,
     importedPlayerMotion !== null);
+  if (localVisualMode === "mount" && importedPlayerMotion !== null) lastLocalMountMotionAt = now;
   if (importedPlayerMotion === null) sourceWalkingAnimationStartedAt = null;
   else sourceWalkingAnimationStartedAt ??= importedPlayerMotion.startedAt;
   const playerPattern = sourceFishingView.open ? sourceFishingView.visualPattern(now)
     : localVisualMode === "walk" || localVisualMode === "run"
       ? sourcePlayerWalkingPattern(localVisualMode, now, sourceWalkingAnimationStartedAt)
-      : sourceMovementVisualPattern(localVisualMode, pose.pattern, now, importedPlayerMotion !== null);
+      : sourceMovementVisualPattern(localVisualMode, pose.pattern, now,
+        localVisualMode === "mount"
+          ? sourceMountAnimationActive(importedPlayerMotion !== null, now, lastLocalMountMotionAt)
+          : importedPlayerMotion !== null);
   if (sourceScenes.allows("ambient-motion", sourceSceneActivity())
     && !isNetworkGuest()) {
     const narrativeTargets: GridPoint[] = importedPlayerMotion === null
@@ -2816,6 +2952,8 @@ function animateImportedMap(now: number): void {
   }
   synchronizeSourceFollower();
   const followerPose = sourceFollowerMotion.pose(now);
+  const visibleFollowerPose = followerPose !== null && (followerPose.x !== pose.x || followerPose.y !== pose.y)
+    ? followerPose : null;
   const remoteSide: AvatarId | null = multiplayer.current?.ticket.side === "player" ? "opponent"
     : multiplayer.current?.ticket.side === "opponent" ? "player" : null;
   const remotePresent = !guestSourceExcursion
@@ -2829,8 +2967,12 @@ function animateImportedMap(now: number): void {
   const remoteMode = remoteSide === null ? "walk" : networkSourceWorld?.avatars[remoteSide].mode ?? "walk";
   const remoteVisualMode = sourceMovementVisualMode(remoteMode, remoteMotion?.action ?? "idle",
     remoteMotion !== null);
+  if (remoteVisualMode === "mount" && remoteMotion !== null) lastRemoteMountMotionAt = now;
   const remotePattern = sourceMovementVisualPattern(remoteVisualMode,
-    remotePose !== null && "pattern" in remotePose ? remotePose.pattern : 0, now, remoteMotion !== null);
+    remotePose !== null && "pattern" in remotePose ? remotePose.pattern : 0, now,
+    remoteVisualMode === "mount"
+      ? sourceMountAnimationActive(remoteMotion !== null, now, lastRemoteMountMotionAt)
+      : remoteMotion !== null);
   const remoteImage = remoteSide === null ? null
     : sourcePlayerImageForMovement(networkPlayerVisuals[remoteSide] ?? null, remoteVisualMode)
       ?? networkAvatarImages[remoteSide] ?? null;
@@ -2857,6 +2999,24 @@ function animateImportedMap(now: number): void {
   sourceFieldMarks = sourceFieldMarks.filter((mark) => sourceFieldMarkActive(mark, now));
   const mapCamera = importedCameraPosition(canvas, importedAssets.map, pose,
     sourcePresentation.currentCameraOffset());
+  const remoteX = remotePose === null ? 0 : remotePose.x * 32 + 16 - mapCamera.x;
+  const remoteBottom = remotePose === null ? 0 : remotePose.y * 32 + 32 - mapCamera.y;
+  const remoteHeight = remoteImage?.naturalHeight ? remoteImage.naturalHeight / 4 : 32;
+  const remoteVisible = remotePresent && remotePose !== null && remoteImage !== null
+    && networkSourceWorld?.regionalMapIds[remoteSide ?? "player"] === importedAssets.map.id
+    && remoteX + 16 > 0 && remoteX - 16 < canvas.width
+    && remoteBottom > 0 && remoteBottom - remoteHeight < canvas.height;
+  multiplayer.setSocialVisibility(remoteVisible);
+  const visibility = multiplayer.current?.snapshot?.socialVisibility;
+  sourceCoopSocialView.sync({ active: multiplayer.active && !sourceScenes.menuOpen && sourceBattles.current === null,
+    ownSide: multiplayer.current?.ticket.side ?? null,
+    mutual: remoteVisible && visibility?.player === true && visibility.opponent === true,
+    remoteVisible, remoteX: remoteX / canvas.width * 100,
+    remoteY: (remoteBottom - remoteHeight) / canvas.height * 100,
+    ownX: (pose.x * 32 + 16 - mapCamera.x) / canvas.width * 100,
+    ownY: (pose.y * 32 - mapCamera.y) / canvas.height * 100,
+    remoteName: multiplayer.current?.snapshot?.players.find((player) => player.side === remoteSide)
+      ?.profile.profile.displayName ?? "Joueur", remoteSprite: remoteImage });
   sourcePresentation.setMapCamera(mapCamera.x, mapCamera.y, canvas.width);
   drawImportedMap(context, canvas, importedAssets, pose, playerPattern, now, renderedSourceEventState(), sourceNpcMotions.poses(now),
     sourcePresentation.currentCameraOffset(), activeSourcePlayerImage(),
@@ -2866,9 +3026,10 @@ function animateImportedMap(now: number): void {
         ? sourcePlayerRunGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0)
       + (localVisualMode === "mount" && sourcePlayerCharacterName === "player"
         ? sourcePlayerMountGroundOffset(sourcePlayerVisuals, pose.direction, playerPattern) : 0),
-    sourceFollowerImage === null || followerPose === null ? null : { image: sourceFollowerImage, pose: followerPose },
+    sourceFollowerImage === null || visibleFollowerPose === null ? null
+      : { image: sourceFollowerImage, pose: visibleFollowerPose },
     remoteCharacters, sourceMovementMode, sourceMovementAction, sourceFieldMarks, hiddenSourceEventIds(),
-    { active: sourceTruthVisionActive(now), player: pose });
+    { active: sourceTruthVisionActive(now), player: pose }, displayedSourcePlayerOpacity(now));
   if (importedPlayerMotion !== null && pose.complete) {
     const completedMotion = importedPlayerMotion;
     completeLocalSourceFieldStep(completedMotion, now);
@@ -3290,6 +3451,8 @@ function renderSourceMenu(): void {
     cloudItems: sourceCloudItems,
     androidVersion: installedSourceAndroidVersion(), androidUpdateStatus: sourceAndroidUpdateStatus,
     androidUpdateAvailable: sourceAndroidUpdate !== null,
+    webCodeStatus: sourceWebCodeStatus, webCodeAvailable: sourceWebCodeUpdate !== null,
+    webCodeInstalled: sourceWebCodeInstalled,
     resourcePackStatus: sourceResourcePackStatus, resourcePackBusy: sourceResourcePackBusy,
     resourcePackInstallable: sourceNativeAndroidMode,
     bgmPackStatus: sourceBgmPackStatus, bgmPackBusy: sourceBgmPackBusy,
@@ -4256,6 +4419,19 @@ function setSourcePartyLead(pokemonId: string): void {
   renderImportedView();
 }
 
+function reorderSourceParty(firstId: string, secondId: string): SourceEventState {
+  try {
+    sourceEventState = { ...sourceEventState,
+      party: swapPokemonPartyMembers(sourceEventState.party, firstId, secondId) };
+    persistSourceEventState();
+    importedNotice = "Ordre de l'équipe mis à jour.";
+  } catch (error) {
+    importedNotice = error instanceof Error ? error.message : "Échange impossible.";
+  }
+  renderImportedView();
+  return sourceEventState;
+}
+
 function toggleSourceMenu(): void {
   if (document.documentElement.classList.contains("source-android") && touchPortraitQuery.matches) return;
   sourceTouchControls.release();
@@ -4656,8 +4832,7 @@ async function applyActivePlayerProfile(selection: PlayerAvatarSelection): Promi
 
 function synchronizeSourceFollower(): void {
   if (importedAssets === null) return;
-  const activeIndex = sourceEventState.party.activeIndex;
-  const member = activeIndex === null ? null : sourceEventState.party.members[activeIndex] ?? null;
+  const member = partyFollowerPokemon(sourceEventState.party);
   const enabled = sourceEventState.followerEnabled && member !== null;
   sourceFollowerMotion.synchronize(enabled, importedAssets.map, importedAvatar);
   const record = member === null || !enabled ? undefined
@@ -4805,8 +4980,8 @@ async function followSourceTransfer(transfer: ImportedTransfer, recordVisit = tr
     }
     const mountAllowed = metadata.bicycleAlways || metadata.bicycle === true
       || metadata.bicycle === null && metadata.outdoor === true;
-    sourceMovementMode = requestedTransferMode
-      ?? (sourceMovementMode === "mount" && mountAllowed ? "mount" : "walk");
+    sourceMovementMode = sourceModeAfterTransfer(sourceMovementMode, requestedTransferMode,
+      sourceTerrainAt(next.assets.map, next.assets.tileset, next.avatar.x, next.avatar.y), mountAllowed);
     sourceMovementAction = "idle";
     const returningToSharedWorld = guestSession && hostMapId === next.assets.map.id
       && shouldRejoinSharedSourceMap(true, networkSourceWorld?.presence.opponent ?? "away",
@@ -5023,16 +5198,19 @@ function renderEncounter(): void {
     player.playerId === joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "le meneur";
   const guestName = network?.snapshot?.players.find((player) =>
     player.playerId !== joinableBattle?.participation?.battleOwnerId)?.profile.profile.displayName ?? "l'autre joueur";
-  const duelPreparation = currentPlayerDuelPreparation();
+  const duelPreparation = duel === null || network?.roomBattleActive === true
+    ? null : currentPlayerDuelPreparation();
   sourcePlayerDuelView.render({ challenge: duel, battleActive: network?.roomBattleActive === true, side,
-    players: network?.snapshot?.players ?? [], canAccept: duelPreparation.team !== null,
-    unavailableReason: duelPreparation.unavailableReason, teamNotice: duelPreparation.notice,
-    teamDiagnostic: sourceBattleJoinTeamDiagnostic() });
-  const joinPreparation = currentPlayerBattleJoinPreparation();
+    players: network?.snapshot?.players ?? [], canAccept: duelPreparation?.team !== null && duelPreparation !== null,
+    unavailableReason: duelPreparation?.unavailableReason ?? null, teamNotice: duelPreparation?.notice ?? null,
+    teamDiagnostic: duelPreparation === null ? null : sourceBattleJoinTeamDiagnostic() });
+  const joinPreparation = joinableBattle === null || joinableBattle.duel || joinableBattle.participation === null
+    ? null : currentPlayerBattleJoinPreparation();
   sourceBattleJoinView.render({ battle: joinableBattle, playerId: network?.ticket.playerId ?? null,
-    team: joinPreparation.team, teamUnavailableReason: joinPreparation.unavailableReason,
-    teamRequiresHealing: joinPreparation.requiresHealing,
-    teamNotice: joinPreparation.notice, teamDiagnostic: sourceBattleJoinTeamDiagnostic(),
+    team: joinPreparation?.team ?? null, teamUnavailableReason: joinPreparation?.unavailableReason ?? null,
+    teamRequiresHealing: joinPreparation?.requiresHealing ?? false,
+    teamNotice: joinPreparation?.notice ?? null,
+    teamDiagnostic: joinPreparation === null ? null : sourceBattleJoinTeamDiagnostic(),
     available: joinableBattle?.sourceContext === null || side === null
       ? true : network?.snapshot?.sourceWorld?.presence[side] === "shared",
     ownerName: battleOwnerName, guestName,
@@ -5071,13 +5249,15 @@ function currentGuestCoopLevel(): number | null {
 
 function sourceCombatParty(state: SourceEventState, catalog: PlayerCreationCatalog,
   temporaryLevel = true): SourceEventState["party"] {
-  const reconciled = recalculatePlayerPokemonCollection(state.party, state.ranch, catalog);
-  if (state === sourceEventState && (reconciled.party !== state.party || reconciled.storage !== state.ranch)) {
-    sourceEventState = { ...sourceEventState, party: reconciled.party, ranch: reconciled.storage };
+  const members = state.party.members.map((pokemon) => recalculatePersistentPokemonStats(pokemon, catalog));
+  const party = members.every((pokemon, index) => pokemon === state.party.members[index])
+    ? state.party : { ...state.party, members };
+  if (state === sourceEventState && party !== state.party) {
+    sourceEventState = { ...sourceEventState, party };
     persistSourceEventState();
   }
   const level = temporaryLevel ? currentGuestCoopLevel() : null;
-  return level === null ? reconciled.party : projectCoopPartyAtLevel(reconciled.party, level, catalog);
+  return level === null ? party : projectCoopPartyAtLevel(party, level, catalog);
 }
 
 function sourceBattleJoinTeamDiagnostic(): string {
@@ -5431,6 +5611,7 @@ function closePlayerCustomization(): void {
 }
 
 function disconnectMultiplayer(): void {
+  sourceCoopSocialView.reset();
   if (sourceBattles.active || multiplayer.current?.roomBattleActive === true
     || multiplayer.hasPendingBattleSettlement) {
     importedNotice = "Terminez le combat et son règlement avant de quitter la Coop.";
@@ -5775,9 +5956,11 @@ void (async () => {
   } else if (recoveringStoredCoopBattle) offerSourceAutoSaveRecovery();
   else if (launchSelectionReady) startInitialSourceSession();
   else { sourceNewGameView.hide(); sourceTitleScreen.show(); }
+  if (sourceNativeAndroidMode) void markWebCodeHealthy();
 })();
 requestAnimationFrame(() => document.getElementById("source-boot-splash")?.remove());
 if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableAndroidUpdate(true); }, 8_000);
+if (sourceNativeAndroidMode) setTimeout(() => { void checkAvailableWebCodeUpdate(); }, 10_000);
 if (sourceNativeAndroidMode) void installedWideBattlebackPackVersion().then((version) => {
   if (version !== null && !sourceResourcePackBusy) {
     sourceResourcePackStatus = "Pack local vérifié lors de son activation ; fonds disponibles hors ligne.";

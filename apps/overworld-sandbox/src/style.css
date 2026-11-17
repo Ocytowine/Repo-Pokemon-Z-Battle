@@ -1,4 +1,33 @@
 :root { color: #edf8f1; background: #07110d; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-synthesis: none; }
+.source-coop-social { position: absolute; z-index: 35; inset: 0; pointer-events: none; }
+.source-coop-social[hidden], .source-coop-social-bubble[hidden], .source-coop-social-own-emoji[hidden], .source-coop-social-shortcut[hidden], .source-coop-emoji-toggle[hidden], .source-coop-emoji-palette[hidden], .source-coop-chat[hidden] { display: none; }
+.source-coop-social-bubble { position: absolute; transform: translate(-50%, -120%); width: 44px; height: 34px; padding: 0; border: 2px solid #e7ddb6; border-radius: 16px; color: #17302a; background: #fff9e3; box-shadow: 0 4px 12px #001b19a6; font-size: 25px; line-height: 20px; font-weight: 900; pointer-events: auto; }
+.source-coop-social-own-emoji { position: absolute; transform: translate(-50%, -140%); padding: 2px 8px; border: 2px solid #e7ddb6; border-radius: 13px; background: #fff9e3; box-shadow: 0 4px 12px #001b19a6; font-size: 21px; }
+.source-coop-emoji-toggle { position: absolute; right: 8px; bottom: 8px; width: 38px; height: 38px; border: 2px solid #e7ddb6; border-radius: 50%; background: #184c3eea; font-size: 18px; pointer-events: auto; }
+.source-coop-emoji-palette { position: absolute; right: 8px; bottom: 52px; display: grid; grid-template-columns: repeat(3, 34px); gap: 4px; padding: 5px; border: 1px solid #e7ddb6; border-radius: 12px; background: #12372fea; pointer-events: auto; }
+.source-coop-emoji-palette button { width: 34px; height: 34px; border: 0; border-radius: 9px; background: #e4f1d9; font-size: 19px; }
+.source-coop-social-bubble::after { content: ""; position: absolute; left: 17px; bottom: -8px; border: 6px solid transparent; border-top-color: #fff9e3; border-bottom: 0; }
+.source-coop-social-shortcut { position: absolute; top: 10px; right: 10px; display: flex; align-items: center; gap: 7px; max-width: 40%; padding: 4px 9px 4px 4px; border: 1px solid #f6d68c; border-radius: 12px; color: #fff7dd; background: #0b2b2be8; box-shadow: 0 4px 15px #001e16b8; pointer-events: auto; }
+.source-coop-social-shortcut canvas { width: 36px; height: 36px; image-rendering: pixelated; }
+.source-coop-social-shortcut span { display: grid; min-width: 0; text-align: left; }
+.source-coop-social-shortcut strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.source-coop-social-shortcut small { color: #e6d9b5; font-size: 8px; }
+.source-coop-chat { position: fixed; z-index: 400; left: 50%; bottom: calc(var(--source-ime-bottom, 0px) + 8px); display: flex; flex-direction: column; width: min(600px, calc(100vw - 20px)); height: min(78dvh, 470px); max-height: calc(100dvh - var(--source-ime-bottom, 0px) - 16px); transform: translateX(-50%); overflow: hidden; border: 2px solid #9bd5bd; border-radius: 16px; color: #e9fff1; background: #0b2921f7; box-shadow: 0 15px 50px #000c; pointer-events: auto; }
+.source-coop-chat header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid #9bd5bd66; }
+.source-coop-chat header strong { font-size: 13px; }
+.source-coop-chat button { min-height: 32px; border: 1px solid #b8d6bf88; border-radius: 10px; color: #f3fff4; background: #1a5544; }
+.source-coop-chat-messages { display: flex; flex: 1; flex-direction: column; gap: 6px; min-height: 0; padding: 10px; overflow-y: auto; overscroll-behavior: contain; }
+.source-coop-chat-messages p { max-width: 75%; margin: 0; padding: 7px 10px; border-radius: 12px; font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
+.source-coop-chat-messages .own { align-self: flex-end; border-bottom-right-radius: 3px; background: #247c57; }
+.source-coop-chat-messages .remote { align-self: flex-start; border-bottom-left-radius: 3px; background: #36524e; }
+.source-coop-chat-status { min-height: 14px; margin: 0; padding: 0 10px; color: #c8d9c3; font-size: 9px; }
+.source-coop-chat-emojis { display: flex; justify-content: space-around; gap: 4px; padding: 4px 8px; }
+.source-coop-chat-emojis button { width: 32px; font-size: 18px; }
+.source-coop-chat-team { align-self: flex-end; margin: 2px 8px 5px; padding: 0 10px; font-size: 10px; }
+.source-coop-chat-compose { display: flex; gap: 7px; padding: 7px; border-top: 1px solid #9bd5bd55; }
+.source-coop-chat-compose textarea { flex: 1; min-width: 0; max-height: 58px; padding: 7px; resize: none; border: 1px solid #a5cfb5; border-radius: 9px; color: #fff; background: #102d28; font: inherit; font-size: 13px; }
+.source-coop-chat-compose button { min-width: 70px; }
+.canvas-shell:has(> .source-coop-social .source-coop-chat:not([hidden])) { overflow: visible; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: #07110d; }
 html:has(.source-title-screen:not([hidden])),
@@ -2979,4 +3008,12 @@ html.source-android .source-ranch-storage .source-pokemon-grid { overflow-y: hid
     height: var(--facility-team-icon);
     background-size: auto var(--facility-team-icon);
   }
+}
+
+.source-team-title-actions > button { min-height: 32px; padding: 4px 11px; color: #eaf8ff; border: 1px solid #8bd5ff99; border-radius: 10px; background: #103c58; cursor: pointer; font-size: 10px; font-weight: 800; }
+
+/* Keep the Sac's layout at its pre-keyboard size when Android shrinks the visual viewport. */
+.source-menu.source-menu-keyboard-lock {
+  bottom: auto;
+  height: var(--source-menu-keyboard-height);
 }

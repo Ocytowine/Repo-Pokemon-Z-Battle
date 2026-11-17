@@ -106,6 +106,7 @@ export interface ImportedEventPose extends GridPoint {
   readonly pattern?: number;
   readonly characterName?: string;
   readonly opacity?: number;
+  readonly alwaysOnTop?: boolean;
   readonly renderOffsetY?: number;
 }
 
@@ -1152,6 +1153,11 @@ export function sourceEventHasShadow(eventName: string): boolean {
   return !/(?:\/noShadow\/|BerryPlant|OutdoorLight|HeadbuttTree|(?:^|\W)Light(?:\W|$))/iu.test(eventName);
 }
 
+/** Les graphismes de trou sont des décors au sol, même si RPG Maker les stocke comme caractères. */
+export function sourceGroundEventGraphic(characterName: string): boolean {
+  return /^(?:agujero|rocagujero\d*)$/iu.test(characterName);
+}
+
 export function sourceEventHasReflection(eventName: string): boolean {
   return !/noreflect/iu.test(eventName);
 }
@@ -1170,7 +1176,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
   remotePlayers: readonly ImportedRemotePlayerRender[] = [], playerMode: SourceMovementMode = "walk",
   playerAction: SourceMovementAction = "idle", fieldMarks: readonly SourceFieldMark[] = [],
   hiddenEventIds: ReadonlySet<number> = new Set(),
-  truthView: { readonly active: boolean; readonly player: GridPoint } = { active: false, player: avatar }): void {
+  truthView: { readonly active: boolean; readonly player: GridPoint } = { active: false, player: avatar },
+  playerOpacity = 255): void {
   const map = assets.map;
   const camera = importedCameraPosition(canvas, map, avatar, cameraOffset);
   const cameraX = camera.x;
@@ -1195,8 +1202,8 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     const characterName = pose?.characterName ?? page?.graphic.characterName ?? "";
     return characterName === "" && page.graphic.tileId === 0 ? [] : [{ event, page, pose }];
   });
-  const normalEntries = eventEntries.filter(({ page }) => !page.settings.alwaysOnTop);
-  const topEntries = eventEntries.filter(({ page }) => page.settings.alwaysOnTop);
+  const normalEntries = eventEntries.filter(({ page, pose }) => !(pose?.alwaysOnTop ?? page.settings.alwaysOnTop));
+  const topEntries = eventEntries.filter(({ page, pose }) => pose?.alwaysOnTop ?? page.settings.alwaysOnTop);
   const drawEvent = ({ event, page, pose }: typeof normalEntries[number]): void => {
     const eventX = pose?.x ?? event.x;
     const eventY = pose?.y ?? event.y;
@@ -1215,7 +1222,7 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
       const image = assets.characterImages.get(pose?.characterName ?? page.graphic.characterName);
       if (image !== undefined) {
         const field = sourceFieldVisualState(map, assets.tileset, Math.round(eventX), Math.round(eventY), "walk",
-          (pose?.renderOffsetY ?? 0) !== 0, page.settings.alwaysOnTop);
+          (pose?.renderOffsetY ?? 0) !== 0, pose?.alwaysOnTop ?? page.settings.alwaysOnTop);
         context.save();
         if (page.graphic.hue !== undefined && page.graphic.hue !== 0) {
           context.filter = `hue-rotate(${page.graphic.hue}deg)`;
@@ -1243,17 +1250,19 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
     const eventY = entry.pose?.y ?? entry.event.y;
     const tileId = entry.page.graphic.tileId;
     const image = tileId > 0 ? undefined : assets.characterImages.get(entry.pose?.characterName ?? entry.page.graphic.characterName);
+    const characterName = entry.pose?.characterName ?? entry.page.graphic.characterName;
     const z = tileId > 0 ? sourcePriorityTileZ(eventY, assets.tileset.priorities[tileId] ?? 0)
-      : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
+      : sourceGroundEventGraphic(characterName) ? 1
+        : sourceCharacterZ(eventY, image === undefined ? 32 : image.naturalHeight / 4);
     renderables.push({ z, order: order++, draw: () => drawEvent(entry) });
   }
   for (const mark of fieldMarks) renderables.push({ z: sourceCharacterZ(mark.y, 32) - 2, order: order++,
     draw: () => drawSourceFieldMark(context, assets, mark, now, cameraX, cameraY) });
-  if (follower !== null) {
+  if (follower !== null && playerOpacity > 0) {
     const pose = follower.pose;
     renderables.push({ z: sourceCharacterZ(pose.y, follower.image.naturalHeight / 4), order: order++, draw: () => {
       const field = sourceFieldVisualState(map, assets.tileset, Math.round(pose.x), Math.round(pose.y));
-      drawCharacter(context, follower.image, directionNumber(pose.direction), pose.pattern, 255,
+      drawCharacter(context, follower.image, directionNumber(pose.direction), pose.pattern, playerOpacity,
         pose.x, pose.y, cameraX, cameraY, field.shadow, 0, field.bushDepth, field.reflection, now);
     } });
   }
@@ -1267,11 +1276,11 @@ export function drawImportedMap(context: CanvasRenderingContext2D, canvas: HTMLC
         field.bushDepth, field.reflection, now);
     } });
   }
-  renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
+  if (playerOpacity > 0) renderables.push({ z: sourceCharacterZ(avatar.y, playerImage.naturalHeight / 4), order: order++, draw: () => {
     const airborne = playerAction === "ledge-jump" || playerAction === "surf-transition";
     const field = sourceFieldVisualState(map, assets.tileset, Math.round(avatar.x), Math.round(avatar.y),
       playerMode, airborne);
-    drawCharacter(context, playerImage, directionNumber(avatar.direction), playerPattern, 255,
+    drawCharacter(context, playerImage, directionNumber(avatar.direction), playerPattern, playerOpacity,
       avatar.x, avatar.y, cameraX, cameraY, field.shadow, playerOffsetY, field.bushDepth, field.reflection, now);
   } });
   renderables.sort((left, right) => left.z - right.z || left.order - right.order).forEach((renderable) => {

@@ -3,7 +3,7 @@ import { AUTOTILE_PARTS, activeEventAt, blockingDefaultEventPoints, contactAfter
   eventInFront, eventInInteractionRange, eventPoseForActivePage, importedCameraPosition, moveImportedAvatar,
   localizedDialogueText,
   parseImportedEncounter, parseImportedItems, parseImportedMachineCompatibility, parseImportedMap, parseImportedTrainers, parseImportedTrainerTypes, parseMapTranslations, playerTouchEventInDirection,
-  selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourcePriorityTileZ, transferForEvent,
+  selectDefaultEventPage, sourceCharacterZ, sourceEventHasReflection, sourceEventHasShadow, sourceGroundEventGraphic, sourcePriorityTileZ, transferForEvent,
   type ImportedMap, type ImportedMapEvent, type ImportedTileset } from "../src/imported-map.js";
 import { createSourceEventState } from "../src/source-event-state.js";
 import { executeSourceMoveRouteStep, type SourceRouteActor } from "../src/source-move-route.js";
@@ -15,6 +15,11 @@ function map(masks: readonly number[]): ImportedMap {
 }
 
 describe("imported RPG Maker map", () => {
+  it("treats hole graphics as ground beneath characters, including the filled variant", () => {
+    expect(sourceGroundEventGraphic("agujero")).toBe(true);
+    expect(sourceGroundEventGraphic("rocagujero2")).toBe(true);
+    expect(sourceGroundEventGraphic("rocafuerza")).toBe(false);
+  });
   it("keeps every encounter method for the source Compass while exposing Land separately", () => {
     const encounter = parseImportedEncounter({ records: [{ mapId: 7,
       encounterRates: { land: 12, cave: 3, water: 4 }, methods: [

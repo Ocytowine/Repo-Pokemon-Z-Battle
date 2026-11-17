@@ -114,7 +114,7 @@ describe("shared Pokemon card and contextual actions", () => {
     const actions = sourcePokemonActions("team", selected,
       { partySize: 2, partyFull: false, activePokemonId: "another", heldItemManagementAvailable: true });
     expect(actions.map((action) => [action.id, action.enabled])).toEqual([
-      ["details", true], ["make-lead", true], ["give-item", true],
+      ["details", true], ["make-lead", true], ["reorder", true], ["give-item", true],
     ]);
     expect(sourcePokemonActionWheelHtml(selected, actions)).toContain('data-source-wheel-action="make-lead"');
   });

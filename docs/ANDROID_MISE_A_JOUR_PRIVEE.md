@@ -65,6 +65,11 @@ certificat imprimé correspond au SHA-256 ci-dessus avant toute publication.
 4. Lancer `corepack pnpm --filter @pokemon-z-battle/overworld-sandbox run android:manifest`.
    Cette commande contrôle l'identifiant, le numéro de version et le certificat,
    puis calcule la taille et le SHA-256 du paquet.
+5. Dès qu'une version **déjà publiée** contient le lecteur de patch, créer le
+   différentiel avec l'APK publiée exacte :
+   `corepack pnpm --filter @pokemon-z-battle/overworld-sandbox run android:delta <chemin-APK-précédente> <ancien-versionCode>`.
+   Le script refuse un patch trop grand et ajoute ses empreintes à `latest.json`.
+   Ne pas utiliser une APK locale reconstruite comme base de la version publique.
 
 L'APK signée se trouve dans
 `apps/overworld-sandbox/android/app/build/outputs/apk/release/app-release.apk`.
@@ -78,13 +83,26 @@ compatible.
 Le Worker lit, dans le bucket R2 privé `pokemon-z-battle-saves-private`, l'APK à
 `updates/android/pokemon-z-battle-<versionCode>.apk` et le manifeste à
 `updates/android/latest.json`. Il n'annonce une version que si l'APK existe et
-que sa taille correspond au manifeste. Déposer **l'APK d'abord**, vérifier sa
-taille, puis déposer `latest.json` en dernier. L'ancien manifeste reste actif
+que sa taille correspond au manifeste. Pour un patch, déposer l'objet
+`updates/android/pokemon-z-battle-<ancien>-to-<nouveau>.pzb.gz` et vérifier sa
+taille. Déposer **l'APK d'abord**, puis les patchs, vérifier leurs tailles et
+empreintes, puis déposer `latest.json` en dernier. L'ancien manifeste reste actif
 jusqu'à cette dernière étape. Le Worker sert le téléchargement en flux et accepte
 les reprises partielles.
 
-L'APK actuelle fait environ **823 Mio**. Wrangler ne téléverse pas un objet de
-cette taille : sa limite annoncée est 315 Mo. Utiliser le transfert S3 compatible
+Le téléphone accepte un patch seulement si l'APK installée correspond exactement
+à la version et à l'empreinte de base. Il reconstruit dans son cache la nouvelle
+APK, en contrôle l'empreinte, puis l'envoie à l'installateur Android habituel.
+Une base différente utilise le téléchargement complet. Une installation vierge
+reste toujours servie par l'APK complète. **La première version qui ajoute ce
+lecteur de patch doit encore être téléchargée intégralement** ; tester ensuite
+une seconde version avec patch avant de publier ce canal. Prévoir l'espace
+temporaire nécessaire à une APK complète reconstruite, même si le transfert
+réseau est petit. Le patch n'est ni un pack de ressources ni du code exécuté
+indépendamment de l'APK signée.
+
+L'APK publique 0.1.11 (12) fait environ **393 Mo**. Le transfert des gros APK
+utilise le protocole S3 compatible
 de R2, par exemple `rclone`, avec un jeton R2 **Object Read & Write** limité
 au seul bucket. `rclone` 1.75.1 a été installé sur ce PC. Dans Cloudflare R2 →
 Vue d'ensemble → Détails du compte → API Tokens → Gérer, créer un jeton R2
@@ -223,6 +241,42 @@ les notes, la taille et l'empreinte attendues. Le lien permanent reste protégé
 par Cloudflare Access. Les packs de ressources et le Worker sont inchangés.
 Le porteur confirme que le téléchargement et l'installation depuis le jeu ont
 réussi sur son téléphone.
+
+## Correctifs privés du code web — BZ-041, préparés le 2026-11-13
+
+Le prochain APK équipé du chargeur de code doit être installé intégralement une
+fois. Ensuite, un correctif qui ne change que le JavaScript ou le CSS peut être
+téléchargé dans Options → Mises à jour Android → Code du jeu. Il est activé au
+prochain démarrage, sans ouvrir l'installateur Android. L'APK fournit un repli
+local en cas d'échec ; « Version précédente » permet aussi un retour manuel.
+Les modifications Java natives, les données de jeu embarquées ou la disposition
+des ressources demandent toujours une nouvelle APK. Le canal de patch binaire
+APK demeure prévu pour ces changements.
+
+Préparation locale, sans publication :
+
+```powershell
+corepack pnpm --filter @pokemon-z-battle/overworld-sandbox webcode:prepare
+corepack pnpm --filter @pokemon-z-battle/overworld-sandbox webcode:publish
+```
+
+La première commande construit `dist/assets`, signe le manifeste et place les
+objets dans `.pokemon-z/updates/`. La seconde vérifie la signature et tous les
+objets sans envoyer quoi que ce soit. Après test de l'APK et déploiement du
+Worker qui expose `/api/updates/web/`, ajouter `-- --publish --objects-only`
+pour envoyer seulement les objets, contrôler leur présence, puis `-- --publish`
+pour publier le manifeste **en dernier**. La publication du manifeste rend le
+correctif visible aux appareils connectés. Les fichiers de jeu source ne
+doivent jamais être ajoutés au dépôt ni à ce pack.
+
+La clé privée du code se trouve hors dépôt dans
+`%USERPROFILE%\.pokemon-z-battle\web-code-signing\private.pem` ; sa clé
+publique est embarquée dans l'APK. Sauvegarder la clé privée en lieu sûr avant
+la première diffusion. Si elle est perdue, l'APK déployée ne pourra pas valider
+les nouveaux correctifs web signés avec une autre clé ; il faudra diffuser une
+nouvelle APK. La clé privée ne doit jamais être publiée ou partagée dans une
+conversation. Le canal et son Worker n'ont pas encore été publiés ni validés
+sur téléphone au 2026-11-13.
 
 ## Connexion persistante Android (BZ-034, 2026-11-12)
 

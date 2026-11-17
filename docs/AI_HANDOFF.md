@@ -11812,3 +11812,200 @@ positions sont corrects et l'ancien défaut ne se reproduit plus. Ce constat
 valide le parcours solo testé ; il ne prouve pas rétrospectivement la cause
 unique de l'incident. L'audit narratif BZ-035 reste ouvert pour les autres
 cartes, les commandes de porte et les parcours Coop.
+
+Nouveau relevé du porteur dans `docs/Débug/Bug/Liste bug ou manques.md` : les
+points météo et transition de combat correspondent aux BZ-031/032 déjà validés
+en solo. Cinq sujets distincts sont ajoutés à la roadmap : BZ-036 profondeur
+des tuiles sur Routes 14/21 et cascades ; BZ-037 Surf aux frontières de cartes ;
+BZ-038 animation sur deux parois d'escalade ; BZ-039 réordonnancement manuel
+de l'équipe ; BZ-040 suiveur après combat. Le porteur précise que le classement
+concerne l'ordre de l'équipe, et que le suiveur attendu est le premier Pokémon
+de cette équipe. Le code de transfert revient actuellement à `walk` hors
+monture, et le suiveur lit `party.activeIndex` : deux hypothèses à tester,
+aucune correction moteur faite dans ce relevé. Les états personnels d'équipe
+et de suiveur doivent rester cohérents en solo, hôte, invité et reconnexion ;
+les mouvements Surf/escalade partagent leur contrat avec la room.
+
+Premier lot de correction BZ-037 à BZ-040 du 2026-11-12 : le mode de Surf est
+conservé après un transfert si la case d'arrivée est encore de l'eau ; une
+arrivée sur la rive repasse à la marche. La transition explicite vers la
+Plongée/Surface reste prioritaire, et la monture respecte toujours
+l'autorisation de la carte. Un court intervalle visuel conserve la pose animée
+de la monture entre deux pas d'escalade, en local et pour le joueur distant.
+Le menu Équipe propose désormais « Échanger » puis une seconde carte pour
+permuter deux emplacements ; le noyau personnel conserve l'identité du
+Pokémon actif et persiste le nouvel ordre. Le suiveur utilise le premier
+Pokémon de l'équipe, conformément à `following.rb` du jeu source, et non le
+dernier battler actif ; la même sélection alimente le rendu local et l'état
+minimal répliqué en Coop. Les tests du noyau, de l'app et le build complet
+passent. L'APK locale signée a été installée par USB (`Success`) sur le Samsung
+pour recette ; aucune publication publique. Les validations tactiles, Surf et
+escalade sur les lieux signalés sont encore attendues. BZ-036 reste en audit :
+les Routes 14/21 correspondent aux Maps 269/339, dont les tuiles utilisées ne
+portent aucune priorité 4 (exception de pont du Tilemap source). Une capture
+avec le joueur sur la case fautive est demandée avant de changer l'ordre de
+rendu général.
+
+Complément du même lot : le prochain combat sélectionne maintenant le premier
+Pokémon apte selon l'ordre de l'équipe, sans reprendre l'indice du dernier
+combattant de la partie précédente. Le test couvre premier slot valide puis
+premier slot K.O. La seconde APK locale signée contenant ce complément est
+construite, mais l'installation USB a répondu `no devices/emulators found` ;
+le téléphone doit être reconnecté pour cette recette. La première APK locale
+du lot avait bien été installée, mais ne contient pas ce dernier complément.
+
+Recette du porteur le 2026-11-12 : l'échange tactile de deux Pokémon fonctionne,
+le suiveur redevient le premier de l'équipe après combat, le Surf traverse une
+frontière de carte et deux parois d'escalade s'enchaînent correctement sur son
+téléphone. L'APK locale signée qui inclut aussi le choix du premier Pokémon
+disponible au prochain combat a ensuite été installée par ADB (`Success`).
+Ces constats valident les parcours solo testés de BZ-037 à BZ-040 ; la recette
+hôte, invité et reconnexion reste à conduire séparément.
+
+Audit préalable BZ-036 du 2026-11-12 : les deux captures montrent le pont blanc
+et le bord d'un trou. Les surfaces du pont en Map269 sont de priorité 0 ; les
+priorités élevées des Maps 269/339 correspondent surtout aux arbres. Une hausse
+générale du plan des personnages aurait donc placé ceux-ci devant ces arbres.
+
+BZ-036, lot local du 2026-11-13 : sur Map269, le contact horizontal du bord de
+pont (EV9, `size(1,5)`) déclenchait une boucle de séquences en tenant le
+joystick ; 7 368 démarrages ont été comptés sur le Samsung. Le menu était une
+victime du gel, pas son déclencheur. Après une séquence de contact sans
+déplacement effectif, `completeSourceSequence` ne relance plus immédiatement
+le même contact sous le doigt maintenu. Le porteur confirme l'absence de gel
+et la traversée automatique horizontale. Le déplacement vertical utilise les
+passages source et garde le personnage visible. Les commandes source
+`change-opacity` pilotent désormais le rendu du joueur ; une interpolation
+courte adoucit aussi la disparition/réapparition de son suiveur. L'ajustement
+visuel a été confirmé sur téléphone. Le porteur a ensuite signalé les traces
+de pas de la route cachée et le suiveur qui réapparaissait sur le tablier en se
+retournant. Les mouvements forcés dissimulés ne génèrent plus de marques de
+terrain ; le suiveur est replacé avec le joueur à la sortie, caché jusqu'au
+prochain pas visible. L'état minimal du suiveur en Coop l'omet aussi pendant
+ce chevauchement. Le porteur confirme sur téléphone l'absence de traces sur
+les cases cachées et le bon suivi après la traversée.
+
+Sur Map339, l'événement de trou est un personnage graphique de sol
+(`agujero` puis `rocagujero2` après le switch 773). Ces graphismes sont classés
+au plan du sol sans modifier globalement les priorités des arbres. La route du
+rocher change temporairement `alwaysOnTop`, avance de deux cases puis active
+773 ; le contrôleur de PNJ et la scène Coop propagent maintenant ce plan et le
+réinitialisent au changement de page. Le test simule les deux pas vers le trou
+et l'activation du switch par le noyau d'état ; il couvre aussi le plan partagé
+et le remplacement rocher/trou. La chute et le rendu du trou n'ont pas encore de
+recette visuelle sur téléphone. Les cascades et l'opacité du joueur distant
+pendant la traversée cachée restent à raccorder en Coop ; ne pas clore BZ-036
+avant ces contrôles. Le porteur n'a pas de sauvegarde offrant un accès rapide
+au rocher ; la recette de terrain attend la progression normale. Aucun pack ni
+APK publique diffusé pour ce lot.
+
+BZ-041, prototype local du 2026-11-13 : les mises à jour de code restent des
+APK signées, mais `scripts/apk-delta.mjs` construit un transport différentiel
+à partir des octets ZIP identiques entre l'APK publiée et la prochaine APK.
+Le téléphone vérifie l'empreinte et la taille de l'APK de base, télécharge un
+patch privé, reconstruit l'APK complète dans son cache, contrôle l'empreinte
+finale et passe par l'installateur Android habituel. Si l'APK de base ne
+correspond pas, le téléchargement complet reste disponible. Le Worker mobile
+protège et sert les patchs avec reprise, et n'annonce que les objets présents
+sur R2. Aucune règle de jeu, sauvegarde ou donnée Coop ne change : le même code
+signé est finalement installé en solo, hôte et invité.
+
+Mesure sur l'APK publiée versionCode 12 (392 729 346 octets) et une APK locale
+de 392 738 754 octets : patch de 5 141 519 octets, soit environ 1,31 % du
+téléchargement intégral ; 384 007 200 octets sont repris de l'APK installée.
+Cette mesure compare deux APK de même version pour évaluer le transport, et ne
+constitue pas une mise à jour installable. Le premier APK qui contient ce
+lecteur devra encore être livré intégralement ; les suivants pourront proposer
+un patch depuis une version exacte. Le téléphone doit garder temporairement
+la place nécessaire à l'APK reconstruite. Tests unitaires Web/Worker et
+Android ajoutés ; recette réelle de migration, interruption, espace insuffisant
+et installation depuis la future version publique encore ouverte. Aucun objet
+ni manifeste public n'a été modifié.
+Sur le Samsung branché, l'empreinte du `base.apk` effectivement installé est
+`2c32937777d1ef05673e88f83fce17e26b7ab6026035868fc37ec537b3909549`,
+identique à l'APK locale utilisée comme cible de la mesure ; le chemin
+`ApplicationInfo.sourceDir` est donc utilisable comme base exacte sur cet appareil.
+
+BZ-041, complément local du 2026-11-13 : le porteur préfère des petits
+correctifs de code activés dans l'app, sans installateur Android. Un chargeur
+Web Android, un magasin d'objets SHA-256 et une vérification de manifeste signé
+ECDSA ont été ajoutés. Il sert uniquement `dist/assets` (JS/CSS et dépendances)
+via le WebView ; Graphics, Audio, données de jeu, sauvegardes et packs existants
+restent séparés. Le manifeste est lié au `versionCode` et aux empreintes des
+inventaires embarqués ; un changement natif ou de données impose une APK. Une
+version en attente est ramenée à la précédente si elle ne confirme pas son
+démarrage avant la relance de l'app. Le Worker mobile protège les routes
+`/api/updates/web/latest` et `/api/updates/web/objects/<sha256>` par la session
+personnelle existante. L'écran Options propose vérification, installation au
+prochain démarrage et retour à la version précédente. `webcode:prepare` génère
+le manifeste et ses objets locaux ; `webcode:publish` vérifie sans écrire sur
+R2 sauf avec `--publish` (objets d'abord, manifeste en dernier).
+
+La clé privée de signature a été créée hors dépôt à
+`%USERPROFILE%\.pokemon-z-battle\web-code-signing\private.pem`, et la clé
+publique DER dans les assets natifs du projet. **Sauvegarder la clé privée avant
+diffusion**, car les APK déjà distribuées refuseront toute nouvelle clé.
+L'APK signée locale avec le chargeur a été construite ; le téléphone est
+actuellement absent d'ADB. Tester la migration réelle, l'activation et le
+retour arrière sur téléphone, puis solo/Coop et hors ligne avant d'annoncer un
+correctif. Le Worker doit être déployé avant de publier le manifeste. Rien n'a
+été mis en ligne pour ce canal à cette date.
+
+Vérifications du lot : le pack préparé contient 25 objets pour 6 053 499
+octets ; `webcode:publish` sans drapeau confirme signature et empreintes sans
+accès R2. La compilation Worker sèche, `corepack pnpm test`, `corepack pnpm
+build`, les tests unitaires Android et le build de l'APK signée passent. Le ZIP
+final contient la clé publique et l'amorce avec repli. ADB ne liste toujours
+aucun téléphone ; aucune installation ni recette réelle du code OTA n'a encore
+eu lieu. La version native est toujours 12 en local : avant une publication du
+chargeur, augmenter le versionCode, rebâtir l'APK et régénérer le manifeste web
+lié à cette version.
+
+BZ-036, raccourci de recette du 2026-11-14 : TestDev possède désormais un
+bouton « TP devant le rocher », vers Map339 (17,22), face à gauche. Le rocher
+est en (16,22) et le trou en (14,22) ; les tuiles de destination ont une
+passabilité source de 0. Le raccourci reprend `requestSourceDevTeleport`, sans
+modifier switches, inventaire ni scénario. La page qui lance la chute est
+conditionnée par le switch 170 ; sans lui, le TP donne accès au décor mais pas
+à cette animation. Recette visuelle sur téléphone encore ouverte. Les futures
+fonctions de communication Coop (texte, émotes, présentation d'équipe) sont au
+stade de discussion : aucun protocole ni interface multijoueur ajouté ici.
+
+Jalon local du 2026-11-17 — communication Coop et clavier du Sac : le protocole
+v15 possède des intentions d'invitation, visibilité, texte (140 caractères),
+six émojis et présentation volontaire d'une équipe limitée à espèce, nom et
+niveau. L'autorité de room relaie l'invitation à distance ; texte, émojis et
+équipe exigent une présence commune sur la même carte et une visibilité déclarée
+par **les deux** clients. L'affichage du sprite distant dans la caméra pilote
+cette déclaration. Le contenu est personnel à la room, seulement visuel et non
+persisté ; un redémarrage/reconnexion restaure la session mais vide le tchat.
+La room conserve seulement les deux drapeaux de visibilité et les remet à zéro
+à la déconnexion. La présentation utilise une bulle `…` sur le joueur visible,
+un raccourci avec son sprite/nom pour une invitation distante, une fenêtre de
+messages, des émojis rapides et un bouton « Montrer mon équipe ». Solo affiche
+aucune commande sociale. Les tests du protocole et de la room, `pnpm test` et
+`pnpm build` passent. **Le Worker en ligne n'a pas été déployé** : un essai
+réel hôte/invité, visibilité réciproque, clavier du tchat et reconnexion reste
+à faire avant distribution. La vérification de visibilité est fondée sur les
+déclarations des clients ; elle évite les échanges involontaires hors champ,
+mais ne constitue pas une preuve cryptographique de proximité.
+
+Le champ « Sac → recherche par nom » était remplacé à chaque lettre, ce qui
+pouvait fermer l'IME Android. Il reste maintenant attaché au DOM pendant le
+filtrage ; la protection des touches sur champs natifs est ajoutée. Premier
+essai Android : le clavier reste ouvert, confirmé par le porteur, mais
+`adjustResize` comprime le Sac. Le mode natif est passé à `adjustNothing` pour
+laisser le clavier recouvrir la partie basse sans redimensionner le menu.
+Une seconde APK locale signée a été installée sur le Samsung branché
+(`adb install -r` : `Success`), sans diffusion publique. Recette du rendu
+derrière le clavier en attente du retour du porteur.
+
+Retour du porteur : malgré `adjustNothing`, le Sac se comprime toujours.
+La cause visible est la hauteur `fixed` calculée depuis la fenêtre réduite par
+l'IME. Une troisième APK locale verrouille la hauteur réelle du panneau au
+focus du champ de recherche et ne la libère qu'au blur ; le clavier peut ainsi
+recouvrir le bas du Sac sans refaire sa grille. `pnpm test`, `pnpm build` et
+`android:release:slim` passent, installation ADB réussie. Le porteur confirme
+que le Sac garde sa taille et que les résultats restent correctement disposés
+derrière le clavier. Le clavier restait ouvert pendant la saisie lors du
+premier essai ; `BZ-043` est validé sur ce téléphone en solo.

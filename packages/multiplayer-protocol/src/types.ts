@@ -14,6 +14,9 @@ export const MAX_CLIENT_MESSAGE_BYTES = 524_288;
 
 export type RoomPhase = "waiting" | "battle" | "finished";
 export type PlayerConnectionState = "connected" | "reconnecting" | "left";
+export type SocialEmoji = "wave" | "heart" | "happy" | "surprised" | "sad" | "idea";
+/** Deliberately small public projection; never exposes private Pokémon IDs or battle stats. */
+export interface SocialTeamMember { readonly species: string; readonly name: string; readonly level: number }
 
 export interface RoomPlayerSnapshot {
   readonly playerId: string;
@@ -50,6 +53,8 @@ export interface RoomSnapshot {
   readonly sourceWorld: SourceWorldSnapshot | null;
   readonly sourceScene: SourceSceneSnapshot | null;
   readonly movementSequences: Readonly<Record<BattleSide, number>>;
+  /** Ephemeral camera report, never a story or save value. Both sides must report visibility to chat. */
+  readonly socialVisibility?: Readonly<Record<BattleSide, boolean>>;
   /** Session authority: host reference frozen at room creation and guest's join choice. */
   readonly coopLeveling?: { readonly referenceLevel: number | null; readonly guestEnabled: boolean };
 }
@@ -96,6 +101,11 @@ export type ClientMessage =
   | (RequestedMessage & { readonly type: "closeBattleJoinWindow"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "leaveBattle"; readonly battleId: string })
   | (RequestedMessage & { readonly type: "setProfile"; readonly profile: NetworkPlayerProfile })
+  | (RequestedMessage & { readonly type: "setSocialVisibility"; readonly visible: boolean })
+  | (RequestedMessage & { readonly type: "sendSocialInvite" })
+  | (RequestedMessage & { readonly type: "sendSocialText"; readonly text: string })
+  | (RequestedMessage & { readonly type: "sendSocialEmoji"; readonly emoji: SocialEmoji })
+  | (RequestedMessage & { readonly type: "sendSocialTeam"; readonly team: readonly SocialTeamMember[] })
   | (RequestedMessage & { readonly type: "setSourceWorld"; readonly world: SourceWorldHostState;
       /** Autorise un déplacement scénarisé/une téléportation de l'hôte sur la carte courante. */
       readonly relocateHost?: boolean })
@@ -143,6 +153,9 @@ export type ServerMessage =
       readonly battleInventory: SourceBattleInventory | null;
     })
   | (VersionedMessage & { readonly type: "snapshot"; readonly snapshot: RoomSnapshot })
+  | (VersionedMessage & { readonly type: "socialReceived"; readonly side: BattleSide;
+      readonly kind: "invite" | "text" | "emoji" | "team"; readonly text?: string;
+      readonly emoji?: SocialEmoji; readonly team?: readonly SocialTeamMember[]; readonly sentAt: number })
   | (VersionedMessage & { readonly type: "ack"; readonly requestId: string; readonly revision: number })
   | (VersionedMessage & {
       readonly type: "turnResolved";
