@@ -244,6 +244,12 @@ réussi sur son téléphone.
 
 ## Correctifs privés du code web — BZ-041, préparés le 2026-11-13
 
+**Distribution du 2026-11-17 :** la première APK équipée du chargeur est
+publiée en 0.1.12 (`versionCode 13`). Elle doit être installée intégralement
+depuis la 0.1.11. Le Worker mobile est déployé, mais aucun manifeste de
+correctif web n'est encore publié : la recette d'un vrai petit patch et de
+son repli reste à faire après validation de cette APK sur téléphone.
+
 Le prochain APK équipé du chargeur de code doit être installé intégralement une
 fois. Ensuite, un correctif qui ne change que le JavaScript ou le CSS peut être
 téléchargé dans Options → Mises à jour Android → Code du jeu. Il est activé au

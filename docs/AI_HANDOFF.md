@@ -12009,3 +12009,28 @@ recouvrir le bas du Sac sans refaire sa grille. `pnpm test`, `pnpm build` et
 que le Sac garde sa taille et que les résultats restent correctement disposés
 derrière le clavier. Le clavier restait ouvert pendant la saisie lors du
 premier essai ; `BZ-043` est validé sur ce téléphone en solo.
+
+## APK 0.1.12 (13) publiée — 2026-11-17
+
+Première APK contenant le chargeur de correctifs de code web et le lecteur de
+patch APK différentiel. La version et les notes ont été portées à 0.1.12 (13)
+sur le dépôt F:. `corepack pnpm test`, `corepack pnpm build`, le build Android
+signé et `:app:testDebugUnitTest` passent. Le certificat reste
+`dda2b8b1d3e930846ad5ff266125402cede1a7e4cb78febedbaacc33930eab4d`.
+L'APK fait 392 752 498 octets, SHA-256
+`bcb72542440841ebbd61d62026694d0f7b33a640d3580bf36ceea4ea301a9f11`.
+L'objet `updates/android/pokemon-z-battle-13.apk` a été envoyé sur R2 puis
+retéléchargé : taille et empreinte identiques. `latest.json` a été publié en
+dernier et relu ; il annonce le code 13 et les mêmes notes, taille et SHA-256.
+La 0.1.11 (12) était encore installée sur le téléphone juste avant publication.
+
+Le Worker mobile `437009db-34eb-4b7f-98e5-0498554e352e` expose le canal
+web authentifié ; le Worker Coop
+`a439a583-9bc4-4868-8d08-3549be163d74` relaie les nouvelles intentions
+sociales. La santé Coop répond 200 et le canal web refuse 401 sans session.
+Le manifeste de code web pour la base native 13 a été signé et vérifié
+localement (25 objets, 6 069 627 octets), **sans publication sur R2** : la
+première installation n'effectue donc aucun téléchargement de code redondant.
+Le porteur confirme que les trois clés privées ont une sauvegarde hors PC.
+Recette téléphone de l'installation 12 → 13, conservation des sauvegardes et
+packs, démarrage hors ligne, puis vrai patch web/repli et session Coop ouverte.
